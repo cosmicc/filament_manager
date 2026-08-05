@@ -1,0 +1,35 @@
+column,workbook_field,canonical_field,mode,note
+A,Spool ID,spool.spool_code,canonical input,immutable business key
+B,Inventory Status,spool.inventory_status,calculated,published from DB
+C,Material Type,filament_product.material_type,canonical input,controlled vocabulary
+D,Filler / Reinforcement,filament_product.filler,canonical input,controlled vocabulary
+E,Finish / Effect,filament_product.finish,canonical input,controlled vocabulary
+F,Color,filament_product.color_name,canonical input,optional color hex separately
+G,Manufacturer,vendor.name,canonical input,vendor relation
+H,Product / Grade / Hardness,filament_product.product_name,canonical input,grade or hardness included
+I,Preferred Brand,vendor.preferred,canonical input,boolean
+J,Diameter (mm),filament_product.diameter_mm,canonical input,numeric
+K,Tolerance (mm),filament_product.tolerance_mm,canonical input,numeric
+L,Density (g/cm³),filament_product.density_g_cm3,canonical input,profile can override only explicitly
+M,Nominal Weight (g),spool.nominal_net_mass_g,canonical input,initial filament mass
+N,Empty Spool / Tare (g),spool.tare_mass_g,canonical input/measurement,tare history recommended
+O,Current Gross Weight (g),spool_measurement.gross_mass_g,event input,manual now; scale later
+P,Remaining Filament (g),spool.remaining_mass_effective_g,calculated canonical,measurement plus later usage
+Q,Remaining %,spool.remaining_percent,calculated,0-100
+R,Used Filament (g),spool.used_mass_g,calculated,nominal minus remaining with adjustments
+S,Est. Remaining Length (m),spool.remaining_length_m,calculated,density and diameter
+T,Full Spool Weight (g),spool.full_gross_mass_g,calculated,nominal plus tare
+U,Flow (%),material_profile.flow_percent,profile,versioned
+V,Nozzle Temp (°C),material_profile.extruder_temp_c,profile,versioned
+W,Bed Temp (°C),material_profile.bed_temp_c,profile,versioned
+X,Chamber Temp (°C),material_profile.chamber_temp_c,profile,versioned
+Y,Retraction Distance (mm),material_profile.retraction_distance_mm,profile,versioned
+Z,Retraction Speed (mm/s),material_profile.retraction_speed_mm_s,profile,versioned
+AA,Pressure Advance,material_profile.pressure_advance,profile,versioned
+AB,Purchase Source,spool.purchase_source,canonical input,text
+AC,Purchase Date,spool.purchase_date,canonical input,date
+AD,First Used,spool.first_used_at,canonical calculated,usage event
+AE,Last Used,spool.last_used_at,canonical calculated,usage event
+AF,Spool Cost,spool.purchase_cost,canonical input,numeric plus currency
+AG,Cost / Gram,spool.cost_per_gram,calculated,purchase cost / nominal mass
+AH,Notes,spool.notes,canonical input,audited text

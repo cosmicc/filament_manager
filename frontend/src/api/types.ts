@@ -1,0 +1,246 @@
+export type UserRole = 'administrator' | 'operator' | 'viewer'
+
+export interface User {
+  id: string
+  username: string
+  display_name: string
+  role: UserRole
+  is_active: boolean
+  record_version: number
+}
+
+export interface IntegrationStatus {
+  service: string
+  status: 'connected' | 'unavailable' | 'disabled' | string
+  detail: string
+  checked_at: string
+}
+
+export interface Spool {
+  id: string
+  spool_code: string
+  filament_product_id: string
+  material_type: string
+  filler: string | null
+  finish: string | null
+  color_name: string
+  color_hex: string | null
+  vendor_name: string | null
+  product_name: string | null
+  nominal_net_mass_g: string
+  tare_mass_g: string
+  remaining_mass_expected_g: string
+  remaining_mass_measured_g: string | null
+  remaining_mass_effective_g: string
+  remaining_percent: string
+  weight_confidence: string
+  status: 'needs_weighing' | 'in_stock' | 'low' | 'empty' | 'archived'
+  location: string | null
+  spoolman_id: number | null
+  last_measurement_at: string | null
+  notes: string | null
+  archived: boolean
+  record_version: number
+}
+
+export interface Page<T> {
+  items: T[]
+  total: number
+  limit: number
+  offset: number
+}
+
+export interface BuildPlate {
+  id: string
+  plate_code: string
+  display_name: string
+  klipper_mesh_profile: string
+  surface_type: string | null
+  condition: string
+  status: string
+  preferred_materials: string[]
+  last_cleaned_at: string | null
+  last_mesh_calibrated_at: string | null
+  notes: string | null
+  record_version: number
+}
+
+export interface DashboardData {
+  total_spools: number
+  needs_weighing: number
+  low_spools: number
+  empty_spools: number
+  active_spool: Spool | null
+  active_plate: BuildPlate | null
+  integrations: IntegrationStatus[]
+}
+
+export interface Filament {
+  id: string
+  vendor_id: string | null
+  vendor_name: string | null
+  material_type: string
+  filler: string | null
+  finish: string | null
+  color_name: string
+  color_hex: string | null
+  product_name: string | null
+  diameter_mm: string
+  tolerance_mm: string | null
+  density_g_cm3: string
+  nominal_net_mass_g: string
+  notes: string | null
+  record_version: number
+}
+
+export interface Printer {
+  id: string
+  printer_code: string
+  name: string
+  nozzle_diameter_mm: string
+  active_plate_id: string | null
+  status: string
+  last_seen_at: string | null
+  record_version: number
+}
+
+export interface MaterialProfile {
+  id: string
+  filament_product_id: string
+  printer_id: string
+  nozzle_diameter_mm: string
+  version: number
+  status: string
+  extruder_temp_c: string
+  bed_temp_c: string
+  flow_percent: string
+  pressure_advance: string | null
+  published_at: string | null
+  checksum: string | null
+  record_version: number
+}
+
+export interface CalibrationStep {
+  id: string
+  step_order: number
+  step_key: string
+  name: string
+  required: boolean
+  status: 'not_started' | 'in_progress' | 'completed' | 'needs_review' | 'skipped'
+  inputs: Record<string, unknown>
+  result: Record<string, unknown>
+  artifact: Record<string, unknown>
+  affected_profile_fields: string[]
+  notes: string | null
+  record_version: number
+}
+
+export interface Calibration {
+  id: string
+  filament_product_id: string
+  spool_id: string | null
+  printer_id: string
+  nozzle_diameter_mm: string
+  build_plate_id: string | null
+  status: string
+  notes: string | null
+  override_reason: string | null
+  record_version: number
+  steps: CalibrationStep[]
+}
+
+export interface AuditEvent {
+  id: string
+  actor_id: string | null
+  source: string
+  action: string
+  object_type: string
+  object_id: string | null
+  before: Record<string, unknown> | null
+  after: Record<string, unknown> | null
+  correlation_id: string
+  occurred_at: string
+}
+
+export interface OutboxJob {
+  id: string
+  job_type: string
+  aggregate_type: string
+  aggregate_id: string
+  aggregate_version: number
+  status: string
+  attempts: number
+  next_attempt_at: string
+  last_error_class: string | null
+  created_at: string
+  completed_at: string | null
+}
+
+export interface Device {
+  id: string
+  device_code: string
+  device_type: string
+  location: string | null
+  firmware_version: string | null
+  enabled: boolean
+  last_seen_at: string | null
+}
+
+export interface CuraMachineReport {
+  machine_id: string
+  display_name: string
+  definition_id: string | null
+  quality_definition_id: string | null
+  quality_type: string | null
+  variant: string | null
+  nozzle_diameter_mm: string | null
+}
+
+export interface CuraInstallationReport {
+  installation_id: string
+  version: string
+  channel: string
+  path_hint: string
+  setting_version: number | null
+  machines: CuraMachineReport[]
+}
+
+export interface WorkstationAgent {
+  id: string
+  agent_code: string
+  display_name: string
+  hostname: string
+  platform: 'arch_linux' | 'windows_11'
+  architecture: string
+  agent_version: string
+  enabled: boolean
+  capabilities: Record<string, unknown>
+  cura_installations: CuraInstallationReport[]
+  last_seen_at: string | null
+  last_error: string | null
+  record_version: number
+  created_at: string
+}
+
+export interface CuraDeployment {
+  id: string
+  agent_id: string
+  material_profile_id: string
+  requested_by: string
+  status: 'pending' | 'claimed' | 'succeeded' | 'failed' | 'cancelled'
+  profile_checksum: string
+  attempts: number
+  next_attempt_at: string
+  claimed_at: string | null
+  completed_at: string | null
+  result: Record<string, unknown>
+  last_error_class: string | null
+  last_error_message: string | null
+  created_at: string
+  updated_at: string
+}
+
+export interface WorkstationPairingCode {
+  pairing_code: string
+  expires_at: string
+}

@@ -1,0 +1,7 @@
+order,key,name,required,profile_outputs
+1,temperature,Temperature Tower,True,extruder_temp_c
+2,flow,Flow Rate Tower,True,flow_percent
+3,pressure_advance,PA Square Tower,True,pressure_advance
+4,retraction,Retraction Tower,True,retraction_distance_mm;retraction_speed_mm_s
+5,overhang,Overhang Test,True,support_overhang_angle_deg;tree_max_branch_angle_deg
+6,ironing,Ironing Test,False,ironing_enabled;ironing_flow_percent;ironing_speed_mm_s;ironing_line_spacing_mm

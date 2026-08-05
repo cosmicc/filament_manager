@@ -1,0 +1,43 @@
+{
+  "documentation_version": "3.0",
+  "updated": "2026-08-04",
+  "authority_order": [
+    "Filament Manager PostgreSQL",
+    "Standalone Spoolman operational projection",
+    "Google Sheet read-only publication",
+    "Klipper/Moonraker/Fluidd execution"
+  ],
+  "production_stacks": {
+    "spoolman": "standalone upstream service",
+    "filament-manager": "Filament Manager-owned services",
+    "shared_overlay": "filament-services"
+  },
+  "databases": {
+    "filament_manager": "canonical, filament_manager_user",
+    "spoolman": "operational, spoolman_user"
+  },
+  "direct_spoolman_database_access": false,
+  "plates": [
+    "P1",
+    "P2",
+    "P3",
+    "P4",
+    "P5"
+  ],
+  "calibration_steps": [
+    "Temperature Tower",
+    "Flow Rate Tower",
+    "PA Square Tower",
+    "Retraction Tower",
+    "Overhang Test",
+    "Ironing Test"
+  ],
+  "future_hardware": [
+    "dry-box live scale",
+    "NFC spool reader"
+  ],
+  "mvp_hardware": [
+    "manual label/QR",
+    "manual gross-weight entry"
+  ]
+}

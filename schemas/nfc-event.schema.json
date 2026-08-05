@@ -1,0 +1,42 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "NFC Event",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "device_id",
+    "tag_uid",
+    "observed_at",
+    "state",
+    "sequence"
+  ],
+  "properties": {
+    "device_id": {
+      "type": "string"
+    },
+    "tag_uid": {
+      "type": "string",
+      "minLength": 1
+    },
+    "observed_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "state": {
+      "enum": [
+        "present",
+        "removed"
+      ]
+    },
+    "sequence": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "signal_quality": {
+      "type": [
+        "number",
+        "null"
+      ]
+    }
+  }
+}

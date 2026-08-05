@@ -1,0 +1,50 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Scale Event",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "device_id",
+    "spool_id",
+    "gross_weight_g",
+    "measured_at",
+    "stable",
+    "sequence"
+  ],
+  "properties": {
+    "device_id": {
+      "type": "string"
+    },
+    "spool_id": {
+      "type": "string"
+    },
+    "gross_weight_g": {
+      "type": "number",
+      "minimum": 0
+    },
+    "measured_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "stable": {
+      "type": "boolean"
+    },
+    "uncertainty_g": {
+      "type": [
+        "number",
+        "null"
+      ],
+      "minimum": 0
+    },
+    "sequence": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "printer_state": {
+      "type": [
+        "string",
+        "null"
+      ]
+    }
+  }
+}

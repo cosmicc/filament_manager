@@ -1,0 +1,66 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Canonical Spool",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "id",
+    "spool_code",
+    "filament_product_id",
+    "nominal_net_mass_g",
+    "tare_mass_g",
+    "remaining_mass_effective_g",
+    "record_version"
+  ],
+  "properties": {
+    "id": {
+      "type": "string",
+      "format": "uuid"
+    },
+    "spool_code": {
+      "type": "string",
+      "pattern": "^[A-Za-z0-9_-]+$"
+    },
+    "filament_product_id": {
+      "type": "string",
+      "format": "uuid"
+    },
+    "nominal_net_mass_g": {
+      "type": "number",
+      "exclusiveMinimum": 0
+    },
+    "tare_mass_g": {
+      "type": "number",
+      "minimum": 0
+    },
+    "remaining_mass_effective_g": {
+      "type": "number",
+      "minimum": 0
+    },
+    "purchase_cost": {
+      "type": [
+        "number",
+        "null"
+      ],
+      "minimum": 0
+    },
+    "currency": {
+      "type": "string",
+      "pattern": "^[A-Z]{3}$"
+    },
+    "spoolman_id": {
+      "type": [
+        "integer",
+        "null"
+      ],
+      "minimum": 1
+    },
+    "record_version": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "archived": {
+      "type": "boolean"
+    }
+  }
+}

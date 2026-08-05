@@ -1,0 +1,126 @@
+services:
+  postgres:
+    image: postgres:17-alpine
+    entrypoint: ["/usr/local/bin/filament-manager-postgres-entrypoint.sh"]
+    command: ["postgres"]
+    environment:
+      POSTGRES_DB: postgres
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD_FILE: /run/secrets/postgres_admin_password
+    secrets:
+      - postgres_admin_password
+      - filament_manager_db_password
+      - spoolman_db_password
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./postgres-secret-entrypoint.sh:/usr/local/bin/filament-manager-postgres-entrypoint.sh:ro
+      - ./postgres-init-databases.sh:/docker-entrypoint-initdb.d/20-filament-databases.sh:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d postgres"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  spoolman:
+    image: ghcr.io/donkie/spoolman:0.23.1
+    environment:
+      TZ: America/Detroit
+      SPOOLMAN_HOST: 0.0.0.0
+      SPOOLMAN_PORT: "8000"
+      SPOOLMAN_DB_TYPE: postgres
+      SPOOLMAN_DB_HOST: postgres
+      SPOOLMAN_DB_PORT: "5432"
+      SPOOLMAN_DB_NAME: spoolman
+      SPOOLMAN_DB_USERNAME: spoolman_user
+      SPOOLMAN_DB_PASSWORD_FILE: /run/secrets/spoolman_db_password
+      SPOOLMAN_CORS_ORIGIN: http://localhost:7125
+    secrets:
+      - spoolman_db_password
+    ports:
+      - "7912:8000"
+    volumes:
+      - spoolman_data:/home/app/.local/share/spoolman
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  filament-manager:
+    build:
+      context: ..
+    environment:
+      FILAMENT_MANAGER_CONFIG: /config/config.yaml
+    configs:
+      - source: filament_manager_config
+        target: /config/config.yaml
+    secrets:
+      - filament_manager_database_url
+    ports:
+      - "8080:8080"
+    volumes:
+      - filament_manager_data:/data
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  bootstrap-admin:
+    build:
+      context: ..
+    command:
+      - filament-manager-cli
+      - bootstrap-admin
+      - --username
+      - admin
+      - --display-name
+      - Workshop Administrator
+      - --password-file
+      - /run/secrets/bootstrap_admin_password
+    environment:
+      FILAMENT_MANAGER_CONFIG: /config/config.yaml
+    configs:
+      - source: filament_manager_config
+        target: /config/config.yaml
+    secrets:
+      - filament_manager_database_url
+      - bootstrap_admin_password
+    depends_on:
+      postgres:
+        condition: service_healthy
+    profiles: [tools]
+
+  worker:
+    build:
+      context: ..
+    command: ["filament-manager-worker"]
+    environment:
+      FILAMENT_MANAGER_CONFIG: /config/config.yaml
+    configs:
+      - source: filament_manager_config
+        target: /config/config.yaml
+    secrets:
+      - filament_manager_database_url
+    volumes:
+      - filament_manager_data:/data
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+configs:
+  filament_manager_config:
+    file: ../config/config.local.docker.yaml
+
+secrets:
+  postgres_admin_password:
+    file: ../secrets/postgres-admin-password.txt
+  filament_manager_db_password:
+    file: ../secrets/filament-manager-db-password.txt
+  spoolman_db_password:
+    file: ../secrets/spoolman-db-password.txt
+  filament_manager_database_url:
+    file: ../secrets/filament-manager-database-url.txt
+  bootstrap_admin_password:
+    file: ../secrets/bootstrap-admin-password.txt
+
+volumes:
+  postgres_data:
+  spoolman_data:
+  filament_manager_data:

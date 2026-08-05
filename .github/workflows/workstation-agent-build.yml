@@ -1,0 +1,49 @@
+name: Build workstation agents
+
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - "workstation-agent/**"
+      - ".github/workflows/workstation-agent-build.yml"
+  push:
+    branches: [main, dev]
+    paths:
+      - "workstation-agent/**"
+      - ".github/workflows/workstation-agent-build.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    strategy:
+      matrix:
+        include:
+          - os: ubuntu-latest
+            artifact: filament-manager-agent-linux-x86_64
+            executable: filament-manager-agent
+          - os: windows-latest
+            artifact: filament-manager-agent-windows-x86_64
+            executable: filament-manager-agent.exe
+    runs-on: ${{ matrix.os }}
+    defaults:
+      run:
+        working-directory: workstation-agent
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: python -m pip install . pyinstaller
+      - run: pyinstaller --clean --onefile --name filament-manager-agent agent_entry.py
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.artifact }}
+          path: |
+            workstation-agent/dist/${{ matrix.executable }}
+            workstation-agent/installers/install-arch.sh
+            workstation-agent/installers/install-windows.ps1
+            workstation-agent/installers/filament-manager-agent.service.in
+          if-no-files-found: error
+          retention-days: 14

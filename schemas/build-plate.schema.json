@@ -1,0 +1,73 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Build Plate",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "id",
+    "plate_code",
+    "klipper_mesh_profile",
+    "status"
+  ],
+  "properties": {
+    "id": {
+      "type": "string",
+      "format": "uuid"
+    },
+    "plate_code": {
+      "enum": [
+        "P1",
+        "P2",
+        "P3",
+        "P4",
+        "P5"
+      ]
+    },
+    "klipper_mesh_profile": {
+      "type": "string",
+      "minLength": 1
+    },
+    "surface_type": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "condition": {
+      "enum": [
+        "new",
+        "good",
+        "worn",
+        "damaged",
+        "retired"
+      ]
+    },
+    "status": {
+      "enum": [
+        "active",
+        "maintenance",
+        "retired"
+      ]
+    },
+    "last_cleaned_at": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "format": "date-time"
+    },
+    "last_mesh_calibrated_at": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "format": "date-time"
+    },
+    "notes": {
+      "type": [
+        "string",
+        "null"
+      ]
+    }
+  }
+}
