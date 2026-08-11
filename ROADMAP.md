@@ -1,5 +1,5 @@
 1. Print history tied to exact material state
-Print info can be obtained from moonraker/klipper
+Finished Print info can be obtained from moonraker/klipper
 Create a canonical PrintJob record containing things like:
 printer
 spool
@@ -25,7 +25,7 @@ Timelapse video link
 
 
 2. Print outcome / quality scoring
-After a print finishes, offer a very small assessment (and/or pull from moonraker/klipper):
+After a print finishes, offer a very small assessment (and/or pull from moonraker/klipper completed prints):
 Successful
 Failed
 Acceptable
