@@ -2,6 +2,8 @@
 
 from collections.abc import AsyncIterator
 from decimal import Decimal
+from pathlib import Path
+from uuid import UUID
 
 import httpx
 import pytest
@@ -10,15 +12,51 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_asyn
 from testcontainers.community.postgres import PostgresContainer
 
 from filament_manager.api import dependencies
+from filament_manager.api.routes import imports as import_routes
 from filament_manager.api.routes import inventory
 from filament_manager.config import Settings
 from filament_manager.models import Base
 from filament_manager.models.auth import User
 from filament_manager.models.enums import SpoolStatus, UserRole
-from filament_manager.models.inventory import FilamentProduct, Spool, SpoolMeasurement, Vendor
-from filament_manager.models.operations import AuditEvent, OutboxJob
+from filament_manager.models.inventory import FilamentProduct, Printer, Spool, SpoolMeasurement, Vendor
+from filament_manager.models.operations import AuditEvent, ImportRun, OutboxJob
 from filament_manager.security import hash_password
 from filament_manager.services import events
+
+WORKBOOK = Path(__file__).parents[1] / "reference" / "Filament Inventory Master.xlsx"
+
+
+def integration_settings(database_url: str, data_dir: Path | None = None) -> Settings:
+    app: dict[str, object] = {
+        "base_url": "http://testserver",
+        "allowed_hosts": ["testserver"],
+        "secure_cookies": False,
+    }
+    if data_dir is not None:
+        app["data_dir"] = data_dir
+    return Settings.model_validate(
+        {
+            "app": app,
+            "database": {"url": database_url},
+            "spoolman": {"base_url": "http://spoolman.test:8000"},
+            "moonraker": {
+                "printers": [
+                    {
+                        "id": "test-printer",
+                        "name": "Test Printer",
+                        "base_url": "http://moonraker.test:7125",
+                        "websocket_url": "ws://moonraker.test:7125/websocket",
+                        "nozzle_diameter_mm": 0.4,
+                    }
+                ]
+            },
+            "google": {"enabled": False},
+            "sync": {},
+            "plates": {"allowed_codes": ["P1", "P2", "P3", "P4", "P5"]},
+            "devices": {},
+            "security": {},
+        }
+    )
 
 
 @pytest.mark.integration
@@ -30,33 +68,7 @@ async def test_unknown_tare_measurement_is_one_audited_transaction(monkeypatch: 
         database_url = postgres.get_connection_url().replace(
             "postgresql+psycopg2://", "postgresql+psycopg://"
         )
-        settings = Settings.model_validate(
-            {
-                "app": {
-                    "base_url": "http://testserver",
-                    "allowed_hosts": ["testserver"],
-                    "secure_cookies": False,
-                },
-                "database": {"url": database_url},
-                "spoolman": {"base_url": "http://spoolman.test:8000"},
-                "moonraker": {
-                    "printers": [
-                        {
-                            "id": "test-printer",
-                            "name": "Test Printer",
-                            "base_url": "http://moonraker.test:7125",
-                            "websocket_url": "ws://moonraker.test:7125/websocket",
-                            "nozzle_diameter_mm": 0.4,
-                        }
-                    ]
-                },
-                "google": {"enabled": False},
-                "sync": {},
-                "plates": {"allowed_codes": ["P1", "P2", "P3", "P4", "P5"]},
-                "devices": {},
-                "security": {},
-            }
-        )
+        settings = integration_settings(database_url)
         engine = create_async_engine(database_url)
         factory = async_sessionmaker(engine, expire_on_commit=False)
         async with engine.begin() as connection:
@@ -142,5 +154,104 @@ async def test_unknown_tare_measurement_is_one_audited_transaction(monkeypatch: 
             )
             assert audit is not None
             assert audit.object_id is not None
+
+        await engine.dispose()
+
+
+@pytest.mark.integration
+@pytest.mark.asyncio
+async def test_workbook_upload_dry_run_and_commit_populates_inventory(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    """Validate and commit an uploaded master workbook without CLI path handling."""
+
+    with PostgresContainer("postgres:17-alpine", driver="psycopg") as postgres:
+        database_url = postgres.get_connection_url().replace(
+            "postgresql+psycopg2://", "postgresql+psycopg://"
+        )
+        settings = integration_settings(database_url, tmp_path)
+        engine = create_async_engine(database_url)
+        factory = async_sessionmaker(engine, expire_on_commit=False)
+        async with engine.begin() as connection:
+            await connection.run_sync(Base.metadata.create_all)
+
+        async with factory() as session:
+            administrator = User(
+                username="integration-admin",
+                normalized_username="integration-admin",
+                display_name="Integration Administrator",
+                password_hash=hash_password("integration test password"),
+                role=UserRole.ADMINISTRATOR,
+            )
+            printer = Printer(
+                printer_code="test-printer",
+                name="Test Printer",
+                moonraker_base_url="http://moonraker.test:7125",
+                nozzle_diameter_mm=Decimal("0.4"),
+            )
+            session.add_all([administrator, printer])
+            await session.commit()
+
+        async def session_override() -> AsyncIterator[AsyncSession]:
+            async with factory() as session:
+                yield session
+
+        async def user_override() -> User:
+            async with factory() as session:
+                user = await session.scalar(select(User).where(User.username == "integration-admin"))
+                assert user is not None
+                return user
+
+        monkeypatch.setattr(import_routes, "get_settings", lambda: settings)
+        monkeypatch.setattr(events, "get_settings", lambda: settings)
+        from filament_manager import config as config_module
+
+        monkeypatch.setattr(config_module, "get_settings", lambda: settings)
+        from filament_manager import main
+
+        monkeypatch.setattr(main, "get_settings", lambda: settings)
+        app = main.create_app()
+        app.dependency_overrides[dependencies.session_dependency] = session_override
+        app.dependency_overrides[dependencies.current_user] = user_override
+
+        transport = httpx.ASGITransport(app=app)
+        async with httpx.AsyncClient(transport=transport, base_url="http://testserver") as client:
+            with WORKBOOK.open("rb") as workbook:
+                dry_run = await client.post(
+                    "/api/v1/imports/workbook/dry-run",
+                    files={
+                        "file": (
+                            "Filament Inventory Master.xlsx",
+                            workbook,
+                            "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                        )
+                    },
+                )
+
+            assert dry_run.status_code == 201, dry_run.text
+            dry_run_payload = dry_run.json()
+            run_id = UUID(dry_run_payload["id"])
+            assert dry_run_payload["status"] == "validated"
+            assert dry_run_payload["stored_workbook"] is True
+            assert dry_run_payload["report"]["valid_rows"] == 35
+            assert (tmp_path / "workbook-imports" / f"{run_id}.xlsx").is_file()
+
+            committed = await client.post(f"/api/v1/imports/workbook/{run_id}/commit")
+
+        assert committed.status_code == 200, committed.text
+        assert committed.json()["spools"] == 35
+
+        async with factory() as session:
+            stored_run = await session.get(ImportRun, run_id)
+            assert stored_run is not None
+            assert stored_run.status == "committed"
+            assert await session.scalar(select(func.count(Spool.id))) == 35
+            assert await session.scalar(select(func.count(OutboxJob.id))) == 36
+            audit = await session.scalar(
+                select(AuditEvent).where(AuditEvent.action == "workbook.import.commit")
+            )
+            assert audit is not None
+            assert audit.source == "web"
 
         await engine.dispose()

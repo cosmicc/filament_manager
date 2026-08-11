@@ -349,6 +349,19 @@ class Page(ApiModel):
     offset: int
 
 
+class WorkbookImportRunResponse(ApiModel):
+    id: UUID
+    source_name: str
+    source_sha256: str
+    dry_run: bool
+    status: str
+    report: dict[str, Any]
+    approved_by: UUID | None
+    created_at: datetime
+    completed_at: datetime | None
+    stored_workbook: bool
+
+
 class CuraMachineReport(ApiModel):
     """A Cura machine instance discovered inside one user data directory."""
 

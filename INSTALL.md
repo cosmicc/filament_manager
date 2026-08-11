@@ -37,22 +37,19 @@ Requirements: Docker Engine with Compose, `openssl`, and ports `8080` and `7912`
    docker compose --env-file .env -f docker/docker-compose.yml run --rm bootstrap-admin
    ```
 
-5. Validate and import the supplied workbook only if this is a new empty inventory:
-
-   ```bash
-   docker compose --env-file .env -f docker/docker-compose.yml run --rm -v "$(pwd)/reference:/import:ro" filament-manager filament-manager-cli workbook-dry-run "/import/Filament Inventory Master.xlsx"
-   ```
-
-   The production image does not include the reference workbook by default. Bind-mount it for that one command or run the CLI from the checked-out repository. Review every error and warning, then commit the exact unchanged file with the returned dry-run ID:
-
-   ```bash
-   docker compose --env-file .env -f docker/docker-compose.yml run --rm -v "$(pwd)/reference:/import:ro" filament-manager filament-manager-cli workbook-commit --run-id DRY_RUN_UUID "/import/Filament Inventory Master.xlsx" --approved-by admin
-   ```
-
-6. Start the web application and worker:
+5. Start the web application and worker:
 
    ```bash
    docker compose --env-file .env -f docker/docker-compose.yml up -d filament-manager worker
+   ```
+
+6. Open `http://localhost:8080`, sign in as an Administrator, and use **Settings** > **Workbook import** to upload the `.xlsx` master workbook. Validate the workbook, review any row findings, then commit the validated run only if this is a new empty inventory.
+
+   The CLI remains available for headless recovery or automation. Bind-mount the workbook for the dry run, review every error and warning, then commit the exact unchanged file with the returned dry-run ID:
+
+   ```bash
+   docker compose --env-file .env -f docker/docker-compose.yml run --rm -v "$(pwd)/reference:/import:ro" filament-manager filament-manager-cli workbook-dry-run "/import/Filament Inventory Master.xlsx"
+   docker compose --env-file .env -f docker/docker-compose.yml run --rm -v "$(pwd)/reference:/import:ro" filament-manager filament-manager-cli workbook-commit --run-id DRY_RUN_UUID "/import/Filament Inventory Master.xlsx" --approved-by admin
    ```
 
 Open `http://localhost:8080`. Spoolman remains independently available at `http://localhost:7912`.
@@ -160,7 +157,7 @@ Run migrations as a separate one-shot job before the application services. The m
 
 ```bash
 docker service create \
-  --name filament-manager-migrate-v0-1-2 \
+  --name filament-manager-migrate-v0-1-3 \
   --mode replicated-job \
   --no-healthcheck \
   --env "FILAMENT_MANAGER_DATABASE_URL=$FILAMENT_MANAGER_DATABASE_URL" \
@@ -171,9 +168,9 @@ docker service create \
 Confirm the job completed successfully, inspect its logs, and then remove the completed job:
 
 ```bash
-docker service ps filament-manager-migrate-v0-1-2 --no-trunc
-docker service logs filament-manager-migrate-v0-1-2
-docker service rm filament-manager-migrate-v0-1-2
+docker service ps filament-manager-migrate-v0-1-3 --no-trunc
+docker service logs filament-manager-migrate-v0-1-3
+docker service rm filament-manager-migrate-v0-1-3
 ```
 
 Validate the fully interpolated stack and deploy it:

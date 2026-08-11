@@ -21,3 +21,13 @@ def test_supplied_workbook_has_unique_corrected_spool_codes() -> None:
     assert len(codes) == len(set(codes))
     assert "P11" in codes
     assert "P11-S" in codes
+
+
+def test_workbook_report_can_keep_uploaded_source_name(tmp_path: Path) -> None:
+    uploaded = tmp_path / "stored-upload.xlsx"
+    uploaded.write_bytes(WORKBOOK.read_bytes())
+
+    report = analyze_workbook(uploaded, source_name="Master Upload.xlsx")
+
+    assert report["source"] == "Master Upload.xlsx"
+    assert report["sha256"] == analyze_workbook(WORKBOOK)["sha256"]

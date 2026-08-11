@@ -186,6 +186,45 @@ export interface Device {
   last_seen_at: string | null
 }
 
+export interface WorkbookImportRow {
+  row_number: number
+  spool_code: string
+  errors: string[]
+  warnings: string[]
+}
+
+export interface WorkbookImportReport {
+  source: string
+  sha256: string
+  inventory_columns: number
+  populated_rows: number
+  valid_rows: number
+  invalid_rows: number
+  rows: WorkbookImportRow[]
+  committed_spools?: number
+  committed_profiles?: number
+}
+
+export interface WorkbookImportRun {
+  id: string
+  source_name: string
+  source_sha256: string
+  dry_run: boolean
+  status: 'validated' | 'invalid' | 'committed' | string
+  report: WorkbookImportReport
+  approved_by: string | null
+  created_at: string
+  completed_at: string | null
+  stored_workbook: boolean
+}
+
+export interface WorkbookImportCounts {
+  spools: number
+  profiles: number
+  vendors: number
+  products: number
+}
+
 export interface CuraMachineReport {
   machine_id: string
   display_name: string

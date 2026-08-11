@@ -8,6 +8,8 @@ The supplied workbook contains 35 populated spool records, 34 inventory columns,
 
 The workbook is a one-time input. The migration must be dry-run first, produce a row-by-row report, and require explicit approval before committing.
 
+Administrators can run the dry run and approval from the web interface by uploading a `.xlsx` workbook. The uploaded bytes are stored under the configured application data directory with a UUID-derived filename, and commit re-hashes that stored file before mutating canonical records. CLI dry-run and commit commands remain available for headless recovery and automation.
+
 ## Existing field preservation
 
 All 34 current inventory fields map to canonical database fields or calculated publication fields. The machine-readable mapping is in `mappings/filament_inventory_columns.csv`.

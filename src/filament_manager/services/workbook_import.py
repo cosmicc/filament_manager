@@ -6,7 +6,7 @@ from datetime import UTC, datetime
 from decimal import Decimal, InvalidOperation
 from pathlib import Path
 from typing import Any
-from uuid import UUID
+from uuid import UUID, uuid4
 
 from openpyxl import load_workbook
 from sqlalchemy import func, select
@@ -92,15 +92,17 @@ class AnalyzedRow:
     warnings: list[str]
 
 
-def analyze_workbook(path: Path) -> dict[str, Any]:
+def analyze_workbook(path: Path, *, source_name: str | None = None) -> dict[str, Any]:
     """Validate every populated inventory row without changing external state."""
 
     workbook = load_workbook(path, data_only=True, read_only=True)
     if "Inventory" not in workbook.sheetnames:
+        workbook.close()
         raise ValueError("workbook does not contain the Inventory sheet")
     sheet = workbook["Inventory"]
     actual_headers = [sheet.cell(1, column).value for column in range(1, len(HEADERS) + 1)]
     if actual_headers != HEADERS:
+        workbook.close()
         raise ValueError("Inventory headers do not match the supplied 34-column contract")
 
     rows: list[AnalyzedRow] = []
@@ -148,8 +150,9 @@ def analyze_workbook(path: Path) -> dict[str, Any]:
         )
         rows.append(AnalyzedRow(row_number, values, errors, warnings))
 
+    workbook.close()
     return {
-        "source": path.name,
+        "source": source_name or path.name,
         "sha256": file_sha256(path),
         "inventory_columns": len(HEADERS),
         "populated_rows": len(rows),
@@ -167,12 +170,19 @@ def analyze_workbook(path: Path) -> dict[str, Any]:
     }
 
 
-async def save_dry_run(session: AsyncSession, path: Path) -> ImportRun:
+async def save_dry_run(
+    session: AsyncSession,
+    path: Path,
+    *,
+    source_name: str | None = None,
+    run_id: UUID | None = None,
+) -> ImportRun:
     """Persist a hash-bound dry-run report for explicit later approval."""
 
-    report = analyze_workbook(path)
+    report = analyze_workbook(path, source_name=source_name)
     run = ImportRun(
-        source_name=path.name,
+        id=run_id or uuid4(),
+        source_name=source_name or path.name,
         source_sha256=str(report["sha256"]),
         dry_run=True,
         status="validated" if report["invalid_rows"] == 0 else "invalid",
@@ -191,6 +201,8 @@ async def commit_approved_run(
     run_id: UUID,
     workbook_path: Path,
     administrator_username: str,
+    audit_source: str = "cli",
+    correlation_id: str | None = None,
 ) -> dict[str, int]:
     """Import the exact approved workbook hash in one canonical transaction."""
 
@@ -332,20 +344,30 @@ async def commit_approved_run(
                 session.add(profile)
                 imported_profiles += 1
 
+    workbook.close()
     run.status = "committed"
     run.approved_by = administrator.id
     run.completed_at = datetime.now(UTC)
     run.report = {**run.report, "committed_spools": imported_spools, "committed_profiles": imported_profiles}
+    add_outbox_job(
+        session,
+        job_type="google.inventory.publish",
+        idempotency_key=f"import:{run.id}:google:v1",
+        aggregate_type="import_run",
+        aggregate_id=run.id,
+        aggregate_version=1,
+        payload={"import_run_id": str(run.id)},
+    )
     add_audit_event(
         session,
         actor_id=administrator.id,
-        source="cli",
+        source=audit_source,
         action="workbook.import.commit",
         object_type="import_run",
         object_id=run.id,
         before={"status": "validated"},
         after={"status": "committed", "spools": imported_spools, "profiles": imported_profiles},
-        correlation_id=f"import-{run.id}",
+        correlation_id=correlation_id or f"import-{run.id}",
     )
     await session.commit()
     return {

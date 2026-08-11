@@ -1,5 +1,20 @@
 # User Changelog
 
+## 0.1.3 - 08.11.2026
+
+### Added
+
+- Added a Settings workbook import panel so Administrators can upload the master `.xlsx`, validate it, and commit it from the browser.
+- Added recent workbook import history with validation totals and row-level errors or warnings.
+
+### Changed
+
+- Simplified first inventory setup by making the browser upload flow the primary workbook import path.
+
+### Fixed
+
+- Fixed workbook uploads failing because the browser request could be labeled as JSON instead of multipart form data.
+
 ## 0.1.2 - 08.11.2026
 
 ### Added

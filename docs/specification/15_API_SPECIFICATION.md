@@ -65,6 +65,9 @@
 - `GET /health/live`
 - `GET /health/ready`
 - `GET /metrics`
+- `GET /imports/workbook`
+- `POST /imports/workbook/dry-run`
+- `POST /imports/workbook/{run_id}/commit`
 - `GET /jobs`
 - `POST /jobs/{id}/retry`
 - `GET /audit-events`

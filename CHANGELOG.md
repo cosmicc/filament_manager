@@ -1,5 +1,23 @@
 # Changelog
 
+## 0.1.3 - 08.11.2026
+
+### Added
+
+- Added Administrator-only `.xlsx` workbook upload endpoints for dry-run validation, recent import run inspection, and explicit commit.
+- Added a Settings workbook import panel that uploads the master workbook, shows validation totals and row findings, and commits a validated uploaded run.
+- Added integration coverage for browser workbook upload, commit, audit recording, and projection outbox creation.
+
+### Changed
+
+- Changed workbook import reporting so uploaded runs retain the user-visible source filename while still committing only hash-verified stored bytes.
+- Queued a Google inventory publication job after workbook import commits so the read-only publication target can rebuild from canonical state.
+- Updated installation guidance to use the web import flow first and keep CLI import commands as a recovery path.
+
+### Fixed
+
+- Fixed the shared frontend request helper so multipart workbook uploads are not sent with a JSON content type.
+
 ## 0.1.2 - 08.11.2026
 
 ### Added

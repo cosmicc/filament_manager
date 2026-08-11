@@ -18,7 +18,10 @@ function cookieValue(name: string): string | undefined {
 export async function apiFetch<T>(path: string, init: RequestInit = {}): Promise<T> {
   const method = (init.method ?? 'GET').toUpperCase()
   const headers = new Headers(init.headers)
-  if (init.body && !headers.has('Content-Type')) headers.set('Content-Type', 'application/json')
+  const isFormData = typeof FormData !== 'undefined' && init.body instanceof FormData
+  if (init.body && !isFormData && !headers.has('Content-Type')) {
+    headers.set('Content-Type', 'application/json')
+  }
   if (!['GET', 'HEAD', 'OPTIONS'].includes(method)) {
     const csrf = cookieValue('fm_csrf')
     if (csrf) headers.set('X-CSRF-Token', csrf)
@@ -43,4 +46,3 @@ export async function apiFetch<T>(path: string, init: RequestInit = {}): Promise
 export function idempotencyKey(prefix: string): string {
   return `${prefix}-${crypto.randomUUID()}`
 }
-
