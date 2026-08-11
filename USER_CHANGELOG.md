@@ -1,5 +1,19 @@
 # User Changelog
 
+## 0.1.2 - 08.11.2026
+
+### Added
+
+- Added deployment checks that prevent web-only health monitoring from being applied to background services.
+
+### Changed
+
+- Updated container health monitoring to use the configured Filament Manager hostname securely.
+
+### Fixed
+
+- Fixed web and worker containers eventually exiting even though the application and background processing had started successfully.
+
 ## 0.1.1 - 08.11.2026
 
 ### Added

@@ -25,7 +25,7 @@ The root [docker-stack.yml](docker-stack.yml) deploys Filament Manager, its work
 
 The current remote-database contract explicitly disables PostgreSQL TLS and therefore requires an operator-managed isolated network restricted to the approved Swarm nodes.
 
-The newest CI-passing `main` image is published as `ghcr.io/cosmicc/filament-manager:latest` for AMD64 and ARM64. Production deployments should pin the immutable `sha-<commit>` tag or image digest from the successful package workflow.
+The newest CI-passing `main` image is published as `ghcr.io/cosmicc/filament-manager:latest` for AMD64 and ARM64. The web image health check uses the hostname from `FILAMENT_MANAGER_BASE_URL`; worker services disable that HTTP-only check. Production deployments should pin the immutable `sha-<commit>` tag or image digest from the successful package workflow.
 
 ## Documentation
 

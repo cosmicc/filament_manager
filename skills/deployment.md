@@ -12,6 +12,7 @@
 - Pin tested image tags or digests. Spoolman uses one replica and stop-first updates. Filament Manager uses one replica until session and worker concurrency have been validated for scale-out.
 - After CI passes for `main`, `publish-swarm-image.yml` publishes AMD64 and ARM64 Filament Manager images with `latest` plus an immutable `sha-<commit>` tag. Use `latest` only for testing and pin the SHA tag or digest for production. Package publication remains separate from Git tagging and GitHub Releases.
 - Run migrations as a distinct one-shot job before application rollout. Do not auto-migrate from every web replica.
+- The image health check belongs only to the web process. It probes loopback with the hostname from `FILAMENT_MANAGER_BASE_URL` so `TrustedHostMiddleware` still validates the request. Explicitly disable the inherited health check on worker, migration, seed, bootstrap, or other non-HTTP commands.
 - Local Compose passes separate database-role variables only to PostgreSQL initialization and the service that owns each role. Never reuse the PostgreSQL administrator password for an application role.
 - Back up `filament_manager` and `spoolman` independently and perform isolated restore tests.
 - Verify `/health/live`, `/health/ready`, `/metrics`, outbox depth, reconciliation lag, and publication lag after deployment.

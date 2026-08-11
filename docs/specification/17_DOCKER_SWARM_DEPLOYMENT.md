@@ -68,6 +68,8 @@ Filament Manager:
 - Spoolman reconciliation lag
 - Google publication lag
 
+The image readiness probe connects to the web process over loopback and sends the hostname from `FILAMENT_MANAGER_BASE_URL`, preserving trusted-host validation. Worker and one-shot services must disable this web-only HTTP health check because they do not listen on port 8080.
+
 ## Local development
 
 `docker/docker-compose.yml` runs both applications and a local PostgreSQL container in one Compose project for development and integration tests. The production stack uses the remote database instead.

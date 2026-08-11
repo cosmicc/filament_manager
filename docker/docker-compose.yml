@@ -111,12 +111,16 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
+    healthcheck:
+      disable: true
     profiles: [tools]
 
   worker:
     build:
       context: ..
     command: ["filament-manager-worker"]
+    healthcheck:
+      disable: true
     environment: *filament-manager-environment
     volumes:
       - filament_manager_data:/data

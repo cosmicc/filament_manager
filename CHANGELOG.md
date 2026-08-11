@@ -1,5 +1,22 @@
 # Changelog
 
+## 0.1.2 - 08.11.2026
+
+### Added
+
+- Added regression tests for the trusted-host-aware web readiness probe and the non-HTTP worker health-check contract.
+
+### Changed
+
+- Changed the image readiness probe to connect over loopback while presenting the exact hostname from `FILAMENT_MANAGER_BASE_URL`.
+- Disabled the inherited HTTP health check for worker and local one-shot services that do not listen on the web port.
+- Updated one-shot Swarm migration, seed, and Administrator bootstrap commands to disable the image health check explicitly.
+
+### Fixed
+
+- Fixed Filament Manager web tasks being rejected as unhealthy when trusted-host middleware returned `400 Bad Request` to the old loopback-host probe.
+- Fixed healthy worker tasks being replaced because they inherited a readiness probe for an HTTP server they do not run.
+
 ## 0.1.1 - 08.11.2026
 
 ### Added

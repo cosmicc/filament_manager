@@ -37,6 +37,10 @@ Quarterly, compare spool/product counts, effective weights, profile versions, pl
 
 Confirm `FILAMENT_MANAGER_DB_*` and `POSTGRES_*` stack variables assemble the intended non-SSL URL for `filament_user`, then run `alembic current` and `alembic upgrade head`. Do not grant access to the `spoolman` database.
 
+### Web or worker tasks repeatedly restart after startup
+
+Use the current stack file and image together. The web health check must send the hostname from `FILAMENT_MANAGER_BASE_URL`, and the worker must have its inherited HTTP health check disabled. Do not add a wildcard to `FILAMENT_MANAGER_ALLOWED_HOSTS`; confirm that an explicit list includes the public base-URL hostname.
+
 ### Jobs remain pending or fail
 
 Check worker logs, external DNS from the `filament-services` overlay, and the sanitized error class shown in Integrations. Repair the external service, then allow automatic retry or use Administrator retry for dead jobs.

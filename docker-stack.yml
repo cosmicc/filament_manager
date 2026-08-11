@@ -131,6 +131,8 @@ services:
   worker:
     image: ${FILAMENT_MANAGER_IMAGE:?Set FILAMENT_MANAGER_IMAGE to an immutable version tag or digest}
     command: ["filament-manager-worker"]
+    healthcheck:
+      disable: true
     environment: *filament-manager-environment
     networks:
       - filament-services

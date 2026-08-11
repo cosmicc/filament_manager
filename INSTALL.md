@@ -160,8 +160,9 @@ Run migrations as a separate one-shot job before the application services. The m
 
 ```bash
 docker service create \
-  --name filament-manager-migrate-v0-1-0 \
+  --name filament-manager-migrate-v0-1-2 \
   --mode replicated-job \
+  --no-healthcheck \
   --env "FILAMENT_MANAGER_DATABASE_URL=$FILAMENT_MANAGER_DATABASE_URL" \
   "$FILAMENT_MANAGER_IMAGE" \
   alembic upgrade head
@@ -170,9 +171,9 @@ docker service create \
 Confirm the job completed successfully, inspect its logs, and then remove the completed job:
 
 ```bash
-docker service ps filament-manager-migrate-v0-1-0 --no-trunc
-docker service logs filament-manager-migrate-v0-1-0
-docker service rm filament-manager-migrate-v0-1-0
+docker service ps filament-manager-migrate-v0-1-2 --no-trunc
+docker service logs filament-manager-migrate-v0-1-2
+docker service rm filament-manager-migrate-v0-1-2
 ```
 
 Validate the fully interpolated stack and deploy it:
@@ -193,6 +194,7 @@ After the web and worker services are running, use a short-lived job to seed the
 docker service create \
   --name filament-manager-seed \
   --mode replicated-job \
+  --no-healthcheck \
   --env "FILAMENT_MANAGER_DATABASE_URL=$FILAMENT_MANAGER_DATABASE_URL" \
   --env "FILAMENT_MANAGER_MOONRAKER_PRINTER_ID=$MOONRAKER_PRINTER_ID" \
   --env "FILAMENT_MANAGER_MOONRAKER_PRINTER_NAME=$MOONRAKER_PRINTER_NAME" \
@@ -212,6 +214,7 @@ Create the first Administrator with the bootstrap password variable scoped only 
 docker service create \
   --name filament-manager-bootstrap-admin \
   --mode replicated-job \
+  --no-healthcheck \
   --env "FILAMENT_MANAGER_DATABASE_URL=$FILAMENT_MANAGER_DATABASE_URL" \
   --env "FILAMENT_MANAGER_BOOTSTRAP_ADMIN_PASSWORD=$BOOTSTRAP_ADMIN_PASSWORD" \
   "$FILAMENT_MANAGER_IMAGE" \
@@ -225,7 +228,7 @@ unset BOOTSTRAP_ADMIN_PASSWORD
 
 No default account is created. The bootstrap job refuses to run after any user already exists. Clear `BOOTSTRAP_ADMIN_PASSWORD` from `.env` and Portainer after success; the long-running web and worker services never receive it.
 
-Open Filament Manager on the configured public URL and Spoolman on port `7912`. Verify `/health/ready`, `/metrics`, Spoolman's `/api/v1/health`, worker logs, and both remote PostgreSQL connections.
+Open Filament Manager on the configured public URL and Spoolman on port `7912`. Verify `/health/ready`, `/metrics`, Spoolman's `/api/v1/health`, worker logs, and both remote PostgreSQL connections. The web probe uses the hostname from `FILAMENT_MANAGER_BASE_URL`; the stack disables this HTTP-only probe for the worker.
 
 ### Independent-stack alternative
 

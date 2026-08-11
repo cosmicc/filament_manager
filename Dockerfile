@@ -26,5 +26,5 @@ COPY --from=frontend-build /build/frontend/dist /app/static
 RUN mkdir -p /data && chown -R filament-manager:filament-manager /data /app
 USER 10001:10001
 EXPOSE 8080
-HEALTHCHECK --interval=30s --timeout=5s --start-period=20s --retries=5 CMD ["python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8080/health/ready', timeout=4).read()"]
+HEALTHCHECK --interval=30s --timeout=5s --start-period=20s --retries=5 CMD ["python", "-m", "filament_manager.healthcheck"]
 CMD ["filament-manager"]

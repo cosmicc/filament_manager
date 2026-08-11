@@ -2,6 +2,8 @@
 
 from pathlib import Path
 
+import yaml
+
 REPOSITORY_ROOT = Path(__file__).resolve().parents[1]
 
 
@@ -9,6 +11,12 @@ def _read(relative_path: str) -> str:
     """Read one tracked deployment surface from the repository root."""
 
     return (REPOSITORY_ROOT / relative_path).read_text(encoding="utf-8")
+
+
+def _read_yaml(relative_path: str) -> dict[str, object]:
+    """Parse one tracked Compose or Swarm deployment file."""
+
+    return yaml.safe_load(_read(relative_path))
 
 
 def test_database_clients_explicitly_disable_tls_with_expected_roles() -> None:
@@ -64,3 +72,27 @@ def test_example_environment_matches_the_database_contract() -> None:
     assert values["FILAMENT_MANAGER_DB_SSLMODE"] == "disable"
     assert values["SPOOLMAN_DB_USERNAME"] == "spoolman_user"
     assert values["SPOOLMAN_DB_QUERY"] == "ssl=disable"
+
+
+def test_image_healthcheck_uses_the_trusted_host_aware_probe() -> None:
+    """The image must probe readiness with the configured public hostname."""
+
+    dockerfile = _read("Dockerfile")
+    assert 'CMD ["python", "-m", "filament_manager.healthcheck"]' in dockerfile
+    assert "urllib.request.urlopen('http://127.0.0.1:8080/health/ready'" not in dockerfile
+
+
+def test_non_http_services_disable_the_image_healthcheck() -> None:
+    """Workers and local one-shot tools must not inherit the web HTTP probe."""
+
+    for relative_path in (
+        "docker-stack.yml",
+        "docker/filament-manager-stack.yml",
+        "docker/docker-compose.yml",
+    ):
+        deployment = _read_yaml(relative_path)
+        services = deployment["services"]
+        assert services["worker"]["healthcheck"] == {"disable": True}
+
+    local_services = _read_yaml("docker/docker-compose.yml")["services"]
+    assert local_services["bootstrap-admin"]["healthcheck"] == {"disable": True}
