@@ -23,7 +23,7 @@ See [INSTALL.md](INSTALL.md) for prerequisites, deployment variables, database m
 
 The root [docker-stack.yml](docker-stack.yml) deploys Filament Manager, its worker, and Spoolman together against a remote PostgreSQL server. All deployer-supplied settings for the current one-printer Docker deployment come from stack variables; no separate application Docker config is required. Independent application stack examples remain under `docker/` for operators who need separate lifecycles.
 
-Testing images are published as `ghcr.io/cosmicc/filament-manager:latest` for AMD64 and ARM64. Production deployments should pin the immutable `sha-<commit>` tag or image digest from the successful package workflow.
+The newest CI-passing `main` image is published as `ghcr.io/cosmicc/filament-manager:latest` for AMD64 and ARM64. Production deployments should pin the immutable `sha-<commit>` tag or image digest from the successful package workflow.
 
 ## Documentation
 

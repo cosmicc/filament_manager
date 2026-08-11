@@ -9,7 +9,7 @@
 - Moonraker uses the stable LAN Spoolman endpoint, never Swarm-only DNS.
 - The current Docker variable contract supports one Moonraker printer. `MOONRAKER_WEBSOCKET_URL` may be empty so the application derives `/websocket` from `MOONRAKER_BASE_URL`.
 - Pin tested image tags or digests. Spoolman uses one replica and stop-first updates. Filament Manager uses one replica until session and worker concurrency have been validated for scale-out.
-- The `publish-swarm-image.yml` workflow publishes AMD64 and ARM64 Filament Manager images from `main` with `latest` plus an immutable `sha-<commit>` tag. Use `latest` only for testing and pin the SHA tag or digest for production. Package publication remains separate from Git tagging and GitHub Releases.
+- After CI passes for `main`, `publish-swarm-image.yml` publishes AMD64 and ARM64 Filament Manager images with `latest` plus an immutable `sha-<commit>` tag. Use `latest` only for testing and pin the SHA tag or digest for production. Package publication remains separate from Git tagging and GitHub Releases.
 - Run migrations as a distinct one-shot job before application rollout. Do not auto-migrate from every web replica.
 - Local Compose passes separate database-role variables only to PostgreSQL initialization and the service that owns each role. Never reuse the PostgreSQL administrator password for an application role.
 - Back up `filament_manager` and `spoolman` independently and perform isolated restore tests.

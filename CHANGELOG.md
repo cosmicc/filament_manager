@@ -7,7 +7,7 @@
 - Added a root `docker-stack.yml` that deploys Filament Manager, its worker, and Spoolman together against remote PostgreSQL.
 - Added a complete environment-only stack-variable contract for application URLs, one Moonraker printer, Google publication, operational tuning, credentials, and remote PostgreSQL.
 - Added complete remote PostgreSQL provisioning, migration, stack deployment, seed, and first-user instructions.
-- Added automated AMD64 and ARM64 GHCR publication with testing-oriented `latest` and immutable commit tags.
+- Added automated post-CI AMD64 and ARM64 GHCR publication with testing-oriented `latest` and immutable commit tags.
 
 ### Changed
 
@@ -26,7 +26,7 @@
 - Used Spoolman's supported async PostgreSQL TLS query syntax and removed an unsupported allowed-host variable that could imply protection the pinned image does not provide.
 - Removed obsolete Docker secret mounts and the local secret-copy entrypoint so every current Docker deployment path follows the stack-variable contract.
 - Removed baked example hostnames and printer details from the active Docker configuration path.
-- Corrected workstation pairing configuration construction so strict type checking and the complete CI workflow pass.
+- Corrected workstation pairing configuration construction and included the audit tool in agent development dependencies so strict CI runs through completion.
 
 ## 0.1.0 - 08.05.2026
 

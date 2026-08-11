@@ -140,7 +140,7 @@ The Docker deployment is environment-only and does not mount an application conf
 
 Leave `MOONRAKER_WEBSOCKET_URL` empty to derive `ws://.../websocket` or `wss://.../websocket` from `MOONRAKER_BASE_URL`. Pin Filament Manager to an immutable version tag or digest. `POSTGRES_HOST` must identify the remote server provisioned above. `SPOOLMAN_DB_QUERY=ssl=require` uses Spoolman's async PostgreSQL driver to require encryption; use the server's stronger verified TLS settings when supported by its certificate deployment.
 
-For initial testing, `ghcr.io/cosmicc/filament-manager:latest` tracks the newest successful `main` build for AMD64 and ARM64. Before production use, replace it with the workflow's immutable `sha-<commit>` tag or resolved digest.
+For initial testing, `ghcr.io/cosmicc/filament-manager:latest` tracks the newest CI-passing `main` build for AMD64 and ARM64. Before production use, replace it with the workflow's immutable `sha-<commit>` tag or resolved digest.
 
 When Google publication is enabled, set `GOOGLE_ENABLED=true`, `GOOGLE_SPREADSHEET_ID`, and `GOOGLE_SERVICE_ACCOUNT_JSON`. The JSON must be compact and one line. When sourcing `.env` in a shell, surround the complete JSON value with single quotes.
 

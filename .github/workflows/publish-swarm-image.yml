@@ -2,17 +2,10 @@ name: Build and publish Swarm image
 
 on:
   workflow_dispatch:
-  push:
+  workflow_run:
+    workflows: [CI]
+    types: [completed]
     branches: [main]
-    paths:
-      - ".github/workflows/publish-swarm-image.yml"
-      - "Dockerfile"
-      - "alembic.ini"
-      - "frontend/**"
-      - "migrations/**"
-      - "pyproject.toml"
-      - "README.md"
-      - "src/**"
 
 permissions:
   contents: read
@@ -20,17 +13,25 @@ permissions:
   id-token: write
 
 concurrency:
-  group: publish-swarm-image-${{ github.ref }}
+  group: publish-swarm-image-${{ github.event.workflow_run.head_sha || github.sha }}
   cancel-in-progress: true
 
 env:
   IMAGE_NAME: ghcr.io/${{ github.repository_owner }}/filament-manager
+  IMAGE_COMMIT: ${{ github.event.workflow_run.head_sha || github.sha }}
 
 jobs:
   publish:
+    if: >-
+      ${{
+        (github.event_name == 'workflow_run' && github.event.workflow_run.conclusion == 'success') ||
+        (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main')
+      }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ env.IMAGE_COMMIT }}
 
       - uses: docker/setup-qemu-action@v3
 
@@ -47,8 +48,8 @@ jobs:
         with:
           images: ${{ env.IMAGE_NAME }}
           tags: |
-            type=raw,value=latest,enable={{is_default_branch}}
-            type=sha,prefix=sha-,format=long
+            type=raw,value=latest
+            type=raw,value=sha-${{ env.IMAGE_COMMIT }}
           labels: |
             org.opencontainers.image.title=Filament Manager
             org.opencontainers.image.description=Self-hosted filament inventory, calibration, and printer integration
@@ -67,4 +68,4 @@ jobs:
           sbom: true
 
       - name: Verify the immutable manifest
-        run: docker buildx imagetools inspect "${IMAGE_NAME}:sha-${GITHUB_SHA}"
+        run: docker buildx imagetools inspect "${IMAGE_NAME}:sha-${IMAGE_COMMIT}"
