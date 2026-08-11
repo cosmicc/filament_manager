@@ -80,9 +80,7 @@ async def _write_uploaded_workbook(upload: UploadFile, destination: Path) -> Non
                     )
                 handle.write(chunk)
         if total == 0:
-            raise ApiError(
-                status.HTTP_422_UNPROCESSABLE_ENTITY, "workbook_empty", "Workbook file is empty"
-            )
+            raise ApiError(status.HTTP_422_UNPROCESSABLE_ENTITY, "workbook_empty", "Workbook file is empty")
         temp_path.replace(destination)
     finally:
         temp_path.unlink(missing_ok=True)
