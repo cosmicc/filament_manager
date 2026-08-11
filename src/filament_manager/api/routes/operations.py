@@ -17,6 +17,7 @@ from filament_manager.models.enums import JobStatus, SpoolStatus
 from filament_manager.models.inventory import BuildPlate, FilamentProduct, Printer, Spool
 from filament_manager.models.operations import AuditEvent, Device, OutboxJob
 from filament_manager.services.events import add_audit_event, add_outbox_job
+from filament_manager.services.seed import seed_configured_system
 
 from ..dependencies import Administrator, DatabaseSession, Operator, Viewer
 from ..errors import ApiError
@@ -157,6 +158,29 @@ async def list_printers(_: Viewer, session: DatabaseSession) -> list[dict[str, o
         }
         for printer in result.scalars()
     ]
+
+
+@router.post("/system/seed")
+async def seed_configured_resources(
+    request: Request, administrator: Administrator, session: DatabaseSession
+) -> dict[str, int]:
+    """Seed missing server-configured printers and build plates from validated settings."""
+
+    seeded = await seed_configured_system(session, get_settings())
+    if seeded["plates"] or seeded["printers"]:
+        add_audit_event(
+            session,
+            actor_id=administrator.id,
+            source="web",
+            action="system.seed.web",
+            object_type="system",
+            object_id=None,
+            before=None,
+            after={"plates": seeded["plates"], "printers": seeded["printers"]},
+            correlation_id=request.state.correlation_id,
+        )
+    await session.commit()
+    return seeded
 
 
 @router.get("/integrations/status", response_model=list[IntegrationStatus])

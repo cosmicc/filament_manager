@@ -13,12 +13,19 @@ from testcontainers.community.postgres import PostgresContainer
 
 from filament_manager.api import dependencies
 from filament_manager.api.routes import imports as import_routes
-from filament_manager.api.routes import inventory
+from filament_manager.api.routes import inventory, operations
 from filament_manager.config import Settings
 from filament_manager.models import Base
 from filament_manager.models.auth import User
 from filament_manager.models.enums import SpoolStatus, UserRole
-from filament_manager.models.inventory import FilamentProduct, Printer, Spool, SpoolMeasurement, Vendor
+from filament_manager.models.inventory import (
+    BuildPlate,
+    FilamentProduct,
+    Printer,
+    Spool,
+    SpoolMeasurement,
+    Vendor,
+)
 from filament_manager.models.operations import AuditEvent, ImportRun, OutboxJob
 from filament_manager.security import hash_password
 from filament_manager.services import events
@@ -160,6 +167,75 @@ async def test_unknown_tare_measurement_is_one_audited_transaction(monkeypatch: 
 
 @pytest.mark.integration
 @pytest.mark.asyncio
+async def test_seed_system_route_creates_configured_resources(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Seed configured printers and build plates through an Administrator web action."""
+
+    with PostgresContainer("postgres:17-alpine", driver="psycopg") as postgres:
+        database_url = postgres.get_connection_url().replace(
+            "postgresql+psycopg2://", "postgresql+psycopg://"
+        )
+        settings = integration_settings(database_url)
+        engine = create_async_engine(database_url)
+        factory = async_sessionmaker(engine, expire_on_commit=False)
+        async with engine.begin() as connection:
+            await connection.run_sync(Base.metadata.create_all)
+
+        async with factory() as session:
+            administrator = User(
+                username="integration-admin",
+                normalized_username="integration-admin",
+                display_name="Integration Administrator",
+                password_hash=hash_password("integration test password"),
+                role=UserRole.ADMINISTRATOR,
+            )
+            session.add(administrator)
+            await session.commit()
+
+        async def session_override() -> AsyncIterator[AsyncSession]:
+            async with factory() as session:
+                yield session
+
+        async def user_override() -> User:
+            async with factory() as session:
+                user = await session.scalar(select(User).where(User.username == "integration-admin"))
+                assert user is not None
+                return user
+
+        monkeypatch.setattr(operations, "get_settings", lambda: settings)
+        from filament_manager import config as config_module
+
+        monkeypatch.setattr(config_module, "get_settings", lambda: settings)
+        from filament_manager import main
+
+        monkeypatch.setattr(main, "get_settings", lambda: settings)
+        app = main.create_app()
+        app.dependency_overrides[dependencies.session_dependency] = session_override
+        app.dependency_overrides[dependencies.current_user] = user_override
+
+        transport = httpx.ASGITransport(app=app)
+        async with httpx.AsyncClient(transport=transport, base_url="http://testserver") as client:
+            seeded = await client.post("/api/v1/system/seed")
+            seeded_again = await client.post("/api/v1/system/seed")
+
+        assert seeded.status_code == 200, seeded.text
+        assert seeded.json() == {"plates": 5, "printers": 1}
+        assert seeded_again.status_code == 200, seeded_again.text
+        assert seeded_again.json() == {"plates": 0, "printers": 0}
+
+        async with factory() as session:
+            assert await session.scalar(select(func.count(Printer.id))) == 1
+            assert await session.scalar(select(func.count(BuildPlate.id))) == 5
+            audit = await session.scalar(
+                select(AuditEvent).where(AuditEvent.action == "system.seed.web")
+            )
+            assert audit is not None
+            assert audit.after == {"plates": 5, "printers": 1}
+
+        await engine.dispose()
+
+
+@pytest.mark.integration
+@pytest.mark.asyncio
 async def test_workbook_upload_dry_run_and_commit_populates_inventory(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
@@ -184,13 +260,7 @@ async def test_workbook_upload_dry_run_and_commit_populates_inventory(
                 password_hash=hash_password("integration test password"),
                 role=UserRole.ADMINISTRATOR,
             )
-            printer = Printer(
-                printer_code="test-printer",
-                name="Test Printer",
-                moonraker_base_url="http://moonraker.test:7125",
-                nozzle_diameter_mm=Decimal("0.4"),
-            )
-            session.add_all([administrator, printer])
+            session.add(administrator)
             await session.commit()
 
         async def session_override() -> AsyncIterator[AsyncSession]:
@@ -247,11 +317,18 @@ async def test_workbook_upload_dry_run_and_commit_populates_inventory(
             assert stored_run is not None
             assert stored_run.status == "committed"
             assert await session.scalar(select(func.count(Spool.id))) == 35
+            assert await session.scalar(select(func.count(Printer.id))) == 1
+            assert await session.scalar(select(func.count(BuildPlate.id))) == 5
             assert await session.scalar(select(func.count(OutboxJob.id))) == 36
             audit = await session.scalar(
                 select(AuditEvent).where(AuditEvent.action == "workbook.import.commit")
             )
             assert audit is not None
             assert audit.source == "web"
+            seed_audit = await session.scalar(
+                select(AuditEvent).where(AuditEvent.action == "system.seed.auto")
+            )
+            assert seed_audit is not None
+            assert seed_audit.after == {"plates": 5, "printers": 1}
 
         await engine.dispose()

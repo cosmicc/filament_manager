@@ -1,5 +1,22 @@
 # Changelog
 
+## 0.1.4 - 08.11.2026
+
+### Added
+
+- Added an Administrator-only Printers page action that seeds the configured Moonraker printer and P1-P5 build plates from deployment environment variables.
+- Added a shared idempotent first-run seed service for configured printers and P1-P5 build plates.
+
+### Changed
+
+- Changed browser workbook commit to auto-seed missing configured system records in the same transaction before importing printer-scoped material profiles.
+- Changed the CLI `seed-system` command to use the same seed service as the web import flow.
+
+### Fixed
+
+- Fixed the Printers page empty state incorrectly telling Docker operators to edit a server-side YAML file.
+- Fixed first-run browser workbook commits failing with `seed the configured printer before importing profiles` when the operator had not run the separate seed CLI command.
+
 ## 0.1.3 - 08.11.2026
 
 ### Added

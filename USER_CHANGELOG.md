@@ -1,5 +1,21 @@
 # User Changelog
 
+## 0.1.4 - 08.11.2026
+
+### Added
+
+- Added a Printers page button for Administrators to create the configured printer and P1-P5 build plates from the current deployment settings.
+- Added automatic first-run setup of the configured printer and P1-P5 build plates during browser workbook import.
+
+### Changed
+
+- Simplified workbook commit so Administrators no longer need to run the separate seed command first.
+
+### Fixed
+
+- Fixed the Printers page setup message pointing Docker installs at a YAML file instead of deployment variables.
+- Fixed workbook commit stopping with `seed the configured printer before importing profiles` on a fresh installation.
+
 ## 0.1.3 - 08.11.2026
 
 ### Added

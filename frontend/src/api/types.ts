@@ -104,6 +104,11 @@ export interface Printer {
   record_version: number
 }
 
+export interface SeedSystemResult {
+  plates: number
+  printers: number
+}
+
 export interface MaterialProfile {
   id: string
   filament_product_id: string

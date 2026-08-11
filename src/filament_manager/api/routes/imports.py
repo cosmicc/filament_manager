@@ -13,6 +13,7 @@ from sqlalchemy import select
 from filament_manager.config import get_settings
 from filament_manager.models.operations import ImportRun
 from filament_manager.services.events import add_audit_event
+from filament_manager.services.seed import seed_configured_system
 from filament_manager.services.workbook_import import analyze_workbook, commit_approved_run
 
 from ..dependencies import Administrator, DatabaseSession
@@ -202,6 +203,19 @@ async def commit_workbook_import(
             status.HTTP_409_CONFLICT,
             "uploaded_workbook_missing",
             "The validated uploaded workbook is no longer available",
+        )
+    seeded = await seed_configured_system(session, get_settings())
+    if seeded["plates"] or seeded["printers"]:
+        add_audit_event(
+            session,
+            actor_id=administrator.id,
+            source="web",
+            action="system.seed.auto",
+            object_type="system",
+            object_id=None,
+            before=None,
+            after={"plates": seeded["plates"], "printers": seeded["printers"]},
+            correlation_id=request.state.correlation_id,
         )
     try:
         return await commit_approved_run(

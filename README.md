@@ -8,7 +8,7 @@ PostgreSQL is the canonical data store. A distinct Spoolman service remains the 
 
 - Local Administrator, Operator, and Viewer accounts
 - Canonical spool, filament, profile, printer, and build-plate records
-- Browser-based `.xlsx` workbook upload with dry-run validation, row findings, and explicit commit
+- Browser-based `.xlsx` workbook upload and Printers page setup actions with first-run printer and build-plate seeding
 - Manual gross-weight measurements with variance confirmation
 - Immutable audit history and transactional projection outbox
 - Spoolman REST projection and periodic reconciliation plus Moonraker control clients

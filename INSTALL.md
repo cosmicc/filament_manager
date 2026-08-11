@@ -24,10 +24,15 @@ Requirements: Docker Engine with Compose, `openssl`, and ports `8080` and `7912`
    docker compose --env-file .env -f docker/docker-compose.yml up -d postgres spoolman
    ```
 
-3. Apply the canonical schema and seed the configured printer plus P1–P5:
+3. Apply the canonical schema:
 
    ```bash
    docker compose --env-file .env -f docker/docker-compose.yml run --rm filament-manager alembic upgrade head
+   ```
+
+   The browser workbook import seeds the configured printer and P1-P5 automatically if they are missing. Administrators can also open Printers and choose **Seed configured printer** after signing in. If you want to verify setup separately from the browser, the idempotent seed command remains available:
+
+   ```bash
    docker compose --env-file .env -f docker/docker-compose.yml run --rm filament-manager filament-manager-cli seed-system
    ```
 
@@ -185,7 +190,7 @@ The stack creates its `filament-services` overlay plus `filament_manager_data` a
 
 ### 4. Seed the system and create the first Administrator
 
-After the web and worker services are running, use a short-lived job to seed the configured printer and P1-P5:
+After the web and worker services are running, Administrators can open Printers and choose **Seed configured printer** to seed the configured printer and P1-P5 from stack variables. If you need to do this without the browser, use a short-lived job:
 
 ```bash
 docker service create \

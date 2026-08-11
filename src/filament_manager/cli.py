@@ -3,7 +3,6 @@
 import asyncio
 import json
 import os
-from decimal import Decimal
 from pathlib import Path
 from typing import Annotated
 from uuid import UUID
@@ -14,9 +13,9 @@ from sqlalchemy import func, select
 from filament_manager.config import get_settings
 from filament_manager.database import get_session_factory
 from filament_manager.models.auth import User
-from filament_manager.models.enums import PlateCondition, PlateStatus, UserRole
-from filament_manager.models.inventory import BuildPlate, Printer
+from filament_manager.models.enums import UserRole
 from filament_manager.security import hash_password, normalize_username
+from filament_manager.services.seed import seed_configured_system
 from filament_manager.services.workbook_import import commit_approved_run, save_dry_run
 
 app = typer.Typer(no_args_is_help=True, help="Filament Manager administrative commands")
@@ -76,27 +75,7 @@ def seed_system() -> None:
     async def command() -> None:
         settings = get_settings()
         async with get_session_factory()() as session:
-            for code in settings.plates.allowed_codes:
-                if not await session.scalar(select(BuildPlate.id).where(BuildPlate.plate_code == code)):
-                    session.add(
-                        BuildPlate(
-                            plate_code=code,
-                            display_name=f"Build Plate {code}",
-                            klipper_mesh_profile=code,
-                            condition=PlateCondition.GOOD,
-                            status=PlateStatus.ACTIVE,
-                        )
-                    )
-            for configured in settings.moonraker.printers:
-                if not await session.scalar(select(Printer.id).where(Printer.printer_code == configured.id)):
-                    session.add(
-                        Printer(
-                            printer_code=configured.id,
-                            name=configured.name,
-                            moonraker_base_url=str(configured.base_url),
-                            nozzle_diameter_mm=Decimal(str(configured.nozzle_diameter_mm)),
-                        )
-                    )
+            await seed_configured_system(session, settings)
             await session.commit()
             typer.echo("Seeded configured printers and P1-P5")
 
