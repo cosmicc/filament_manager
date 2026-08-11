@@ -16,6 +16,7 @@
 - separate database credentials and scoped service environments
 - SCRAM authentication
 - `pg_hba.conf` limited to Swarm node addresses
+- explicit non-SSL connections limited to the dedicated isolated database network
 - no cross-database grants
 - no direct Filament Manager queries against Spoolman tables
 - distinct connection limits and monitoring labels

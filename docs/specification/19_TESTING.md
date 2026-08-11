@@ -48,6 +48,7 @@ Mock or containerize:
 ## Swarm tests
 
 - required stack variables reach only their intended services
+- `filament_user`/`spoolman_user` and explicit non-SSL database settings match across all deployment surfaces
 - overlay DNS resolution
 - published 7912 reaches Spoolman target 8000
 - service restart does not duplicate jobs

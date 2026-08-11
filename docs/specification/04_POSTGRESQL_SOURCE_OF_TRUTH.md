@@ -9,7 +9,7 @@ The central PostgreSQL server is the highest-trust persistence platform. Filamen
 | Concern | Filament Manager | Spoolman |
 |---|---|---|
 | Database | `filament_manager` | `spoolman` |
-| Owner/login | `filament_manager_user` | `spoolman_user` |
+| Owner/login | `filament_user` | `spoolman_user` |
 | Schema migrations | Alembic in Filament Manager release | Upstream Spoolman release |
 | Connection credential | Filament Manager services | Spoolman service |
 | Backup object | Independent | Independent |
@@ -22,6 +22,7 @@ Rules:
 - Never grant Filament Manager direct read or write access to Spoolman tables.
 - Never grant Spoolman access to Filament Manager tables.
 - Restrict `pg_hba.conf` to approved Swarm node addresses and require SCRAM authentication.
+- Explicitly disable PostgreSQL TLS only on the dedicated isolated database network; credentials and queries are otherwise exposed in transit.
 - Keep monitoring and backup roles separate from application roles.
 
 ## Canonical authority

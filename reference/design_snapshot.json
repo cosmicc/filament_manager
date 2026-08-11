@@ -13,7 +13,7 @@
     "shared_overlay": "filament-services"
   },
   "databases": {
-    "filament_manager": "canonical, filament_manager_user",
+    "filament_manager": "canonical, filament_user",
     "spoolman": "operational, spoolman_user"
   },
   "direct_spoolman_database_access": false,

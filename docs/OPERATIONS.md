@@ -35,7 +35,7 @@ Quarterly, compare spool/product counts, effective weights, profile versions, pl
 
 ### Readiness is `schema_unavailable`
 
-Confirm `FILAMENT_MANAGER_DB_*` and `POSTGRES_*` stack variables assemble the intended URL for `filament_manager_user`, then run `alembic current` and `alembic upgrade head`. Do not grant access to the `spoolman` database.
+Confirm `FILAMENT_MANAGER_DB_*` and `POSTGRES_*` stack variables assemble the intended non-SSL URL for `filament_user`, then run `alembic current` and `alembic upgrade head`. Do not grant access to the `spoolman` database.
 
 ### Jobs remain pending or fail
 

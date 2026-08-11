@@ -17,6 +17,7 @@ The product name is **Filament Manager**. Do not introduce the former project na
 7. Cura files are changed only by the outbound-only per-user workstation agent under `workstation-agent/`; the server never reaches into a workstation or listens on an agent port.
 8. Docker deployments are environment-only: every deployer-supplied application setting and credential comes from scoped stack variables, with no mounted application Docker config and no Docker secrets. The current variable contract supports exactly one Moonraker printer. Treat credential variables as a transitional risk, restrict manager and Portainer access, keep populated `.env` files untracked with mode `0600`, and never log or render these values.
 9. Successful CI for a `main` push publishes the Filament Manager container for AMD64 and ARM64 with `latest` and immutable `sha-<commit>` tags. Treat `latest` as a testing convenience; production deployments pin an immutable SHA tag or digest. Image publication does not authorize a Git tag or GitHub Release.
+10. Remote PostgreSQL connections use `filament_user` and `spoolman_user` with TLS explicitly disabled on the operator-managed isolated database network. Preserve SCRAM authentication, narrow firewall and `pg_hba.conf` rules, and separate database ownership; this non-SSL contract is unsafe on shared or untrusted networks.
 
 ## Required stack
 

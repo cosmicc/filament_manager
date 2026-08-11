@@ -26,3 +26,4 @@ pytest workstation-agent/tests
 - Rendered UI validation compares implementation screenshots with `docs/design/concepts/` in both themes and at a mobile viewport.
 - Workstation-agent tests use isolated temporary Cura roots and cover machine discovery, official-format rendering, pressure-advance guards, root/symlink rejection, idempotent apply, backup, and rollback.
 - PostgreSQL integration tests cover single-use pairing, hashed scoped credentials, agent-specific lease claiming, and audited deployment completion.
+- Deployment-contract tests keep the `filament_user`/`spoolman_user` role split and explicit non-SSL settings synchronized across `.env.example`, Compose, combined Swarm, and independent Swarm files.

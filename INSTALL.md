@@ -71,16 +71,16 @@ The root `docker-stack.yml` installs Spoolman, the Filament Manager web service,
 
 ### 1. Prepare the remote PostgreSQL server
 
-Use PostgreSQL 17 where practical. Configure TLS, SCRAM password authentication, a firewall, and `pg_hba.conf` rules that permit only the Swarm node addresses. Do not expose PostgreSQL to the public internet.
+Use PostgreSQL 17 where practical. Configure SCRAM password authentication, a firewall, and `pg_hba.conf` rules that permit only the Swarm node addresses. Filament Manager and Spoolman explicitly disable PostgreSQL TLS for this deployment, so credentials and database traffic are unencrypted and the database network must be dedicated, isolated, and inaccessible from untrusted systems. Do not expose PostgreSQL to the public internet.
 
 After replacing `SWARM_NODE_CIDR` with the narrowest network that contains the approved Swarm nodes, the remote server needs rules equivalent to:
 
 ```text
-hostssl  filament_manager  filament_manager_user  SWARM_NODE_CIDR  scram-sha-256
-hostssl  spoolman          spoolman_user           SWARM_NODE_CIDR  scram-sha-256
+host  filament_manager  filament_user  SWARM_NODE_CIDR  scram-sha-256
+host  spoolman          spoolman_user  SWARM_NODE_CIDR  scram-sha-256
 ```
 
-Keep broader application-role rules out of `pg_hba.conf`, set `password_encryption = 'scram-sha-256'`, and reload PostgreSQL after changing its listener, TLS, firewall, or access rules.
+Keep broader application-role rules out of `pg_hba.conf`, set `password_encryption = 'scram-sha-256'`, and reload PostgreSQL after changing its listener, firewall, or access rules.
 
 Create the private stack-variable file on the Swarm manager, then replace every example hostname, image owner, and credential. Generate a different hexadecimal password for each database role so the stack can safely assemble PostgreSQL URLs without percent-encoding:
 
@@ -112,33 +112,31 @@ Run the repository provisioning SQL from a trusted host with `psql`. The command
 
 This creates:
 
-- database `filament_manager`, owned by `filament_manager_user`;
+- database `filament_manager`, owned by `filament_user`;
 - database `spoolman`, owned by `spoolman_user`;
 - no cross-database grants.
 
 The provisioning SQL is safe to rerun, but rerunning it rotates both role passwords to the supplied values. Update the matching stack variables in the same maintenance window.
 
-Verify both least-privilege logins from an approved Swarm node before deploying. Use TLS parameters that match the remote server's certificate policy:
+Verify both least-privilege logins from an approved Swarm node before deploying. Explicitly disable TLS in both checks so the test matches the deployed clients:
 
 ```bash
-PGPASSWORD="$FILAMENT_MANAGER_DB_PASSWORD" psql "host=$POSTGRES_HOST port=$POSTGRES_PORT dbname=$FILAMENT_MANAGER_DB_NAME user=$FILAMENT_MANAGER_DB_USERNAME sslmode=$FILAMENT_MANAGER_DB_SSLMODE" -c 'SELECT current_database(), current_user;'
-PGPASSWORD="$SPOOLMAN_DB_PASSWORD" psql "host=$POSTGRES_HOST port=$POSTGRES_PORT dbname=$SPOOLMAN_DB_NAME user=$SPOOLMAN_DB_USERNAME sslmode=require" -c 'SELECT current_database(), current_user;'
+PGPASSWORD="$FILAMENT_MANAGER_DB_PASSWORD" psql "host=$POSTGRES_HOST port=$POSTGRES_PORT dbname=$FILAMENT_MANAGER_DB_NAME user=$FILAMENT_MANAGER_DB_USERNAME sslmode=disable" -c 'SELECT current_database(), current_user;'
+PGPASSWORD="$SPOOLMAN_DB_PASSWORD" psql "host=$POSTGRES_HOST port=$POSTGRES_PORT dbname=$SPOOLMAN_DB_NAME user=$SPOOLMAN_DB_USERNAME sslmode=disable" -c 'SELECT current_database(), current_user;'
 ```
-
-Prefer `sslmode=verify-full` when the remote server certificate chains to a CA trusted by the application images.
 
 ### 2. Set stack variables
 
 The Docker deployment is environment-only and does not mount an application configuration file. Set every deployment-specific value in `.env` or Portainer, including:
 
 - `FILAMENT_MANAGER_BASE_URL` and exact optional `FILAMENT_MANAGER_ALLOWED_HOSTS`;
-- remote PostgreSQL host, database names, roles, TLS mode, and passwords;
+- remote PostgreSQL host, database names, roles, explicit non-SSL mode, and passwords;
 - `SPOOLMAN_PUBLIC_URL` and the exact `SPOOLMAN_CORS_ORIGIN`;
 - the one supported printer's `MOONRAKER_PRINTER_ID`, `MOONRAKER_PRINTER_NAME`, `MOONRAKER_BASE_URL`, and `MOONRAKER_NOZZLE_DIAMETER_MM`;
 - optional Moonraker API key and Google publication values;
 - image tags, published ports, and any tuning values that differ from the documented defaults.
 
-Leave `MOONRAKER_WEBSOCKET_URL` empty to derive `ws://.../websocket` or `wss://.../websocket` from `MOONRAKER_BASE_URL`. Pin Filament Manager to an immutable version tag or digest. `POSTGRES_HOST` must identify the remote server provisioned above. `SPOOLMAN_DB_QUERY=ssl=require` uses Spoolman's async PostgreSQL driver to require encryption; use the server's stronger verified TLS settings when supported by its certificate deployment.
+Leave `MOONRAKER_WEBSOCKET_URL` empty to derive `ws://.../websocket` or `wss://.../websocket` from `MOONRAKER_BASE_URL`. Pin Filament Manager to an immutable version tag or digest. `POSTGRES_HOST` must identify the remote server provisioned above. Keep `FILAMENT_MANAGER_DB_SSLMODE=disable` for psycopg and `SPOOLMAN_DB_QUERY=ssl=disable` for Spoolman's async PostgreSQL driver so neither application attempts TLS.
 
 For initial testing, `ghcr.io/cosmicc/filament-manager:latest` tracks the newest CI-passing `main` build for AMD64 and ARM64. Before production use, replace it with the workflow's immutable `sha-<commit>` tag or resolved digest.
 
@@ -146,7 +144,7 @@ When Google publication is enabled, set `GOOGLE_ENABLED=true`, `GOOGLE_SPREADSHE
 
 The current deployment intentionally uses ordinary environment variables instead of Docker secrets. Anyone with sufficient Portainer or Docker service-inspection access can read these values. Restrict that access, protect `.env` with mode `0600`, never commit it, and avoid printing `docker stack config` or service specifications into logs.
 
-When converting an existing deployment, place the current database passwords, API key, and Google document into the matching variables before redeploying. Do not generate replacement database passwords unless the corresponding PostgreSQL roles are rotated in the same maintenance window. After all services are healthy on variables, obsolete Docker secret objects can be removed manually.
+When converting an existing deployment, place the current database passwords, API key, and Google document into the matching variables before redeploying. Ensure the canonical database is owned by `filament_user` before changing `FILAMENT_MANAGER_DB_USERNAME`; do not silently point the application at an empty replacement database. Do not generate replacement database passwords unless the corresponding PostgreSQL roles are rotated in the same maintenance window. After all services are healthy on variables, obsolete Docker secret objects can be removed manually.
 
 For the migration, seed, and bootstrap jobs, assemble the same canonical database URL used by the stack:
 

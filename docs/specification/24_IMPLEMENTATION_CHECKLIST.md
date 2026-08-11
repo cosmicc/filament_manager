@@ -3,10 +3,11 @@
 ## Infrastructure
 
 - [ ] central PostgreSQL reachable from approved Swarm nodes
-- [ ] `filament_manager` database and `filament_manager_user`
+- [ ] `filament_manager` database and `filament_user`
 - [ ] `spoolman` database and `spoolman_user`
 - [ ] no cross-database grants
 - [ ] SCRAM and `pg_hba.conf` restrictions
+- [ ] non-SSL database traffic confined to the dedicated isolated network
 - [ ] combined-stack `filament-services` overlay network
 - [ ] durable Spoolman and Filament Manager volumes with valid multi-node placement or shared storage
 - [ ] stable LAN DNS name for Spoolman

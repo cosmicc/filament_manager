@@ -48,7 +48,7 @@ Never pass `SPOOLMAN_DB_PASSWORD` into Filament Manager. Never pass `FILAMENT_MA
 
 Copy `.env.example` to the ignored `.env`, protect it with mode `0600`, and populate both ordinary settings and credentials. Export it explicitly before command-line deployment because `docker stack deploy` does not load `.env` automatically. This environment-variable delivery is transitional: authorized Docker and Portainer operators can inspect service values, so keep access narrow and never print rendered stack specifications into logs.
 
-`docker-stack.yml` requires the public Filament Manager URL, public Spoolman URL, one Moonraker printer name and HTTP URL, its nozzle diameter, PostgreSQL routing, and credentials. Empty `MOONRAKER_WEBSOCKET_URL` derives the conventional endpoint from `MOONRAKER_BASE_URL`. Operational values documented with defaults remain overrideable variables.
+`docker-stack.yml` requires the public Filament Manager URL, public Spoolman URL, one Moonraker printer name and HTTP URL, its nozzle diameter, PostgreSQL routing, and credentials. The database defaults are `filament_user`, `spoolman_user`, `FILAMENT_MANAGER_DB_SSLMODE=disable`, and `SPOOLMAN_DB_QUERY=ssl=disable`. Empty `MOONRAKER_WEBSOCKET_URL` derives the conventional endpoint from `MOONRAKER_BASE_URL`. Operational values documented with defaults remain overrideable variables.
 
 ## Configuration validation
 

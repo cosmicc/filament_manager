@@ -15,7 +15,8 @@ def test_docker_configuration_comes_from_environment_without_exposing_credential
     """Docker settings are complete, validated, and masked without mounted YAML."""
 
     database_url = (
-        "postgresql+psycopg://filament_manager_user:database-password@postgres.example/filament_manager"
+        "postgresql+psycopg://filament_user:database-password@postgres.example/filament_manager"
+        "?sslmode=disable"
     )
     moonraker_key = "moonraker-api-key"
     google_document = '{"type":"service_account","client_email":"agent@example.invalid"}'

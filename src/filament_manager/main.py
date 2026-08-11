@@ -16,6 +16,7 @@ from fastapi.staticfiles import StaticFiles
 from prometheus_client import CONTENT_TYPE_LATEST, Counter, Histogram, generate_latest
 from sqlalchemy import text
 
+from filament_manager import __version__
 from filament_manager.api.errors import ApiError, api_error_handler
 from filament_manager.api.router import api_router
 from filament_manager.config import get_settings
@@ -36,7 +37,7 @@ async def lifespan(_: FastAPI) -> AsyncIterator[None]:
     settings = get_settings()
     configure_logging(settings.app.log_level)
     settings.app.data_dir.mkdir(parents=True, exist_ok=True)
-    logger.info("application_started", version="0.1.0")
+    logger.info("application_started", version=__version__)
     yield
     await get_engine().dispose()
     logger.info("application_stopped")
@@ -48,7 +49,7 @@ def create_app() -> FastAPI:
     settings = get_settings()
     app = FastAPI(
         title="Filament Manager API",
-        version="0.1.0",
+        version=__version__,
         docs_url="/api/docs",
         redoc_url="/api/redoc",
         openapi_url="/api/openapi.json",

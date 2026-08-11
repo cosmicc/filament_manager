@@ -1,6 +1,6 @@
 # User Changelog
 
-## Unreleased
+## 0.1.1 - 08.11.2026
 
 ### Added
 
@@ -12,6 +12,7 @@
 - Simplified production installation and documented the complete remote database and first-user setup.
 - Changed the current Docker setup to use stack environment variables instead of requiring Docker secret objects.
 - Moved the Filament Manager URL, Spoolman URL, and one supported Moonraker printer's settings into deployment variables so no separate application config object is required.
+- Updated the central database settings for the dedicated non-SSL network and the `filament_user` account.
 
 ### Fixed
 

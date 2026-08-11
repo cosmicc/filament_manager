@@ -13,7 +13,7 @@ PostgreSQL is always remote. The `filament_manager` and `spoolman` databases hav
 ## One-time prerequisites
 
 1. Provision the remote databases and roles with `docker/provision-databases.sql`.
-2. Restrict PostgreSQL network access to approved Swarm nodes and require encrypted connections.
+2. Restrict PostgreSQL network access to approved Swarm nodes. Both clients explicitly disable TLS, so the database network must be dedicated and isolated from untrusted systems.
 3. Populate all Filament Manager, Spoolman, one-printer Moonraker, Google, database, and tuning variables in a protected, ignored `.env` or Portainer variable set.
 4. Pin immutable application images and export the variables from `.env`.
 

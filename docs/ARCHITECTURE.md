@@ -48,6 +48,7 @@ Spoolman reconciliation accepts only supported API data. Decreases create immuta
 - Role checks are server-side on every route.
 - Configuration rejects credentials embedded in integration URLs.
 - Database URLs, API keys, and service-account documents currently enter Docker services through scoped environment variables. Values remain masked in application models and must never be logged; populated `.env` files and Docker/Portainer operator access are tightly restricted.
+- PostgreSQL connections explicitly disable TLS on the dedicated isolated database network. This exposes credentials and queries to network observers and must never be extended onto a shared or untrusted network.
 - Trusted hosts, exact CORS origins, security headers, sanitized API errors, login throttling, and least-privilege containers are enabled.
 - Spoolman has no built-in authentication; keep its LAN endpoint firewalled and put remote browser access behind an authenticated proxy.
 - Workstation agents have no listener. Pairing codes expire after ten minutes and are consumed once; long-lived agent credentials are stored as hashes and authorize only agent heartbeat, claim, and completion routes.
