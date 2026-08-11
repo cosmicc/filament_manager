@@ -2,6 +2,8 @@
 
 - Filament Manager uses local accounts with `administrator`, `operator`, and `viewer` roles.
 - Store passwords with Argon2id. Never log passwords, session tokens, CSRF tokens, database URLs, API keys, or service-account documents.
+- Docker credentials currently use ordinary scoped environment variables by explicit deployment policy. Treat them as inspectable by authorized Docker/Portainer operators, restrict that access, protect `.env` with mode `0600`, and migrate to a dedicated secret store when approved.
+- Derive production allowed hosts from `FILAMENT_MANAGER_BASE_URL` unless the deployer supplies the exact comma-separated `FILAMENT_MANAGER_ALLOWED_HOSTS`; never introduce wildcard host or CORS variables.
 - Browser authentication uses random server-side sessions in HttpOnly cookies. State-changing requests require a matching CSRF header.
 - Session cookies are `Secure` in production, `SameSite=Strict`, path `/`, and have bounded absolute and idle expiration.
 - Administrator: user management, settings, overrides, retries, and all operator actions.

@@ -3,10 +3,9 @@
 ## Backup set
 
 - canonical `filament_manager` PostgreSQL database
-- standalone Spoolman `spoolman` PostgreSQL database
+- distinct Spoolman `spoolman` PostgreSQL database
 - both production stack files
-- Filament Manager configuration without secrets
-- encrypted secret backup according to operations policy
+- encrypted stack-variable backup according to operations policy
 - Spoolman local data directory where operationally required
 - Google Sheet ID and template metadata
 - label and Cura export templates
@@ -17,7 +16,7 @@ The stack boundary requires two restoration paths:
 
 ### Filament Manager restore
 
-Restore the canonical database, migrations, configuration, and stack. Spoolman may remain online while this occurs. After recovery, reconcile usage accumulated during the outage.
+Restore the canonical database, migrations, stack, and protected variable inventory. Spoolman may remain online while this occurs. After recovery, reconcile usage accumulated during the outage.
 
 ### Spoolman restore
 
@@ -35,7 +34,7 @@ Restore the Spoolman database and stack independently. If the database cannot be
 
 1. restore `filament_manager` to an isolated environment;
 2. restore or initialize `spoolman` separately;
-3. deploy both stacks on an isolated overlay;
+3. deploy both services on an isolated combined-stack overlay;
 4. rebuild Spoolman projections through the API;
 5. create a new Google publication workbook;
 6. compare counts, weights, profile versions, plates, and calibration status;

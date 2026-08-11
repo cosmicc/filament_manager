@@ -2,6 +2,7 @@
 
 import asyncio
 import json
+import os
 from decimal import Decimal
 from pathlib import Path
 from typing import Annotated
@@ -21,19 +22,39 @@ from filament_manager.services.workbook_import import commit_approved_run, save_
 app = typer.Typer(no_args_is_help=True, help="Filament Manager administrative commands")
 
 
+def _resolve_bootstrap_password(password_file: Path | None) -> str:
+    """Resolve the first-user password from one explicit credential source."""
+
+    environment_password = os.environ.get("FILAMENT_MANAGER_BOOTSTRAP_ADMIN_PASSWORD")
+    if password_file is not None and environment_password:
+        raise typer.BadParameter(
+            "set only one of --password-file or FILAMENT_MANAGER_BOOTSTRAP_ADMIN_PASSWORD"
+        )
+    if password_file is not None:
+        password = password_file.read_text(encoding="utf-8").rstrip("\r\n")
+    elif environment_password:
+        password = environment_password
+    else:
+        raise typer.BadParameter("provide --password-file or FILAMENT_MANAGER_BOOTSTRAP_ADMIN_PASSWORD")
+    if not password:
+        raise typer.BadParameter("bootstrap password cannot be empty")
+    return password
+
+
 @app.command("bootstrap-admin")
 def bootstrap_admin(
     username: Annotated[str, typer.Option()],
     display_name: Annotated[str, typer.Option()],
-    password_file: Annotated[Path, typer.Option(exists=True, readable=True)],
+    password_file: Annotated[Path | None, typer.Option(exists=True, readable=True)] = None,
 ) -> None:
-    """Create the first administrator from a local/Docker secret file."""
+    """Create the first administrator from an environment value or local file."""
+
+    password = _resolve_bootstrap_password(password_file)
 
     async def command() -> None:
         async with get_session_factory()() as session:
             if await session.scalar(select(func.count(User.id))):
                 raise typer.BadParameter("users already exist; use authenticated user management")
-            password = (await asyncio.to_thread(password_file.read_text, encoding="utf-8")).rstrip("\r\n")
             user = User(
                 username=username.strip(),
                 normalized_username=normalize_username(username),

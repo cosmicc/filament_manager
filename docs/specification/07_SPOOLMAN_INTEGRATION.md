@@ -2,11 +2,11 @@
 
 ## Production decision
 
-Spoolman is a **standalone Docker Swarm stack**, not a service inside the Filament Manager stack. It provides the established spool API, WebSocket events, labels and QR workflow, Moonraker integration, and Fluidd user experience.
+Spoolman is a distinct service with its own image, remote database, credential, migrations, volume, health check, and update policy. The default `docker-stack.yml` deploys it beside Filament Manager; optional independent stack files preserve a stronger rollout boundary. Spoolman provides the established spool API, WebSocket events, labels and QR workflow, Moonraker integration, and Fluidd user experience.
 
 ## Rationale
 
-- independent upgrades and rollbacks
+- an independently pinned image and stop-first updates
 - failure isolation from Filament Manager development
 - continuous Moonraker usage reporting during Filament Manager restarts
 - reuse by additional printers
@@ -14,7 +14,7 @@ Spoolman is a **standalone Docker Swarm stack**, not a service inside the Filame
 
 ## Database
 
-Spoolman uses its own `spoolman` PostgreSQL database and `spoolman_user` role on the central server. The password is a Docker secret mounted only into the Spoolman stack.
+Spoolman uses its own `spoolman` PostgreSQL database and `spoolman_user` role on the central server. The password is currently passed through `SPOOLMAN_DB_PASSWORD` only to the Spoolman service.
 
 Filament Manager must never write directly to Spoolman tables. All reads and writes use the REST API or WebSocket interfaces.
 
@@ -22,20 +22,15 @@ Filament Manager must never write directly to Spoolman tables. All reads and wri
 
 - Spoolman container port: TCP `8000`
 - recommended published LAN port: TCP `7912`
-- Filament Manager production URL with documented stack/service names: `http://spoolman_spoolman:8000`
+- Filament Manager combined-stack URL: `http://spoolman:8000`
+- Filament Manager separate-stack URL: `http://spoolman_spoolman:8000`
 - Moonraker URL: stable LAN DNS or IP, such as `http://spoolman.internal.example:7912`
 
 The Swarm-internal service DNS name is not usable from the printer host.
 
 ## Shared overlay network
 
-Create once:
-
-```bash
-docker network create --driver overlay --attachable filament-services
-```
-
-Declare `filament-services` as external in both stack files.
+The root stack creates its attachable `filament-services` overlay automatically. The optional independent stack deployment uses a pre-created external overlay with the same name.
 
 ## Required environment variables
 
@@ -49,21 +44,20 @@ environment:
   SPOOLMAN_DB_PORT: "5432"
   SPOOLMAN_DB_NAME: spoolman
   SPOOLMAN_DB_USERNAME: spoolman_user
-  SPOOLMAN_DB_PASSWORD_FILE: /run/secrets/spoolman_db_password
+  SPOOLMAN_DB_PASSWORD: ${SPOOLMAN_DB_PASSWORD}
 ```
 
 Optional browser and security controls:
 
 ```yaml
   SPOOLMAN_CORS_ORIGIN: https://fluidd.internal.example
-  SPOOLMAN_ALLOWED_HOSTS: spoolman.internal.example
 ```
 
-`SPOOLMAN_CORS_ORIGIN` is for browser origins such as Fluidd hosted elsewhere. It is not required for Moonraker. Allowed hosts are hostnames without schemes or ports.
+`SPOOLMAN_CORS_ORIGIN` is for browser origins such as Fluidd hosted elsewhere. It is not required for Moonraker. Spoolman 0.23.1 does not provide an allowed-host or authentication setting, so restrict its published port with the firewall or an authenticated reverse proxy.
 
 ## Persistent directory
 
-Mount `/home/app/.local/share/spoolman` even when PostgreSQL stores inventory. It retains logs and other application-local runtime files. In Swarm, use an external volume consistent with the existing shared-storage policy.
+Mount `/home/app/.local/share/spoolman` even when PostgreSQL stores inventory. It retains logs and other application-local runtime files. The combined stack creates the volume; on a multi-node Swarm, back it with shared storage or constrain Spoolman to the node that owns it.
 
 ## Service policy
 
@@ -106,7 +100,7 @@ Spoolman API updates can replace an object's `extra` mapping. Read the current o
 
 ## Deployment example
 
-Use `examples/spoolman-stack.yml`. Deploy it before the Filament Manager stack and verify the API from both a Swarm node and the printer network.
+Use the repository root `docker-stack.yml` for the default combined deployment. Use `docker/spoolman-stack.yml` only when the independent-stack lifecycle is required. Verify the API from both a Swarm node and the printer network.
 
 ## Authoritative implementation references
 

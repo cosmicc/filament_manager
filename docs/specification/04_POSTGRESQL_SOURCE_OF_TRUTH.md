@@ -2,7 +2,7 @@
 
 ## Decision
 
-The central PostgreSQL server is the highest-trust persistence platform. Filament Manager owns the canonical `filament_manager` database. The standalone Spoolman stack uses a separate `spoolman` database on that same server.
+The central PostgreSQL server is the highest-trust persistence platform. Filament Manager owns the canonical `filament_manager` database. The distinct Spoolman service uses a separate `spoolman` database on that same server.
 
 ## Required isolation
 
@@ -11,7 +11,7 @@ The central PostgreSQL server is the highest-trust persistence platform. Filamen
 | Database | `filament_manager` | `spoolman` |
 | Owner/login | `filament_manager_user` | `spoolman_user` |
 | Schema migrations | Alembic in Filament Manager release | Upstream Spoolman release |
-| Connection secret | Filament Manager stack | Spoolman stack |
+| Connection credential | Filament Manager services | Spoolman service |
 | Backup object | Independent | Independent |
 | Application integration | Canonical repository | REST/WebSocket API |
 
@@ -65,7 +65,7 @@ Back up both databases independently through the central PostgreSQL backup platf
 
 1. Restore `filament_manager`.
 2. Restore `spoolman`, or initialize a blank Spoolman database.
-3. Deploy the standalone Spoolman stack and verify health.
+3. Deploy the Spoolman service and verify health.
 4. Reproject canonical inventory through the Spoolman API.
 5. Reconcile active spool and printer-originated usage.
 6. Rebuild the Google Sheet.
@@ -74,8 +74,8 @@ Back up both databases independently through the central PostgreSQL backup platf
 
 See:
 
-- `examples/postgresql-bootstrap.sql`
-- `examples/postgresql-pg-hba.conf.example`
+- `docker/provision-databases.sql`
+- the remote server's restricted `pg_hba.conf`
 
 ## Authoritative implementation references
 

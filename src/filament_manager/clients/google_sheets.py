@@ -17,11 +17,23 @@ class GoogleSheetsError(RuntimeError):
 class GoogleSheetsClient:
     """Bound client for one configured publication spreadsheet."""
 
-    def __init__(self, spreadsheet_id: str, service_account_file: Path) -> None:
+    def __init__(
+        self,
+        spreadsheet_id: str,
+        service_account_file: Path | None = None,
+        service_account_info: dict[str, Any] | None = None,
+    ) -> None:
         self.spreadsheet_id = spreadsheet_id
-        self.credentials = Credentials.from_service_account_file(  # type: ignore[no-untyped-call]
-            str(service_account_file), scopes=[SHEETS_SCOPE]
-        )
+        if service_account_info is not None:
+            self.credentials = Credentials.from_service_account_info(  # type: ignore[no-untyped-call]
+                service_account_info, scopes=[SHEETS_SCOPE]
+            )
+        elif service_account_file is not None:
+            self.credentials = Credentials.from_service_account_file(  # type: ignore[no-untyped-call]
+                str(service_account_file), scopes=[SHEETS_SCOPE]
+            )
+        else:
+            raise ValueError("Google service-account credentials are required")
 
     def _service(self) -> Any:
         return build("sheets", "v4", credentials=self.credentials, cache_discovery=False)

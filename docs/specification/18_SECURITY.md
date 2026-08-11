@@ -4,7 +4,7 @@
 
 - browser/user to Filament Manager
 - Filament Manager to canonical PostgreSQL
-- Filament Manager to standalone Spoolman API
+- Filament Manager to the distinct Spoolman API service
 - Spoolman to its PostgreSQL database
 - Moonraker/Fluidd to Spoolman
 - Filament Manager to Google APIs
@@ -13,7 +13,7 @@
 ## Database isolation
 
 - separate databases and owners
-- separate Docker secrets
+- separate database credentials and scoped service environments
 - SCRAM authentication
 - `pg_hba.conf` limited to Swarm node addresses
 - no cross-database grants
@@ -28,20 +28,22 @@ Spoolman has no built-in authentication. Therefore:
 - allow only printer, management, and trusted LAN networks
 - use authenticated reverse-proxy access for remote browser use
 - set precise `SPOOLMAN_CORS_ORIGIN` values rather than `*`
-- set `SPOOLMAN_ALLOWED_HOSTS` for real reverse-proxy hostnames
 - do not rely on CORS as authentication
 
-## Cross-stack network
+## Service network
 
-`filament-services` is an internal integration network even though it is declared external to the stacks. Only services that need Spoolman integration should join it.
+`filament-services` is an internal integration network created by the combined stack. It is external only in the optional independent-stack layout. Only services that need Spoolman integration should join it.
 
-## Secrets
+## Credentials
 
-- use Docker secrets
+- use ordinary Docker stack environment variables during the current testing phase
 - never commit credentials
-- never put passwords directly in stack YAML
+- keep populated `.env` files at mode `0600` and restrict Swarm-manager and Portainer access
+- never hardcode passwords directly in stack YAML or print rendered stack/service specifications into logs
 - rotate Spoolman and Filament Manager database credentials independently
 - prevent secrets from appearing in logs, exceptions, metrics, or Google Sheet output
+
+Environment variables are intentionally transitional and are visible to authorized Docker/Portainer operators. Move them to an approved secret store when the deployment policy changes.
 
 ## API safety
 

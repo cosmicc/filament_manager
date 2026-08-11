@@ -25,23 +25,23 @@
 **Decision:** Filament Manager uses Spoolman's REST/WebSocket interfaces and never directly reads or writes Spoolman tables.  
 **Reason:** protects against upstream schema and migration changes.
 
-## ADR-006: Standalone Spoolman Swarm stack
+## ADR-006: Distinct Spoolman service
 
-**Decision:** deploy Spoolman as stack `spoolman` and Filament Manager as stack `filament-manager`.  
-**Reason:** independent upgrades, failure isolation, continuous Moonraker usage tracking, and future multi-printer reuse.
+**Decision:** deploy Spoolman as a distinct, independently configured service in the default combined stack, while retaining an optional standalone Spoolman stack.
+**Reason:** a single default stack simplifies installation, while separate images, services, credentials, databases, and update policies preserve the important application boundaries.
 
 **Consequences:**
 
-- create an external overlay network before deployment
-- maintain separate stack files and secrets
-- use stack-prefixed internal DNS for Filament Manager-to-Spoolman traffic
+- create the combined overlay automatically, or pre-create it for the optional separate-stack layout
+- maintain separate credentials and database ownership in both layouts
+- use service DNS in the combined stack and stack-prefixed DNS in the separate-stack layout
 - use stable LAN DNS for Moonraker
 - monitor and back up each application independently
 
-## ADR-007: Combined Compose is development-only
+## ADR-007: Combined deployment defaults
 
-**Decision:** provide a combined Compose file for developer convenience, not production.  
-**Reason:** local testing benefits from one command, while production reliability requires independent lifecycle boundaries.
+**Decision:** provide combined Compose for development and a combined remote-database Swarm stack for the default production installation. Retain separate production stacks as an operator-selected alternative.
+**Reason:** one production stack matches the normal installation workflow, while the separate files preserve stronger rollout isolation where it is needed.
 
 ## ADR-008: PostgreSQL-backed jobs
 
@@ -57,6 +57,20 @@
 
 **Decision:** published material profiles are immutable versions.  
 **Reason:** traceability and repeatable Cura generation.
+
+## ADR-011: Environment-only Docker configuration
+
+**Decision:** supply every deployer-specific Docker setting through scoped stack environment variables and support one Moonraker printer in the current contract. Do not require a mounted Filament Manager Docker config.
+
+**Reason:** Portainer and command-line stack deployments need one visible configuration surface without separately creating and rotating Docker config objects.
+
+**Consequences:**
+
+- fixed invariants remain validated application defaults
+- required deployment addresses and printer values fail during stack interpolation when omitted
+- an empty Moonraker WebSocket variable derives the conventional endpoint from the HTTP base URL
+- YAML files remain supported only for non-Docker development and compatibility
+- authorized Docker and Portainer operators can inspect credential environment values during this transitional phase
 
 ## Authoritative implementation references
 

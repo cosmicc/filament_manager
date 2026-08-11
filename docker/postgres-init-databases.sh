@@ -1,13 +1,13 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-filament_manager_password="$(< /run/filament-manager-bootstrap/filament_manager_db_password)"
-spoolman_password="$(< /run/filament-manager-bootstrap/spoolman_db_password)"
+: "${FILAMENT_MANAGER_DB_PASSWORD:?Set FILAMENT_MANAGER_DB_PASSWORD}"
+: "${SPOOLMAN_DB_PASSWORD:?Set SPOOLMAN_DB_PASSWORD}"
 
 psql \
   --set=ON_ERROR_STOP=1 \
-  --set=filament_manager_password="$filament_manager_password" \
-  --set=spoolman_password="$spoolman_password" \
+  --set=filament_manager_password="$FILAMENT_MANAGER_DB_PASSWORD" \
+  --set=spoolman_password="$SPOOLMAN_DB_PASSWORD" \
   --username "$POSTGRES_USER" \
   --dbname "$POSTGRES_DB" <<'SQL'
 SELECT format('CREATE ROLE filament_manager_user LOGIN PASSWORD %L CONNECTION LIMIT 30', :'filament_manager_password')

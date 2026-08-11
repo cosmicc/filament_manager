@@ -4,8 +4,8 @@
 
 - central PostgreSQL databases and roles
 - `pg_hba.conf` restrictions
-- external `filament-services` overlay
-- standalone Spoolman stack
+- combined-stack `filament-services` overlay
+- distinct Spoolman service
 - persistent Spoolman data volume
 - stable LAN DNS name for Moonraker
 
@@ -13,7 +13,7 @@
 
 - Filament Manager schema, migrations, audit, outbox
 - users, printers, spools, profiles, build plates, measurements
-- independent Filament Manager stack
+- Filament Manager web and worker services
 
 ## Phase 2 - Workbook import and manual workflow
 

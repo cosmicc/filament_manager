@@ -4,7 +4,7 @@
 
 Synchronization is projection and reconciliation, not multi-master database replication. Filament Manager PostgreSQL is canonical; Spoolman and Google Sheets are external systems reached through supported interfaces.
 
-The Spoolman stack is operationally independent. Filament Manager must tolerate its unavailability without corrupting canonical state, and Spoolman must continue serving Moonraker while Filament Manager is being redeployed.
+The Spoolman service is operationally distinct. Filament Manager must tolerate its unavailability without corrupting canonical state, and an unchanged Spoolman service must continue serving Moonraker while the Filament Manager services are updated.
 
 ## Transactional outbox
 
@@ -26,10 +26,10 @@ Suggested job types:
 Filament Manager uses the configurable Spoolman API URL. In production this normally resolves through the shared overlay network:
 
 ```text
-http://spoolman_spoolman:8000
+http://spoolman:8000
 ```
 
-It must not use Spoolman's PostgreSQL connection string. The Spoolman database password is not mounted into the Filament Manager stack.
+The optional separate-stack deployment uses `http://spoolman_spoolman:8000`. Filament Manager must not use Spoolman's PostgreSQL connection string. The Spoolman database password is not mounted into the Filament Manager services.
 
 ## Idempotency
 
@@ -85,8 +85,8 @@ Do not independently apply both continuous scale loss and Moonraker consumption 
 
 Required tests include:
 
-- Filament Manager stack stopped while Moonraker records usage in Spoolman
-- Spoolman stack stopped while Filament Manager queues projection jobs
+- Filament Manager services stopped while Moonraker records usage in Spoolman
+- Spoolman service stopped while Filament Manager queues projection jobs
 - Spoolman upgrade with pending usage reconciliation
 - central PostgreSQL available to one database but the other role is revoked or misconfigured
 - shared overlay network removed and recreated

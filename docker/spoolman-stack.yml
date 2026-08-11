@@ -2,20 +2,18 @@ services:
   spoolman:
     image: ${SPOOLMAN_IMAGE:-ghcr.io/donkie/spoolman:0.23.1}
     environment:
-      TZ: America/Detroit
+      TZ: ${TZ:-America/Detroit}
       SPOOLMAN_HOST: 0.0.0.0
       SPOOLMAN_PORT: "8000"
       SPOOLMAN_DB_TYPE: postgres
       SPOOLMAN_DB_HOST: ${POSTGRES_HOST:?Set POSTGRES_HOST to the central PostgreSQL host}
       SPOOLMAN_DB_PORT: ${POSTGRES_PORT:-5432}
-      SPOOLMAN_DB_NAME: spoolman
-      SPOOLMAN_DB_USERNAME: spoolman_user
-      SPOOLMAN_DB_PASSWORD_FILE: /run/secrets/spoolman_db_password
-      SPOOLMAN_CORS_ORIGIN: ${SPOOLMAN_CORS_ORIGIN:-https://fluidd.internal.example}
-      SPOOLMAN_ALLOWED_HOSTS: ${SPOOLMAN_ALLOWED_HOSTS:-spoolman.internal.example}
-      SPOOLMAN_METRICS_ENABLED: "TRUE"
-    secrets:
-      - spoolman_db_password
+      SPOOLMAN_DB_NAME: ${SPOOLMAN_DB_NAME:-spoolman}
+      SPOOLMAN_DB_USERNAME: ${SPOOLMAN_DB_USERNAME:-spoolman_user}
+      SPOOLMAN_DB_PASSWORD: ${SPOOLMAN_DB_PASSWORD:?Set SPOOLMAN_DB_PASSWORD}
+      SPOOLMAN_DB_QUERY: ${SPOOLMAN_DB_QUERY:-ssl=require}
+      SPOOLMAN_CORS_ORIGIN: ${SPOOLMAN_CORS_ORIGIN:?Set SPOOLMAN_CORS_ORIGIN to the exact Fluidd or browser origin}
+      SPOOLMAN_METRICS_ENABLED: ${SPOOLMAN_METRICS_ENABLED:-TRUE}
     networks:
       - filament-services
     volumes:
@@ -50,10 +48,6 @@ services:
         parallelism: 1
         order: stop-first
 
-secrets:
-  spoolman_db_password:
-    external: true
-
 networks:
   filament-services:
     external: true
@@ -62,3 +56,4 @@ networks:
 volumes:
   spoolman_data:
     external: true
+    name: ${SPOOLMAN_DATA_VOLUME:-spoolman_data}

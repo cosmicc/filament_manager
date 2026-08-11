@@ -50,11 +50,12 @@
     "database": {
       "type": "object",
       "additionalProperties": false,
-      "required": [
-        "url_file"
-      ],
       "properties": {
         "url_file": {
+          "type": "string",
+          "minLength": 1
+        },
+        "url": {
           "type": "string",
           "minLength": 1
         },
@@ -133,6 +134,9 @@
               "api_key_file": {
                 "type": "string"
               },
+              "api_key": {
+                "type": "string"
+              },
               "nozzle_diameter_mm": {
                 "type": "number",
                 "exclusiveMinimum": 0
@@ -156,6 +160,9 @@
           "type": "string"
         },
         "service_account_file": {
+          "type": "string"
+        },
+        "service_account_json": {
           "type": "string"
         },
         "publish_interval_seconds": {

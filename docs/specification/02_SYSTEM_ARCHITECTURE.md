@@ -11,13 +11,12 @@
                                           | one-way publisher
                                           |
 +---------------- Docker Swarm ---------------------------------------------+
-|                                                                           |
-|  stack: filament-manager                 stack: spoolman                   |
+|  stack: filament-manager                                                   |
 |  +-------------------------------+       +------------------------------+  |
 |  | Filament Manager API + workers  |<----->| Spoolman API / WebSocket     |  |
 |  +---------------+---------------+       +---------------+--------------+  |
 |                  |                                       |                 |
-|                  +---------- external overlay -----------+                 |
+|                  +----------- stack overlay ------------+                 |
 |                             filament-services                              |
 +------------------|---------------------------------------|-----------------+
                    |                                       |
@@ -28,9 +27,9 @@
           └── spoolman database
 ```
 
-## Stack boundary
+## Service and deployment boundaries
 
-### Filament Manager stack
+### Filament Manager services
 
 Contains only Filament Manager-owned services:
 
@@ -40,16 +39,20 @@ Contains only Filament Manager-owned services:
 - Moonraker monitor
 - future scale/NFC ingestion services
 
-It does not contain Spoolman and does not control Spoolman's lifecycle.
+They do not receive Spoolman's database credential and do not control Spoolman's migrations.
 
-### Spoolman stack
+### Spoolman service
 
-Contains the upstream Spoolman image as an independently deployed service. It owns:
+Runs the upstream Spoolman image as a separately configurable service. It owns:
 
 - Spoolman process and migrations
 - printer-facing API and WebSocket service
 - Fluidd and Moonraker integration surface
 - Spoolman-specific logs and operational state
+
+The root `docker-stack.yml` is the default deployment. The independent files under `docker/` preserve separate application stack boundaries for sites that need them.
+
+Filament Manager's Docker services receive their complete validated runtime configuration from scoped environment variables. They do not mount an application config object. The current Docker contract configures one Moonraker printer.
 
 ## Central PostgreSQL server
 
@@ -64,13 +67,13 @@ Each database has its own owner and password. Filament Manager never queries or 
 
 ### `filament-services`
 
-An external attachable overlay network created before either stack is deployed. Both stacks join it. With the documented stack names, Filament Manager reaches Spoolman at:
+The combined stack creates this attachable overlay automatically. Filament Manager reaches Spoolman by its service name:
 
 ```text
-http://spoolman_spoolman:8000
+http://spoolman:8000
 ```
 
-The exact service DNS name is stack-name dependent and must remain configurable.
+The separate-stack deployment instead uses the stack-prefixed `http://spoolman_spoolman:8000` name on its pre-created external overlay.
 
 ### Printer-facing endpoint
 
@@ -80,7 +83,7 @@ Moonraker runs outside Swarm and must use a stable LAN endpoint, for example:
 http://spoolman.internal.example:7912
 ```
 
-Do not configure Moonraker with `spoolman_spoolman`; that name exists only inside the Swarm overlay.
+Do not configure Moonraker with `spoolman` or `spoolman_spoolman`; those names exist only inside a Swarm overlay.
 
 ### Reverse proxy
 

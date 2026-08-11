@@ -2,7 +2,7 @@
 
 Filament Manager is a self-hosted inventory and calibration application for physical filament spools, manual weight measurements, material profiles, build plates, and Klipper-based printers.
 
-PostgreSQL is the canonical data store. A separately operated Spoolman stack remains the printer-facing usage service, while Google Sheets is an optional read-only publication target.
+PostgreSQL is the canonical data store. A distinct Spoolman service remains the printer-facing usage service, while Google Sheets is an optional read-only publication target.
 
 ## Current capabilities
 
@@ -19,9 +19,11 @@ PostgreSQL is the canonical data store. A separately operated Spoolman stack rem
 
 ## Start locally
 
-See [INSTALL.md](INSTALL.md) for prerequisites, secret creation, database migration, first-user bootstrap, and Docker Compose instructions.
+See [INSTALL.md](INSTALL.md) for prerequisites, deployment variables, database migration, first-user bootstrap, and Docker Compose instructions.
 
-Production deployment examples are under `docker/`; the two Swarm stacks are intentionally independent.
+The root [docker-stack.yml](docker-stack.yml) deploys Filament Manager, its worker, and Spoolman together against a remote PostgreSQL server. All deployer-supplied settings for the current one-printer Docker deployment come from stack variables; no separate application Docker config is required. Independent application stack examples remain under `docker/` for operators who need separate lifecycles.
+
+Testing images are published as `ghcr.io/cosmicc/filament-manager:latest` for AMD64 and ARM64. Production deployments should pin the immutable `sha-<commit>` tag or image digest from the successful package workflow.
 
 ## Documentation
 

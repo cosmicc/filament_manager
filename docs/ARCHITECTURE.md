@@ -13,10 +13,12 @@ Browser -> FastAPI -> filament_manager PostgreSQL
 Cura workstation agent -> outbound HTTPS polling -> FastAPI -> leased profile snapshot
                      `-> local backup -> atomic Cura material/quality/start-G-code update
 
-Moonraker/Fluidd -> standalone Spoolman -> periodic supported-API reconciliation
+Moonraker/Fluidd -> Spoolman service -> periodic supported-API reconciliation
 ```
 
-Production operates Spoolman and Filament Manager as separate Swarm stacks. Both join the external `filament-services` overlay, while Moonraker uses Spoolman's stable LAN address.
+The default production deployment operates Spoolman and Filament Manager as separate services in one Swarm stack. The stack creates a private `filament-services` overlay, while Moonraker uses Spoolman's stable published LAN address. Separate application stack files remain available when independent deployment lifecycles are required. Both layouts use remote PostgreSQL with isolated databases and roles.
+
+Docker services build their validated runtime configuration directly from stack environment variables. No application configuration file is mounted. The current Docker contract accepts one Moonraker printer and derives its WebSocket endpoint from its HTTP base URL unless an explicit override is supplied.
 
 ## Canonical domains
 
@@ -45,7 +47,7 @@ Spoolman reconciliation accepts only supported API data. Decreases create immuta
 - Browser sessions are random, hashed server-side, revocable, HttpOnly, SameSite Strict, CSRF-bound, and time-limited.
 - Role checks are server-side on every route.
 - Configuration rejects credentials embedded in integration URLs.
-- Database URLs, API keys, and service-account documents come from restricted files or Docker secrets.
+- Database URLs, API keys, and service-account documents currently enter Docker services through scoped environment variables. Values remain masked in application models and must never be logged; populated `.env` files and Docker/Portainer operator access are tightly restricted.
 - Trusted hosts, exact CORS origins, security headers, sanitized API errors, login throttling, and least-privilege containers are enabled.
 - Spoolman has no built-in authentication; keep its LAN endpoint firewalled and put remote browser access behind an authenticated proxy.
 - Workstation agents have no listener. Pairing codes expire after ten minutes and are consumed once; long-lived agent credentials are stored as hashes and authorize only agent heartbeat, claim, and completion routes.
@@ -57,7 +59,8 @@ Spoolman reconciliation accepts only supported API data. Decreases create immuta
 - `migrations/`: reversible Alembic schema history
 - `frontend/`: React/TypeScript application and Playwright checks
 - `workstation-agent/`: Arch Linux and Windows 11 Cura discovery, installers, deployment writer, and agent tests
-- `docker/`: local Compose, independent production stacks, and database provisioning
+- `docker-stack.yml`: combined production Swarm deployment using remote PostgreSQL
+- `docker/`: environment-only local Compose, optional independent production stacks, and remote database provisioning
 - `integrations/`: Moonraker and Klipper examples
 - `docs/specification/`: complete imported source documentation
 - `mappings/`, `schemas/`, `reference/`: import contracts and original workbook fixture

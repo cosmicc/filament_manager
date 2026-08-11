@@ -189,7 +189,7 @@ async def _publish_inventory(session: AsyncSession) -> None:
     settings = get_settings()
     if not settings.google.enabled:
         return
-    assert settings.google.spreadsheet_id and settings.google.service_account_file
+    assert settings.google.spreadsheet_id
     result = await session.execute(
         select(Spool)
         .options(joinedload(Spool.filament_product).joinedload(FilamentProduct.vendor))
@@ -244,7 +244,11 @@ async def _publish_inventory(session: AsyncSession) -> None:
                 published_at,
             ]
         )
-    client = GoogleSheetsClient(settings.google.spreadsheet_id, settings.google.service_account_file)
+    client = GoogleSheetsClient(
+        settings.google.spreadsheet_id,
+        settings.google.service_account_file,
+        settings.google.resolved_service_account_info(),
+    )
     await client.write_values("Inventory!A1:S", rows)
 
 

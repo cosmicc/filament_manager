@@ -1,6 +1,5 @@
 """Supported Moonraker HTTP client for active spool and plate selection."""
 
-from pathlib import Path
 from typing import Any
 
 import httpx
@@ -18,13 +17,7 @@ class MoonrakerClient:
     def __init__(self, printer: PrinterConfig, timeout: float = 10) -> None:
         self.base_url = str(printer.base_url).rstrip("/")
         self.timeout = timeout
-        self.api_key = self._read_optional_secret(printer.api_key_file)
-
-    @staticmethod
-    def _read_optional_secret(path: Path | None) -> str | None:
-        if path is None:
-            return None
-        return path.read_text(encoding="utf-8").strip()
+        self.api_key = printer.resolved_api_key()
 
     def _headers(self) -> dict[str, str]:
         return {"X-Api-Key": self.api_key} if self.api_key else {}

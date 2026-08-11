@@ -18,8 +18,8 @@ Back up independently:
 
 1. the canonical `filament_manager` PostgreSQL database;
 2. the standalone `spoolman` PostgreSQL database;
-3. both stack files and non-secret configuration;
-4. encrypted copies of Docker secrets under the existing secret-management policy;
+3. `docker-stack.yml` and any optional independent stack files in use;
+4. an encrypted, access-controlled copy of the private stack-variable inventory;
 5. `filament_manager_data` and `spoolman_data` when they contain retained artifacts or logs.
 6. workstation-agent backup directories when Cura profile rollback must survive workstation replacement.
 
@@ -35,7 +35,7 @@ Quarterly, compare spool/product counts, effective weights, profile versions, pl
 
 ### Readiness is `schema_unavailable`
 
-Confirm the URL secret is readable and belongs to `filament_manager_user`, then run `alembic current` and `alembic upgrade head`. Do not grant access to the `spoolman` database.
+Confirm `FILAMENT_MANAGER_DB_*` and `POSTGRES_*` stack variables assemble the intended URL for `filament_manager_user`, then run `alembic current` and `alembic upgrade head`. Do not grant access to the `spoolman` database.
 
 ### Jobs remain pending or fail
 
@@ -43,7 +43,11 @@ Check worker logs, external DNS from the `filament-services` overlay, and the sa
 
 ### Spoolman is unavailable
 
-Verify `http://spoolman_spoolman:8000/api/v1/health` from the Filament Manager overlay and the stable LAN endpoint from the printer host. Moonraker must not use the Swarm-only hostname.
+Verify `http://spoolman:8000/api/v1/health` from the combined Filament Manager stack and the stable LAN endpoint from the printer host. The optional separate-stack layout uses `http://spoolman_spoolman:8000`. Moonraker must not use either Swarm-only hostname.
+
+### Moonraker is unavailable
+
+Confirm `MOONRAKER_BASE_URL` is reachable from the Swarm node and container network. If `MOONRAKER_WEBSOCKET_URL` is empty, Filament Manager derives the same host with `ws` or `wss` and the `/websocket` path. Confirm the configured API key only when Moonraker requires one.
 
 ### A manual weight increases remaining mass
 

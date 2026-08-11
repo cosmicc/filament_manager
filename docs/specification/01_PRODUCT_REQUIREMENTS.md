@@ -29,12 +29,14 @@ Filament Manager provides one trusted inventory for physical filament spools, me
 
 ### Production deployment
 
-- Deploy Spoolman as a standalone Docker Swarm stack.
-- Deploy Filament Manager as a separate Docker Swarm stack.
-- Connect both stacks to the external `filament-services` overlay network.
+- Provide one default Docker Swarm stack containing Spoolman, Filament Manager, and the Filament Manager worker.
+- Keep optional independent Spoolman and Filament Manager stack files for environments that require separate rollout and rollback lifecycles.
+- Connect the services through a private `filament-services` overlay network.
 - Use the same central PostgreSQL server but separate databases, owners, passwords, migrations, and backup objects.
-- Permit independent upgrades, restarts, rollbacks, and health monitoring.
-- Provide a combined Compose file only for local development and integration testing.
+- Keep image tags independently configurable and preserve service-level restarts and health monitoring in the combined stack.
+- Supply every deployer-specific Docker setting through stack environment variables without requiring a mounted application configuration object.
+- Support one Moonraker printer in the current Docker variable contract, with an optional explicit WebSocket URL.
+- Provide a combined Compose file for local development and integration testing.
 
 ### Spoolman and printer integration
 
@@ -79,20 +81,20 @@ Guide a new filament through temperature, flow, pressure advance, retraction, ov
 ## Non-functional requirements
 
 - Printing and Spoolman usage tracking continue if Filament Manager or Google is unavailable.
-- Filament Manager and Spoolman failures are isolated by stack boundary.
+- Filament Manager and Spoolman runtime failures are isolated by service and database boundaries; operators requiring independent stack rollouts use the separate stack files.
 - Database writes are transactional.
 - External projections are eventually consistent and rebuildable.
 - External operations are idempotent and retryable.
 - Support amd64 and arm64 images.
 - Provide health, readiness, and metrics endpoints.
-- Use least-privilege credentials and secret files.
+- Use least-privilege credentials, scoped environment delivery for the current deployment phase, and masked application configuration.
 - Preserve measurement and calibration history.
 
 ## MVP acceptance criteria
 
 1. Workbook imports into PostgreSQL with no lost fields.
-2. Standalone Spoolman connects to its dedicated database on the central PostgreSQL server.
-3. Filament Manager connects to Spoolman across the shared external overlay network.
+2. Spoolman connects to its dedicated database on the central PostgreSQL server.
+3. Filament Manager connects to Spoolman across the stack overlay network.
 4. A spool selected in Fluidd records print consumption even during a Filament Manager restart.
 5. Filament Manager reconciles the remaining mass into its canonical database.
 6. A protected Google Sheet shows the updated inventory.

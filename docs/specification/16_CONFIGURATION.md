@@ -2,15 +2,15 @@
 
 ## Configuration ownership
 
-Filament Manager and Spoolman use separate configuration and secret sets because they are separate production stacks.
+Filament Manager and Spoolman use separate configuration and credential sets even when they run in one production stack.
 
 ### Filament Manager configuration
 
-Stored in `examples/config.yaml` and mounted into the Filament Manager stack. Key settings:
+Docker builds the complete validated runtime configuration directly from scoped environment variables. No application Docker config is created or mounted. The environment contract includes:
 
-- canonical PostgreSQL connection secret
+- canonical PostgreSQL connection assembled from scoped stack variables
 - Spoolman API base URL
-- Moonraker printers
+- one Moonraker printer's identifier, display name, HTTP URL, optional WebSocket URL and API key, and nozzle diameter
 - Google publication
 - synchronization policies
 - build plates
@@ -18,37 +18,37 @@ Stored in `examples/config.yaml` and mounted into the Filament Manager stack. Ke
 
 ### Spoolman configuration
 
-Stored directly in `examples/spoolman-stack.yml` as non-secret environment values plus the `spoolman_db_password` Docker secret.
+Stored directly in `docker-stack.yml` as scoped environment values, including `SPOOLMAN_DB_PASSWORD`.
 
 ## Filament Manager Spoolman URL
 
-Default production example:
+Default combined-stack variable:
 
-```yaml
-spoolman:
-  base_url: http://spoolman_spoolman:8000
+```text
+SPOOLMAN_INTERNAL_URL=http://spoolman:8000
 ```
 
-This assumes stack name `spoolman`, service name `spoolman`, and both stacks attached to `filament-services`. The URL is configurable because stack names may differ.
+This uses the `spoolman` service alias on the combined stack overlay. The optional separate-stack configuration uses `http://spoolman_spoolman:8000`.
 
-## Secret separation
+## Credential separation
 
-Filament Manager stack secrets:
+Filament Manager service credential variables:
 
-- `filament_manager_database_url`
-- `google_service_account`
-- `moonraker_api_key`
-- `application_secret`
+- `FILAMENT_MANAGER_DATABASE_URL`, assembled inside the stack from `FILAMENT_MANAGER_DB_*` and `POSTGRES_*`
+- `FILAMENT_MANAGER_GOOGLE_SERVICE_ACCOUNT_JSON`
+- `FILAMENT_MANAGER_MOONRAKER_API_KEY`
 
-Spoolman stack secrets:
+Spoolman service credential variable:
 
-- `spoolman_db_password`
+- `SPOOLMAN_DB_PASSWORD`
 
-Never mount `spoolman_db_password` into Filament Manager. Never mount `filament_manager_database_url` into Spoolman.
+Never pass `SPOOLMAN_DB_PASSWORD` into Filament Manager. Never pass `FILAMENT_MANAGER_DATABASE_URL` or `FILAMENT_MANAGER_DB_PASSWORD` into Spoolman.
 
 ## Deployment parameters
 
-Use `.env.example` only for non-secret hostnames, image tags, and public ports. Production passwords and tokens belong in Docker secrets.
+Copy `.env.example` to the ignored `.env`, protect it with mode `0600`, and populate both ordinary settings and credentials. Export it explicitly before command-line deployment because `docker stack deploy` does not load `.env` automatically. This environment-variable delivery is transitional: authorized Docker and Portainer operators can inspect service values, so keep access narrow and never print rendered stack specifications into logs.
+
+`docker-stack.yml` requires the public Filament Manager URL, public Spoolman URL, one Moonraker printer name and HTTP URL, its nozzle diameter, PostgreSQL routing, and credentials. Empty `MOONRAKER_WEBSOCKET_URL` derives the conventional endpoint from `MOONRAKER_BASE_URL`. Operational values documented with defaults remain overrideable variables.
 
 ## Configuration validation
 
@@ -58,12 +58,13 @@ At startup, Filament Manager must verify:
 - Spoolman URL syntax and API health
 - no Spoolman database credential is present in Filament Manager config
 - Moonraker URLs
+- exactly one environment-configured Moonraker printer
 - Google Sheet and service-account configuration
 - valid plate codes and mesh names
 
-## Development exception
+## Local development
 
-The combined `docker-compose.yml` may run Filament Manager and Spoolman together for local testing. This does not change the production architecture decision.
+The combined `docker/docker-compose.yml` runs a local PostgreSQL container in addition to Filament Manager and Spoolman. Production `docker-stack.yml` never installs PostgreSQL and always uses the configured remote server.
 
 ## Authoritative implementation references
 

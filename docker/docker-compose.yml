@@ -1,19 +1,58 @@
+x-filament-manager-environment: &filament-manager-environment
+  FILAMENT_MANAGER_BASE_URL: ${FILAMENT_MANAGER_BASE_URL:?Set FILAMENT_MANAGER_BASE_URL}
+  FILAMENT_MANAGER_ALLOWED_HOSTS: ${FILAMENT_MANAGER_ALLOWED_HOSTS:-}
+  FILAMENT_MANAGER_CORS_ORIGINS: ${FILAMENT_MANAGER_CORS_ORIGINS:-}
+  FILAMENT_MANAGER_SECURE_COOKIES: ${FILAMENT_MANAGER_SECURE_COOKIES:-false}
+  FILAMENT_MANAGER_TIMEZONE: ${TZ:-America/Detroit}
+  FILAMENT_MANAGER_LOG_LEVEL: ${FILAMENT_MANAGER_LOG_LEVEL:-INFO}
+  FILAMENT_MANAGER_DATABASE_URL: "postgresql+psycopg://${FILAMENT_MANAGER_DB_USERNAME:-filament_manager_user}:${FILAMENT_MANAGER_DB_PASSWORD:?Set FILAMENT_MANAGER_DB_PASSWORD}@postgres:5432/${FILAMENT_MANAGER_DB_NAME:-filament_manager}"
+  FILAMENT_MANAGER_DATABASE_POOL_SIZE: ${FILAMENT_MANAGER_DATABASE_POOL_SIZE:-10}
+  FILAMENT_MANAGER_DATABASE_MAX_OVERFLOW: ${FILAMENT_MANAGER_DATABASE_MAX_OVERFLOW:-10}
+  FILAMENT_MANAGER_DATABASE_STATEMENT_TIMEOUT_MS: ${FILAMENT_MANAGER_DATABASE_STATEMENT_TIMEOUT_MS:-30000}
+  FILAMENT_MANAGER_SPOOLMAN_BASE_URL: ${SPOOLMAN_INTERNAL_URL:-http://spoolman:8000}
+  FILAMENT_MANAGER_SPOOLMAN_PUBLIC_URL: ${SPOOLMAN_PUBLIC_URL:?Set SPOOLMAN_PUBLIC_URL}
+  FILAMENT_MANAGER_SPOOLMAN_REQUEST_TIMEOUT_SECONDS: ${SPOOLMAN_REQUEST_TIMEOUT_SECONDS:-10}
+  FILAMENT_MANAGER_SPOOLMAN_RECONCILE_INTERVAL_MINUTES: ${SPOOLMAN_RECONCILE_INTERVAL_MINUTES:-30}
+  FILAMENT_MANAGER_MOONRAKER_PRINTER_ID: ${MOONRAKER_PRINTER_ID:?Set MOONRAKER_PRINTER_ID}
+  FILAMENT_MANAGER_MOONRAKER_PRINTER_NAME: ${MOONRAKER_PRINTER_NAME:?Set MOONRAKER_PRINTER_NAME}
+  FILAMENT_MANAGER_MOONRAKER_BASE_URL: ${MOONRAKER_BASE_URL:?Set MOONRAKER_BASE_URL}
+  FILAMENT_MANAGER_MOONRAKER_WEBSOCKET_URL: ${MOONRAKER_WEBSOCKET_URL:-}
+  FILAMENT_MANAGER_MOONRAKER_API_KEY: ${MOONRAKER_API_KEY:-}
+  FILAMENT_MANAGER_MOONRAKER_NOZZLE_DIAMETER_MM: ${MOONRAKER_NOZZLE_DIAMETER_MM:?Set MOONRAKER_NOZZLE_DIAMETER_MM}
+  FILAMENT_MANAGER_GOOGLE_ENABLED: ${GOOGLE_ENABLED:-false}
+  FILAMENT_MANAGER_GOOGLE_SPREADSHEET_ID: ${GOOGLE_SPREADSHEET_ID:-}
+  FILAMENT_MANAGER_GOOGLE_SERVICE_ACCOUNT_JSON: ${GOOGLE_SERVICE_ACCOUNT_JSON:-}
+  FILAMENT_MANAGER_GOOGLE_PUBLISH_INTERVAL_SECONDS: ${GOOGLE_PUBLISH_INTERVAL_SECONDS:-30}
+  FILAMENT_MANAGER_GOOGLE_WRITE_BATCH_SIZE: ${GOOGLE_WRITE_BATCH_SIZE:-200}
+  FILAMENT_MANAGER_GOOGLE_UNEXPECTED_EDIT_POLICY: ${GOOGLE_UNEXPECTED_EDIT_POLICY:-warn_and_overwrite}
+  FILAMENT_MANAGER_SYNC_MAX_RETRY_ATTEMPTS: ${SYNC_MAX_RETRY_ATTEMPTS:-12}
+  FILAMENT_MANAGER_SYNC_OUTBOX_WORKERS: ${SYNC_OUTBOX_WORKERS:-2}
+  FILAMENT_MANAGER_LOW_SPOOL_THRESHOLD_PERCENT: ${LOW_SPOOL_THRESHOLD_PERCENT:-25}
+  FILAMENT_MANAGER_MEASUREMENT_INCREASE_TOLERANCE_PERCENT: ${MEASUREMENT_INCREASE_TOLERANCE_PERCENT:-5}
+  FILAMENT_MANAGER_MEASUREMENT_INCREASE_TOLERANCE_G: ${MEASUREMENT_INCREASE_TOLERANCE_G:-25}
+  FILAMENT_MANAGER_PLATE_SELECTION_POLICY: ${PLATE_SELECTION_POLICY:-require}
+  FILAMENT_MANAGER_VERIFY_MESH_LOADED: ${VERIFY_MESH_LOADED:-true}
+  FILAMENT_MANAGER_SCALE_ENABLED: ${SCALE_ENABLED:-false}
+  FILAMENT_MANAGER_NFC_ENABLED: ${NFC_ENABLED:-false}
+  FILAMENT_MANAGER_STABLE_WINDOW_SECONDS: ${STABLE_WINDOW_SECONDS:-10}
+  FILAMENT_MANAGER_STABLE_VARIANCE_G: ${STABLE_VARIANCE_G:-2}
+  FILAMENT_MANAGER_REPLAY_WINDOW_SECONDS: ${REPLAY_WINDOW_SECONDS:-300}
+  FILAMENT_MANAGER_SESSION_LIFETIME_HOURS: ${SESSION_LIFETIME_HOURS:-12}
+  FILAMENT_MANAGER_SESSION_IDLE_MINUTES: ${SESSION_IDLE_MINUTES:-60}
+  FILAMENT_MANAGER_MAX_FAILED_LOGINS: ${MAX_FAILED_LOGINS:-5}
+  FILAMENT_MANAGER_LOCKOUT_MINUTES: ${LOCKOUT_MINUTES:-15}
+
 services:
   postgres:
     image: postgres:17-alpine
-    entrypoint: ["/usr/local/bin/filament-manager-postgres-entrypoint.sh"]
-    command: ["postgres"]
     environment:
       POSTGRES_DB: postgres
       POSTGRES_USER: postgres
-      POSTGRES_PASSWORD_FILE: /run/secrets/postgres_admin_password
-    secrets:
-      - postgres_admin_password
-      - filament_manager_db_password
-      - spoolman_db_password
+      POSTGRES_PASSWORD: ${POSTGRES_ADMIN_PASSWORD:?Set POSTGRES_ADMIN_PASSWORD}
+      FILAMENT_MANAGER_DB_PASSWORD: ${FILAMENT_MANAGER_DB_PASSWORD:?Set FILAMENT_MANAGER_DB_PASSWORD}
+      SPOOLMAN_DB_PASSWORD: ${SPOOLMAN_DB_PASSWORD:?Set SPOOLMAN_DB_PASSWORD}
     volumes:
       - postgres_data:/var/lib/postgresql/data
-      - ./postgres-secret-entrypoint.sh:/usr/local/bin/filament-manager-postgres-entrypoint.sh:ro
       - ./postgres-init-databases.sh:/docker-entrypoint-initdb.d/20-filament-databases.sh:ro
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U postgres -d postgres"]
@@ -22,22 +61,21 @@ services:
       retries: 20
 
   spoolman:
-    image: ghcr.io/donkie/spoolman:0.23.1
+    image: ${SPOOLMAN_IMAGE:-ghcr.io/donkie/spoolman:0.23.1}
     environment:
-      TZ: America/Detroit
+      TZ: ${TZ:-America/Detroit}
       SPOOLMAN_HOST: 0.0.0.0
       SPOOLMAN_PORT: "8000"
       SPOOLMAN_DB_TYPE: postgres
       SPOOLMAN_DB_HOST: postgres
       SPOOLMAN_DB_PORT: "5432"
-      SPOOLMAN_DB_NAME: spoolman
-      SPOOLMAN_DB_USERNAME: spoolman_user
-      SPOOLMAN_DB_PASSWORD_FILE: /run/secrets/spoolman_db_password
-      SPOOLMAN_CORS_ORIGIN: http://localhost:7125
-    secrets:
-      - spoolman_db_password
+      SPOOLMAN_DB_NAME: ${SPOOLMAN_DB_NAME:-spoolman}
+      SPOOLMAN_DB_USERNAME: ${SPOOLMAN_DB_USERNAME:-spoolman_user}
+      SPOOLMAN_DB_PASSWORD: ${SPOOLMAN_DB_PASSWORD:?Set SPOOLMAN_DB_PASSWORD}
+      SPOOLMAN_CORS_ORIGIN: ${SPOOLMAN_CORS_ORIGIN:?Set SPOOLMAN_CORS_ORIGIN}
+      SPOOLMAN_METRICS_ENABLED: ${SPOOLMAN_METRICS_ENABLED:-TRUE}
     ports:
-      - "7912:8000"
+      - "${SPOOLMAN_PUBLIC_PORT:-7912}:8000"
     volumes:
       - spoolman_data:/home/app/.local/share/spoolman
     depends_on:
@@ -47,15 +85,9 @@ services:
   filament-manager:
     build:
       context: ..
-    environment:
-      FILAMENT_MANAGER_CONFIG: /config/config.yaml
-    configs:
-      - source: filament_manager_config
-        target: /config/config.yaml
-    secrets:
-      - filament_manager_database_url
+    environment: *filament-manager-environment
     ports:
-      - "8080:8080"
+      - "${FILAMENT_MANAGER_PUBLIC_PORT:-8080}:8080"
     volumes:
       - filament_manager_data:/data
     depends_on:
@@ -69,19 +101,12 @@ services:
       - filament-manager-cli
       - bootstrap-admin
       - --username
-      - admin
+      - ${BOOTSTRAP_ADMIN_USERNAME:?Set BOOTSTRAP_ADMIN_USERNAME}
       - --display-name
-      - Workshop Administrator
-      - --password-file
-      - /run/secrets/bootstrap_admin_password
+      - ${BOOTSTRAP_ADMIN_DISPLAY_NAME:?Set BOOTSTRAP_ADMIN_DISPLAY_NAME}
     environment:
-      FILAMENT_MANAGER_CONFIG: /config/config.yaml
-    configs:
-      - source: filament_manager_config
-        target: /config/config.yaml
-    secrets:
-      - filament_manager_database_url
-      - bootstrap_admin_password
+      FILAMENT_MANAGER_DATABASE_URL: "postgresql+psycopg://${FILAMENT_MANAGER_DB_USERNAME:-filament_manager_user}:${FILAMENT_MANAGER_DB_PASSWORD:?Set FILAMENT_MANAGER_DB_PASSWORD}@postgres:5432/${FILAMENT_MANAGER_DB_NAME:-filament_manager}"
+      FILAMENT_MANAGER_BOOTSTRAP_ADMIN_PASSWORD: ${BOOTSTRAP_ADMIN_PASSWORD:?Set BOOTSTRAP_ADMIN_PASSWORD}
     depends_on:
       postgres:
         condition: service_healthy
@@ -91,34 +116,12 @@ services:
     build:
       context: ..
     command: ["filament-manager-worker"]
-    environment:
-      FILAMENT_MANAGER_CONFIG: /config/config.yaml
-    configs:
-      - source: filament_manager_config
-        target: /config/config.yaml
-    secrets:
-      - filament_manager_database_url
+    environment: *filament-manager-environment
     volumes:
       - filament_manager_data:/data
     depends_on:
       postgres:
         condition: service_healthy
-
-configs:
-  filament_manager_config:
-    file: ../config/config.local.docker.yaml
-
-secrets:
-  postgres_admin_password:
-    file: ../secrets/postgres-admin-password.txt
-  filament_manager_db_password:
-    file: ../secrets/filament-manager-db-password.txt
-  spoolman_db_password:
-    file: ../secrets/spoolman-db-password.txt
-  filament_manager_database_url:
-    file: ../secrets/filament-manager-database-url.txt
-  bootstrap_admin_password:
-    file: ../secrets/bootstrap-admin-password.txt
 
 volumes:
   postgres_data:

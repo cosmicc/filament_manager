@@ -60,12 +60,14 @@ def pair(
     }
     payload.pop("last_error", None)
     response = pair_agent(server_url, payload)
-    config = AgentConfig(
-        server_url=server_url,
-        agent_id=str(response["agent_id"]),
-        agent_code=str(response["agent_code"]),
-        agent_token=str(response["agent_token"]),
-        display_name=name.strip(),
+    config = AgentConfig.model_validate(
+        {
+            "server_url": server_url,
+            "agent_id": str(response["agent_id"]),
+            "agent_code": str(response["agent_code"]),
+            "agent_token": str(response["agent_token"]),
+            "display_name": name.strip(),
+        }
     )
     save_config(config)
     typer.echo(

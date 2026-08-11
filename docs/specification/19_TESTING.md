@@ -47,7 +47,7 @@ Mock or containerize:
 
 ## Swarm tests
 
-- secrets mounted correctly
+- required stack variables reach only their intended services
 - overlay DNS resolution
 - published 7912 reaches Spoolman target 8000
 - service restart does not duplicate jobs
@@ -55,13 +55,13 @@ Mock or containerize:
 
 ## Restore test
 
-Restore both PostgreSQL databases independently to an isolated environment, deploy both stacks, rebuild Spoolman projections through the API, and rebuild a new Google Sheet. This is the definitive disaster-recovery test.
+Restore both PostgreSQL databases independently to an isolated environment, deploy both services in the combined stack, rebuild Spoolman projections through the API, and rebuild a new Google Sheet. This is the definitive disaster-recovery test.
 
 ## Stack-boundary tests
 
 - stop Filament Manager and verify Moonraker continues updating Spoolman
 - redeploy Spoolman and verify Filament Manager reconnects and reconciles
-- verify neither stack contains the other stack's database secret
+- verify neither service receives the other service's database credential
 - remove and recreate `filament-services`, then verify recovery
 - test independent image rollback for each stack
 - verify Moonraker never depends on Swarm-internal DNS
@@ -78,4 +78,3 @@ Restore both PostgreSQL databases independently to an isolated environment, depl
 - Google Sheets API: https://developers.google.com/workspace/sheets/api
 - Docker Swarm stack deployment: https://docs.docker.com/engine/swarm/stack-deploy/
 - PostgreSQL documentation: https://www.postgresql.org/docs/
-

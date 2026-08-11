@@ -2,7 +2,7 @@
 
 ## Moonraker connection
 
-Moonraker connects directly to the standalone Spoolman stack through a stable LAN endpoint:
+Moonraker connects directly to the Spoolman service through a stable LAN endpoint:
 
 ```ini
 [spoolman]
@@ -10,12 +10,12 @@ server: http://spoolman.internal.example:7912
 sync_rate: 5
 ```
 
-Use a DNS name or virtual IP that remains valid when Swarm reschedules the service. Do not use the overlay-only name `spoolman_spoolman` on the printer.
+Use a DNS name or virtual IP that remains valid when Swarm reschedules the service. Do not use the overlay-only `spoolman` or `spoolman_spoolman` names on the printer.
 
 ## Availability behavior
 
-- Moonraker usage reporting does not depend on the Filament Manager stack being online.
-- Restarting or upgrading Filament Manager must not interrupt the Spoolman endpoint.
+- Moonraker usage reporting does not depend on the Filament Manager web or worker services being online.
+- Restarting or upgrading only the Filament Manager services must not interrupt the Spoolman endpoint.
 - Spoolman maintenance is scheduled separately and should preserve queued or recoverable usage reporting according to Moonraker behavior.
 
 ## Active spool macros

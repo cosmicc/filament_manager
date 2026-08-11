@@ -1,5 +1,22 @@
 # User Changelog
 
+## Unreleased
+
+### Added
+
+- Added a single production stack that starts Filament Manager, its background worker, and Spoolman together while using an existing remote PostgreSQL server.
+- Added ready-to-pull AMD64 and ARM64 Filament Manager container images for easier first-time deployment.
+
+### Changed
+
+- Simplified production installation and documented the complete remote database and first-user setup.
+- Changed the current Docker setup to use stack environment variables instead of requiring Docker secret objects.
+- Moved the Filament Manager URL, Spoolman URL, and one supported Moonraker printer's settings into deployment variables so no separate application config object is required.
+
+### Fixed
+
+- Clarified how deployment variables must be loaded before a command-line Swarm deployment.
+
 ## 0.1.0 - 08.05.2026
 
 ### Added

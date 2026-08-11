@@ -7,33 +7,34 @@
 - [ ] `spoolman` database and `spoolman_user`
 - [ ] no cross-database grants
 - [ ] SCRAM and `pg_hba.conf` restrictions
-- [ ] external `filament-services` overlay network
-- [ ] external Spoolman data volume
+- [ ] combined-stack `filament-services` overlay network
+- [ ] durable Spoolman and Filament Manager volumes with valid multi-node placement or shared storage
 - [ ] stable LAN DNS name for Spoolman
 
-## Standalone Spoolman stack
+## Spoolman service
 
 - [ ] tested image tag pinned
-- [ ] database password stored as Docker secret
+- [ ] database password supplied only through the scoped Spoolman environment
 - [ ] PostgreSQL connection verified
 - [ ] container port 8000 published as 7912
 - [ ] health check passes
 - [ ] one replica and stop-first update policy
 - [ ] CORS origin is exact and not wildcard
-- [ ] allowed hosts configured for reverse proxy
 - [ ] Moonraker and Fluidd verified
-- [ ] independent upgrade and rollback tested
+- [ ] stop-first upgrade and rollback tested
 
-## Filament Manager stack
+## Filament Manager services
 
-- [ ] separate stack file
-- [ ] canonical database URL secret
-- [ ] joins `filament-services`
+- [ ] root combined stack file validated
+- [ ] no mounted application Docker config; deployer-specific settings are environment variables
+- [ ] canonical database URL assembled from protected stack variables
+- [ ] joins the combined `filament-services` overlay
 - [ ] Spoolman base URL configurable
-- [ ] no Spoolman DB secret mounted
+- [ ] no Spoolman database credential passed to Filament Manager
+- [ ] one Moonraker printer name, URL, nozzle diameter, and optional credential validated
 - [ ] health/readiness/metrics endpoints
 - [ ] migration locking
-- [ ] independent restart tested without Spoolman interruption
+- [ ] service restart tested without corrupting Spoolman state
 
 ## Canonical data and import
 

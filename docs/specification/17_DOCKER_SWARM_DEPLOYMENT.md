@@ -2,77 +2,50 @@
 
 ## Production standard
 
-Production uses two stack files:
+The repository root `docker-stack.yml` deploys three services:
 
-- `examples/spoolman-stack.yml`
-- `examples/filament-manager-stack.yml`
+- `spoolman`;
+- Filament Manager `web`;
+- Filament Manager `worker`.
 
-The central PostgreSQL server is outside both stacks. A shared external overlay network connects the applications.
-
-The examples publish Spoolman on `7912` and Filament Manager on `8080`. An existing authenticated reverse-proxy overlay may be added to either stack after replacing the example network and hostnames with the local environment.
+PostgreSQL is always remote. The `filament_manager` and `spoolman` databases have different owners and credentials even when hosted by the same PostgreSQL server. The stack publishes Spoolman on `7912` and Filament Manager on `8080` by default.
 
 ## One-time prerequisites
 
-```bash
-docker network create --driver overlay --attachable filament-services
-```
+1. Provision the remote databases and roles with `docker/provision-databases.sql`.
+2. Restrict PostgreSQL network access to approved Swarm nodes and require encrypted connections.
+3. Populate all Filament Manager, Spoolman, one-printer Moonraker, Google, database, and tuning variables in a protected, ignored `.env` or Portainer variable set.
+4. Pin immutable application images and export the variables from `.env`.
 
-Create or designate an external volume for Spoolman's local data directory:
+No Filament Manager Docker config or Docker secret object is required. Fixed application invariants remain code defaults; all deployment-specific values are stack variables.
 
-```bash
-docker volume create spoolman_data
-```
-
-For a multi-node Swarm, configure that external volume using the existing shared/NFS storage policy or constrain the service to the node that owns the volume. A local-driver external volume must exist on the constrained node, not only on the Swarm manager.
+The stack creates its overlay and volumes. For a multi-node Swarm, use shared storage or placement constraints so `filament_manager_data` and `spoolman_data` cannot be rescheduled onto empty local volumes.
 
 ## Deployment order
 
-1. Provision both PostgreSQL databases and roles.
-2. Create `filament-services`.
-3. Create `spoolman_db_password`.
-4. Deploy Spoolman:
+1. Run the Filament Manager Alembic migration as a one-shot Swarm job.
+2. Confirm that the migration completed successfully and remove the completed job.
+3. Validate the interpolated stack with `docker stack config`.
+4. Deploy `docker-stack.yml` as stack `filament-manager`.
+5. Seed the configured printer and P1-P5 once.
+6. Create the first Administrator through a short-lived bootstrap job.
+7. Verify all health endpoints, service logs, and remote database connections.
 
-```bash
-docker stack deploy -c spoolman-stack.yml spoolman
-```
-
-5. Verify `spoolman_spoolman` and its published endpoint.
-6. Create Filament Manager secrets.
-7. Deploy Filament Manager:
-
-```bash
-docker stack deploy -c filament-manager-stack.yml filament-manager
-```
-
-8. Verify cross-stack API connectivity from Filament Manager to `http://spoolman_spoolman:8000`.
-
-## Independent lifecycle
-
-```bash
-# Upgrade or roll back Spoolman only
-docker stack deploy -c spoolman-stack.yml spoolman
-
-# Upgrade or roll back Filament Manager only
-docker stack deploy -c filament-manager-stack.yml filament-manager
-```
-
-Do not combine the stacks for production convenience. Independent deployment is a reliability requirement.
+Exact commands and environment-variable handling requirements are in `INSTALL.md`.
 
 ## Service discovery
 
-Swarm prefixes service DNS names with the stack name. With the examples:
+Within the combined stack, Filament Manager connects to `http://spoolman:8000` on the stack overlay. This internal name is not accessible from Moonraker outside Swarm; Moonraker uses the stable published LAN hostname and port.
 
-- stack: `spoolman`
-- service: `spoolman`
-- DNS: `spoolman_spoolman`
+## Independent-stack alternative
 
-Both services must join the same external network. Internal service names are not accessible from Moonraker outside Swarm.
+`docker/spoolman-stack.yml` and `docker/filament-manager-stack.yml` retain independent application rollout and rollback boundaries. They require a pre-created external `filament-services` network and use the stack-prefixed Spoolman DNS name `spoolman_spoolman`.
 
 ## Image policy
 
 - Pin tested immutable version tags or digests.
 - Do not use `latest` in production.
-- Upgrade Spoolman separately after reviewing upstream migrations and release notes.
+- Change the Spoolman image independently only after reviewing upstream migrations and release notes.
 - Run one Spoolman replica with `stop-first` update order.
 - Use `start-first` for Filament Manager only when migrations and worker leases make concurrent versions safe.
 
@@ -97,7 +70,7 @@ Filament Manager:
 
 ## Local development
 
-`examples/docker-compose.yml` runs both applications in one Compose project for development and integration tests and mounts `examples/config.local.yaml`, where Spoolman resolves as `http://spoolman:8000`. It is not the recommended production layout.
+`docker/docker-compose.yml` runs both applications and a local PostgreSQL container in one Compose project for development and integration tests. The production stack uses the remote database instead.
 
 ## Authoritative implementation references
 

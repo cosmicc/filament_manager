@@ -67,10 +67,12 @@ async def _integration_statuses() -> list[IntegrationStatus]:
                 detail="Publication is disabled",
                 checked_at=checked_at,
             )
-        assert settings.google.spreadsheet_id and settings.google.service_account_file
+        assert settings.google.spreadsheet_id
         try:
             await GoogleSheetsClient(
-                settings.google.spreadsheet_id, settings.google.service_account_file
+                settings.google.spreadsheet_id,
+                settings.google.service_account_file,
+                settings.google.resolved_service_account_info(),
             ).health()
             return IntegrationStatus(
                 service="Google Sheets",
