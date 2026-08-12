@@ -12,9 +12,17 @@ from openpyxl import load_workbook
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from filament_manager.domain.colors import normalize_color_name
 from filament_manager.models.auth import User
 from filament_manager.models.enums import ProfileStatus, SpoolStatus, UserRole
-from filament_manager.models.inventory import FilamentProduct, MaterialProfile, Printer, Spool, Vendor
+from filament_manager.models.inventory import (
+    FilamentColor,
+    FilamentProduct,
+    MaterialProfile,
+    Printer,
+    Spool,
+    Vendor,
+)
 from filament_manager.models.operations import ImportRun
 
 from .events import add_audit_event, add_outbox_job
@@ -228,6 +236,7 @@ async def commit_approved_run(
     sheet = workbook["Inventory"]
     vendors: dict[str, Vendor] = {}
     products: dict[tuple[object, ...], FilamentProduct] = {}
+    colors: dict[str, FilamentColor] = {}
     imported_spools = 0
     imported_profiles = 0
     row_iterator = sheet.iter_rows(min_row=2, max_col=len(HEADERS), values_only=True)
@@ -258,12 +267,29 @@ async def commit_approved_run(
         )
         product = products.get(product_key)
         if product is None:
+            color_name = str(values["Color"]).strip()
+            normalized_color = normalize_color_name(color_name)
+            color = colors.get(normalized_color)
+            if color is None:
+                color = await session.scalar(
+                    select(FilamentColor).where(FilamentColor.normalized_name == normalized_color)
+                )
+            if color is None:
+                color = FilamentColor(
+                    name=color_name,
+                    normalized_name=normalized_color,
+                    color_hex="808080",
+                )
+                session.add(color)
+                await session.flush()
+            colors[normalized_color] = color
             product = FilamentProduct(
                 vendor_id=vendor.id,
                 material_type=str(values["Material Type"]),
                 filler=str(values["Filler / Reinforcement"] or "None"),
                 finish=str(values["Finish / Effect"] or "Standard"),
-                color_name=str(values["Color"]),
+                color_name=color.name,
+                color_hex=color.color_hex,
                 product_name=str(values["Product / Grade / Hardness"] or "") or None,
                 diameter_mm=Decimal(str(values["Diameter (mm)"])),
                 tolerance_mm=(

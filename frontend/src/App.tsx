@@ -9,6 +9,7 @@ const BuildPlatesPage = lazy(() => import('./pages/BuildPlatesPage'))
 const CalibrationPage = lazy(() => import('./pages/CalibrationPage'))
 const DashboardPage = lazy(() => import('./pages/DashboardPage'))
 const FilamentsPage = lazy(() => import('./pages/FilamentsPage'))
+const FilamentDetailPage = lazy(() => import('./pages/FilamentDetailPage'))
 const IntegrationsPage = lazy(() => import('./pages/IntegrationsPage'))
 const LabelsPage = lazy(() => import('./pages/LabelsPage'))
 const LoginPage = lazy(() => import('./pages/LoginPage'))
@@ -39,14 +40,16 @@ export function App() {
   const { user, loading } = useAuth()
   const { path, navigate } = useRouter()
 
+  const isFilamentDetail = /^\/filaments\/[0-9a-f-]{36}$/i.test(path)
+
   useEffect(() => {
     if (loading) return
     if (!user && path !== '/login') navigate('/login', true)
     if (user && path === '/login') navigate('/', true)
-    if (user && path !== '/login' && !pages[path]) navigate('/', true)
-  }, [loading, navigate, path, user])
+    if (user && path !== '/login' && !pages[path] && !isFilamentDetail) navigate('/', true)
+  }, [isFilamentDetail, loading, navigate, path, user])
 
   if (loading) return <div className="app-loading"><LoadingState label="Opening Filament Manager" /></div>
-  const content = user ? (() => { const Page = pages[path] ?? DashboardPage; return <AppShell><Page /></AppShell> })() : <LoginPage />
+  const content = user ? (() => { const Page = isFilamentDetail ? FilamentDetailPage : pages[path] ?? DashboardPage; return <AppShell><Page /></AppShell> })() : <LoginPage />
   return <Suspense fallback={<div className="app-loading"><LoadingState /></div>}>{content}</Suspense>
 }

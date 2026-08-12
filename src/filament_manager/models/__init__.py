@@ -6,6 +6,7 @@ from .calibration import CalibrationSession, CalibrationStep
 from .inventory import (
     BuildPlate,
     BuildPlateSurface,
+    FilamentColor,
     FilamentProduct,
     MaterialProfile,
     MaterialTemplate,
@@ -28,6 +29,7 @@ __all__ = [
     "CalibrationStep",
     "CuraDeployment",
     "Device",
+    "FilamentColor",
     "FilamentProduct",
     "ImportRun",
     "MaterialProfile",

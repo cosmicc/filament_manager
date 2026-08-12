@@ -50,6 +50,17 @@ class Vendor(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     record_version: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
 
 
+class FilamentColor(UUIDPrimaryKeyMixin, TimestampMixin, Base):
+    """A remembered, case-insensitive color name and its canonical screen sample."""
+
+    __tablename__ = "filament_colors"
+
+    name: Mapped[str] = mapped_column(String(96), nullable=False)
+    normalized_name: Mapped[str] = mapped_column(String(96), nullable=False, unique=True)
+    color_hex: Mapped[str] = mapped_column(String(6), nullable=False)
+    record_version: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
+
+
 class FilamentProduct(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     """A purchasable filament definition shared by physical spools."""
 
@@ -202,7 +213,17 @@ class Printer(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     name: Mapped[str] = mapped_column(String(160), nullable=False)
     moonraker_base_url: Mapped[str] = mapped_column(String(512), nullable=False)
     nozzle_diameter_mm: Mapped[Decimal] = mapped_column(MEASUREMENT, nullable=False)
-    build_volume: Mapped[dict[str, Decimal]] = mapped_column(JSONB, nullable=False, default=dict)
+    build_volume: Mapped[dict[str, object]] = mapped_column(JSONB, nullable=False, default=dict)
+    manufacturer: Mapped[str | None] = mapped_column(String(160))
+    model: Mapped[str | None] = mapped_column(String(160))
+    kinematics: Mapped[str | None] = mapped_column(String(48))
+    nozzle_material: Mapped[str | None] = mapped_column(String(96))
+    extruder_type: Mapped[str | None] = mapped_column(String(96))
+    klipper_version: Mapped[str | None] = mapped_column(String(96))
+    moonraker_version: Mapped[str | None] = mapped_column(String(96))
+    host_name: Mapped[str | None] = mapped_column(String(255))
+    notes: Mapped[str | None] = mapped_column(Text)
+    last_info_sync_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     active_plate_id: Mapped[UUID | None] = mapped_column(ForeignKey("build_plates.id"))
     active_plate_surface_id: Mapped[UUID | None] = mapped_column(ForeignKey("build_plate_surfaces.id"))
     status: Mapped[str] = mapped_column(String(32), nullable=False, default="unknown")
@@ -225,7 +246,11 @@ class BuildPlate(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     display_name: Mapped[str] = mapped_column(String(120), nullable=False)
     description: Mapped[str | None] = mapped_column(Text)
     manufacturer: Mapped[str | None] = mapped_column(String(120))
-    dimensions_mm: Mapped[dict[str, Decimal]] = mapped_column(JSONB, nullable=False, default=dict)
+    product_name: Mapped[str | None] = mapped_column(String(160))
+    shape: Mapped[str | None] = mapped_column(String(32))
+    dimensions_mm: Mapped[dict[str, object]] = mapped_column(JSONB, nullable=False, default=dict)
+    magnetic: Mapped[bool | None] = mapped_column(Boolean)
+    flexible: Mapped[bool | None] = mapped_column(Boolean)
     condition: Mapped[PlateCondition] = mapped_column(
         Enum(PlateCondition, name="plate_condition"), nullable=False, default=PlateCondition.GOOD
     )

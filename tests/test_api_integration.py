@@ -21,6 +21,7 @@ from filament_manager.models.enums import SpoolStatus, UserRole
 from filament_manager.models.inventory import (
     BuildPlate,
     BuildPlateSurface,
+    FilamentColor,
     FilamentProduct,
     Printer,
     Spool,
@@ -217,16 +218,96 @@ async def test_seed_system_route_creates_configured_resources(monkeypatch: pytes
         async with httpx.AsyncClient(transport=transport, base_url="http://testserver") as client:
             seeded = await client.post("/api/v1/system/seed")
             seeded_again = await client.post("/api/v1/system/seed")
+            red_one = await client.post(
+                "/api/v1/filaments",
+                json={
+                    "material_type": "PLA",
+                    "color_name": "Red",
+                    "color_hex": "FF0000",
+                    "diameter_mm": "1.75",
+                    "density_g_cm3": "1.24",
+                    "nominal_net_mass_g": "1000",
+                },
+            )
+            red_two = await client.post(
+                "/api/v1/filaments",
+                json={
+                    "material_type": "PETG",
+                    "color_name": "red",
+                    "diameter_mm": "1.75",
+                    "density_g_cm3": "1.27",
+                    "nominal_net_mass_g": "1000",
+                },
+            )
+            recolored = await client.patch(
+                f"/api/v1/filaments/{red_one.json()['id']}",
+                json={"expected_version": 1, "color_hex": "A00000"},
+            )
+            remembered_colors = await client.get("/api/v1/filament-colors")
+            printers_response = await client.get("/api/v1/printers")
+            profile = await client.post(
+                "/api/v1/profiles",
+                json={
+                    "filament_product_id": red_one.json()["id"],
+                    "printer_id": printers_response.json()[0]["id"],
+                    "nozzle_diameter_mm": "0.4",
+                    "extruder_temp_c": "210",
+                    "bed_temp_c": "60",
+                    "flow_percent": "100",
+                    "cooling_min_percent": "20",
+                    "cooling_max_percent": "100",
+                    "filament_density_g_cm3": "1.24",
+                    "cura_extensions": {"xy_offset": "0.05"},
+                },
+            )
+            profile_revision = await client.post(
+                f"/api/v1/profiles/{profile.json()['id']}/revisions",
+                json={
+                    "expected_profile_version": 1,
+                    "settings": {
+                        "extruder_temp_c": "215",
+                        "bed_temp_c": "60",
+                        "flow_percent": "99",
+                        "cooling_min_percent": "20",
+                        "cooling_max_percent": "100",
+                        "filament_density_g_cm3": "1.24",
+                        "cura_extensions": {
+                            "xy_offset": "0.075",
+                            "hole_xy_offset": "0.2",
+                        },
+                    },
+                },
+            )
 
         assert seeded.status_code == 200, seeded.text
         assert seeded.json() == {"plates": 5, "printers": 1}
         assert seeded_again.status_code == 200, seeded_again.text
         assert seeded_again.json() == {"plates": 0, "printers": 0}
+        assert red_one.status_code == 201, red_one.text
+        assert red_two.status_code == 201, red_two.text
+        assert recolored.status_code == 200, recolored.text
+        assert recolored.json()["color_name"] == "Red"
+        assert recolored.json()["color_hex"] == "A00000"
+        assert remembered_colors.json()[0]["color_hex"] == "A00000"
+        assert profile.status_code == 201, profile.text
+        assert profile_revision.status_code == 201, profile_revision.text
+        assert profile_revision.json()["version"] == 2
+        assert Decimal(profile_revision.json()["extruder_temp_c"]) == Decimal("215")
+        assert profile_revision.json()["cura_extensions"] == {
+            "xy_offset": "0.075",
+            "hole_xy_offset": "0.2",
+        }
 
         async with factory() as session:
             assert await session.scalar(select(func.count(Printer.id))) == 1
             assert await session.scalar(select(func.count(BuildPlate.id))) == 5
             assert await session.scalar(select(func.count(BuildPlateSurface.id))) == 5
+            assert await session.scalar(select(func.count(FilamentColor.id))) == 1
+            products = list(
+                await session.scalars(select(FilamentProduct).order_by(FilamentProduct.material_type))
+            )
+            assert [product.color_hex for product in products] == ["A00000", "A00000"]
+            assert [product.color_name for product in products] == ["Red", "Red"]
             audit = await session.scalar(select(AuditEvent).where(AuditEvent.action == "system.seed.web"))
             assert audit is not None
             assert audit.after == {"plates": 5, "printers": 1}

@@ -9,8 +9,25 @@
     "plate_code": {"type": "string", "pattern": "^P[1-9][0-9]*$", "maxLength": 32},
     "display_name": {"type": "string", "minLength": 1, "maxLength": 120},
     "description": {"type": ["string", "null"]},
+    "manufacturer": {"type": ["string", "null"], "maxLength": 120},
+    "product_name": {"type": ["string", "null"], "maxLength": 160},
+    "shape": {"enum": ["rectangular", "round", "other", null]},
+    "dimensions_mm": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "width": {"type": "number", "exclusiveMinimum": 0},
+        "depth": {"type": "number", "exclusiveMinimum": 0},
+        "diameter": {"type": "number", "exclusiveMinimum": 0},
+        "thickness": {"type": "number", "exclusiveMinimum": 0}
+      }
+    },
+    "magnetic": {"type": ["boolean", "null"]},
+    "flexible": {"type": ["boolean", "null"]},
     "condition": {"enum": ["new", "good", "worn", "damaged", "retired"]},
     "status": {"enum": ["active", "maintenance", "retired"]},
+    "preferred_materials": {"type": "array", "items": {"type": "string", "maxLength": 48}},
+    "max_bed_temp_c": {"type": ["number", "null"], "minimum": 0, "maximum": 500},
     "last_cleaned_at": {"type": ["string", "null"], "format": "date-time"},
     "notes": {"type": ["string", "null"]},
     "surfaces": {

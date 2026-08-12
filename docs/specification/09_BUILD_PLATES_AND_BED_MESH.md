@@ -34,6 +34,8 @@ Recommended fields:
 - clean/maintenance notes
 - photos later
 
+All current non-photo fields are editable in Filament Manager. The mesh-derived side identity, physical P-number identity, and exact same-named Klipper mapping remain immutable.
+
 ## Mesh integration
 
 Map each `build_plate_surface.klipper_mesh_profile` to its identical surface code. Selection executes:

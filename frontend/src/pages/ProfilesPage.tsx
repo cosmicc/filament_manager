@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { Download, FileInput, MonitorUp, SlidersHorizontal, Upload } from 'lucide-react'
+import { Download, FileInput, MonitorUp, Pencil, SlidersHorizontal, Upload } from 'lucide-react'
 import { useState } from 'react'
 import { apiFetch } from '../api/client'
 import type {
@@ -14,6 +14,7 @@ import { LoadingState } from '../components/LoadingState'
 import { PageHeader } from '../components/PageHeader'
 import { StatusPill } from '../components/StatusPill'
 import { useAuth } from '../context/AuthContext'
+import { Link } from '../context/RouterContext'
 
 export default function ProfilesPage() {
   const { user } = useAuth()
@@ -92,7 +93,7 @@ export default function ProfilesPage() {
       {profiles.isLoading ? <LoadingState /> : !profiles.data?.length ? (
         <EmptyState icon={SlidersHorizontal} title="No profiles yet" description={materialOptions.length ? 'Import an existing Cura material above or complete a calibration session.' : 'Complete a calibration session, or let a paired workstation report existing Cura materials for import.'} />
       ) : (
-        <div className="table-card"><table><thead><tr><th>Filament</th><th>Printer</th><th>Version</th><th>Temperatures</th><th>Flow</th><th>Cura settings</th><th>Pressure advance</th><th>Status</th><th>Actions</th></tr></thead><tbody>{profiles.data.map((profile) => <tr key={profile.id}><td><strong>{filamentName(profile.filament_product_id)}</strong></td><td>{printerName(profile.printer_id)} · {profile.nozzle_diameter_mm} mm</td><td>v{profile.version}</td><td>{profile.extruder_temp_c}° / {profile.bed_temp_c}°</td><td>{profile.flow_percent}%</td><td>{Object.keys(profile.cura_settings).length} stored</td><td>{profile.pressure_advance ?? '—'}</td><td><StatusPill status={profile.status} /></td><td><div className="table-actions">{user?.role !== 'viewer' && profile.status !== 'published' && <button className="icon-button" onClick={() => publish.mutate(profile.id)} title="Publish profile"><Upload size={17} /></button>}{user?.role !== 'viewer' && profile.status === 'published' && <button className="icon-button" disabled={deploy.isPending} onClick={() => deploy.mutate(profile.id)} title="Deploy material to all Cura workstations"><MonitorUp size={17} /></button>}<a className="icon-button" href={`/api/v1/profiles/${profile.id}/exports/cura`} title="Download Cura material settings"><Download size={17} /></a></div></td></tr>)}</tbody></table></div>
+        <div className="table-card"><table><thead><tr><th>Filament</th><th>Printer</th><th>Version</th><th>Temperatures</th><th>Flow</th><th>Cura settings</th><th>Pressure advance</th><th>Status</th><th>Actions</th></tr></thead><tbody>{profiles.data.map((profile) => <tr key={profile.id}><td><strong>{filamentName(profile.filament_product_id)}</strong></td><td>{printerName(profile.printer_id)} · {profile.nozzle_diameter_mm} mm</td><td>v{profile.version}</td><td>{profile.extruder_temp_c}° / {profile.bed_temp_c}°</td><td>{profile.flow_percent}%</td><td>{Object.keys(profile.cura_settings).length} stored</td><td>{profile.pressure_advance ?? '—'}</td><td><StatusPill status={profile.status} /></td><td><div className="table-actions"><Link className="icon-button" to={`/filaments/${profile.filament_product_id}`} title="Edit filament and profile settings"><Pencil size={17} /></Link>{user?.role !== 'viewer' && profile.status !== 'published' && <button className="icon-button" onClick={() => publish.mutate(profile.id)} title="Publish profile"><Upload size={17} /></button>}{user?.role !== 'viewer' && profile.status === 'published' && <button className="icon-button" disabled={deploy.isPending} onClick={() => deploy.mutate(profile.id)} title="Deploy material to all Cura workstations"><MonitorUp size={17} /></button>}<a className="icon-button" href={`/api/v1/profiles/${profile.id}/exports/cura`} title="Download Cura material settings"><Download size={17} /></a></div></td></tr>)}</tbody></table></div>
       )}
     </div>
   )

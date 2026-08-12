@@ -1,7 +1,7 @@
 """Pydantic API contracts kept separate from ORM models."""
 
 from datetime import date, datetime
-from decimal import Decimal
+from decimal import Decimal, InvalidOperation
 from typing import Any
 from uuid import UUID
 
@@ -36,7 +36,7 @@ class ErrorResponse(ApiModel):
 
 
 class LoginRequest(ApiModel):
-    username: str = Field(min_length=3, max_length=80)
+    username: str = Field(min_length=2, max_length=80)
     password: str = Field(min_length=1, max_length=256)
 
 
@@ -54,9 +54,9 @@ class LoginResponse(ApiModel):
 
 
 class UserCreate(ApiModel):
-    username: str = Field(min_length=3, max_length=80)
+    username: str = Field(min_length=2, max_length=80)
     display_name: str = Field(min_length=1, max_length=120)
-    password: str = Field(min_length=14, max_length=256)
+    password: str = Field(min_length=10, max_length=256)
     role: UserRole
 
 
@@ -85,6 +85,34 @@ class FilamentCreate(ApiModel):
 class FilamentResponse(FilamentCreate):
     id: UUID
     vendor_name: str | None = None
+    record_version: int
+
+
+class FilamentUpdate(ApiModel):
+    """Editable product metadata with global color-sample semantics."""
+
+    expected_version: int = Field(ge=1)
+    vendor_id: UUID | None = None
+    material_type: str | None = Field(default=None, min_length=1, max_length=48)
+    filler: str | None = Field(default=None, max_length=96)
+    finish: str | None = Field(default=None, max_length=96)
+    color_name: str | None = Field(default=None, min_length=1, max_length=96)
+    color_hex: str | None = Field(default=None, pattern=r"^[0-9A-Fa-f]{6}$")
+    product_name: str | None = Field(default=None, max_length=160)
+    diameter_mm: Decimal | None = Field(default=None, gt=0)
+    tolerance_mm: Decimal | None = Field(default=None, ge=0)
+    density_g_cm3: Decimal | None = Field(default=None, gt=0)
+    nominal_net_mass_g: Decimal | None = Field(default=None, gt=0)
+    notes: str | None = Field(default=None, max_length=4000)
+
+
+class FilamentColorResponse(ApiModel):
+    """A remembered color-name mapping used by every matching product."""
+
+    id: UUID
+    name: str
+    normalized_name: str
+    color_hex: str
     record_version: int
 
 
@@ -205,6 +233,15 @@ class BuildPlateSurfaceResponse(ApiModel):
     record_version: int
 
 
+class BuildPlateDimensions(ApiModel):
+    """Optional physical dimensions in millimetres for any plate geometry."""
+
+    width: Decimal | None = Field(default=None, gt=0)
+    depth: Decimal | None = Field(default=None, gt=0)
+    diameter: Decimal | None = Field(default=None, gt=0)
+    thickness: Decimal | None = Field(default=None, gt=0)
+
+
 class BuildPlateResponse(ApiModel):
     """A physical P-number plate and its printable sides."""
 
@@ -212,9 +249,16 @@ class BuildPlateResponse(ApiModel):
     plate_code: str
     display_name: str
     description: str | None
+    manufacturer: str | None
+    product_name: str | None
+    shape: str | None
+    dimensions_mm: BuildPlateDimensions
+    magnetic: bool | None
+    flexible: bool | None
     condition: str
     status: str
     preferred_materials: list[str]
+    max_bed_temp_c: Decimal | None
     last_cleaned_at: datetime | None
     notes: str | None
     record_version: int
@@ -225,8 +269,16 @@ class BuildPlateUpdate(ApiModel):
     expected_version: int = Field(ge=1)
     display_name: str | None = Field(default=None, min_length=1, max_length=120)
     description: str | None = Field(default=None, max_length=4000)
+    manufacturer: str | None = Field(default=None, max_length=120)
+    product_name: str | None = Field(default=None, max_length=160)
+    shape: str | None = Field(default=None, pattern=r"^(rectangular|round|other)$")
+    dimensions_mm: BuildPlateDimensions | None = None
+    magnetic: bool | None = None
+    flexible: bool | None = None
     condition: str | None = None
     status: str | None = None
+    preferred_materials: list[str] | None = Field(default=None, max_length=50)
+    max_bed_temp_c: Decimal | None = Field(default=None, ge=0, le=500)
     notes: str | None = Field(default=None, max_length=4000)
 
 
@@ -403,6 +455,13 @@ class ProfileCreate(MaterialSettingsInput):
     nozzle_diameter_mm: Decimal = Field(gt=0)
 
 
+class ProfileRevisionCreate(ApiModel):
+    """Create an editable draft by copying and replacing one profile snapshot."""
+
+    expected_profile_version: int = Field(ge=1)
+    settings: MaterialSettingsInput
+
+
 class ProfileResponse(ProfileCreate):
     id: UUID
     version: int
@@ -492,6 +551,74 @@ class IntegrationStatus(ApiModel):
     status: str
     detail: str
     checked_at: datetime
+
+
+class PrinterResponse(ApiModel):
+    """Useful canonical printer metadata with connection details excluded."""
+
+    id: UUID
+    printer_code: str
+    name: str
+    nozzle_diameter_mm: Decimal
+    build_volume: dict[str, Any]
+    manufacturer: str | None
+    model: str | None
+    kinematics: str | None
+    nozzle_material: str | None
+    extruder_type: str | None
+    klipper_version: str | None
+    moonraker_version: str | None
+    host_name: str | None
+    notes: str | None
+    active_plate_id: UUID | None
+    active_plate_surface_id: UUID | None
+    status: str
+    last_seen_at: datetime | None
+    last_info_sync_at: datetime | None
+    record_version: int
+
+
+class PrinterUpdate(ApiModel):
+    """Manual printer fields and overrides protected by optimistic concurrency."""
+
+    expected_version: int = Field(ge=1)
+    name: str | None = Field(default=None, min_length=1, max_length=160)
+    manufacturer: str | None = Field(default=None, max_length=160)
+    model: str | None = Field(default=None, max_length=160)
+    kinematics: str | None = Field(default=None, max_length=48)
+    nozzle_diameter_mm: Decimal | None = Field(default=None, gt=0, le=10)
+    nozzle_material: str | None = Field(default=None, max_length=96)
+    extruder_type: str | None = Field(default=None, max_length=96)
+    build_volume: dict[str, Any] | None = None
+    notes: str | None = Field(default=None, max_length=4000)
+
+    @field_validator("build_volume")
+    @classmethod
+    def validate_build_volume(cls, value: dict[str, Any] | None) -> dict[str, Any] | None:
+        """Accept only the small documented printer-envelope representation."""
+
+        if value is None:
+            return None
+        allowed = {"shape", "x_mm", "y_mm", "z_mm", "diameter_mm"}
+        if set(value) - allowed:
+            raise ValueError("build volume contains unsupported fields")
+        shape = value.get("shape")
+        if shape not in {None, "", "rectangular", "round", "other"}:
+            raise ValueError("build volume shape is invalid")
+        normalized: dict[str, Any] = {}
+        if shape not in {None, ""}:
+            normalized["shape"] = shape
+        for key in allowed - {"shape"}:
+            if value.get(key) in {None, ""}:
+                continue
+            try:
+                parsed = Decimal(str(value[key]))
+            except (InvalidOperation, TypeError) as exc:
+                raise ValueError(f"build volume {key} must be numeric") from exc
+            if not parsed.is_finite() or parsed <= 0:
+                raise ValueError(f"build volume {key} must be greater than zero")
+            normalized[key] = format(parsed, "f")
+        return normalized
 
 
 class DashboardResponse(ApiModel):

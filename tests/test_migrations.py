@@ -30,7 +30,7 @@ def test_previous_schema_automatically_upgrades_to_metadata_head(
 
         upgrade_database(DatabaseConfig(url=database_url))
         with engine.connect() as connection:
-            assert connection.scalar(text("SELECT version_num FROM alembic_version")) == "c7e4a19d2b63"
+            assert connection.scalar(text("SELECT version_num FROM alembic_version")) == "d4f7a21c9e50"
         inspector = inspect(engine)
         assert "material_templates" in inspector.get_table_names()
         assert "material_template_revisions" in inspector.get_table_names()
@@ -38,6 +38,9 @@ def test_previous_schema_automatically_upgrades_to_metadata_head(
             column["name"] for column in inspector.get_columns("workstation_agents")
         }
         assert "location_authoritative" in {column["name"] for column in inspector.get_columns("spools")}
+        assert "filament_colors" in inspector.get_table_names()
+        assert "last_info_sync_at" in {column["name"] for column in inspector.get_columns("printers")}
+        assert "product_name" in {column["name"] for column in inspector.get_columns("build_plates")}
         command.check(alembic_config)
         engine.dispose()
         get_settings.cache_clear()

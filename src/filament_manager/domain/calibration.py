@@ -29,13 +29,20 @@ CALIBRATION_STEPS: tuple[StepDefinition, ...] = (
     ),
     StepDefinition(
         5,
+        "dimensional",
+        "Size and Hole Calibration",
+        True,
+        ("xy_offset", "hole_xy_offset"),
+    ),
+    StepDefinition(
+        6,
         "overhang",
         "Overhang Test",
         True,
         ("support_overhang_angle_deg", "tree_max_branch_angle_deg"),
     ),
     StepDefinition(
-        6,
+        7,
         "ironing",
         "Ironing Test",
         False,

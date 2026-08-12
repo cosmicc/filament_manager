@@ -74,7 +74,7 @@ function CreateUserModal({ onClose }: { onClose: () => void }) {
             <input
               value={username}
               onChange={(event) => setUsername(event.target.value)}
-              minLength={3}
+              minLength={2}
               maxLength={80}
               autoComplete="off"
               required
@@ -107,12 +107,12 @@ function CreateUserModal({ onClose }: { onClose: () => void }) {
             type="password"
             value={password}
             onChange={(event) => setPassword(event.target.value)}
-            minLength={14}
+            minLength={10}
             maxLength={256}
             autoComplete="new-password"
             required
           />
-          <small className="field-help">Use at least 14 characters. Share it through a secure channel.</small>
+          <small className="field-help">Use at least 10 characters. Share it through a secure channel.</small>
         </label>
         {error && <p className="form-error">{error}</p>}
       </form>

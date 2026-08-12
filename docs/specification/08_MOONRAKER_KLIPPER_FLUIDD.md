@@ -65,6 +65,8 @@ Filament Manager reads and reconciles Spoolman through the API. It may also requ
 
 An Administrator may synchronize Build Plates through Moonraker's supported `POST /printer/objects/query` endpoint. Filament Manager reads `bed_mesh.profiles`, groups exact P-number A/B side meshes under physical plates, tracks missing meshes without deletion, and uses `bed_mesh.profile_name` to align the active physical plate and side.
 
+An Administrator may also synchronize useful Printer information. Filament Manager reads `/server/info`, `/printer/info`, `configfile.settings`, and the documented `toolhead` envelope to discover Moonraker/Klipper versions, sanitized hostname, kinematics, nozzle diameter, and build volume. Connection URLs, process details, and paths never reach the browser. Manufacturer, model, nozzle material, extruder type, and notes remain editable manual fields.
+
 ## Authoritative implementation references
 
 - Spoolman repository: https://github.com/Donkie/Spoolman

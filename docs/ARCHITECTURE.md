@@ -23,10 +23,10 @@ Docker services build their validated runtime configuration directly from stack 
 ## Canonical domains
 
 - local Users, revocable sessions, and Administrator/Operator/Viewer roles
-- Vendors, Filament Products, uniquely labeled Spools, and immutable physical Measurements
+- Vendors, globally remembered named color samples, Filament Products, uniquely labeled Spools, and immutable physical Measurements
 - immutable Spool Usage Events imported from supported Spoolman state
 - Printers, physical Build Plates, and printable sides; `P4` is Side A and `P4b` is Side B of physical plate P4
-- versioned Material Profiles and resumable six-step Calibration Sessions
+- versioned Material Profiles and resumable seven-step Calibration Sessions
 - append-only Audit Events, transactional Outbox Jobs, and Projection State
 - revisioned generic Material Templates, product-owned Material Profiles, revocable Workstation Agents, single-use Pairing Codes, and immutable desired-library Deployment snapshots
 - future authenticated Device adapters and identifier-only NFC mappings
@@ -42,6 +42,8 @@ Physical measurements have higher confidence than usage estimates. A measurement
 Spoolman reconciliation accepts only supported API data. Decreases create immutable usage events and update effective expected mass; identity-sensitive remote changes remain canonical in Filament Manager. A legacy spool whose location ownership has never been established may adopt one existing, bounded Spoolman location. After import or any local edit, Filament Manager owns that free-text bucket value and reconciliation repairs remote drift. Projection updates read and merge Spoolman `extra` fields so another integration's keys are preserved.
 
 Administrator-triggered build-plate synchronization reads Moonraker's supported `bed_mesh` printer object before opening its short canonical transaction. Exact bounded `P<number>` and `P<number>b` profiles create physical plates and sides, missing meshes update side availability without deleting metadata, and a loaded matching mesh updates the printer's active physical plate and side. All other profile names are ignored.
+
+Administrator-triggered printer information synchronization reads documented server/printer information plus the `configfile.settings` and `toolhead` objects. It records bounded versions, hostname, kinematics, nozzle diameter, and build volume without returning connection URLs or replacing manually maintained hardware descriptions.
 
 ## Security boundaries
 

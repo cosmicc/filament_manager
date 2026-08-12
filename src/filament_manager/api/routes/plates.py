@@ -147,14 +147,36 @@ async def update_build_plate(
     before: dict[str, object] = {
         "display_name": plate.display_name,
         "description": plate.description,
+        "manufacturer": plate.manufacturer,
+        "product_name": plate.product_name,
+        "shape": plate.shape,
+        "dimensions_mm": plate.dimensions_mm,
+        "magnetic": plate.magnetic,
+        "flexible": plate.flexible,
         "condition": plate.condition.value,
         "status": plate.status.value,
+        "preferred_materials": plate.preferred_materials,
+        "max_bed_temp_c": str(plate.max_bed_temp_c) if plate.max_bed_temp_c is not None else None,
         "notes": plate.notes,
     }
     if payload.display_name is not None:
         plate.display_name = payload.display_name
     if "description" in payload.model_fields_set:
         plate.description = payload.description
+    for field in ("manufacturer", "product_name", "shape"):
+        if field in payload.model_fields_set:
+            value = getattr(payload, field)
+            setattr(plate, field, value.strip() or None if isinstance(value, str) else value)
+    if "dimensions_mm" in payload.model_fields_set:
+        plate.dimensions_mm = (
+            payload.dimensions_mm.model_dump(mode="json", exclude_none=True)
+            if payload.dimensions_mm is not None
+            else {}
+        )
+    if "magnetic" in payload.model_fields_set:
+        plate.magnetic = payload.magnetic
+    if "flexible" in payload.model_fields_set:
+        plate.flexible = payload.flexible
     if payload.condition is not None:
         try:
             plate.condition = PlateCondition(payload.condition)
@@ -173,6 +195,17 @@ async def update_build_plate(
                 "invalid_status",
                 "Unknown status",
             ) from exc
+    if payload.preferred_materials is not None:
+        normalized_materials = [item.strip() for item in payload.preferred_materials if item.strip()]
+        if any(len(item) > 48 for item in normalized_materials):
+            raise ApiError(
+                status.HTTP_422_UNPROCESSABLE_ENTITY,
+                "invalid_preferred_material",
+                "Preferred material names must not exceed 48 characters",
+            )
+        plate.preferred_materials = list(dict.fromkeys(normalized_materials))
+    if "max_bed_temp_c" in payload.model_fields_set:
+        plate.max_bed_temp_c = payload.max_bed_temp_c
     if "notes" in payload.model_fields_set:
         plate.notes = payload.notes
     plate.record_version += 1
@@ -187,8 +220,16 @@ async def update_build_plate(
         after={
             "display_name": plate.display_name,
             "description": plate.description,
+            "manufacturer": plate.manufacturer,
+            "product_name": plate.product_name,
+            "shape": plate.shape,
+            "dimensions_mm": plate.dimensions_mm,
+            "magnetic": plate.magnetic,
+            "flexible": plate.flexible,
             "condition": plate.condition.value,
             "status": plate.status.value,
+            "preferred_materials": plate.preferred_materials,
+            "max_bed_temp_c": (str(plate.max_bed_temp_c) if plate.max_bed_temp_c is not None else None),
             "notes": plate.notes,
         },
         correlation_id=request.state.correlation_id,

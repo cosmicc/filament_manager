@@ -102,7 +102,7 @@ Guide a new filament through temperature, flow, pressure advance, retraction, ov
 6. A protected Google Sheet shows the updated inventory.
 7. A user can record a manual gross weight and see the correction in Spoolman and the Sheet.
 8. `P1` through `P5` appear initially; synchronizing `P6` creates physical P6 Side A, and `P6b` adds Side B without changing existing metadata.
-9. A calibration session completes the six-step workflow and produces a material-only Cura export containing the approved settings.
+9. A calibration session completes the seven-step workflow, calculates horizontal and hole expansion from recorded design/actual measurements, and produces a material-only Cura export containing the approved settings.
 
 ## Authoritative implementation references
 

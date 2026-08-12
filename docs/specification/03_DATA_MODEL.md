@@ -19,6 +19,10 @@ Manufacturer identity and aliases.
 
 A purchasable material definition: material, filler, finish, color, product/grade/hardness, diameter, tolerance, density, nominal weight, and vendor.
 
+### filament_color
+
+A remembered case-insensitive color name and six-digit screen sample. The first spelling is retained for display. Changing the sample updates every matching product mirror so current and future filaments with names such as `Red` or `Temp Sensitive` remain visually consistent.
+
 ### spool
 
 A physical spool with immutable `spool_code`, tare mass, purchase details, current expected remaining mass, status, bounded free-text location, internal location-ownership state, Spoolman ID, and label data. Existing rows with no canonical location may adopt one remote location; a local edit or clear makes the canonical value authoritative.
@@ -42,11 +46,11 @@ Consumption or adjustment event with source, printer, print job, mass delta, eve
 
 ### printer
 
-Printer identity, Moonraker endpoint, nozzle diameter, build volume, active plate, and integration state.
+Printer identity, server-only Moonraker endpoint, nozzle diameter/material, manufacturer/model, extruder type, kinematics, build volume, sanitized host/version information, active plate, notes, and integration state. Documented Moonraker/Klipper fields may refresh discovered values while user-maintained hardware descriptions remain manual.
 
 ### build_plate
 
-Physical plate record. Business IDs are exact uppercase `P<number>` values; `P1` through `P5` are the initial seeds. Fields include display name, description, vendor, dimensions, physical condition/status, last clean, and notes.
+Physical plate record. Business IDs are exact uppercase `P<number>` values; `P1` through `P5` are the initial seeds. Fields include display name, description, manufacturer/product, shape/dimensions, magnetic/flexible properties, preferred materials, temperature limit, physical condition/status, last clean, and notes.
 
 ### build_plate_surface
 
@@ -73,7 +77,7 @@ Tracks a wizard run for one filament, printer, nozzle, and optional plate. Conta
 
 ### calibration_step
 
-One of temperature, flow, pressure advance, retraction, overhang, or ironing. Stores test parameters, test artifact, selected result, status, and notes.
+One of temperature, flow, pressure advance, retraction, dimensional size/hole compensation, overhang, or ironing. Stores test parameters, raw measurements, calculated/selected result, status, and notes.
 
 ### nfc_tag
 

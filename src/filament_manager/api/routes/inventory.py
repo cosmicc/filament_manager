@@ -14,6 +14,7 @@ from sqlalchemy.orm import joinedload
 from sqlalchemy.sql.elements import ColumnElement
 
 from filament_manager.config import get_settings
+from filament_manager.domain.colors import normalize_color_hex, normalize_color_name
 from filament_manager.domain.mass import (
     InvalidWeightError,
     MeasurementConfirmationRequired,
@@ -21,6 +22,7 @@ from filament_manager.domain.mass import (
 )
 from filament_manager.models.enums import MeasurementStatus, ProfileStatus, SpoolStatus
 from filament_manager.models.inventory import (
+    FilamentColor,
     FilamentProduct,
     MaterialProfile,
     MaterialTemplate,
@@ -34,8 +36,10 @@ from filament_manager.services.events import add_audit_event, add_outbox_job
 from ..dependencies import DatabaseSession, Operator, Viewer
 from ..errors import ApiError
 from ..schemas import (
+    FilamentColorResponse,
     FilamentCreate,
     FilamentResponse,
+    FilamentUpdate,
     MaterialSettingsInput,
     MeasurementCreate,
     MeasurementResponse,
@@ -47,6 +51,81 @@ from ..schemas import (
 )
 
 router = APIRouter(tags=["inventory"])
+
+
+async def _remember_color(
+    session: DatabaseSession,
+    *,
+    color_name: str,
+    color_hex: str | None,
+    actor_id: UUID,
+    correlation_id: str,
+    exclude_product_id: UUID | None = None,
+) -> FilamentColor:
+    """Resolve a color name and propagate an explicitly changed screen sample."""
+
+    display_name = color_name.strip()
+    normalized_name = normalize_color_name(display_name)
+    mapping = await session.scalar(
+        select(FilamentColor).where(FilamentColor.normalized_name == normalized_name).with_for_update()
+    )
+    selected_hex = normalize_color_hex(color_hex) if color_hex else None
+    if mapping is None:
+        mapping = FilamentColor(
+            name=display_name,
+            normalized_name=normalized_name,
+            color_hex=selected_hex or "808080",
+        )
+        session.add(mapping)
+        await session.flush()
+        add_audit_event(
+            session,
+            actor_id=actor_id,
+            source="web",
+            action="filament_color.create",
+            object_type="filament_color",
+            object_id=mapping.id,
+            before=None,
+            after={"name": mapping.name, "color_hex": mapping.color_hex},
+            correlation_id=correlation_id,
+        )
+        return mapping
+    if selected_hex is None or selected_hex == mapping.color_hex:
+        return mapping
+
+    previous_hex = mapping.color_hex
+    mapping.color_hex = selected_hex
+    mapping.record_version += 1
+    products = list(await session.scalars(select(FilamentProduct).with_for_update()))
+    for product in products:
+        if product.id == exclude_product_id:
+            continue
+        if normalize_color_name(product.color_name) != normalized_name:
+            continue
+        product.color_name = mapping.name
+        product.color_hex = selected_hex
+        product.record_version += 1
+        add_outbox_job(
+            session,
+            job_type="spoolman.filament.upsert",
+            idempotency_key=f"filament:{product.id}:v{product.record_version}",
+            aggregate_type="filament_product",
+            aggregate_id=product.id,
+            aggregate_version=product.record_version,
+            payload={"filament_product_id": str(product.id)},
+        )
+    add_audit_event(
+        session,
+        actor_id=actor_id,
+        source="web",
+        action="filament_color.update",
+        object_type="filament_color",
+        object_id=mapping.id,
+        before={"color_hex": previous_hex},
+        after={"name": mapping.name, "color_hex": mapping.color_hex},
+        correlation_id=correlation_id,
+    )
+    return mapping
 
 
 def spool_response(spool: Spool) -> SpoolResponse:
@@ -196,6 +275,31 @@ async def list_filaments(
     return [filament_response(item) for item in result.scalars()]
 
 
+@router.get("/filament-colors", response_model=list[FilamentColorResponse])
+async def list_filament_colors(_: Viewer, session: DatabaseSession) -> list[FilamentColor]:
+    """List remembered color samples for autocomplete and color pickers."""
+
+    return list(await session.scalars(select(FilamentColor).order_by(FilamentColor.name)))
+
+
+@router.get("/filaments/{filament_id}", response_model=FilamentResponse)
+async def get_filament(
+    filament_id: UUID,
+    _: Viewer,
+    session: DatabaseSession,
+) -> FilamentResponse:
+    """Return one filament product for its settings detail page."""
+
+    product = await session.scalar(
+        select(FilamentProduct)
+        .where(FilamentProduct.id == filament_id)
+        .options(joinedload(FilamentProduct.vendor))
+    )
+    if product is None:
+        raise ApiError(status.HTTP_404_NOT_FOUND, "unknown_filament", "Filament not found")
+    return filament_response(product)
+
+
 @router.post("/filaments", response_model=FilamentResponse, status_code=status.HTTP_201_CREATED)
 async def create_filament(
     payload: FilamentCreate,
@@ -229,10 +333,21 @@ async def create_filament(
                 "The filament material type must match the selected template",
             )
 
-    product_values = payload.model_dump(exclude={"material_template_revision_id", "material_type"})
+    color = await _remember_color(
+        session,
+        color_name=payload.color_name,
+        color_hex=payload.color_hex,
+        actor_id=operator.id,
+        correlation_id=request.state.correlation_id,
+    )
+    product_values = payload.model_dump(
+        exclude={"material_template_revision_id", "material_type", "color_name", "color_hex"}
+    )
     product = FilamentProduct(
         **product_values,
         material_type=payload.material_type.strip(),
+        color_name=color.name,
+        color_hex=color.color_hex,
         source_template_revision_id=payload.material_template_revision_id,
     )
     session.add(product)
@@ -279,6 +394,95 @@ async def create_filament(
         aggregate_type="filament_product",
         aggregate_id=product.id,
         aggregate_version=1,
+        payload={"filament_product_id": str(product.id)},
+    )
+    await session.commit()
+    await session.refresh(product, attribute_names=["vendor"])
+    return filament_response(product)
+
+
+@router.patch("/filaments/{filament_id}", response_model=FilamentResponse)
+async def update_filament(
+    filament_id: UUID,
+    payload: FilamentUpdate,
+    request: Request,
+    operator: Operator,
+    session: DatabaseSession,
+) -> FilamentResponse:
+    """Update product metadata and apply its color sample to matching products."""
+
+    product = await session.scalar(
+        select(FilamentProduct).where(FilamentProduct.id == filament_id).with_for_update()
+    )
+    if product is None:
+        raise ApiError(status.HTTP_404_NOT_FOUND, "unknown_filament", "Filament not found")
+    if product.record_version != payload.expected_version:
+        raise ApiError(
+            status.HTTP_409_CONFLICT,
+            "record_version_conflict",
+            "Filament changed; reload and retry",
+        )
+    if payload.vendor_id is not None and await session.get(Vendor, payload.vendor_id) is None:
+        raise ApiError(status.HTTP_422_UNPROCESSABLE_ENTITY, "unknown_vendor", "Vendor not found")
+
+    before: dict[str, object] = {
+        "material_type": product.material_type,
+        "color_name": product.color_name,
+        "color_hex": product.color_hex,
+        "record_version": product.record_version,
+    }
+    color_name = payload.color_name if payload.color_name is not None else product.color_name
+    requested_hex = payload.color_hex if "color_hex" in payload.model_fields_set else product.color_hex
+    color = await _remember_color(
+        session,
+        color_name=color_name,
+        color_hex=requested_hex,
+        actor_id=operator.id,
+        correlation_id=request.state.correlation_id,
+        exclude_product_id=product.id,
+    )
+    product.color_name = color.name
+    product.color_hex = color.color_hex
+    if "vendor_id" in payload.model_fields_set:
+        product.vendor_id = payload.vendor_id
+    for field in (
+        "material_type",
+        "diameter_mm",
+        "tolerance_mm",
+        "density_g_cm3",
+        "nominal_net_mass_g",
+    ):
+        value = getattr(payload, field)
+        if value is not None:
+            setattr(product, field, value.strip() if isinstance(value, str) else value)
+    for field in ("filler", "finish", "product_name", "notes"):
+        if field in payload.model_fields_set:
+            value = getattr(payload, field)
+            setattr(product, field, value.strip() or None if isinstance(value, str) else value)
+    product.record_version += 1
+    add_audit_event(
+        session,
+        actor_id=operator.id,
+        source="web",
+        action="filament.update",
+        object_type="filament_product",
+        object_id=product.id,
+        before=before,
+        after={
+            "material_type": product.material_type,
+            "color_name": product.color_name,
+            "color_hex": product.color_hex,
+            "record_version": product.record_version,
+        },
+        correlation_id=request.state.correlation_id,
+    )
+    add_outbox_job(
+        session,
+        job_type="spoolman.filament.upsert",
+        idempotency_key=f"filament:{product.id}:v{product.record_version}",
+        aggregate_type="filament_product",
+        aggregate_id=product.id,
+        aggregate_version=product.record_version,
         payload={"filament_product_id": str(product.id)},
     )
     await session.commit()

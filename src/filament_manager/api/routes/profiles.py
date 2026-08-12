@@ -39,6 +39,7 @@ from ..schemas import (
     MaterialTemplateUpdate,
     ProfileCreate,
     ProfileResponse,
+    ProfileRevisionCreate,
 )
 
 router = APIRouter(prefix="/profiles", tags=["material profiles"])
@@ -482,6 +483,73 @@ async def create_profile(
     )
     await session.commit()
     return ProfileResponse.model_validate(profile)
+
+
+@router.post(
+    "/{profile_id}/revisions",
+    response_model=ProfileResponse,
+    status_code=status.HTTP_201_CREATED,
+)
+async def create_profile_revision(
+    profile_id: UUID,
+    payload: ProfileRevisionCreate,
+    request: Request,
+    operator: Operator,
+    session: DatabaseSession,
+) -> ProfileResponse:
+    """Create a new editable draft without mutating the selected profile snapshot."""
+
+    source = await session.scalar(
+        select(MaterialProfile).where(MaterialProfile.id == profile_id).with_for_update()
+    )
+    if source is None:
+        raise ApiError(status.HTTP_404_NOT_FOUND, "unknown_profile", "Profile not found")
+    if source.record_version != payload.expected_profile_version:
+        raise ApiError(status.HTTP_409_CONFLICT, "version_conflict", "Profile changed; reload and retry")
+    if (
+        payload.settings.preferred_build_plate_surface_id
+        and await session.get(
+            BuildPlateSurface,
+            payload.settings.preferred_build_plate_surface_id,
+        )
+        is None
+    ):
+        raise ApiError(
+            status.HTTP_422_UNPROCESSABLE_ENTITY,
+            "unknown_build_plate_surface",
+            "Build plate side not found",
+        )
+    latest = await session.scalar(
+        select(func.max(MaterialProfile.version)).where(
+            MaterialProfile.filament_product_id == source.filament_product_id,
+            MaterialProfile.printer_id == source.printer_id,
+            MaterialProfile.nozzle_diameter_mm == source.nozzle_diameter_mm,
+        )
+    )
+    revision = MaterialProfile(
+        **payload.settings.model_dump(),
+        filament_product_id=source.filament_product_id,
+        printer_id=source.printer_id,
+        nozzle_diameter_mm=source.nozzle_diameter_mm,
+        version=(latest or 0) + 1,
+        status=ProfileStatus.DRAFT,
+        source_template_revision_id=source.source_template_revision_id,
+    )
+    session.add(revision)
+    await session.flush()
+    add_audit_event(
+        session,
+        actor_id=operator.id,
+        source="web",
+        action="profile.revision.create",
+        object_type="material_profile",
+        object_id=revision.id,
+        before={"source_profile_id": str(source.id), "source_version": source.version},
+        after={"version": revision.version, "status": revision.status.value},
+        correlation_id=request.state.correlation_id,
+    )
+    await session.commit()
+    return ProfileResponse.model_validate(revision)
 
 
 def _import_decimal(

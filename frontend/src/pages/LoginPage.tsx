@@ -36,7 +36,7 @@ export default function LoginPage() {
           <p>Sign in with your local workshop account.</p>
         </div>
         <form onSubmit={(event) => void submit(event)}>
-          <label>Username<input autoComplete="username" required minLength={3} value={username} onChange={(event) => setUsername(event.target.value)} autoFocus /></label>
+          <label>Username<input autoComplete="username" required minLength={2} value={username} onChange={(event) => setUsername(event.target.value)} autoFocus /></label>
           <label>Password<input type="password" autoComplete="current-password" required value={password} onChange={(event) => setPassword(event.target.value)} /></label>
           {error && <p className="form-error" role="alert">{error}</p>}
           <button className="button button--primary button--full" disabled={submitting}>{submitting ? 'Signing in…' : 'Sign in'}</button>

@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased - 08.11.2026
+## 0.1.5 - 08.11.2026
 
 ### Added
 
@@ -14,6 +14,11 @@
 - Added automatic Alembic upgrades before web and worker startup with a bounded PostgreSQL advisory lock and fail-closed error handling.
 - Added authoritative full-library Cura synchronization, checksum-based drift repair, transactional cleanup/rollback of user material files, and a managed visibility plugin that hides bundled Cura materials.
 - Added one-time adoption of existing Spoolman free-text spool locations and an in-app bucket/location editor.
+- Added a case-insensitive remembered color library, real color swatches and pickers, and global propagation to every existing and future filament using the same color name.
+- Added filament detail editing with every approved Cura Material Settings value, immutable profile revision history, and in-app draft creation and publication.
+- Added complete physical build-plate editing for manufacturer, product, shape, dimensions, magnetic/flexible properties, condition, status, preferred materials, temperature limit, and notes.
+- Added editable printer hardware details plus Administrator-controlled discovery of Klipper version, Moonraker version, hostname, kinematics, nozzle diameter, and build volume through documented APIs.
+- Added the required Size and Hole Calibration step after Retraction, with server-side Horizontal Expansion and Hole Horizontal Expansion calculations and X/Y divergence warnings.
 
 ### Changed
 
@@ -26,6 +31,10 @@
 - Changed Cura deployment from one selected profile to the latest published templates and product profiles as one desired-state library. Existing workstations with user materials require explicit Administrator takeover.
 - Changed Compose and Swarm upgrades to migrate automatically; a one-shot migration remains only for diagnosis and recovery.
 - Changed spool-location ownership so Filament Manager becomes authoritative after import, edit, or explicit clearing and repairs later Spoolman-side drift.
+- Changed local username validation to allow two-character usernames and reduced the password minimum from 14 to 10 characters while retaining Argon2id hashing and the existing 256-character maximum.
+- Changed calibration from six to seven ordered steps and made published calibration profiles inherit all settings from the selected starting profile before applying calibrated values.
+- Changed profile editing to create a new independent draft version, preserving published profile and template revision immutability.
+- Changed the workstation agent package version to 0.1.5 so current Arch Linux and Windows testing artifacts identify the matching server release.
 
 ### Fixed
 
@@ -38,6 +47,9 @@
 - Fixed clean Cura installations requiring manual first synchronization and managed Cura material files drifting away from canonical Filament Manager state.
 - Fixed routine product, spool, and generic-material setup requiring direct API or Spoolman access.
 - Fixed the shipped build-plate macro default to use the explicit quoted `"UNSET"` string and documented how to locate stale included copies.
+- Fixed filament color samples being isolated free-text values that could drift between products with the same named color.
+- Fixed product-specific Cura settings, full build-plate metadata, and relevant printer information being visible only through limited API or database paths instead of editable application screens.
+- Fixed calibration profile publication discarding unmodified settings inherited from a product's generic template.
 
 ## 0.1.4 - 08.11.2026
 

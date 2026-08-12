@@ -27,17 +27,21 @@
 ### Filament products and profiles
 
 - `GET /filaments`
+- `GET /filaments/{id}`
 - `POST /filaments`
+- `PATCH /filaments/{id}`
+- `GET /filament-colors`
 - `GET /profiles`
 - `POST /profiles`
 - `POST /profiles/{id}/publish`
+- `POST /profiles/{id}/revisions`
 - `GET /profiles/{id}/exports/cura`
 - `GET/POST /profiles/templates`
 - `PATCH /profiles/templates/{id}`
 - `POST /profiles/templates/{id}/revisions`
 - `POST /profiles/templates/{id}/revisions/{revision_id}/publish`
 
-`POST /filaments` may select a published template revision and atomically creates the product plus its copied draft profile.
+`POST /filaments` may select a published template revision and atomically creates the product plus its copied draft profile. Filament create/update resolves the case-insensitive remembered color sample and propagates a changed sample to matching products with their projection jobs in the same transaction.
 
 ### Build plates
 
@@ -70,6 +74,14 @@
 - `POST /integrations/spoolman/reconcile`
 - `POST /integrations/google/publish`
 - `POST /integrations/google/rebuild`
+
+### Printers
+
+- `GET /printers`
+- `PATCH /printers/{id}` (Administrator only)
+- `POST /printers/{id}/synchronize-info` (Administrator only)
+
+Printer responses omit Moonraker addresses and credentials. Synchronization returns only bounded documented metadata persisted to the canonical printer record.
 
 ### Devices
 

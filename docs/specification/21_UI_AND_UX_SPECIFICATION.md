@@ -41,15 +41,17 @@ Show:
 
 ## Calibration wizard UX
 
-Use a persistent stepper with the exact six steps. Each step has instructions, test settings, file/job link, result fields, notes, and “repeat” action. Show downstream invalidation before allowing an earlier result to change.
+Use a persistent stepper with the exact seven steps. Each step has instructions, test settings, file/job link, result fields, notes, and “repeat” action. Size and Hole Calibration shows raw dimensions, both Cura expansion results, and the X/Y divergence warning. Show downstream invalidation before allowing an earlier result to change.
 
 ## Build plate UX
 
-Cards begin with physical P1-P5 and naturally order later discovered plates. Each physical card shows its description/condition/cleaning state and nested Side A/Side B panels with exact mesh, surface material, smooth/textured finish, mesh availability/check/calibration time, and notes. The active side is visually explicit. Administrators receive synchronization feedback; Operators may edit metadata and select available sides without importing integration-controlled records.
+Cards begin with physical P1-P5 and naturally order later discovered plates. Each physical card edits and shows its description, manufacturer/product, shape/dimensions, magnetic/flexible state, condition/status, preferred materials, temperature limit, cleaning state, and nested Side A/Side B panels with exact mesh, surface material, smooth/textured finish, mesh availability/check/calibration time, and notes. The active side is visually explicit. Administrators receive synchronization feedback; Operators may edit metadata and select available sides without importing integration-controlled records.
 
 The Material Profiles page lists sanitized existing Cura material candidates reported by paired agents. Import requires explicit canonical filament, printer/nozzle, and optional preferred-side mapping and creates a draft without modifying the workstation file.
 
-The Templates page creates complete generic material settings revisions and publishes them per printer/nozzle. The Filaments page requires a published template in its routine creation flow and explains that a product-owned draft is copied. The Spools page creates physical spools from canonical products and lets Operators edit or clear their free-text bucket locations while explaining that Filament Manager synchronizes the value to Spoolman. Cura Workstations shows unmanaged material count and requires an explicit replacement warning before authoritative takeover of an existing user library.
+The Templates page creates complete generic material settings revisions and publishes them per printer/nozzle. The Filaments page requires a published template in its routine creation flow, explains that a product-owned draft is copied, renders real remembered color samples, and links each product to a complete detail/settings editor. A color sample change states that it applies to all matching existing and future color names. The Spools page creates physical spools from canonical products and lets Operators edit or clear their free-text bucket locations while explaining that Filament Manager synchronizes the value to Spoolman. Cura Workstations shows unmanaged material count and requires an explicit replacement warning before authoritative takeover of an existing user library.
+
+The Printers page shows sanitized discovered Klipper/Moonraker versions, hostname, kinematics, nozzle, and build volume alongside editable hardware metadata. Only Administrators may synchronize or edit printer information, and no connection address or secret appears in the browser.
 
 ## Google status
 

@@ -21,6 +21,8 @@ The product name is **Filament Manager**. Do not introduce the former project na
 11. Remote PostgreSQL connections use `filament_user` and `spoolman_user` with TLS explicitly disabled on the operator-managed isolated database network. Preserve SCRAM authentication, narrow firewall and `pg_hba.conf` rules, and separate database ownership; this non-SSL contract is unsafe on shared or untrusted networks.
 12. The container entry point automatically upgrades the Filament Manager schema before starting web or worker commands. Concurrent tasks coordinate with one bounded PostgreSQL session advisory lock; a failed or timed-out migration must stop startup. Keep the opt-out only for controlled recovery.
 13. Filament Manager owns spool locations after initial adoption. A legacy spool with no canonical location may import one existing bounded free-text Spoolman location; every local edit, including clearing the field, makes the canonical value authoritative and reconciliation repairs later remote drift.
+14. `filament_colors` owns the case-insensitive mapping from a human color name to its six-digit screen sample. A sample change updates every matching product mirror and queues their Spoolman projections; never treat per-product color hex as independent state.
+15. Printer information synchronization reads only documented Moonraker/Klipper server, printer, `configfile.settings`, and `toolhead` fields. Keep connection values server-side, sanitize all external text and numbers, and preserve manual manufacturer, model, nozzle material, extruder type, and notes.
 
 ## Required stack
 
@@ -63,6 +65,7 @@ Use the approved Workshop Navy design system in [docs/design/palette.png](docs/d
 - Cura deployments must wait for Cura to close, match exactly one machine/nozzle, back up every affected user material and managed plugin file, use atomic replacement, and preserve all machine, quality, and start-G-code configuration. Authoritative takeover must remain opt-in when unmanaged user materials exist.
 - Preserve initial physical build-plate identifiers `P1` through `P5` exactly. An unsuffixed mesh such as `P4` is Side A; `P4b` is Side B of the same physical P4 plate. Additional plates are discovered from exact `P<number>` or `P<number>b` Moonraker bed-mesh profiles; never accept arbitrary mesh names as G-code input.
 - Published material profiles and material-template revisions are immutable; changes create new versions.
+- The ordered calibration workflow has seven steps. Size and Hole Calibration is required after Retraction and stores raw design/measured values plus server-calculated Cura `xy_offset` and `hole_xy_offset`; profile publication inherits the complete starting snapshot before applying results.
 
 ## Documentation and release discipline
 

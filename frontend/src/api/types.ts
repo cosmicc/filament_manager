@@ -70,9 +70,21 @@ export interface BuildPlate {
   plate_code: string
   display_name: string
   description: string | null
+  manufacturer: string | null
+  product_name: string | null
+  shape: 'rectangular' | 'round' | 'other' | null
+  dimensions_mm: {
+    width?: string
+    depth?: string
+    diameter?: string
+    thickness?: string
+  }
+  magnetic: boolean | null
+  flexible: boolean | null
   condition: string
   status: string
   preferred_materials: string[]
+  max_bed_temp_c: string | null
   last_cleaned_at: string | null
   notes: string | null
   record_version: number
@@ -120,6 +132,14 @@ export interface Filament {
   nominal_net_mass_g: string
   notes: string | null
   material_template_revision_id: string | null
+  record_version: number
+}
+
+export interface FilamentColor {
+  id: string
+  name: string
+  normalized_name: string
+  color_hex: string
   record_version: number
 }
 
@@ -196,10 +216,27 @@ export interface Printer {
   printer_code: string
   name: string
   nozzle_diameter_mm: string
+  build_volume: {
+    shape?: 'rectangular' | 'round' | 'other'
+    x_mm?: string
+    y_mm?: string
+    z_mm?: string
+    diameter_mm?: string
+  }
+  manufacturer: string | null
+  model: string | null
+  kinematics: string | null
+  nozzle_material: string | null
+  extruder_type: string | null
+  klipper_version: string | null
+  moonraker_version: string | null
+  host_name: string | null
+  notes: string | null
   active_plate_id: string | null
   active_plate_surface_id: string | null
   status: string
   last_seen_at: string | null
+  last_info_sync_at: string | null
   record_version: number
 }
 
@@ -208,31 +245,18 @@ export interface SeedSystemResult {
   printers: number
 }
 
-export interface MaterialProfile {
+export interface MaterialProfile extends MaterialSettings {
   id: string
   filament_product_id: string
   printer_id: string
   nozzle_diameter_mm: string
   version: number
   status: string
-  extruder_temp_c: string
-  bed_temp_c: string
-  flow_percent: string
-  print_speed_mm_s: string | null
-  outer_wall_speed_mm_s: string | null
-  inner_wall_speed_mm_s: string | null
-  infill_speed_mm_s: string | null
-  top_bottom_speed_mm_s: string | null
-  initial_layer_speed_mm_s: string | null
-  travel_speed_mm_s: string | null
-  support_speed_mm_s: string | null
-  preferred_build_plate_surface_id: string | null
-  cura_extensions: Record<string, string | number | boolean | null>
   cura_settings: Record<string, string | number | boolean>
-  pressure_advance: string | null
   published_at: string | null
   checksum: string | null
   record_version: number
+  source_template_revision_id: string | null
 }
 
 export interface CalibrationStep {

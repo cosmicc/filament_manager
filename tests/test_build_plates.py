@@ -109,6 +109,53 @@ async def test_moonraker_bed_mesh_state_rejects_missing_object() -> None:
 
 @respx.mock
 @pytest.mark.asyncio
+async def test_moonraker_printer_information_uses_documented_fields() -> None:
+    """Printer discovery reads server, printer, configfile, and toolhead data only."""
+
+    respx.get("http://moonraker.test:7125/server/info").mock(
+        return_value=httpx.Response(200, json={"result": {"moonraker_version": "v0.9.3"}})
+    )
+    respx.get("http://moonraker.test:7125/printer/info").mock(
+        return_value=httpx.Response(
+            200,
+            json={"result": {"hostname": "flsun", "software_version": "v0.13", "state": "ready"}},
+        )
+    )
+    route = respx.post("http://moonraker.test:7125/printer/objects/query").mock(
+        return_value=httpx.Response(
+            200,
+            json={
+                "result": {
+                    "status": {
+                        "configfile": {
+                            "settings": {
+                                "printer": {"kinematics": "delta"},
+                                "extruder": {"nozzle_diameter": 0.4},
+                            }
+                        },
+                        "toolhead": {
+                            "axis_minimum": [-130, -130, 0],
+                            "axis_maximum": [130, 130, 410],
+                            "cone_start_z": 100,
+                        },
+                    }
+                }
+            },
+        )
+    )
+
+    information = await MoonrakerClient(printer_config()).printer_information()
+
+    assert information.server_info["moonraker_version"] == "v0.9.3"
+    assert information.printer_info["software_version"] == "v0.13"
+    assert information.object_status["configfile"]["settings"]["printer"]["kinematics"] == "delta"
+    assert route.calls.last.request.read() == (
+        b'{"objects":{"configfile":["settings"],"toolhead":["axis_minimum","axis_maximum","cone_start_z"]}}'
+    )
+
+
+@respx.mock
+@pytest.mark.asyncio
 async def test_dynamic_plate_selection_allows_p10_and_rejects_gcode_input() -> None:
     """Only exact P-number values reach the command endpoint."""
 

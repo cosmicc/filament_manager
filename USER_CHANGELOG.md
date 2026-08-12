@@ -1,6 +1,6 @@
 # User Changelog
 
-## Unreleased - 08.11.2026
+## 0.1.5 - 08.11.2026
 
 ### Added
 
@@ -13,6 +13,11 @@
 - Added automatic database updates whenever a newer Filament Manager container starts.
 - Added automatic full-library Cura synchronization, backup and rollback, drift repair, and an option to hide Cura's bundled materials.
 - Added existing Spoolman bucket import plus a free-text **Edit location** action for each spool.
+- Added real filament color samples. A selected sample is remembered by color name and automatically used by every matching existing or future filament.
+- Added a filament details page for editing product information and every Cura material setting saved for that filament.
+- Added complete build-plate editors for physical properties, condition, supported materials, temperature limit, each side, and notes.
+- Added printer cards with editable hardware details and a **Pull from Moonraker** action for Klipper/Moonraker versions, kinematics, nozzle size, hostname, and build volume.
+- Added Size and Hole Calibration after Retraction. Enter the model and measured X, Y, and hole sizes to calculate Cura Horizontal Expansion and Hole Horizontal Expansion.
 
 ### Changed
 
@@ -22,6 +27,9 @@
 - Each new filament product starts from a published generic template but receives its own draft settings that can be tuned without changing other products.
 - Filament Manager becomes the authoritative Cura material library after workstation management is enabled. Existing user materials require a clear Administrator confirmation before replacement.
 - Filament Manager becomes authoritative for a spool's bucket after importing, editing, or clearing it and keeps Spoolman synchronized.
+- Usernames may now be as short as two characters, and new passwords may be 10 or more characters.
+- Calibration now has seven steps, and its published result keeps every unchanged setting from the filament's starting profile.
+- Editing a material profile saves a new draft version so existing published Cura settings remain recoverable.
 
 ### Fixed
 
@@ -31,6 +39,9 @@
 - Database upgrades no longer need a separate migration command before every deployment.
 - Cura workstations now restore the complete published library when local material files drift.
 - The supplied Klipper macro now uses an explicit quoted initial plate value, and troubleshooting identifies older included copies.
+- Fixed matching named colors showing different or missing samples across filament, spool, label, and dashboard views.
+- Fixed product-specific Cura settings and full plate/printer details not having complete in-app editing screens.
+- Fixed calibration publication losing template-derived settings that were not part of a calibration result.
 
 ## 0.1.4 - 08.11.2026
 

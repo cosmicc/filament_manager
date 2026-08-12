@@ -18,16 +18,16 @@ def normalize_username(username: str) -> str:
     """Normalize local usernames for case-insensitive uniqueness and lookup."""
 
     normalized = unicodedata.normalize("NFKC", username).strip().casefold()
-    if not 3 <= len(normalized) <= 80:
-        raise ValueError("username must contain between 3 and 80 characters")
+    if not 2 <= len(normalized) <= 80:
+        raise ValueError("username must contain between 2 and 80 characters")
     return normalized
 
 
 def validate_password(password: str) -> None:
     """Enforce a long-password policy without brittle composition rules."""
 
-    if len(password) < 14:
-        raise ValueError("password must contain at least 14 characters")
+    if len(password) < 10:
+        raise ValueError("password must contain at least 10 characters")
     if len(password) > 256:
         raise ValueError("password must not exceed 256 characters")
 

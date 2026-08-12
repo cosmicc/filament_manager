@@ -35,6 +35,8 @@ Import desired existing user materials before authoritative takeover. A clean us
 
 Generic templates are scoped to one printer and nozzle. Publishing a template revision makes it available to create products and adds it to the desired Cura library. A new filament product receives its own draft profile copied from that published revision; later template revisions do not rewrite already-tuned products. Publishing any template or product revision queues a new complete-library checksum for every managed workstation.
 
+Selecting a filament opens its canonical detail and complete approved Cura settings editor. Saving settings always creates the next draft profile version; it never mutates a published snapshot. Calibration publication starts from the session's baseline profile and overlays measured results so unrelated template-derived settings are retained.
+
 ## Profile lifecycle
 
 - draft

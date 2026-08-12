@@ -1,4 +1,4 @@
-"""Resumable six-step calibration workflow routes."""
+"""Resumable seven-step calibration workflow routes."""
 
 from datetime import UTC, datetime
 from decimal import Decimal
@@ -9,6 +9,10 @@ from sqlalchemy import select
 from sqlalchemy.orm import selectinload
 
 from filament_manager.domain.calibration import CALIBRATION_STEPS, invalidated_statuses, ready_to_publish
+from filament_manager.domain.dimensional_calibration import (
+    DimensionalCalibrationError,
+    calculate_dimensional_compensation,
+)
 from filament_manager.models.calibration import CalibrationSession, CalibrationStep
 from filament_manager.models.enums import CalibrationStatus, CalibrationStepStatus, ProfileStatus
 from filament_manager.models.inventory import (
@@ -26,6 +30,7 @@ from ..schemas import (
     CalibrationCreate,
     CalibrationResponse,
     CalibrationStepUpdate,
+    MaterialSettingsInput,
     ProfileResponse,
 )
 
@@ -68,7 +73,7 @@ async def create_calibration(
     operator: Operator,
     session: DatabaseSession,
 ) -> CalibrationResponse:
-    """Start a calibration session with the exact six supplied steps."""
+    """Start a calibration session with the exact seven supplied steps."""
 
     if await session.get(FilamentProduct, payload.filament_product_id) is None:
         raise ApiError(status.HTTP_422_UNPROCESSABLE_ENTITY, "unknown_filament", "Filament not found")
@@ -96,8 +101,34 @@ async def create_calibration(
             "unknown_build_plate",
             "Build plate not found",
         )
+    baseline_profile_id = payload.baseline_profile_id
+    if baseline_profile_id is None:
+        baseline_profile_id = await session.scalar(
+            select(MaterialProfile.id)
+            .where(
+                MaterialProfile.filament_product_id == payload.filament_product_id,
+                MaterialProfile.printer_id == payload.printer_id,
+                MaterialProfile.nozzle_diameter_mm == payload.nozzle_diameter_mm,
+            )
+            .order_by(MaterialProfile.version.desc())
+            .limit(1)
+        )
+    elif not await session.scalar(
+        select(MaterialProfile.id).where(
+            MaterialProfile.id == baseline_profile_id,
+            MaterialProfile.filament_product_id == payload.filament_product_id,
+            MaterialProfile.printer_id == payload.printer_id,
+            MaterialProfile.nozzle_diameter_mm == payload.nozzle_diameter_mm,
+        )
+    ):
+        raise ApiError(
+            status.HTTP_422_UNPROCESSABLE_ENTITY,
+            "baseline_profile_mismatch",
+            "Baseline profile does not match the selected filament, printer, and nozzle",
+        )
     calibration_data = payload.model_dump()
     calibration_data["build_plate_id"] = build_plate_id
+    calibration_data["baseline_profile_id"] = baseline_profile_id
     calibration = CalibrationSession(
         **calibration_data,
         status=CalibrationStatus.IN_PROGRESS,
@@ -135,7 +166,7 @@ async def create_calibration(
 
 @router.get("/{calibration_id}", response_model=CalibrationResponse)
 async def get_calibration(calibration_id: UUID, _: Viewer, session: DatabaseSession) -> CalibrationResponse:
-    """Return a resumable session and all six steps."""
+    """Return a resumable session and all seven steps."""
 
     return CalibrationResponse.model_validate(await _get_calibration(session, calibration_id))
 
@@ -214,11 +245,29 @@ async def update_step_result(
         step.result = {}
         step.completed_at = None
     step.inputs = payload.inputs
-    step.result = payload.result
+    result = payload.result
+    if step.step_key == "dimensional" and payload.complete:
+        try:
+            dimensional = calculate_dimensional_compensation(payload.inputs)
+        except DimensionalCalibrationError as exc:
+            raise ApiError(
+                status.HTTP_422_UNPROCESSABLE_ENTITY,
+                "dimensional_measurements_invalid",
+                str(exc),
+            ) from exc
+        result = {
+            "xy_offset": format(dimensional.xy_offset, "f"),
+            "hole_xy_offset": format(dimensional.hole_xy_offset, "f"),
+            "x_horizontal_expansion_mm": format(dimensional.x_horizontal_expansion, "f"),
+            "y_horizontal_expansion_mm": format(dimensional.y_horizontal_expansion, "f"),
+            "axis_difference_mm": format(dimensional.axis_difference, "f"),
+            "axis_warning": dimensional.axis_warning,
+        }
+    step.result = result
     step.artifact = payload.artifact
     step.notes = payload.notes
     if payload.complete:
-        if not payload.result:
+        if not result:
             raise ApiError(
                 status.HTTP_422_UNPROCESSABLE_ENTITY, "calibration_result_required", "Result is required"
             )
@@ -291,6 +340,8 @@ async def publish_calibration_profile(
         "support_overhang_angle_deg",
         "tree_max_branch_angle_deg",
         "pressure_advance",
+        "xy_offset",
+        "hole_xy_offset",
     }
     missing = sorted(required - results.keys())
     if missing and not override_reason:
@@ -307,30 +358,99 @@ async def publish_calibration_profile(
         .order_by(MaterialProfile.version.desc())
         .limit(1)
     )
+    baseline = (
+        await session.get(MaterialProfile, calibration.baseline_profile_id)
+        if calibration.baseline_profile_id
+        else None
+    )
+    base_settings = (
+        MaterialSettingsInput.model_validate(baseline).model_dump()
+        if baseline is not None
+        else {
+            "chamber_temp_c": None,
+            "extruder_temp_c": Decimal("0"),
+            "bed_temp_c": Decimal("0"),
+            "flow_percent": Decimal("100"),
+            "print_speed_mm_s": None,
+            "outer_wall_speed_mm_s": None,
+            "inner_wall_speed_mm_s": None,
+            "infill_speed_mm_s": None,
+            "top_bottom_speed_mm_s": None,
+            "initial_layer_speed_mm_s": None,
+            "travel_speed_mm_s": None,
+            "support_speed_mm_s": None,
+            "retraction_distance_mm": None,
+            "retraction_speed_mm_s": None,
+            "cooling_enabled": True,
+            "cooling_min_percent": Decimal("0"),
+            "cooling_max_percent": Decimal("100"),
+            "support_overhang_angle_deg": None,
+            "tree_max_branch_angle_deg": None,
+            "pressure_advance": None,
+            "filament_density_g_cm3": product.density_g_cm3,
+            "preferred_build_plate_surface_id": calibration.build_plate_surface_id,
+            "cura_extensions": {},
+        }
+    )
+    for key in (
+        "chamber_temp_c",
+        "extruder_temp_c",
+        "bed_temp_c",
+        "flow_percent",
+        "retraction_distance_mm",
+        "retraction_speed_mm_s",
+        "cooling_min_percent",
+        "cooling_max_percent",
+        "support_overhang_angle_deg",
+        "tree_max_branch_angle_deg",
+        "pressure_advance",
+    ):
+        if key in results:
+            base_settings[key] = _decimal_result(results, key)
+    if "cooling_enabled" in results:
+        base_settings["cooling_enabled"] = bool(results["cooling_enabled"])
+    extensions = dict(base_settings.get("cura_extensions", {}))
+    for key in ("xy_offset", "hole_xy_offset"):
+        if key in results:
+            extensions[key] = format(Decimal(str(results[key])), "f")
+    base_settings["cura_extensions"] = extensions
+    base_settings["filament_density_g_cm3"] = product.density_g_cm3
+    if calibration.build_plate_surface_id is not None:
+        base_settings["preferred_build_plate_surface_id"] = calibration.build_plate_surface_id
+
     profile = MaterialProfile(
+        **base_settings,
         filament_product_id=calibration.filament_product_id,
         printer_id=calibration.printer_id,
         nozzle_diameter_mm=calibration.nozzle_diameter_mm,
         version=(latest or 0) + 1,
         status=ProfileStatus.PUBLISHED,
-        chamber_temp_c=_decimal_result(results, "chamber_temp_c"),
-        extruder_temp_c=_decimal_result(results, "extruder_temp_c", Decimal("0")),
-        bed_temp_c=_decimal_result(results, "bed_temp_c", Decimal("0")),
-        flow_percent=_decimal_result(results, "flow_percent", Decimal("100")),
-        retraction_distance_mm=_decimal_result(results, "retraction_distance_mm"),
-        retraction_speed_mm_s=_decimal_result(results, "retraction_speed_mm_s"),
-        cooling_enabled=bool(results.get("cooling_enabled", True)),
-        cooling_min_percent=_decimal_result(results, "cooling_min_percent", Decimal("0")),
-        cooling_max_percent=_decimal_result(results, "cooling_max_percent", Decimal("100")),
-        support_overhang_angle_deg=_decimal_result(results, "support_overhang_angle_deg"),
-        tree_max_branch_angle_deg=_decimal_result(results, "tree_max_branch_angle_deg"),
-        pressure_advance=_decimal_result(results, "pressure_advance"),
-        filament_density_g_cm3=product.density_g_cm3,
-        preferred_build_plate_surface_id=calibration.build_plate_surface_id,
-        ironing_enabled=results.get("ironing_enabled"),
-        ironing_flow_percent=_decimal_result(results, "ironing_flow_percent"),
-        ironing_speed_mm_s=_decimal_result(results, "ironing_speed_mm_s"),
-        ironing_line_spacing_mm=_decimal_result(results, "ironing_line_spacing_mm"),
+        source_template_revision_id=(baseline.source_template_revision_id if baseline is not None else None),
+        ironing_enabled=results.get(
+            "ironing_enabled",
+            baseline.ironing_enabled if baseline is not None else None,
+        ),
+        ironing_flow_percent=(
+            _decimal_result(results, "ironing_flow_percent")
+            if "ironing_flow_percent" in results
+            else baseline.ironing_flow_percent
+            if baseline is not None
+            else None
+        ),
+        ironing_speed_mm_s=(
+            _decimal_result(results, "ironing_speed_mm_s")
+            if "ironing_speed_mm_s" in results
+            else baseline.ironing_speed_mm_s
+            if baseline is not None
+            else None
+        ),
+        ironing_line_spacing_mm=(
+            _decimal_result(results, "ironing_line_spacing_mm")
+            if "ironing_line_spacing_mm" in results
+            else baseline.ironing_line_spacing_mm
+            if baseline is not None
+            else None
+        ),
         published_at=datetime.now(UTC),
     )
     session.add(profile)

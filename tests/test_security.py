@@ -21,8 +21,12 @@ def test_usernames_are_nfkc_normalized_and_casefolded() -> None:
 
 
 def test_password_length_policy_rejects_short_values() -> None:
-    with pytest.raises(ValueError, match="at least 14"):
+    with pytest.raises(ValueError, match="at least 10"):
         validate_password("too-short")
+
+
+def test_two_character_usernames_are_supported() -> None:
+    assert normalize_username(" IP ") == "ip"
 
 
 def test_argon2id_password_round_trip() -> None:

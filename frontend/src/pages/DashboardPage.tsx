@@ -66,7 +66,7 @@ export default function DashboardPage() {
 
         <article className="card quick-card">
           <header className="card__header"><div><p className="eyebrow">Keep moving</p><h2>Quick actions</h2></div></header>
-          <div className="quick-actions"><Link to="/spools"><Scale size={19} /><span><strong>Weigh a spool</strong><small>Record a trusted manual measurement</small></span><ArrowRight size={17} /></Link><Link to="/calibration"><FlaskConical size={19} /><span><strong>Resume calibration</strong><small>Continue the six-step workflow</small></span><ArrowRight size={17} /></Link><Link to="/plates"><Layers3 size={19} /><span><strong>Select build plate</strong><small>Update the active Moonraker surface</small></span><ArrowRight size={17} /></Link></div>
+          <div className="quick-actions"><Link to="/spools"><Scale size={19} /><span><strong>Weigh a spool</strong><small>Record a trusted manual measurement</small></span><ArrowRight size={17} /></Link><Link to="/calibration"><FlaskConical size={19} /><span><strong>Resume calibration</strong><small>Continue the seven-step workflow</small></span><ArrowRight size={17} /></Link><Link to="/plates"><Layers3 size={19} /><span><strong>Select build plate</strong><small>Update the active Moonraker surface</small></span><ArrowRight size={17} /></Link></div>
         </article>
       </section>
     </div>

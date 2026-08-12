@@ -65,7 +65,23 @@ Record:
 - selected retraction speed
 - travel/cooling conditions
 
-## Step 5 - Overhang Test
+## Step 5 - Size and Hole Calibration
+
+Purpose: compensate product-specific outside and hole dimensions after retraction is stable.
+
+Record:
+
+- recorded design X and Y dimensions
+- actual measured X and Y dimensions
+- recorded design hole diameter
+- actual measured hole diameter
+- calculated X and Y expansion observations
+- calculated Cura Horizontal Expansion (`xy_offset`)
+- calculated Cura Hole Horizontal Expansion (`hole_xy_offset`)
+
+Each axis correction is `(design - measured) / 2`. Horizontal Expansion is the mean of the X and Y corrections. Hole Horizontal Expansion is `(design hole - measured hole) / 2`. When the independent X and Y corrections differ by more than 0.05 mm, warn the operator to check mechanics or calibrate axes before relying on their average.
+
+## Step 6 - Overhang Test
 
 Purpose: determine practical unsupported angle and support trigger settings.
 
@@ -78,7 +94,7 @@ Record:
 - maximum tree-support branch angle
 - preferred support notes
 
-## Step 6 - Optional Ironing Test
+## Step 7 - Optional Ironing Test
 
 Purpose: determine whether ironing improves top surfaces for the material.
 

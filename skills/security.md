@@ -2,6 +2,7 @@
 
 - Filament Manager uses local accounts with `administrator`, `operator`, and `viewer` roles.
 - Store passwords with Argon2id. Never log passwords, session tokens, CSRF tokens, database URLs, API keys, or service-account documents.
+- Local usernames contain 2-80 normalized characters. Passwords contain 10-256 characters; retain Argon2id and do not add brittle composition rules.
 - Docker credentials currently use ordinary scoped environment variables by explicit deployment policy. Treat them as inspectable by authorized Docker/Portainer operators, restrict that access, protect `.env` with mode `0600`, and migrate to a dedicated secret store when approved.
 - PostgreSQL transport is intentionally unencrypted on the dedicated isolated database network. Credentials and queries are visible to any party that can observe that network, so never route it through shared, public, or otherwise untrusted infrastructure.
 - Derive production allowed hosts from `FILAMENT_MANAGER_BASE_URL` unless the deployer supplies the exact comma-separated `FILAMENT_MANAGER_ALLOWED_HOSTS`; never introduce wildcard host or CORS variables.
@@ -14,6 +15,7 @@
 - Use exact allowed origins and hosts; wildcard production CORS is prohibited.
 - Constrain outbound integration URLs to configured endpoints to reduce SSRF risk.
 - Treat Moonraker profile names as untrusted input. Only bounded exact uppercase `P<number>` Side A or `P<number>b` Side B names may create sides or reach the `SELECT_BUILD_PLATE` macro; ignore all other profiles and cap one synchronization at 1,000 discovered sides.
+- Printer discovery may consume only documented Moonraker/Klipper identity, version, configuration, and toolhead envelope fields. Sanitize and bound every external string/number, never return connection URLs or paths, and preserve manual hardware descriptions.
 - Rate-limit login and future device-event endpoints. Audit denied administrative actions without sensitive request bodies.
 - QR codes contain stable application URLs/identifiers only. NFC UIDs never grant access.
 - Production images run as a non-root user and omit package-manager and build tooling from the runtime layer.

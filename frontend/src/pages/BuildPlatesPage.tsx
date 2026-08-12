@@ -135,10 +135,10 @@ export default function BuildPlatesPage() {
     onSuccess: refreshCanonicalState,
   })
   const updatePlate = useMutation({
-    mutationFn: ({ plate, displayName, description }: { plate: BuildPlate; displayName: string; description: string | null }) =>
+    mutationFn: ({ plate, values }: { plate: BuildPlate; values: Record<string, unknown> }) =>
       apiFetch(`/build-plates/${plate.id}`, {
         method: 'PATCH',
-        body: JSON.stringify({ expected_version: plate.record_version, display_name: displayName, description }),
+        body: JSON.stringify({ expected_version: plate.record_version, ...values }),
       }),
     onSuccess: refreshCanonicalState,
   })
@@ -205,14 +205,35 @@ export default function BuildPlatesPage() {
                 <p className="plate-description">{plate.description ?? 'No plate description has been recorded.'}</p>
                 <dl className="definition-list definition-list--compact">
                   <div><dt>Condition</dt><dd>{plate.condition}</dd></div>
+                  <div><dt>Product</dt><dd>{[plate.manufacturer, plate.product_name].filter(Boolean).join(' · ') || 'Not specified'}</dd></div>
+                  <div><dt>Shape</dt><dd>{plate.shape ?? 'Not specified'}</dd></div>
+                  <div><dt>Properties</dt><dd>{[plate.magnetic === true ? 'Magnetic' : null, plate.flexible === true ? 'Flexible' : null].filter(Boolean).join(' · ') || 'Not specified'}</dd></div>
+                  <div><dt>Preferred materials</dt><dd>{plate.preferred_materials.join(', ') || 'Not specified'}</dd></div>
+                  <div><dt>Maximum bed temperature</dt><dd>{plate.max_bed_temp_c ? `${plate.max_bed_temp_c} °C` : 'Not specified'}</dd></div>
                   <div><dt>Last cleaned</dt><dd>{dateTime(plate.last_cleaned_at)}</dd></div>
                 </dl>
                 {user?.role !== 'viewer' ? (
                   <details className="plate-editor">
                     <summary>Edit physical plate</summary>
-                    <form onSubmit={(event) => { event.preventDefault(); const data = new FormData(event.currentTarget); const displayName = String(data.get('display_name') ?? '').trim(); const description = String(data.get('description') ?? '').trim(); updatePlate.mutate({ plate, displayName, description: description || null }) }}>
+                    <form onSubmit={(event) => { event.preventDefault(); const data = new FormData(event.currentTarget); const optional = (key: string) => String(data.get(key) ?? '').trim() || null; const triState = (key: string) => { const value = String(data.get(key) ?? ''); return value === '' ? null : value === 'true' }; updatePlate.mutate({ plate, values: { display_name: String(data.get('display_name') ?? '').trim(), description: optional('description'), manufacturer: optional('manufacturer'), product_name: optional('product_name'), shape: optional('shape'), dimensions_mm: { width: optional('width'), depth: optional('depth'), diameter: optional('diameter'), thickness: optional('thickness') }, magnetic: triState('magnetic'), flexible: triState('flexible'), condition: String(data.get('condition')), status: String(data.get('status')), preferred_materials: String(data.get('preferred_materials') ?? '').split(',').map((item) => item.trim()).filter(Boolean), max_bed_temp_c: optional('max_bed_temp_c'), notes: optional('notes') } }) }}>
                       <label>Name<input name="display_name" defaultValue={plate.display_name} required maxLength={120} /></label>
                       <label>Description<textarea name="description" defaultValue={plate.description ?? ''} maxLength={4000} rows={2} /></label>
+                      <label>Manufacturer<input name="manufacturer" defaultValue={plate.manufacturer ?? ''} maxLength={120} /></label>
+                      <label>Product or model<input name="product_name" defaultValue={plate.product_name ?? ''} maxLength={160} /></label>
+                      <label>Shape<select name="shape" defaultValue={plate.shape ?? ''}><option value="">Not specified</option><option value="rectangular">Rectangular</option><option value="round">Round</option><option value="other">Other</option></select></label>
+                      <div className="form-grid">
+                        <label>Width (mm)<input name="width" type="number" min="0.01" step="any" defaultValue={plate.dimensions_mm?.width ?? ''} /></label>
+                        <label>Depth (mm)<input name="depth" type="number" min="0.01" step="any" defaultValue={plate.dimensions_mm?.depth ?? ''} /></label>
+                        <label>Diameter (mm)<input name="diameter" type="number" min="0.01" step="any" defaultValue={plate.dimensions_mm?.diameter ?? ''} /></label>
+                        <label>Thickness (mm)<input name="thickness" type="number" min="0.01" step="any" defaultValue={plate.dimensions_mm?.thickness ?? ''} /></label>
+                      </div>
+                      <label>Magnetic<select name="magnetic" defaultValue={plate.magnetic === null ? '' : String(plate.magnetic)}><option value="">Not specified</option><option value="true">Yes</option><option value="false">No</option></select></label>
+                      <label>Flexible<select name="flexible" defaultValue={plate.flexible === null ? '' : String(plate.flexible)}><option value="">Not specified</option><option value="true">Yes</option><option value="false">No</option></select></label>
+                      <label>Condition<select name="condition" defaultValue={plate.condition}><option value="new">New</option><option value="good">Good</option><option value="worn">Worn</option><option value="damaged">Damaged</option><option value="retired">Retired</option></select></label>
+                      <label>Status<select name="status" defaultValue={plate.status}><option value="active">Active</option><option value="maintenance">Maintenance</option><option value="retired">Retired</option></select></label>
+                      <label>Preferred materials<input name="preferred_materials" defaultValue={plate.preferred_materials.join(', ')} placeholder="PLA, PETG, ASA" /></label>
+                      <label>Maximum bed temperature (°C)<input name="max_bed_temp_c" type="number" min="0" max="500" step="any" defaultValue={plate.max_bed_temp_c ?? ''} /></label>
+                      <label>Plate notes<textarea name="notes" defaultValue={plate.notes ?? ''} maxLength={4000} rows={2} /></label>
                       <button className="button" disabled={updatePlate.isPending} type="submit"><Save size={16} /> Save plate</button>
                     </form>
                   </details>

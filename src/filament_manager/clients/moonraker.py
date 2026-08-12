@@ -21,6 +21,15 @@ class MoonrakerBedMeshState:
     active_profile: str | None
 
 
+@dataclass(frozen=True, slots=True)
+class MoonrakerPrinterInformation:
+    """Documented Moonraker and Klipper fields used for canonical metadata."""
+
+    server_info: dict[str, Any]
+    printer_info: dict[str, Any]
+    object_status: dict[str, Any]
+
+
 class MoonrakerClient:
     """Client constrained to a configured printer endpoint."""
 
@@ -31,6 +40,20 @@ class MoonrakerClient:
 
     def _headers(self) -> dict[str, str]:
         return {"X-Api-Key": self.api_key} if self.api_key else {}
+
+    async def _get(self, path: str) -> dict[str, Any]:
+        """Perform one authenticated GET and reject malformed API envelopes."""
+
+        try:
+            async with httpx.AsyncClient(timeout=self.timeout, headers=self._headers()) as client:
+                response = await client.get(f"{self.base_url}{path}")
+                response.raise_for_status()
+                data = response.json()
+        except (httpx.HTTPError, ValueError) as exc:
+            raise MoonrakerError(f"Moonraker GET {path} failed") from exc
+        if not isinstance(data, dict) or "error" in data:
+            raise MoonrakerError(f"Moonraker GET {path} returned an invalid payload")
+        return data
 
     async def _post(self, path: str, payload: dict[str, Any]) -> dict[str, Any]:
         try:
@@ -49,16 +72,37 @@ class MoonrakerClient:
     async def health(self) -> dict[str, Any]:
         """Read Moonraker server information as a liveness check."""
 
-        try:
-            async with httpx.AsyncClient(timeout=self.timeout, headers=self._headers()) as client:
-                response = await client.get(f"{self.base_url}/server/info")
-                response.raise_for_status()
-                data = response.json()
-        except (httpx.HTTPError, ValueError) as exc:
-            raise MoonrakerError("Moonraker health check failed") from exc
-        if not isinstance(data, dict):
-            raise MoonrakerError("Moonraker health returned an invalid payload")
-        return data
+        return await self._get("/server/info")
+
+    async def printer_information(self) -> MoonrakerPrinterInformation:
+        """Read only documented, useful printer identity and configuration fields."""
+
+        server_payload = await self._get("/server/info")
+        printer_payload = await self._get("/printer/info")
+        object_payload = await self._post(
+            "/printer/objects/query",
+            {
+                "objects": {
+                    "configfile": ["settings"],
+                    "toolhead": ["axis_minimum", "axis_maximum", "cone_start_z"],
+                }
+            },
+        )
+        server_info = server_payload.get("result")
+        printer_info = printer_payload.get("result")
+        object_result = object_payload.get("result")
+        object_status = object_result.get("status") if isinstance(object_result, dict) else None
+        if (
+            not isinstance(server_info, dict)
+            or not isinstance(printer_info, dict)
+            or not isinstance(object_status, dict)
+        ):
+            raise MoonrakerError("Moonraker printer information was incomplete")
+        return MoonrakerPrinterInformation(
+            server_info=server_info,
+            printer_info=printer_info,
+            object_status=object_status,
+        )
 
     async def set_active_spool(self, spoolman_id: int | None) -> dict[str, Any]:
         """Use Moonraker's supported active-spool integration endpoint."""

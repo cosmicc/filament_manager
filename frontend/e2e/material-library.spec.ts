@@ -37,7 +37,7 @@ const template = {
 }
 
 const filament = {
-  id: 'filament-id', vendor_id: null, vendor_name: null, material_type: 'PLA',
+  id: 'd1e1d7ce-f0bc-46f5-86b2-d2c74f272f00', vendor_id: null, vendor_name: null, material_type: 'PLA',
   filler: null, finish: null, color_name: 'Blue', color_hex: '2F80A5',
   product_name: 'Workshop PLA', diameter_mm: '1.75', tolerance_mm: null,
   density_g_cm3: '1.24', nominal_net_mass_g: '1000', notes: null,
@@ -59,6 +59,9 @@ test.beforeEach(async ({ page }) => {
   await page.route('**/api/v1/auth/me', (route) => route.fulfill({ json: user }))
   await page.route('**/api/v1/printers', (route) => route.fulfill({ json: [printer] }))
   await page.route('**/api/v1/build-plates', (route) => route.fulfill({ json: [] }))
+  await page.route('**/api/v1/filament-colors', (route) => route.fulfill({ json: [
+    { id: 'blue-id', name: 'Blue', normalized_name: 'blue', color_hex: '2F80A5', record_version: 1 },
+  ] }))
 })
 
 test('template library is usable at desktop and mobile sizes', async ({ page }) => {
@@ -94,11 +97,62 @@ test('filament creation requires and submits a published template', async ({ pag
   await page.goto('/filaments')
   await page.getByRole('button', { name: 'Add filament' }).click()
   await page.getByLabel('Product name').fill('Workshop PLA')
-  await page.getByLabel('Color name').fill('Blue')
+  await page.getByLabel('Color name', { exact: true }).fill('Blue')
   await page.getByRole('button', { name: 'Create filament' }).click()
   await expect.poll(() => submitted?.material_template_revision_id).toBe('revision-id')
   await expect.poll(() => submitted?.material_type).toBe('PLA')
   await expect(page.getByText(/new draft profile copied/)).toBeVisible()
+})
+
+test('filament details remember colors and save Cura edits as a new version', async ({ page }) => {
+  let currentFilament = filament
+  let filamentUpdate: Record<string, unknown> | null = null
+  let profileRevision: Record<string, unknown> | null = null
+  const profile = {
+    ...settings,
+    id: 'profile-id', filament_product_id: filament.id, printer_id: printer.id,
+    nozzle_diameter_mm: '0.4', version: 1, status: 'draft',
+    cura_extensions: { ...settings.cura_extensions, xy_offset: '0.05' },
+    cura_settings: { material_print_temperature: '210', xy_offset: '0.05' },
+    published_at: null, checksum: null, record_version: 1,
+    source_template_revision_id: 'revision-id',
+  }
+  await page.route(`**/api/v1/filaments/${filament.id}`, async (route) => {
+    if (route.request().method() === 'PATCH') {
+      filamentUpdate = route.request().postDataJSON() as Record<string, unknown>
+      currentFilament = {
+        ...currentFilament,
+        color_name: String(filamentUpdate.color_name),
+        color_hex: String(filamentUpdate.color_hex),
+        record_version: 2,
+      }
+    }
+    await route.fulfill({ json: currentFilament })
+  })
+  await page.route('**/api/v1/vendors', (route) => route.fulfill({ json: [] }))
+  await page.route('**/api/v1/profiles', (route) => route.fulfill({ json: [profile] }))
+  await page.route('**/api/v1/profiles/cura-settings/catalog', (route) => route.fulfill({ json: [
+    { key: 'xy_offset', label: 'Horizontal Expansion', value_type: 'number', unit: 'mm', editable: true },
+    { key: 'hole_xy_offset', label: 'Hole Horizontal Expansion', value_type: 'number', unit: 'mm', editable: true },
+  ] }))
+  await page.route('**/api/v1/profiles/profile-id/revisions', async (route) => {
+    profileRevision = route.request().postDataJSON() as Record<string, unknown>
+    await route.fulfill({ status: 201, json: { ...profile, id: 'profile-v2', version: 2 } })
+  })
+
+  await page.goto(`/filaments/${filament.id}`)
+  await expect(page.getByRole('heading', { name: 'Workshop PLA' })).toBeVisible()
+  await page.getByLabel('Color name', { exact: true }).fill('Red')
+  await page.getByLabel('Screen color sample').fill('#ff0000')
+  await page.getByRole('button', { name: 'Save filament' }).click()
+  await expect.poll(() => filamentUpdate?.color_name).toBe('Red')
+  await expect.poll(() => filamentUpdate?.color_hex).toBe('FF0000')
+
+  await page.getByRole('button', { name: 'Edit as new version' }).click()
+  await page.getByLabel('Printing temperature (°C)').fill('215')
+  await page.getByRole('button', { name: 'Save new draft version' }).click()
+  await expect.poll(() => (profileRevision?.settings as Record<string, unknown>)?.extruder_temp_c).toBe('215')
+  await expect.poll(() => (profileRevision?.settings as Record<string, unknown>)?.cura_extensions).toEqual({ xy_offset: '0.05' })
 })
 
 test('spool creation is available without opening Spoolman', async ({ page }) => {
@@ -118,7 +172,7 @@ test('spool creation is available without opening Spoolman', async ({ page }) =>
   await page.getByRole('button', { name: 'Add spool' }).click()
   await page.getByLabel('Spool code').fill('PLA-BLUE-01')
   await page.getByRole('button', { name: 'Create spool' }).click()
-  await expect.poll(() => submitted?.filament_product_id).toBe('filament-id')
+  await expect.poll(() => submitted?.filament_product_id).toBe(filament.id)
   await expect.poll(() => submitted?.spool_code).toBe('PLA-BLUE-01')
 })
 
