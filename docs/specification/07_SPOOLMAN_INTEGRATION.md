@@ -82,21 +82,21 @@ Material, vendor, product name/grade/hardness, diameter, density, nominal weight
 
 Physical spool, initial weight, tare weight, remaining and used weight, price, first/last use, location, comment, and managed identifiers.
 
+Canonical creates and edits enqueue an immediate transactional outbox projection. A complete convergence sweep runs every minute by default. It reads printer-originated remaining weight before metadata projection, then upserts every canonical vendor, filament, and spool. Routine metadata updates omit `remaining_weight`; only initial creation and explicit measurement jobs write it.
+
 ## Required custom fields
 
-At minimum:
+The worker idempotently provisions these text fields through `POST /api/v1/field/{entity_type}/{key}` before projecting records:
 
-- `filament_manager_spool_uuid`
-- `sheet_spool_id`
-- `filler`
-- `finish`
-- `color_name`
-- `profile_version`
-- `preferred_plate`
+- vendor: `filament_manager_vendor_uuid`
+- filament: `filament_manager_product_uuid`, `filler`, `finish`, and `color_name`
+- spool: `filament_manager_spool_uuid` and `sheet_spool_id`
+
+Spoolman stores every custom-field value as a JSON-encoded string. Encode managed values before create/update and decode them before UUID comparison. Managed UUID discovery makes retries duplicate-safe when a worker stops after remote creation but before saving the local remote ID.
 
 ## Extra-field safety
 
-Spoolman API updates can replace an object's `extra` mapping. Read the current object, merge unknown keys, and send the merged result. Do not erase fields owned by another integration.
+Spoolman API updates can replace an object's `extra` mapping. Read the current object, merge unknown keys, and send the merged result. Do not erase fields owned by another integration. Paginate vendor, filament, and spool collections with `limit`, `offset`, and `x-total-count`; reconciliation must never silently stop at one API page.
 
 ## Deployment example
 

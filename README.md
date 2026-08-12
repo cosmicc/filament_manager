@@ -12,7 +12,7 @@ PostgreSQL is the canonical data store. A distinct Spoolman service remains the 
 - Versioned printer/nozzle material templates that start each new product-specific profile
 - Manual gross-weight measurements with variance confirmation
 - Immutable audit history and transactional projection outbox
-- Spoolman REST projection and periodic reconciliation, including Filament Manager-owned free-text bucket locations, plus Moonraker control clients
+- Immediate Spoolman REST projection plus one-minute complete convergence and usage reconciliation, including Filament Manager-owned free-text bucket locations, plus Moonraker control clients
 - P1-P5 initial physical build plates, Side A/Side B Moonraker mesh discovery (`P4`/`P4b`), and a seven-step calibration workflow with dimensional and hole compensation
 - Moonraker/Klipper printer information discovery with editable nozzle, kinematics, hardware, and build-volume metadata
 - Outbound-only Cura workstation agents for importing materials and keeping an authoritative Filament Manager material library synchronized on Arch Linux and Windows 11, with backup, drift repair, bundled-material hiding, and rollback

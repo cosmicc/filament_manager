@@ -24,8 +24,8 @@
 
 ## Phase 3 - Spoolman and printer integration
 
-- API projection and custom fields
-- WebSocket/poll reconciliation
+- ~~API projection, managed custom fields, and complete polling reconciliation~~ (implemented in 0.1.5)
+- optional Spoolman WebSocket event reconciliation beyond immediate outbox delivery and one-minute polling
 - Moonraker active-spool tracking
 - failure-isolation test while Filament Manager is stopped
 - independent Spoolman upgrade procedure

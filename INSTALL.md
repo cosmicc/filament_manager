@@ -144,6 +144,8 @@ Leave `MOONRAKER_WEBSOCKET_URL` empty to derive `ws://.../websocket` or `wss://.
 
 For initial testing, `ghcr.io/cosmicc/filament-manager:latest` tracks the newest CI-passing `main` build for AMD64 and ARM64. Before production use, replace it with the workflow's immutable `sha-<commit>` tag or resolved digest.
 
+Keep `SPOOLMAN_RECONCILE_INTERVAL_MINUTES=1` so immediate event-driven projections have a frequent complete-rebuild safety net. `SYNC_OUTBOX_WORKERS=2` runs two fair dispatchers, and `SYNC_OUTBOX_LOCK_TIMEOUT_SECONDS=300` allows work abandoned by a terminated worker to be reclaimed without racing a normal bounded API request.
+
 When Google publication is enabled, set `GOOGLE_ENABLED=true`, `GOOGLE_SPREADSHEET_ID`, and `GOOGLE_SERVICE_ACCOUNT_JSON`. The JSON must be compact and one line. When sourcing `.env` in a shell, surround the complete JSON value with single quotes.
 
 The current deployment intentionally uses ordinary environment variables instead of Docker secrets. Anyone with sufficient Portainer or Docker service-inspection access can read these values. Restrict that access, protect `.env` with mode `0600`, never commit it, and avoid printing `docker stack config` or service specifications into logs.
@@ -174,6 +176,8 @@ The web and worker entry points each check the canonical schema before starting.
 docker service logs filament-manager_web
 docker service logs filament-manager_worker
 ```
+
+The 0.1.5 synchronization repair automatically requeues Spoolman jobs that previously became failed, dead, or stranded. Within one minute of the worker starting, it provisions the required Spoolman custom fields and projects every existing canonical vendor, filament, and spool. Confirm a `spoolman.reconcile.full` job completes on the **Integrations** page.
 
 `FILAMENT_MANAGER_DATABASE_AUTO_MIGRATE` defaults to `true`. Disable it only for a controlled recovery. A separate migration job remains available for diagnosing a failed upgrade while the application services are stopped:
 

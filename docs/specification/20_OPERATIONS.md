@@ -36,6 +36,8 @@ Check:
 - Google publication status
 - Moonraker reachability
 
+Canonical mutations normally begin Spoolman projection within one worker polling cycle. The default one-minute full sweep imports usage before repairing every canonical vendor, filament, and spool. Confirm the Spoolman integration card reports both API and managed-field readiness, and confirm recent `spoolman.reconcile.full` jobs complete.
+
 ## Upgrade Spoolman
 
 1. Review upstream release notes and migration warnings.

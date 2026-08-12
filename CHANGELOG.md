@@ -4,6 +4,7 @@
 
 ### Added
 
+- Added projection-aware Spoolman readiness checks, automatic managed custom-field provisioning, complete API pagination, and duplicate-safe managed UUID discovery.
 - Added physical build plates with independent Side A and Side B records. `P4` represents Side A and `P4b` represents Side B of the same physical P4 plate.
 - Added a plate description plus per-side surface material, smooth/textured finish, notes, mesh availability, mesh check time, and mesh calibration time.
 - Added Administrator-triggered Moonraker synchronization that automatically creates bounded exact `P<number>` and `P<number>b` plate sides and records an audit event.
@@ -22,6 +23,8 @@
 
 ### Changed
 
+- Changed Spoolman synchronization to queue each canonical mutation immediately and run a one-minute safety sweep that imports printer-recorded usage before converging every vendor, filament product, and spool.
+- Changed the worker to honor its configured concurrent dispatcher count and reclaim abandoned running jobs after a bounded lock timeout.
 - Kept P1-P5 as the initial physical set while allowing later plates and optional B sides to come from same-named saved Moonraker meshes.
 - Changed selection, calibration context, dashboard state, and material preferences to record the exact plate side facing up.
 - Changed Cura deployment to write one material file rather than quality-change profiles or machine start-G-code patches. The Material Settings and Klipper Settings plugins now consume the material values.
@@ -38,6 +41,10 @@
 
 ### Fixed
 
+- Fixed all filament and spool projections failing against Spoolman 0.23.1 because managed custom fields were undeclared and their values were not JSON-encoded.
+- Fixed full reconciliation only reading existing remote spools instead of creating or repairing missing Spoolman vendors, filaments, and spools.
+- Fixed metadata reconciliation potentially erasing unimported printer usage by writing canonical remaining weight during routine spool updates.
+- Fixed failed, dead, and worker-crash-stranded Spoolman jobs remaining permanently stuck after the integration recovered.
 - Fixed the initial `SELECT_BUILD_PLATE` macro state using an unambiguous Python literal so Klipper accepts the macro during startup.
 - Fixed double-sided plates and different per-side meshes being impossible to represent.
 - Fixed later physical plates being impossible to represent because the database column, JSON contracts, API client, macro, and interface were limited to P1-P5.

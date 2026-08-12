@@ -52,6 +52,8 @@ def test_docker_configuration_comes_from_environment_without_exposing_credential
     assert settings.database.migration_lock_timeout_seconds == 300
     assert str(settings.spoolman.base_url) == "http://spoolman:8000/"
     assert str(settings.spoolman.public_url) == "http://spoolman.example:7912/"
+    assert settings.spoolman.full_reconcile_interval_minutes == 1
+    assert settings.sync.outbox_lock_timeout_seconds == 300
     assert settings.moonraker.printers[0].api_key_file is None
     assert settings.moonraker.printers[0].resolved_api_key() == moonraker_key
     assert settings.moonraker.printers[0].id == "voron-24"

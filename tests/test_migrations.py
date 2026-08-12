@@ -27,10 +27,38 @@ def test_previous_schema_automatically_upgrades_to_metadata_head(
 
         engine = create_engine(database_url)
         assert "material_templates" not in inspect(engine).get_table_names()
+        with engine.begin() as connection:
+            connection.execute(
+                text(
+                    """
+                    INSERT INTO outbox_jobs (
+                        id, job_type, idempotency_key, aggregate_type,
+                        aggregate_id, aggregate_version, payload, status,
+                        attempts, max_attempts, next_attempt_at, created_at
+                    ) VALUES (
+                        '10000000-0000-0000-0000-000000000001',
+                        'spoolman.spool.upsert', 'migration-recovery-test', 'spool',
+                        '20000000-0000-0000-0000-000000000002', 1,
+                        '{}'::jsonb, 'DEAD'::job_status, 12, 12,
+                        CURRENT_TIMESTAMP, CURRENT_TIMESTAMP
+                    )
+                    """
+                )
+            )
 
         upgrade_database(DatabaseConfig(url=database_url))
         with engine.connect() as connection:
-            assert connection.scalar(text("SELECT version_num FROM alembic_version")) == "d4f7a21c9e50"
+            assert connection.scalar(text("SELECT version_num FROM alembic_version")) == "e5c8b31d7a24"
+            recovered = connection.execute(
+                text(
+                    """
+                    SELECT status::text, attempts
+                    FROM outbox_jobs
+                    WHERE id = '10000000-0000-0000-0000-000000000001'
+                    """
+                )
+            ).one()
+            assert recovered == ("PENDING", 0)
         inspector = inspect(engine)
         assert "material_templates" in inspector.get_table_names()
         assert "material_template_revisions" in inspector.get_table_names()

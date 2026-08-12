@@ -64,7 +64,7 @@ class SpoolmanConfig(BaseModel):
     base_url: AnyHttpUrl
     public_url: AnyHttpUrl | None = None
     request_timeout_seconds: float = Field(default=10, ge=1, le=120)
-    full_reconcile_interval_minutes: int = Field(default=30, ge=1)
+    full_reconcile_interval_minutes: int = Field(default=1, ge=1)
 
     @field_validator("base_url", "public_url")
     @classmethod
@@ -161,6 +161,7 @@ class SyncConfig(BaseModel):
 
     max_retry_attempts: int = Field(default=12, ge=1)
     outbox_workers: int = Field(default=2, ge=1, le=32)
+    outbox_lock_timeout_seconds: int = Field(default=300, ge=30, le=3600)
     low_spool_threshold_percent: float = Field(default=25, ge=0, le=100)
     measurement_increase_tolerance_percent: float = Field(default=5, ge=0, le=100)
     measurement_increase_tolerance_g: float = Field(default=25, ge=0)
@@ -305,7 +306,7 @@ def _deployment_environment_config() -> dict[str, Any]:
         "base_url": os.environ.get("FILAMENT_MANAGER_SPOOLMAN_BASE_URL", "http://spoolman:8000"),
         "request_timeout_seconds": os.environ.get("FILAMENT_MANAGER_SPOOLMAN_REQUEST_TIMEOUT_SECONDS", "10"),
         "full_reconcile_interval_minutes": os.environ.get(
-            "FILAMENT_MANAGER_SPOOLMAN_RECONCILE_INTERVAL_MINUTES", "30"
+            "FILAMENT_MANAGER_SPOOLMAN_RECONCILE_INTERVAL_MINUTES", "1"
         ),
     }
     if public_url := os.environ.get("FILAMENT_MANAGER_SPOOLMAN_PUBLIC_URL"):
@@ -353,6 +354,9 @@ def _deployment_environment_config() -> dict[str, Any]:
         "sync": {
             "max_retry_attempts": os.environ.get("FILAMENT_MANAGER_SYNC_MAX_RETRY_ATTEMPTS", "12"),
             "outbox_workers": os.environ.get("FILAMENT_MANAGER_SYNC_OUTBOX_WORKERS", "2"),
+            "outbox_lock_timeout_seconds": os.environ.get(
+                "FILAMENT_MANAGER_SYNC_OUTBOX_LOCK_TIMEOUT_SECONDS", "300"
+            ),
             "low_spool_threshold_percent": os.environ.get(
                 "FILAMENT_MANAGER_LOW_SPOOL_THRESHOLD_PERCENT", "25"
             ),

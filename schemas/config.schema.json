@@ -194,6 +194,11 @@
           "type": "integer",
           "minimum": 1
         },
+        "outbox_lock_timeout_seconds": {
+          "type": "integer",
+          "minimum": 30,
+          "maximum": 3600
+        },
         "low_spool_threshold_percent": {
           "type": "number",
           "minimum": 0,
