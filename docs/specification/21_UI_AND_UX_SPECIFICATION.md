@@ -6,6 +6,7 @@
 - Spools
 - Filaments
 - Profiles
+- Templates
 - Calibration Wizard
 - Build Plates
 - Printers
@@ -33,7 +34,7 @@ Show:
 - tare and measurement history
 - usage history
 - product/profile
-- active printer/dryer location
+- free-text storage bucket/location with edit and clear actions
 - Spoolman projection status
 - manual weigh action
 - NFC association later
@@ -44,7 +45,11 @@ Use a persistent stepper with the exact six steps. Each step has instructions, t
 
 ## Build plate UX
 
-Cards for P1-P5 with surface, condition, mesh, last clean, last calibration, and material preferences. The active plate is visually explicit.
+Cards begin with physical P1-P5 and naturally order later discovered plates. Each physical card shows its description/condition/cleaning state and nested Side A/Side B panels with exact mesh, surface material, smooth/textured finish, mesh availability/check/calibration time, and notes. The active side is visually explicit. Administrators receive synchronization feedback; Operators may edit metadata and select available sides without importing integration-controlled records.
+
+The Material Profiles page lists sanitized existing Cura material candidates reported by paired agents. Import requires explicit canonical filament, printer/nozzle, and optional preferred-side mapping and creates a draft without modifying the workstation file.
+
+The Templates page creates complete generic material settings revisions and publishes them per printer/nozzle. The Filaments page requires a published template in its routine creation flow and explains that a product-owned draft is copied. The Spools page creates physical spools from canonical products and lets Operators edit or clear their free-text bucket locations while explaining that Filament Manager synchronizes the value to Spoolman. Cura Workstations shows unmanaged material count and requires an explicit replacement warning before authoritative takeover of an existing user library.
 
 ## Google status
 

@@ -41,7 +41,7 @@ gcode:
   )}
 ```
 
-The package also includes `examples/klipper_macros.cfg`.
+The package also includes `integrations/klipper/filament-manager-macros.cfg`. Its plate macro accepts only exact `P<number>` Side A or `P<number>b` Side B values before passing the same bounded name to `BED_MESH_PROFILE LOAD`.
 
 ## Fluidd
 
@@ -62,6 +62,8 @@ Spoolman has no built-in user authentication. Keep the printer-facing endpoint o
 ## Filament Manager relationship
 
 Filament Manager reads and reconciles Spoolman through the API. It may also request active-spool changes through Moonraker, but it does not proxy Moonraker's normal usage traffic.
+
+An Administrator may synchronize Build Plates through Moonraker's supported `POST /printer/objects/query` endpoint. Filament Manager reads `bed_mesh.profiles`, groups exact P-number A/B side meshes under physical plates, tracks missing meshes without deletion, and uses `bed_mesh.profile_name` to align the active physical plate and side.
 
 ## Authoritative implementation references
 

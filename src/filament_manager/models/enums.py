@@ -68,6 +68,13 @@ class PlateCondition(StrEnum):
     RETIRED = "retired"
 
 
+class PlateSurfaceTexture(StrEnum):
+    """Supported physical finishes for one side of a build plate."""
+
+    SMOOTH = "smooth"
+    TEXTURED = "textured"
+
+
 class JobStatus(StrEnum):
     PENDING = "pending"
     RUNNING = "running"

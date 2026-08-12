@@ -56,14 +56,16 @@ Filament Manager provides one trusted inventory for physical filament spools, me
 
 ### Cura material profiles
 
-Store and export versioned profiles containing chamber temperature, extruder temperature, bed temperature, flow, print speeds, retraction distance and speed, cooling state and range, support overhang angle, maximum tree-support branch angle, pressure advance, density, preferred build plate, and future extension fields. Profiles are scoped by printer and nozzle diameter.
+Store and export versioned profiles containing the approved Cura Material Settings catalog, including temperatures, flow, speeds, retraction, cooling, offsets, support angle, Cura Klipper Settings pressure advance/smooth time, density, and preferred build-plate side. Profiles are scoped by printer and nozzle diameter. Paired agents may report sanitized existing materials for explicit import into a draft.
 
 ### Build plates
 
-- Track `P1` through `P5`.
-- Map each plate to its Klipper bed-mesh profile.
-- Record surface, dimensions, condition, last cleaning, last mesh calibration, and material suitability.
-- Associate a preferred plate with each material profile.
+- Seed physical `P1` through `P5` plates and discover later exact `P<number>` Side A or `P<number>b` Side B meshes.
+- Group A/B sides under the shared physical P-number and map each side one-to-one to its same-named Klipper mesh.
+- Preserve plate metadata and records when a saved mesh is temporarily absent.
+- Align the active canonical physical plate and side to the loaded Moonraker mesh during synchronization.
+- Record physical description/dimensions/condition/cleaning plus per-side surface material, smooth/textured finish, mesh calibration, and notes.
+- Associate a preferred plate side with each material profile.
 - Preserve the existing mesh-selection prompt workflow.
 
 ### Calibration wizard
@@ -99,8 +101,8 @@ Guide a new filament through temperature, flow, pressure advance, retraction, ov
 5. Filament Manager reconciles the remaining mass into its canonical database.
 6. A protected Google Sheet shows the updated inventory.
 7. A user can record a manual gross weight and see the correction in Spoolman and the Sheet.
-8. `P1` through `P5` appear as build plates with matching mesh names.
-9. A calibration session completes the six-step workflow and produces a Cura profile export.
+8. `P1` through `P5` appear initially; synchronizing `P6` creates physical P6 Side A, and `P6b` adds Side B without changing existing metadata.
+9. A calibration session completes the six-step workflow and produces a material-only Cura export containing the approved settings.
 
 ## Authoritative implementation references
 

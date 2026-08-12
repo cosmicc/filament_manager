@@ -77,7 +77,7 @@ def _manifest(root: Path) -> dict[str, Any] | None:
 
 def _already_current(root: Path, checksum: str) -> bool:
     manifest = _manifest(root)
-    if not manifest or manifest.get("profile_checksum") != checksum:
+    if not manifest or manifest.get("library_checksum") != checksum:
         return False
     files = manifest.get("files")
     if not isinstance(files, dict):
@@ -92,7 +92,29 @@ def _already_current(root: Path, checksum: str) -> bool:
             return False
         if actual != expected:
             return False
+    desired_materials = {
+        relative_name
+        for relative_name in files
+        if PurePosixPath(relative_name).parent.as_posix() == "materials"
+    }
+    actual_materials = {
+        PurePosixPath("materials", path.name).as_posix()
+        for path in (root / "materials").glob("*.xml.fdm_material")
+        if path.is_file()
+    }
+    if actual_materials != desired_materials:
+        return False
     return True
+
+
+def managed_library_checksum(root: Path) -> str | None:
+    """Return the verified installed library checksum, or None after any drift."""
+
+    manifest = _manifest(root)
+    checksum = manifest.get("library_checksum") if manifest else None
+    if not isinstance(checksum, str) or len(checksum) != 64:
+        return None
+    return checksum if _already_current(root, checksum) else None
 
 
 def _backup(
@@ -117,6 +139,7 @@ def _backup(
                 {
                     "root_version": root.name,
                     "existed": sorted(PurePosixPath(item).as_posix() for item in existed),
+                    "managed_targets": sorted(PurePosixPath(item).as_posix() for item in targets),
                     "created_at": datetime.now(UTC).isoformat(),
                 },
                 sort_keys=True,
@@ -157,17 +180,27 @@ def apply_rendered(
             "status": "already_current",
             "warnings": rendered.warnings,
         }
-    relative_targets = list(rendered.files)
+    desired_targets = set(rendered.files)
+    cleanup_targets = {
+        Path("materials") / path.name for path in (root / "materials").glob("*.xml.fdm_material")
+    } - desired_targets
+    previous_manifest = _manifest(root) or {}
+    previous_files = previous_manifest.get("files")
+    if isinstance(previous_files, dict):
+        cleanup_targets.update(Path(value) for value in previous_files if Path(value) not in desired_targets)
+    relative_targets = sorted(desired_targets | cleanup_targets, key=lambda item: item.as_posix())
     for relative in relative_targets:
         _safe_target(root, relative)
     backup_path, existed = _backup(root, deployment_id, installation.installation_id, relative_targets)
     try:
         for relative, content in rendered.files.items():
             _atomic_write(_safe_target(root, relative), content)
+        for relative in cleanup_targets:
+            _safe_target(root, relative).unlink(missing_ok=True)
         manifest = {
-            "schema_version": 1,
+            "schema_version": 2,
             "deployment_id": deployment_id,
-            "profile_checksum": profile_checksum,
+            "library_checksum": profile_checksum,
             "installed_at": datetime.now(UTC).isoformat(),
             "cura_version": installation.version,
             "machine_id": rendered.machine.machine_id,
@@ -209,11 +242,13 @@ def rollback(deployment_id: str) -> list[str]:
         if installation is None:
             continue
         manifest = _manifest(installation.data_path) or {}
-        raw_file_names = manifest.get("files")
-        file_names: dict[str, object] = raw_file_names if isinstance(raw_file_names, dict) else {}
-        targets = [Path(value) for value in file_names]
         with zipfile.ZipFile(backup_path) as archive:
             metadata = json.loads(archive.read(".filament-manager-backup.json"))
+        targets = [Path(value) for value in metadata.get("managed_targets", [])]
+        if not targets:
+            raw_file_names = manifest.get("files")
+            file_names: dict[str, object] = raw_file_names if isinstance(raw_file_names, dict) else {}
+            targets = [Path(value) for value in file_names]
         existed = {Path(value) for value in metadata.get("existed", [])}
         _restore_backup(installation.data_path, backup_path, targets, existed)
         restored.append(f"Cura {installation.version}")

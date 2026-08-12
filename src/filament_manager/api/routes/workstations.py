@@ -5,7 +5,6 @@ import secrets
 import time
 from collections import defaultdict, deque
 from datetime import UTC, datetime, timedelta
-from decimal import Decimal
 from urllib.parse import urlparse
 from uuid import UUID
 
@@ -14,9 +13,10 @@ from sqlalchemy import or_, select
 
 from filament_manager.config import get_settings
 from filament_manager.models.enums import CuraDeploymentStatus, ProfileStatus
-from filament_manager.models.inventory import BuildPlate, FilamentProduct, MaterialProfile, Printer, Vendor
+from filament_manager.models.inventory import MaterialProfile
 from filament_manager.models.workstations import CuraDeployment, WorkstationAgent, WorkstationPairingCode
 from filament_manager.security import create_agent_token, create_pairing_code, hash_token
+from filament_manager.services.cura_library import build_cura_library, queue_cura_library
 from filament_manager.services.events import add_audit_event
 
 from ..dependencies import Administrator, CurrentWorkstationAgent, DatabaseSession, Operator, Viewer
@@ -37,7 +37,7 @@ from ..schemas import (
 router = APIRouter(tags=["Cura workstations"])
 PAIRING_LIFETIME = timedelta(minutes=10)
 CLAIM_LEASE = timedelta(minutes=5)
-MAX_AGENT_JSON_BYTES = 64 * 1024
+MAX_AGENT_JSON_BYTES = 2 * 1024 * 1024
 
 
 class PairingRateLimiter:
@@ -78,89 +78,6 @@ def _public_pairing_transport_is_safe() -> bool:
 
     parsed = urlparse(str(get_settings().app.base_url))
     return parsed.scheme == "https" or parsed.hostname in {"localhost", "127.0.0.1", "::1"}
-
-
-def _decimal(value: Decimal | None) -> str | None:
-    return format(value, "f") if value is not None else None
-
-
-async def _deployment_payload(session: DatabaseSession, profile: MaterialProfile) -> dict[str, object]:
-    """Build the immutable, semantic profile snapshot consumed by agents."""
-
-    product = await session.get(FilamentProduct, profile.filament_product_id)
-    printer = await session.get(Printer, profile.printer_id)
-    if product is None or printer is None:
-        raise ApiError(status.HTTP_409_CONFLICT, "profile_scope_missing", "Profile scope is incomplete")
-    vendor = await session.get(Vendor, product.vendor_id) if product.vendor_id else None
-    plate = (
-        await session.get(BuildPlate, profile.preferred_build_plate_id)
-        if profile.preferred_build_plate_id
-        else None
-    )
-    settings: dict[str, object] = dict(profile.cura_extensions)
-    settings.update(
-        {
-            "material_print_temperature": _decimal(profile.extruder_temp_c),
-            "material_bed_temperature": _decimal(profile.bed_temp_c),
-            "material_flow": _decimal(profile.flow_percent),
-            "speed_print": _decimal(profile.print_speed_mm_s),
-            "speed_wall_0": _decimal(profile.outer_wall_speed_mm_s),
-            "speed_wall_x": _decimal(profile.inner_wall_speed_mm_s),
-            "speed_infill": _decimal(profile.infill_speed_mm_s),
-            "speed_topbottom": _decimal(profile.top_bottom_speed_mm_s),
-            "speed_layer_0": _decimal(profile.initial_layer_speed_mm_s),
-            "speed_travel": _decimal(profile.travel_speed_mm_s),
-            "speed_support": _decimal(profile.support_speed_mm_s),
-            "bridge_wall_speed": _decimal(profile.bridge_speed_mm_s),
-            "retraction_amount": _decimal(profile.retraction_distance_mm),
-            "retraction_speed": _decimal(profile.retraction_speed_mm_s),
-            "cool_fan_enabled": profile.cooling_enabled,
-            "cool_fan_speed_min": _decimal(profile.cooling_min_percent),
-            "cool_fan_speed": _decimal(profile.cooling_max_percent),
-            "support_angle": _decimal(profile.support_overhang_angle_deg),
-            "support_tree_angle": _decimal(profile.tree_max_branch_angle_deg),
-            "ironing_enabled": profile.ironing_enabled,
-            "ironing_flow": _decimal(profile.ironing_flow_percent),
-            "speed_ironing": _decimal(profile.ironing_speed_mm_s),
-            "ironing_line_spacing": _decimal(profile.ironing_line_spacing_mm),
-        }
-    )
-    return {
-        "schema_version": 1,
-        "profile": {
-            "id": str(profile.id),
-            "version": profile.version,
-            "checksum": profile.checksum,
-            "pressure_advance": _decimal(profile.pressure_advance),
-            "settings": {key: value for key, value in settings.items() if value is not None},
-        },
-        "material": {
-            "product_id": str(product.id),
-            "brand": vendor.name if vendor else "Generic",
-            "material_type": product.material_type,
-            "product_name": product.product_name,
-            "color_name": product.color_name,
-            "color_hex": f"#{product.color_hex}" if product.color_hex else "#808080",
-            "diameter_mm": _decimal(product.diameter_mm),
-            "density_g_cm3": _decimal(profile.filament_density_g_cm3),
-            "nominal_net_mass_g": _decimal(product.nominal_net_mass_g),
-        },
-        "printer": {
-            "id": str(printer.id),
-            "code": printer.printer_code,
-            "name": printer.name,
-            "nozzle_diameter_mm": _decimal(profile.nozzle_diameter_mm),
-        },
-        "preferred_build_plate": (
-            {
-                "code": plate.plate_code,
-                "name": plate.display_name,
-                "surface_type": plate.surface_type,
-            }
-            if plate
-            else None
-        ),
-    }
 
 
 @router.post(
@@ -223,7 +140,13 @@ async def pair_workstation(
         raise ApiError(status.HTTP_429_TOO_MANY_REQUESTS, "pairing_rate_limited", "Try again later")
     if not _public_pairing_transport_is_safe():
         raise ApiError(status.HTTP_403_FORBIDDEN, "pairing_requires_https", "Secure pairing is unavailable")
-    _bounded_json({"capabilities": payload.capabilities, "cura_installations": payload.cura_installations})
+    _bounded_json(
+        {
+            "capabilities": payload.capabilities,
+            "cura_installations": payload.cura_installations,
+            "cura_materials": payload.cura_materials,
+        }
+    )
     now = datetime.now(UTC)
     pairing = await session.scalar(
         select(WorkstationPairingCode)
@@ -243,8 +166,12 @@ async def pair_workstation(
         architecture=payload.architecture,
         agent_version=payload.agent_version,
         token_hash=hash_token(raw_token),
+        cura_management_enabled=(
+            bool(payload.cura_installations) and payload.capabilities.get("unmanaged_material_count") == 0
+        ),
         capabilities=payload.capabilities,
         cura_installations=[item.model_dump(mode="json") for item in payload.cura_installations],
+        cura_materials=[item.model_dump(mode="json") for item in payload.cura_materials],
         last_seen_at=now,
         created_by=pairing.created_by,
     )
@@ -275,13 +202,49 @@ async def workstation_heartbeat(
 ) -> Response:
     """Refresh discovery data while keeping local file paths off the server."""
 
-    _bounded_json({"capabilities": payload.capabilities, "cura_installations": payload.cura_installations})
+    _bounded_json(
+        {
+            "capabilities": payload.capabilities,
+            "cura_installations": payload.cura_installations,
+            "cura_materials": payload.cura_materials,
+        }
+    )
     agent.agent_version = payload.agent_version
     agent.capabilities = payload.capabilities
     agent.cura_installations = [item.model_dump(mode="json") for item in payload.cura_installations]
+    agent.cura_materials = [item.model_dump(mode="json") for item in payload.cura_materials]
     agent.last_seen_at = datetime.now(UTC)
     agent.last_error = payload.last_error
+    if (
+        not agent.cura_management_enabled
+        and payload.cura_installations
+        and payload.capabilities.get("unmanaged_material_count") == 0
+    ):
+        agent.cura_management_enabled = True
     agent.record_version += 1
+    if agent.cura_management_enabled and payload.cura_installations:
+        try:
+            desired = await build_cura_library(session)
+            materials = desired.get("materials")
+            desired_checksum = desired.get("library_checksum")
+            current_checksums = {item.managed_library_checksum for item in payload.cura_installations}
+            if (
+                isinstance(materials, list)
+                and materials
+                and isinstance(desired_checksum, str)
+                and current_checksums != {desired_checksum}
+            ):
+                await queue_cura_library(
+                    session,
+                    [agent],
+                    requested_by=None,
+                    force=True,
+                    retry_failed=False,
+                )
+        except ValueError:
+            # An empty desired library is valid during first-time configuration;
+            # never hide Cura materials until something has been published.
+            pass
     await session.commit()
     return Response(status_code=status.HTTP_204_NO_CONTENT)
 
@@ -311,11 +274,31 @@ async def update_workstation_agent(
         raise ApiError(status.HTTP_404_NOT_FOUND, "workstation_unknown", "Workstation not found")
     if agent.record_version != payload.expected_version:
         raise ApiError(status.HTTP_409_CONFLICT, "version_conflict", "Workstation was changed elsewhere")
-    before = {"display_name": agent.display_name, "enabled": agent.enabled}
+    before = {
+        "display_name": agent.display_name,
+        "enabled": agent.enabled,
+        "cura_management_enabled": agent.cura_management_enabled,
+    }
     if payload.display_name is not None:
         agent.display_name = payload.display_name.strip()
     if payload.enabled is not None:
         agent.enabled = payload.enabled
+    if payload.cura_management_enabled is not None:
+        agent.cura_management_enabled = payload.cura_management_enabled
+        if payload.cura_management_enabled:
+            try:
+                await queue_cura_library(
+                    session,
+                    [agent],
+                    requested_by=administrator.id,
+                    force=True,
+                )
+            except ValueError as exc:
+                raise ApiError(
+                    status.HTTP_409_CONFLICT,
+                    "cura_library_empty",
+                    str(exc),
+                ) from exc
     agent.record_version += 1
     add_audit_event(
         session,
@@ -325,7 +308,11 @@ async def update_workstation_agent(
         object_type="workstation_agent",
         object_id=agent.id,
         before=before,
-        after={"display_name": agent.display_name, "enabled": agent.enabled},
+        after={
+            "display_name": agent.display_name,
+            "enabled": agent.enabled,
+            "cura_management_enabled": agent.cura_management_enabled,
+        },
         correlation_id=request.state.correlation_id,
     )
     await session.commit()
@@ -344,7 +331,7 @@ async def create_cura_deployments(
     operator: Operator,
     session: DatabaseSession,
 ) -> list[CuraDeploymentResponse]:
-    """Queue a published full-profile snapshot for selected or all active agents."""
+    """Queue the complete desired library after validating a published profile."""
 
     profile = await session.get(MaterialProfile, profile_id)
     if profile is None:
@@ -353,7 +340,10 @@ async def create_cura_deployments(
         raise ApiError(
             status.HTTP_409_CONFLICT, "profile_unpublished", "Publish the profile before deployment"
         )
-    query = select(WorkstationAgent).where(WorkstationAgent.enabled.is_(True))
+    query = select(WorkstationAgent).where(
+        WorkstationAgent.enabled.is_(True),
+        WorkstationAgent.cura_management_enabled.is_(True),
+    )
     if payload.agent_ids is not None:
         if not payload.agent_ids:
             raise ApiError(status.HTTP_422_UNPROCESSABLE_ENTITY, "no_workstations", "Select a workstation")
@@ -361,7 +351,9 @@ async def create_cura_deployments(
     agents = list(await session.scalars(query))
     if not agents:
         raise ApiError(
-            status.HTTP_409_CONFLICT, "no_active_workstations", "No active workstations are paired"
+            status.HTTP_409_CONFLICT,
+            "no_managed_workstations",
+            "No active workstations have authoritative Cura management enabled",
         )
     if payload.agent_ids is not None and len(agents) != len(set(payload.agent_ids)):
         raise ApiError(
@@ -369,42 +361,7 @@ async def create_cura_deployments(
             "workstation_unavailable",
             "A selected workstation is unavailable",
         )
-    snapshot = await _deployment_payload(session, profile)
-    now = datetime.now(UTC)
-    deployments: list[CuraDeployment] = []
-    for agent in agents:
-        idempotency_key = f"cura:{agent.id}:{profile.id}:{profile.checksum}"
-        existing = await session.scalar(
-            select(CuraDeployment).where(CuraDeployment.idempotency_key == idempotency_key)
-        )
-        if existing:
-            if existing.status == CuraDeploymentStatus.FAILED:
-                existing.status = CuraDeploymentStatus.PENDING
-                existing.next_attempt_at = now
-                existing.claimed_at = None
-                existing.lease_expires_at = None
-                existing.completed_at = None
-                existing.result = {}
-                existing.last_error_class = None
-                existing.last_error_message = None
-                existing.updated_at = now
-            deployments.append(existing)
-            continue
-        deployment = CuraDeployment(
-            agent_id=agent.id,
-            material_profile_id=profile.id,
-            requested_by=operator.id,
-            status=CuraDeploymentStatus.PENDING,
-            payload=snapshot,
-            profile_checksum=profile.checksum,
-            idempotency_key=idempotency_key,
-            next_attempt_at=now,
-            created_at=now,
-            updated_at=now,
-        )
-        session.add(deployment)
-        deployments.append(deployment)
-    await session.flush()
+    deployments = await queue_cura_library(session, agents, requested_by=operator.id, force=True)
     add_audit_event(
         session,
         actor_id=operator.id,
@@ -413,7 +370,10 @@ async def create_cura_deployments(
         object_type="material_profile",
         object_id=profile.id,
         before=None,
-        after={"workstation_count": len(deployments), "profile_checksum": profile.checksum},
+        after={
+            "workstation_count": len(deployments),
+            "library_checksum": deployments[0].profile_checksum,
+        },
         correlation_id=request.state.correlation_id,
     )
     await session.commit()

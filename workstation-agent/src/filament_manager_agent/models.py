@@ -67,6 +67,23 @@ class CuraInstallation(BaseModel):
         }
 
 
+class CuraMaterial(BaseModel):
+    """Sanitized existing material that can be imported by the management server."""
+
+    source_id: str
+    installation_id: str
+    name: str
+    brand: str
+    material_type: str
+    color_name: str
+    settings: dict[str, str | bool]
+
+    def report(self) -> dict[str, object]:
+        """Return bounded semantic data without exposing the local source path."""
+
+        return self.model_dump(mode="json")
+
+
 class DeploymentClaim(BaseModel):
     """A leased immutable profile snapshot from the server."""
 

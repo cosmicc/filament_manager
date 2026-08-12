@@ -1,8 +1,8 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { Check, Layers3, Sparkles } from 'lucide-react'
+import { Check, CheckCircle2, Layers3, RefreshCw, Save, Sparkles } from 'lucide-react'
 import { useState } from 'react'
 import { apiFetch } from '../api/client'
-import type { BuildPlate, Printer } from '../api/types'
+import type { BuildPlate, BuildPlateSurface, BuildPlateSyncResult, Printer } from '../api/types'
 import { EmptyState } from '../components/EmptyState'
 import { LoadingState } from '../components/LoadingState'
 import { PageHeader } from '../components/PageHeader'
@@ -10,13 +10,232 @@ import { StatusPill } from '../components/StatusPill'
 import { useAuth } from '../context/AuthContext'
 import { dateTime } from '../lib/format'
 
+function syncSummary(result: BuildPlateSyncResult): string {
+  const created = result.created_codes.length
+    ? `Added ${result.created_codes.join(', ')}.`
+    : 'No new build plate sides were found.'
+  const active = result.active_surface_code
+    ? ` Active side: ${result.active_surface_code}.`
+    : ' Moonraker did not report a loaded P-number side mesh.'
+  const ignored = result.ignored_profile_count
+    ? ` Ignored ${result.ignored_profile_count} non-plate mesh${result.ignored_profile_count === 1 ? '' : 'es'}.`
+    : ''
+  const unavailable = result.unavailable_codes.length
+    ? ` Missing mesh: ${result.unavailable_codes.join(', ')}.`
+    : ''
+  return `${created} Checked ${result.discovered_codes.length} P-number side meshes.${active}${ignored}${unavailable}`
+}
+
+interface SurfaceEditorProps {
+  surface: BuildPlateSurface
+  active: boolean
+  canEdit: boolean
+  canSelect: boolean
+  pending: boolean
+  onSelect: () => void
+  onSave: (values: { surface_material: string | null; texture: string | null; notes: string | null }) => void
+}
+
+function SurfaceEditor({
+  surface,
+  active,
+  canEdit,
+  canSelect,
+  pending,
+  onSelect,
+  onSave,
+}: SurfaceEditorProps) {
+  const meshStatus = surface.mesh_available === null
+    ? 'Not checked'
+    : surface.mesh_available
+      ? 'Available'
+      : 'Unavailable'
+  return (
+    <section className={`plate-surface${active ? ' plate-surface--active' : ''}`}>
+      <header>
+        <div>
+          <p className="eyebrow">Side {surface.side.toUpperCase()}</p>
+          <h3>{surface.surface_code}</h3>
+        </div>
+        <StatusPill status={active ? 'active' : meshStatus.toLowerCase().replace(' ', '_')} />
+      </header>
+      <dl className="definition-list definition-list--compact">
+        <div><dt>Moonraker mesh</dt><dd>{surface.klipper_mesh_profile}</dd></div>
+        <div><dt>Surface material</dt><dd>{surface.surface_material ?? 'Not specified'}</dd></div>
+        <div><dt>Finish</dt><dd>{surface.texture ?? 'Not specified'}</dd></div>
+        <div><dt>Last checked</dt><dd>{dateTime(surface.last_mesh_checked_at)}</dd></div>
+        <div><dt>Last calibrated</dt><dd>{dateTime(surface.last_mesh_calibrated_at)}</dd></div>
+      </dl>
+      {canSelect ? (
+        <button
+          className="button button--full"
+          disabled={active || pending || surface.mesh_available === false}
+          title={surface.mesh_available === false ? 'Synchronize after restoring this Moonraker mesh' : undefined}
+          onClick={onSelect}
+        >
+          <Sparkles size={17} />
+          {active ? 'Active side' : `Select ${surface.surface_code}`}
+        </button>
+      ) : null}
+      {canEdit ? (
+        <details className="plate-editor">
+          <summary>Edit side details</summary>
+          <form
+            onSubmit={(event) => {
+              event.preventDefault()
+              const data = new FormData(event.currentTarget)
+              const material = String(data.get('surface_material') ?? '').trim()
+              const texture = String(data.get('texture') ?? '').trim()
+              const notes = String(data.get('notes') ?? '').trim()
+              onSave({
+                surface_material: material || null,
+                texture: texture || null,
+                notes: notes || null,
+              })
+            }}
+          >
+            <label>Surface material<input name="surface_material" defaultValue={surface.surface_material ?? ''} maxLength={120} placeholder="PEI, PEX, glass…" /></label>
+            <label>Finish<select name="texture" defaultValue={surface.texture ?? ''}><option value="">Not specified</option><option value="smooth">Smooth</option><option value="textured">Textured</option></select></label>
+            <label>Side notes<textarea name="notes" defaultValue={surface.notes ?? ''} maxLength={4000} rows={2} /></label>
+            <button className="button" disabled={pending} type="submit"><Save size={16} /> Save side</button>
+          </form>
+        </details>
+      ) : null}
+    </section>
+  )
+}
+
 export default function BuildPlatesPage() {
   const { user } = useAuth()
   const client = useQueryClient()
-  const plates = useQuery({ queryKey: ['plates'], queryFn: () => apiFetch<BuildPlate[]>('/build-plates') })
-  const printers = useQuery({ queryKey: ['printers'], queryFn: () => apiFetch<Printer[]>('/printers') })
+  const plates = useQuery({
+    queryKey: ['plates'],
+    queryFn: () => apiFetch<BuildPlate[]>('/build-plates'),
+  })
+  const printers = useQuery({
+    queryKey: ['printers'],
+    queryFn: () => apiFetch<Printer[]>('/printers'),
+  })
   const [printerId, setPrinterId] = useState('')
-  const selectPlate = useMutation({ mutationFn: (plateId: string) => apiFetch(`/build-plates/${plateId}/select`, { method: 'POST', body: JSON.stringify({ printer_id: printerId || printers.data?.[0]?.id }) }), onSuccess: async () => { await Promise.all([client.invalidateQueries({ queryKey: ['plates'] }), client.invalidateQueries({ queryKey: ['printers'] }), client.invalidateQueries({ queryKey: ['dashboard'] })]) } })
-  const activePlateIds = new Set(printers.data?.map((printer) => printer.active_plate_id).filter(Boolean))
-  return <div><PageHeader eyebrow="P1–P5 surface library" title="Build plates" description="Keep slicer selection, saved Klipper mesh names, and physical plates aligned." actions={user?.role !== 'viewer' && printers.data?.length ? <label className="inline-field">Printer<select value={printerId || printers.data[0].id} onChange={(event) => setPrinterId(event.target.value)}>{printers.data.map((printer) => <option key={printer.id} value={printer.id}>{printer.name}</option>)}</select></label> : undefined} />{plates.isLoading ? <LoadingState /> : !plates.data?.length ? <EmptyState icon={Layers3} title="No plates configured" description="The workbook import establishes the required P1 through P5 plate records." /> : <section className="plate-grid">{plates.data.map((plate) => { const active = activePlateIds.has(plate.id); return <article className={`plate-tile${active ? ' plate-tile--active' : ''}`} key={plate.id}><div className="plate-illustration plate-illustration--large"><span>{plate.plate_code}</span>{active && <i><Check size={16} /></i>}</div><header><div><p className="eyebrow">{plate.plate_code}</p><h2>{plate.display_name}</h2></div><StatusPill status={active ? 'active' : plate.status} /></header><dl className="definition-list"><div><dt>Mesh profile</dt><dd>{plate.klipper_mesh_profile}</dd></div><div><dt>Surface</dt><dd>{plate.surface_type ?? 'Not specified'}</dd></div><div><dt>Condition</dt><dd>{plate.condition}</dd></div><div><dt>Last cleaned</dt><dd>{dateTime(plate.last_cleaned_at)}</dd></div></dl>{user?.role !== 'viewer' && <button className="button button--full" disabled={active || selectPlate.isPending || !printers.data?.length} onClick={() => selectPlate.mutate(plate.id)}><Sparkles size={17} />{active ? 'Active plate' : 'Select plate'}</button>}</article> })}</section>}</div>
+  const selectedPrinterId = printerId || printers.data?.[0]?.id || ''
+  const selectedPrinter = printers.data?.find((printer) => printer.id === selectedPrinterId)
+  const refreshCanonicalState = async () => {
+    await Promise.all([
+      client.invalidateQueries({ queryKey: ['plates'] }),
+      client.invalidateQueries({ queryKey: ['printers'] }),
+      client.invalidateQueries({ queryKey: ['dashboard'] }),
+    ])
+  }
+  const selectSurface = useMutation({
+    mutationFn: ({ plateId, surfaceId }: { plateId: string; surfaceId: string }) =>
+      apiFetch(`/build-plates/${plateId}/select`, {
+        method: 'POST',
+        body: JSON.stringify({ printer_id: selectedPrinterId, surface_id: surfaceId }),
+      }),
+    onSuccess: refreshCanonicalState,
+  })
+  const updatePlate = useMutation({
+    mutationFn: ({ plate, displayName, description }: { plate: BuildPlate; displayName: string; description: string | null }) =>
+      apiFetch(`/build-plates/${plate.id}`, {
+        method: 'PATCH',
+        body: JSON.stringify({ expected_version: plate.record_version, display_name: displayName, description }),
+      }),
+    onSuccess: refreshCanonicalState,
+  })
+  const updateSurface = useMutation({
+    mutationFn: ({ plate, surface, values }: { plate: BuildPlate; surface: BuildPlateSurface; values: { surface_material: string | null; texture: string | null; notes: string | null } }) =>
+      apiFetch(`/build-plates/${plate.id}/surfaces/${surface.id}`, {
+        method: 'PATCH',
+        body: JSON.stringify({ expected_version: surface.record_version, ...values }),
+      }),
+    onSuccess: refreshCanonicalState,
+  })
+  const synchronize = useMutation({
+    mutationFn: () =>
+      apiFetch<BuildPlateSyncResult>('/build-plates/synchronize', {
+        method: 'POST',
+        body: JSON.stringify({ printer_id: selectedPrinterId }),
+      }),
+    onSuccess: refreshCanonicalState,
+  })
+  const mutationError = synchronize.error ?? selectSurface.error ?? updatePlate.error ?? updateSurface.error
+
+  return (
+    <div>
+      <PageHeader
+        eyebrow="Moonraker surface library"
+        title="Build plates"
+        description="Track each physical P-number plate and the material, finish, and mesh assigned to each printable side."
+        actions={user?.role !== 'viewer' && printers.data?.length ? (
+          <>
+            <label className="inline-field">
+              Printer
+              <select value={selectedPrinterId} onChange={(event) => setPrinterId(event.target.value)}>
+                {printers.data.map((printer) => (
+                  <option key={printer.id} value={printer.id}>{printer.name}</option>
+                ))}
+              </select>
+            </label>
+            {user?.role === 'administrator' ? (
+              <button className="button button--primary" disabled={synchronize.isPending || !selectedPrinterId} onClick={() => synchronize.mutate()}>
+                <RefreshCw size={17} />
+                {synchronize.isPending ? 'Synchronizing…' : 'Synchronize with Moonraker'}
+              </button>
+            ) : null}
+          </>
+        ) : undefined}
+      />
+      {synchronize.data ? <p className="success-note plate-sync-note"><CheckCircle2 size={17} /><span>{syncSummary(synchronize.data)}</span></p> : null}
+      {mutationError ? <p className="form-error plate-sync-note">{mutationError.message}</p> : null}
+      {plates.isLoading ? (
+        <LoadingState />
+      ) : !plates.data?.length ? (
+        <EmptyState icon={Layers3} title="No plates configured" description="Seed P1 through P5, then synchronize to add any later P-number side meshes saved in Moonraker." />
+      ) : (
+        <section className="plate-grid">
+          {plates.data.map((plate) => {
+            const activePlate = selectedPrinter?.active_plate_id === plate.id
+            return (
+              <article className={`plate-tile${activePlate ? ' plate-tile--active' : ''}`} key={plate.id}>
+                <div className="plate-illustration plate-illustration--large"><span>{plate.plate_code}</span>{activePlate ? <i><Check size={16} /></i> : null}</div>
+                <header>
+                  <div><p className="eyebrow">Physical plate {plate.plate_code}</p><h2>{plate.display_name}</h2></div>
+                  <StatusPill status={activePlate ? 'active' : plate.status} />
+                </header>
+                <p className="plate-description">{plate.description ?? 'No plate description has been recorded.'}</p>
+                <dl className="definition-list definition-list--compact">
+                  <div><dt>Condition</dt><dd>{plate.condition}</dd></div>
+                  <div><dt>Last cleaned</dt><dd>{dateTime(plate.last_cleaned_at)}</dd></div>
+                </dl>
+                {user?.role !== 'viewer' ? (
+                  <details className="plate-editor">
+                    <summary>Edit physical plate</summary>
+                    <form onSubmit={(event) => { event.preventDefault(); const data = new FormData(event.currentTarget); const displayName = String(data.get('display_name') ?? '').trim(); const description = String(data.get('description') ?? '').trim(); updatePlate.mutate({ plate, displayName, description: description || null }) }}>
+                      <label>Name<input name="display_name" defaultValue={plate.display_name} required maxLength={120} /></label>
+                      <label>Description<textarea name="description" defaultValue={plate.description ?? ''} maxLength={4000} rows={2} /></label>
+                      <button className="button" disabled={updatePlate.isPending} type="submit"><Save size={16} /> Save plate</button>
+                    </form>
+                  </details>
+                ) : null}
+                <div className="plate-surfaces">
+                  {plate.surfaces.map((surface) => (
+                    <SurfaceEditor
+                      key={surface.id}
+                      surface={surface}
+                      active={selectedPrinter?.active_plate_surface_id === surface.id}
+                      canEdit={user?.role !== 'viewer'}
+                      canSelect={user?.role !== 'viewer' && Boolean(printers.data?.length)}
+                      pending={selectSurface.isPending || updateSurface.isPending}
+                      onSelect={() => selectSurface.mutate({ plateId: plate.id, surfaceId: surface.id })}
+                      onSave={(values) => updateSurface.mutate({ plate, surface, values })}
+                    />
+                  ))}
+                </div>
+              </article>
+            )
+          })}
+        </section>
+      )}
+    </div>
+  )
 }

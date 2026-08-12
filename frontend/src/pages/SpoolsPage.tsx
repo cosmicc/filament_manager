@@ -1,8 +1,8 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { Boxes, CheckCircle2, Filter, QrCode, Scale, Search, Star } from 'lucide-react'
+import { Boxes, CheckCircle2, Filter, MapPin, Plus, QrCode, Scale, Search, Star } from 'lucide-react'
 import { type CSSProperties, type FormEvent, useMemo, useState } from 'react'
 import { ApiClientError, apiFetch, idempotencyKey } from '../api/client'
-import type { Page, Spool } from '../api/types'
+import type { Filament, Page, Spool } from '../api/types'
 import { EmptyState } from '../components/EmptyState'
 import { LoadingState } from '../components/LoadingState'
 import { Modal } from '../components/Modal'
@@ -72,6 +72,83 @@ function WeighModal({ spool, onClose }: { spool: Spool; onClose: () => void }) {
   )
 }
 
+function CreateSpoolModal({ filaments, onClose }: { filaments: Filament[]; onClose: () => void }) {
+  const queryClient = useQueryClient()
+  const [filamentId, setFilamentId] = useState(filaments[0]?.id ?? '')
+  const [error, setError] = useState('')
+  const selected = filaments.find((item) => item.id === filamentId)
+  const mutation = useMutation({
+    mutationFn: (form: HTMLFormElement) => {
+      if (!selected) throw new Error('Select a filament product')
+      const data = new FormData(form)
+      return apiFetch('/spools', {
+        method: 'POST',
+        body: JSON.stringify({
+          spool_code: String(data.get('spool_code')).trim(),
+          filament_product_id: selected.id,
+          nominal_net_mass_g: selected.nominal_net_mass_g,
+          tare_mass_g: String(data.get('tare_mass_g')),
+          initial_gross_mass_g: String(data.get('initial_gross_mass_g') ?? '').trim() || null,
+          purchase_source: String(data.get('purchase_source') ?? '').trim() || null,
+          purchase_date: String(data.get('purchase_date') ?? '') || null,
+          purchase_cost: String(data.get('purchase_cost') ?? '').trim() || null,
+          currency: 'USD',
+          location: String(data.get('location') ?? '').trim() || null,
+          notes: String(data.get('notes') ?? '').trim() || null,
+        }),
+      })
+    },
+    onSuccess: async () => {
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ['spools'] }),
+        queryClient.invalidateQueries({ queryKey: ['dashboard'] }),
+      ])
+      onClose()
+    },
+    onError: (caught) => setError(caught instanceof Error ? caught.message : 'The spool could not be created'),
+  })
+  return <Modal title="Add a physical spool" description="Choose the canonical filament product, label the spool, and optionally record its first measured weight." onClose={onClose} footer={<><button className="button" onClick={onClose}>Cancel</button><button className="button button--primary" form="create-spool-form" disabled={mutation.isPending || !selected}><Plus size={17} />{mutation.isPending ? 'Creating…' : 'Create spool'}</button></>}>
+    <form id="create-spool-form" className="form-stack" onSubmit={(event) => { event.preventDefault(); setError(''); mutation.mutate(event.currentTarget) }}>
+      <label>Filament product<select value={filamentId} onChange={(event) => setFilamentId(event.target.value)} required>{filaments.map((filament) => <option key={filament.id} value={filament.id}>{filament.vendor_name ?? 'Unspecified'} · {filament.material_type} · {filament.color_name}</option>)}</select></label>
+      <div className="form-grid"><label>Spool code<input name="spool_code" pattern="[A-Za-z0-9_-]+" maxLength={64} placeholder="SPOOL-001" required autoFocus /></label><label>Empty spool tare (g)<input name="tare_mass_g" type="number" min="0" step="0.1" defaultValue="0" required /><small className="field-help">Use 0 if unknown; the first weighing will establish it.</small></label><label>Initial gross weight (g)<input name="initial_gross_mass_g" type="number" min="0" step="0.1" /></label><label>Location<input name="location" maxLength={160} placeholder="Rack A" /></label><label>Purchase source<input name="purchase_source" maxLength={160} /></label><label>Purchase date<input name="purchase_date" type="date" /></label><label>Purchase cost<input name="purchase_cost" type="number" min="0" step="0.01" /></label></div>
+      <label>Notes <span className="label-optional">Optional</span><textarea name="notes" rows={2} maxLength={4000} /></label>
+      {selected && <p className="muted">Nominal filament mass: {grams(selected.nominal_net_mass_g)}. The new spool will be projected to Spoolman automatically.</p>}
+      {error && <p className="form-error" role="alert">{error}</p>}
+    </form>
+  </Modal>
+}
+
+function EditLocationModal({ spool, onClose, onSaved }: { spool: Spool; onClose: () => void; onSaved: (updated: Spool) => void }) {
+  const queryClient = useQueryClient()
+  const [location, setLocation] = useState(spool.location ?? '')
+  const [error, setError] = useState('')
+  const mutation = useMutation({
+    mutationFn: () => apiFetch<Spool>(`/spools/${spool.id}`, {
+      method: 'PATCH',
+      body: JSON.stringify({
+        expected_version: spool.record_version,
+        location: location.trim() || null,
+      }),
+    }),
+    onSuccess: async (updated) => {
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ['spools'] }),
+        queryClient.invalidateQueries({ queryKey: ['dashboard'] }),
+      ])
+      onSaved(updated)
+    },
+    onError: (caught) => setError(caught instanceof Error ? caught.message : 'The spool location could not be saved'),
+  })
+
+  return <Modal title={`Move ${spool.spool_code}`} description="Set the free-text bucket or storage location used by Filament Manager and Spoolman." onClose={onClose} footer={<><button className="button" onClick={onClose}>Cancel</button><button className="button button--primary" form="edit-location-form" disabled={mutation.isPending}><MapPin size={17} />{mutation.isPending ? 'Saving…' : 'Save location'}</button></>}>
+    <form id="edit-location-form" className="form-stack" onSubmit={(event) => { event.preventDefault(); setError(''); mutation.mutate() }}>
+      <label>Bucket or location<input value={location} onChange={(event) => setLocation(event.target.value)} maxLength={160} placeholder="Bucket 12" autoFocus /><small className="field-help">Leave this blank to mark the spool as not currently assigned to a bucket.</small></label>
+      <p className="security-note"><MapPin size={16} /> Filament Manager is authoritative after this save and will restore this value if it changes in Spoolman.</p>
+      {error && <p className="form-error" role="alert">{error}</p>}
+    </form>
+  </Modal>
+}
+
 export default function SpoolsPage() {
   const { user } = useAuth()
   const queryClient = useQueryClient()
@@ -80,11 +157,14 @@ export default function SpoolsPage() {
   const [status, setStatus] = useState('')
   const [selected, setSelected] = useState<Spool | null>(null)
   const [weighing, setWeighing] = useState<Spool | null>(null)
+  const [editingLocation, setEditingLocation] = useState<Spool | null>(null)
+  const [creating, setCreating] = useState(false)
   const [actionError, setActionError] = useState('')
   const query = useQuery({
     queryKey: ['spools', search, status],
     queryFn: () => apiFetch<Page<Spool>>(`/spools?limit=200${search ? `&search=${encodeURIComponent(search)}` : ''}${status ? `&status=${encodeURIComponent(status)}` : ''}`),
   })
+  const filaments = useQuery({ queryKey: ['filaments'], queryFn: () => apiFetch<Filament[]>('/filaments') })
   const items = useMemo(() => query.data?.items ?? [], [query.data?.items])
   const setActive = useMutation({
     mutationFn: (spool: Spool) => apiFetch(`/spools/${spool.id}/set-active`, { method: 'POST' }),
@@ -101,7 +181,7 @@ export default function SpoolsPage() {
 
   return (
     <div>
-      <PageHeader eyebrow="Physical inventory" title="Spools" description="Track each labeled spool, its trustworthy remaining mass, and its projection state." actions={canEdit && selected ? <button className="button button--primary" onClick={() => setWeighing(selected)}><Scale size={17} /> Weigh selected</button> : undefined} />
+      <PageHeader eyebrow="Physical inventory" title="Spools" description="Track each labeled spool, its trustworthy remaining mass, and its projection state." actions={canEdit ? <>{selected && <button className="button" onClick={() => setWeighing(selected)}><Scale size={17} /> Weigh selected</button>}<button className="button button--primary" onClick={() => setCreating(true)} disabled={!filaments.data?.length}><Plus size={17} /> Add spool</button></> : undefined} />
       <section className="toolbar">
         <label className="search-field"><Search size={18} /><input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Search code, material, color, or location" aria-label="Search spools" /></label>
         <label className="select-field"><Filter size={17} /><select value={status} onChange={(event) => setStatus(event.target.value)} aria-label="Filter by status"><option value="">All statuses</option><option value="needs_weighing">Needs weighing</option><option value="in_stock">In stock</option><option value="low">Low</option><option value="empty">Empty</option></select></label>
@@ -118,11 +198,13 @@ export default function SpoolsPage() {
           </div>
 
           <aside className={`detail-panel${selected ? ' detail-panel--open' : ''}`}>
-            {selected ? <><header className="detail-panel__header"><div className="table-identity"><span className="filament-swatch filament-swatch--large" style={{ '--swatch': `#${selected.color_hex ?? '2F80A5'}` } as CSSProperties} /><span><p className="eyebrow">Selected spool</p><h2>{selected.spool_code}</h2></span></div><StatusPill status={selected.status} /></header><div className="detail-panel__body"><dl className="definition-list"><div><dt>Filament</dt><dd>{selected.vendor_name} {selected.material_type} · {selected.color_name}</dd></div><div><dt>Remaining</dt><dd>{grams(selected.remaining_mass_effective_g)} / {grams(selected.nominal_net_mass_g)}</dd></div><div><dt>Confidence</dt><dd>{selected.weight_confidence}</dd></div><div><dt>Tare mass</dt><dd>{Number(selected.tare_mass_g) > 0 ? grams(selected.tare_mass_g, 1) : 'Unknown'}</dd></div><div><dt>Spoolman</dt><dd>{selected.spoolman_id ? `ID ${selected.spoolman_id}` : 'Projection pending'}</dd></div><div><dt>Location</dt><dd>{selected.location ?? 'Not set'}</dd></div></dl><div className="detail-actions">{canEdit && <button className="button button--primary" onClick={() => setWeighing(selected)}><Scale size={17} /> Weigh spool</button>}{canEdit && <button className="button" disabled={!selected.spoolman_id || setActive.isPending} title={!selected.spoolman_id ? 'Project this spool to Spoolman first' : undefined} onClick={() => setActive.mutate(selected)}><Star size={17} /> Set active</button>}<a className="button" href={`/api/v1/spools/${selected.id}/label`} target="_blank" rel="noreferrer"><QrCode size={17} /> View label</a></div>{actionError && <p className="form-error">{actionError}</p>}{selected.weight_confidence === 'measured' && <p className="success-note"><CheckCircle2 size={17} /> Physical measurement is the trusted remaining value.</p>}</div></> : <EmptyState icon={Boxes} title="Select a spool" description="Choose a row to inspect its trusted mass and available actions." />}
+            {selected ? <><header className="detail-panel__header"><div className="table-identity"><span className="filament-swatch filament-swatch--large" style={{ '--swatch': `#${selected.color_hex ?? '2F80A5'}` } as CSSProperties} /><span><p className="eyebrow">Selected spool</p><h2>{selected.spool_code}</h2></span></div><StatusPill status={selected.status} /></header><div className="detail-panel__body"><dl className="definition-list"><div><dt>Filament</dt><dd>{selected.vendor_name} {selected.material_type} · {selected.color_name}</dd></div><div><dt>Remaining</dt><dd>{grams(selected.remaining_mass_effective_g)} / {grams(selected.nominal_net_mass_g)}</dd></div><div><dt>Confidence</dt><dd>{selected.weight_confidence}</dd></div><div><dt>Tare mass</dt><dd>{Number(selected.tare_mass_g) > 0 ? grams(selected.tare_mass_g, 1) : 'Unknown'}</dd></div><div><dt>Spoolman</dt><dd>{selected.spoolman_id ? `ID ${selected.spoolman_id}` : 'Projection pending'}</dd></div><div><dt>Location</dt><dd>{selected.location || 'Not set'}</dd></div></dl><div className="detail-actions">{canEdit && <button className="button button--primary" onClick={() => setWeighing(selected)}><Scale size={17} /> Weigh spool</button>}{canEdit && <button className="button" onClick={() => setEditingLocation(selected)}><MapPin size={17} /> Edit location</button>}{canEdit && <button className="button" disabled={!selected.spoolman_id || setActive.isPending} title={!selected.spoolman_id ? 'Project this spool to Spoolman first' : undefined} onClick={() => setActive.mutate(selected)}><Star size={17} /> Set active</button>}<a className="button" href={`/api/v1/spools/${selected.id}/label`} target="_blank" rel="noreferrer"><QrCode size={17} /> View label</a></div>{actionError && <p className="form-error">{actionError}</p>}{selected.weight_confidence === 'measured' && <p className="success-note"><CheckCircle2 size={17} /> Physical measurement is the trusted remaining value.</p>}</div></> : <EmptyState icon={Boxes} title="Select a spool" description="Choose a row to inspect its trusted mass and available actions." />}
           </aside>
         </div>
       )}
       {weighing && <WeighModal spool={weighing} onClose={() => { setWeighing(null); setSelected(null) }} />}
+      {editingLocation && <EditLocationModal spool={editingLocation} onClose={() => setEditingLocation(null)} onSaved={(updated) => { setSelected(updated); setEditingLocation(null) }} />}
+      {creating && filaments.data && <CreateSpoolModal filaments={filaments.data} onClose={() => setCreating(false)} />}
     </div>
   )
 }

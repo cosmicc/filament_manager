@@ -9,8 +9,11 @@
 - Projection jobs: pending depth, attempts, dead jobs, and explicit Administrator retry
 - Activity: append-only operational and security audit history
 - Cura workstations: last contact, detected Cura versions/machines, scoped credential state, deployment attempts, and warnings
+- Build Plates: per-side Moonraker mesh checks, newly discovered physical plates/sides, unavailable mappings, and the active loaded side
 
 Workers schedule supported-API Spoolman reconciliation at the configured interval. Google publication is also scheduled when enabled. External outages create bounded retries and never roll back already committed canonical changes.
+
+On the first reconciliation after the spool-location ownership migration, a legacy spool with no Filament Manager location adopts its existing non-empty Spoolman location. After that import, or after any location edit in Filament Manager, the canonical free-text value wins and later Spoolman-side edits are repaired automatically.
 
 ## Backup set
 
@@ -27,7 +30,7 @@ Prefer PostgreSQL-native, WAL-aware backups. Retain measurement, usage, audit, a
 
 ## Restore
 
-Restore Filament Manager and Spoolman separately into an isolated environment first. Apply the matching Alembic revision before starting the web service. If Spoolman must be rebuilt from an empty database, queue canonical projections through the API and then reconcile printer-originated usage. Never copy tables directly between the two databases.
+Restore Filament Manager and Spoolman separately into an isolated environment first. Web and worker startup automatically apply any pending Filament Manager Alembic revision under the migration advisory lock; confirm that succeeds before allowing traffic. If Spoolman must be rebuilt from an empty database, queue canonical projections through the API and then reconcile printer-originated usage. Never copy tables directly between the two databases.
 
 Quarterly, compare spool/product counts, effective weights, profile versions, plates, calibration status, and audit continuity after a full isolated restore.
 
@@ -35,7 +38,7 @@ Quarterly, compare spool/product counts, effective weights, profile versions, pl
 
 ### Readiness is `schema_unavailable`
 
-Confirm `FILAMENT_MANAGER_DB_*` and `POSTGRES_*` stack variables assemble the intended non-SSL URL for `filament_user`, then run `alembic current` and `alembic upgrade head`. Do not grant access to the `spoolman` database.
+Confirm `FILAMENT_MANAGER_DB_*` and `POSTGRES_*` stack variables assemble the intended non-SSL URL for `filament_user`, then inspect the web or worker logs for the automatic-migration result. Do not grant access to the `spoolman` database. Run `alembic current` and `alembic upgrade head` only with the application services stopped when following the recovery procedure below.
 
 ### Web or worker tasks repeatedly restart after startup
 
@@ -53,6 +56,20 @@ Verify `http://spoolman:8000/api/v1/health` from the combined Filament Manager s
 
 Confirm `MOONRAKER_BASE_URL` is reachable from the Swarm node and container network. If `MOONRAKER_WEBSOCKET_URL` is empty, Filament Manager derives the same host with `ws` or `wss` and the `/websocket` path. Confirm the configured API key only when Moonraker requires one.
 
+### A saved build-plate side mesh does not appear
+
+Confirm the mesh is saved in Klipper as exact `P<number>` for Side A or `P<number>b` for Side B, such as `P6` or `P6b`. `P0`, `P01`, uppercase `B`, lowercase plate names, and descriptive profiles are intentionally ignored. Sign in as an Administrator and use **Build Plates → Synchronize with Moonraker**. If the request fails, confirm Klippy is ready and that Moonraker returns the `bed_mesh` object from `/printer/objects/query`.
+
+Synchronization never deletes canonical plates or sides or overwrites their descriptive and maintenance metadata. A previously known side is marked unavailable when its same-named mesh is missing. If Moonraker has a valid plate-side mesh loaded, that physical plate and side become active for the selected printer.
+
+### Klipper rejects `variable_active_plate` during startup
+
+Install the current `integrations/klipper/filament-manager-macros.cfg` and confirm the macro declares `variable_active_plate: "UNSET"`. Klipper parses every `variable_` value as a Python literal; a blank value is invalid and strings require quotes. On the Klipper host, run `grep -Rns --include='*.cfg' 'variable_active_plate' ~/printer_data/config` to find stale or duplicate copies. Correct every included occurrence, then issue `RESTART`.
+
+### A Spoolman bucket does not appear in Filament Manager
+
+Only a legacy spool whose canonical location has never been established imports a remote bucket. Run the Administrator Spoolman reconciliation action and check for a `spool.location.import` audit event. Once imported or locally edited, change the free-text location from the Filament Manager Spools page; later edits made directly in Spoolman are intentionally overwritten.
+
 ### A manual weight increases remaining mass
 
 Confirm the selected spool, scale zero, gross value, and stored tare. The application requires a second confirmation above configured tolerance and an Administrator override above nominal capacity. Do not alter historical usage events.
@@ -65,13 +82,17 @@ The dry run is tied to the exact SHA-256 file. Resolve row errors or select the 
 
 Confirm the per-user systemd service or Windows logon task is running and its last-contact time is current. Close Cura; the agent deliberately defers all writes while any Cura process is open. Run `filament-manager-agent scan` under the Cura user and confirm the expected version, machine name, and nozzle are detected.
 
-### Material installs but pressure advance reports a warning
+### A service stops during automatic database migration
 
-The matched machine inherits its start G-code and has no local `machine_start_gcode` override. Save a machine start-G-code customization once in Cura, close Cura, and deploy the next profile revision. The agent will then insert or replace only its delimited pressure-advance block without discarding the rest of the G-code.
+Inspect both web and worker logs for `database_migration_started`, `database_migration_completed`, a lock timeout, or an Alembic error. Do not disable automatic migration and start the application against an older schema. Keep the application stopped, correct the database or migration problem, take a fresh backup if appropriate, and run the documented one-shot recovery migration. The database URL is intentionally never included in migration logs.
+
+### A Cura material imports without some settings
+
+The workstation reports only the approved settings exposed by the configured Material Settings catalog. Unsupported keys and machine start G-code are intentionally discarded. Confirm the current Material Settings and Klipper Settings plugins are installed and the desired settings are stored on the Cura material, then let the agent heartbeat again before importing.
 
 ### A Cura deployment fails during file replacement
 
-The agent restores the pre-deployment backup automatically. Review the sanitized deployment error and local structured agent log. Do not manually delete unmanaged Cura files. Use `filament-manager-agent rollback DEPLOYMENT_UUID` for an explicit restoration when required.
+The agent restores the pre-deployment backup automatically. Review the sanitized deployment error and local structured agent log. Use `filament-manager-agent rollback DEPLOYMENT_UUID` for an explicit restoration when required. After authoritative management is enabled, do not maintain user material files directly in Cura because heartbeat synchronization will restore Filament Manager's desired state.
 
 ## Recovery objectives
 

@@ -5,13 +5,19 @@ from decimal import Decimal
 from typing import Any
 from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
+from pydantic import BaseModel, ConfigDict, Field, computed_field, field_validator, model_validator
 
+from filament_manager.domain.cura_material_settings import (
+    CURA_EXTENSION_SETTING_KEYS,
+    CURA_MATERIAL_SETTINGS,
+    cura_settings_for_profile,
+)
 from filament_manager.models.enums import (
     CalibrationStatus,
     CalibrationStepStatus,
     CuraDeploymentStatus,
     MeasurementSource,
+    PlateSurfaceTexture,
     ProfileStatus,
     UserRole,
 )
@@ -73,6 +79,7 @@ class FilamentCreate(ApiModel):
     density_g_cm3: Decimal = Field(gt=0)
     nominal_net_mass_g: Decimal = Field(gt=0)
     notes: str | None = Field(default=None, max_length=4000)
+    material_template_revision_id: UUID | None = None
 
 
 class FilamentResponse(FilamentCreate):
@@ -94,6 +101,15 @@ class SpoolCreate(ApiModel):
     location: str | None = Field(default=None, max_length=160)
     notes: str | None = Field(default=None, max_length=4000)
 
+    @field_validator("location")
+    @classmethod
+    def normalize_location(cls, value: str | None) -> str | None:
+        """Store bucket labels without accidental surrounding whitespace."""
+
+        if value is None:
+            return None
+        return value.strip() or None
+
 
 class SpoolUpdate(ApiModel):
     expected_version: int = Field(ge=1)
@@ -103,6 +119,15 @@ class SpoolUpdate(ApiModel):
     purchase_cost: Decimal | None = Field(default=None, ge=0)
     notes: str | None = Field(default=None, max_length=4000)
     archived: bool | None = None
+
+    @field_validator("location")
+    @classmethod
+    def normalize_location(cls, value: str | None) -> str | None:
+        """Treat a blank submitted bucket as an intentional location clear."""
+
+        if value is None:
+            return None
+        return value.strip() or None
 
 
 class SpoolResponse(ApiModel):
@@ -163,31 +188,82 @@ class MeasurementResponse(ApiModel):
     measured_at: datetime
 
 
-class BuildPlateResponse(ApiModel):
+class BuildPlateSurfaceResponse(ApiModel):
+    """One printable plate side and its matching Moonraker mesh."""
+
     id: UUID
-    plate_code: str
-    display_name: str
+    build_plate_id: UUID
+    side: str
+    surface_code: str
     klipper_mesh_profile: str
-    surface_type: str | None
-    condition: str
-    status: str
-    preferred_materials: list[str]
-    last_cleaned_at: datetime | None
+    surface_material: str | None
+    texture: PlateSurfaceTexture | None
+    mesh_available: bool | None
+    last_mesh_checked_at: datetime | None
     last_mesh_calibrated_at: datetime | None
     notes: str | None
     record_version: int
 
 
+class BuildPlateResponse(ApiModel):
+    """A physical P-number plate and its printable sides."""
+
+    id: UUID
+    plate_code: str
+    display_name: str
+    description: str | None
+    condition: str
+    status: str
+    preferred_materials: list[str]
+    last_cleaned_at: datetime | None
+    notes: str | None
+    record_version: int
+    surfaces: list[BuildPlateSurfaceResponse]
+
+
 class BuildPlateUpdate(ApiModel):
     expected_version: int = Field(ge=1)
-    surface_type: str | None = Field(default=None, max_length=120)
+    display_name: str | None = Field(default=None, min_length=1, max_length=120)
+    description: str | None = Field(default=None, max_length=4000)
     condition: str | None = None
     status: str | None = None
     notes: str | None = Field(default=None, max_length=4000)
 
 
+class BuildPlateSurfaceUpdate(ApiModel):
+    """Editable metadata for one immutable plate-side identity."""
+
+    expected_version: int = Field(ge=1)
+    surface_material: str | None = Field(default=None, max_length=120)
+    texture: PlateSurfaceTexture | None = None
+    notes: str | None = Field(default=None, max_length=4000)
+
+
 class PlateSelectRequest(ApiModel):
     printer_id: UUID
+    surface_id: UUID
+
+
+class BuildPlateSyncRequest(ApiModel):
+    """Select the configured canonical printer to synchronize."""
+
+    printer_id: UUID
+
+
+class BuildPlateSyncResponse(ApiModel):
+    """Describe canonical changes made from one Moonraker bed-mesh snapshot."""
+
+    printer_id: UUID
+    discovered_codes: list[str]
+    created_codes: list[str]
+    unavailable_codes: list[str]
+    ignored_profile_count: int
+    active_mesh_profile: str | None
+    active_plate_code: str | None
+    active_surface_code: str | None
+    active_plate_changed: bool
+    active_surface_changed: bool
+    synchronized_at: datetime
 
 
 class CalibrationCreate(ApiModel):
@@ -196,6 +272,7 @@ class CalibrationCreate(ApiModel):
     printer_id: UUID
     nozzle_diameter_mm: Decimal = Field(gt=0)
     build_plate_id: UUID | None = None
+    build_plate_surface_id: UUID | None = None
     baseline_profile_id: UUID | None = None
     target_layer_height_mm: Decimal | None = Field(default=None, gt=0)
     notes: str | None = Field(default=None, max_length=4000)
@@ -233,6 +310,7 @@ class CalibrationResponse(ApiModel):
     printer_id: UUID
     nozzle_diameter_mm: Decimal
     build_plate_id: UUID | None
+    build_plate_surface_id: UUID | None
     status: CalibrationStatus
     notes: str | None
     override_reason: str | None
@@ -240,15 +318,21 @@ class CalibrationResponse(ApiModel):
     steps: list[CalibrationStepResponse]
 
 
-class ProfileCreate(ApiModel):
-    filament_product_id: UUID
-    printer_id: UUID
-    nozzle_diameter_mm: Decimal = Field(gt=0)
+class MaterialSettingsInput(ApiModel):
+    """Complete typed and extension Cura settings reusable by profiles and templates."""
+
     chamber_temp_c: Decimal | None = None
     extruder_temp_c: Decimal
     bed_temp_c: Decimal
     flow_percent: Decimal = Field(gt=0)
     print_speed_mm_s: Decimal | None = Field(default=None, gt=0)
+    outer_wall_speed_mm_s: Decimal | None = Field(default=None, gt=0)
+    inner_wall_speed_mm_s: Decimal | None = Field(default=None, gt=0)
+    infill_speed_mm_s: Decimal | None = Field(default=None, gt=0)
+    top_bottom_speed_mm_s: Decimal | None = Field(default=None, gt=0)
+    initial_layer_speed_mm_s: Decimal | None = Field(default=None, gt=0)
+    travel_speed_mm_s: Decimal | None = Field(default=None, gt=0)
+    support_speed_mm_s: Decimal | None = Field(default=None, gt=0)
     retraction_distance_mm: Decimal | None = Field(default=None, ge=0)
     retraction_speed_mm_s: Decimal | None = Field(default=None, ge=0)
     cooling_enabled: bool = True
@@ -256,9 +340,9 @@ class ProfileCreate(ApiModel):
     cooling_max_percent: Decimal = Field(ge=0, le=100)
     support_overhang_angle_deg: Decimal | None = Field(default=None, ge=0, le=90)
     tree_max_branch_angle_deg: Decimal | None = Field(default=None, ge=0, le=90)
-    pressure_advance: Decimal | None = Field(default=None, ge=0)
+    pressure_advance: Decimal | None = Field(default=None, ge=0, le=2)
     filament_density_g_cm3: Decimal = Field(gt=0)
-    preferred_build_plate_id: UUID | None = None
+    preferred_build_plate_surface_id: UUID | None = None
     cura_extensions: dict[str, Any] = Field(default_factory=dict)
 
     @field_validator("cura_extensions")
@@ -269,36 +353,12 @@ class ProfileCreate(ApiModel):
         import math
         import re
 
-        reserved = {
-            "material_print_temperature",
-            "material_bed_temperature",
-            "material_flow",
-            "speed_print",
-            "speed_wall_0",
-            "speed_wall_x",
-            "speed_infill",
-            "speed_topbottom",
-            "speed_layer_0",
-            "speed_travel",
-            "speed_support",
-            "bridge_wall_speed",
-            "retraction_amount",
-            "retraction_speed",
-            "cool_fan_enabled",
-            "cool_fan_speed_min",
-            "cool_fan_speed",
-            "support_angle",
-            "support_tree_angle",
-            "ironing_enabled",
-            "ironing_flow",
-            "speed_ironing",
-            "ironing_line_spacing",
-        }
-        if len(value) > 100:
-            raise ValueError("Cura extensions cannot contain more than 100 settings")
+        catalog_by_key = {setting.key: setting for setting in CURA_MATERIAL_SETTINGS}
+        if len(value) > len(CURA_EXTENSION_SETTING_KEYS):
+            raise ValueError("Cura extensions contain too many settings")
         for key, extension_value in value.items():
-            if not re.fullmatch(r"[a-z][a-z0-9_]{0,95}", key) or key in reserved:
-                raise ValueError(f"invalid or reserved Cura extension key: {key}")
+            if not re.fullmatch(r"[a-z][a-z0-9_]{0,95}", key):
+                raise ValueError(f"invalid Cura extension key: {key}")
             if extension_value is not None and not isinstance(extension_value, (str, int, float, bool)):
                 raise ValueError(f"Cura extension {key} must be a scalar value")
             if isinstance(extension_value, str) and (
@@ -307,13 +367,40 @@ class ProfileCreate(ApiModel):
                 raise ValueError(f"Cura extension {key} contains invalid text")
             if isinstance(extension_value, float) and not math.isfinite(extension_value):
                 raise ValueError(f"Cura extension {key} must be finite")
+            if key not in CURA_EXTENSION_SETTING_KEYS:
+                raise ValueError(f"unsupported or reserved typed Cura extension key: {key}")
+            expected_type = catalog_by_key[key].value_type
+            if (
+                extension_value is not None
+                and expected_type == "boolean"
+                and not isinstance(extension_value, bool)
+            ):
+                raise ValueError(f"Cura extension {key} must be a boolean")
+            if extension_value is not None and expected_type == "number":
+                if isinstance(extension_value, bool):
+                    raise ValueError(f"Cura extension {key} must be numeric")
+                if isinstance(extension_value, str) and not re.fullmatch(r"-?\d+(?:\.\d+)?", extension_value):
+                    raise ValueError(f"Cura extension {key} must be numeric")
+                numeric_value = Decimal(str(extension_value))
+                if key == "klipper_smooth_time_factor" and not (
+                    Decimal("0.001") <= numeric_value <= Decimal("0.2")
+                ):
+                    raise ValueError(
+                        "Cura extension klipper_smooth_time_factor must be between 0.001 and 0.2"
+                    )
         return value
 
     @model_validator(mode="after")
-    def validate_fan_range(self) -> "ProfileCreate":
+    def validate_fan_range(self) -> "MaterialSettingsInput":
         if self.cooling_min_percent > self.cooling_max_percent:
             raise ValueError("cooling minimum cannot exceed cooling maximum")
         return self
+
+
+class ProfileCreate(MaterialSettingsInput):
+    filament_product_id: UUID
+    printer_id: UUID
+    nozzle_diameter_mm: Decimal = Field(gt=0)
 
 
 class ProfileResponse(ProfileCreate):
@@ -323,6 +410,81 @@ class ProfileResponse(ProfileCreate):
     checksum: str | None
     published_at: datetime | None
     record_version: int
+    source_template_revision_id: UUID | None = None
+
+    @computed_field  # type: ignore[prop-decorator]
+    @property
+    def cura_settings(self) -> dict[str, object]:
+        """Expose the complete material-scoped setting map stored by this version."""
+
+        return cura_settings_for_profile(self)
+
+
+class CuraMaterialImportRequest(ApiModel):
+    """Map one workstation-discovered Cura material into a new draft profile."""
+
+    agent_id: UUID
+    source_id: str = Field(pattern=r"^[0-9a-f]{64}$")
+    filament_product_id: UUID
+    printer_id: UUID
+    nozzle_diameter_mm: Decimal = Field(gt=0)
+    preferred_build_plate_surface_id: UUID | None = None
+
+
+class MaterialTemplateCreate(ApiModel):
+    """Create a scoped template and its first draft revision."""
+
+    name: str = Field(min_length=1, max_length=160)
+    material_type: str = Field(min_length=1, max_length=48)
+    description: str | None = Field(default=None, max_length=4000)
+    printer_id: UUID
+    nozzle_diameter_mm: Decimal = Field(gt=0)
+    filament_diameter_mm: Decimal = Field(default=Decimal("1.75"), gt=0)
+    settings: MaterialSettingsInput
+
+
+class MaterialTemplateUpdate(ApiModel):
+    """Update mutable template identity metadata with optimistic concurrency."""
+
+    expected_version: int = Field(ge=1)
+    name: str | None = Field(default=None, min_length=1, max_length=160)
+    material_type: str | None = Field(default=None, min_length=1, max_length=48)
+    description: str | None = Field(default=None, max_length=4000)
+    active: bool | None = None
+
+
+class MaterialTemplateRevisionCreate(ApiModel):
+    """Create the next complete draft settings revision."""
+
+    expected_template_version: int = Field(ge=1)
+    settings: MaterialSettingsInput
+
+
+class MaterialTemplateRevisionResponse(ApiModel):
+    id: UUID
+    material_template_id: UUID
+    version: int
+    status: ProfileStatus
+    settings: MaterialSettingsInput
+    checksum: str | None
+    published_at: datetime | None
+    record_version: int
+    created_at: datetime
+
+
+class MaterialTemplateResponse(ApiModel):
+    id: UUID
+    name: str
+    material_type: str
+    description: str | None
+    printer_id: UUID
+    nozzle_diameter_mm: Decimal
+    filament_diameter_mm: Decimal
+    active: bool
+    record_version: int
+    created_at: datetime
+    updated_at: datetime
+    revisions: list[MaterialTemplateRevisionResponse]
 
 
 class IntegrationStatus(ApiModel):
@@ -339,6 +501,7 @@ class DashboardResponse(ApiModel):
     empty_spools: int
     active_spool: SpoolResponse | None
     active_plate: BuildPlateResponse | None
+    active_plate_surface: BuildPlateSurfaceResponse | None
     integrations: list[IntegrationStatus]
 
 
@@ -382,7 +545,36 @@ class CuraInstallationReport(ApiModel):
     channel: str = Field(min_length=1, max_length=32)
     path_hint: str = Field(min_length=1, max_length=255)
     setting_version: int | None = Field(default=None, ge=1, le=1000)
+    managed_library_checksum: str | None = Field(default=None, pattern=r"^[0-9a-f]{64}$")
     machines: list[CuraMachineReport] = Field(default_factory=list, max_length=100)
+
+
+class CuraMaterialReport(ApiModel):
+    """Sanitized existing Cura material offered for explicit import."""
+
+    source_id: str = Field(pattern=r"^[0-9a-f]{64}$")
+    installation_id: str = Field(pattern=r"^[A-Za-z0-9_.-]+$", max_length=96)
+    name: str = Field(min_length=1, max_length=255)
+    brand: str = Field(min_length=1, max_length=160)
+    material_type: str = Field(min_length=1, max_length=160)
+    color_name: str = Field(min_length=1, max_length=160)
+    settings: dict[str, str | bool]
+
+    @field_validator("settings")
+    @classmethod
+    def validate_settings(cls, value: dict[str, str | bool]) -> dict[str, str | bool]:
+        """Accept only the configured Cura catalog with bounded scalar values."""
+
+        if len(value) > len(CURA_MATERIAL_SETTINGS):
+            raise ValueError("Cura material contains too many settings")
+        for key, setting_value in value.items():
+            if key not in {setting.key for setting in CURA_MATERIAL_SETTINGS}:
+                raise ValueError(f"unsupported Cura material setting: {key}")
+            if isinstance(setting_value, str) and (
+                len(setting_value) > 500 or "\n" in setting_value or "\r" in setting_value
+            ):
+                raise ValueError(f"Cura material setting {key} contains invalid text")
+        return value
 
 
 class WorkstationPairingCodeResponse(ApiModel):
@@ -399,6 +591,7 @@ class WorkstationPairRequest(ApiModel):
     agent_version: str = Field(pattern=r"^[0-9]+\.[0-9]+\.[0-9]+(?:[-+][A-Za-z0-9.-]+)?$", max_length=32)
     capabilities: dict[str, Any] = Field(default_factory=dict)
     cura_installations: list[CuraInstallationReport] = Field(default_factory=list, max_length=20)
+    cura_materials: list[CuraMaterialReport] = Field(default_factory=list, max_length=200)
 
 
 class WorkstationPairResponse(ApiModel):
@@ -411,6 +604,7 @@ class WorkstationHeartbeat(ApiModel):
     agent_version: str = Field(pattern=r"^[0-9]+\.[0-9]+\.[0-9]+(?:[-+][A-Za-z0-9.-]+)?$", max_length=32)
     capabilities: dict[str, Any] = Field(default_factory=dict)
     cura_installations: list[CuraInstallationReport] = Field(default_factory=list, max_length=20)
+    cura_materials: list[CuraMaterialReport] = Field(default_factory=list, max_length=200)
     last_error: str | None = Field(default=None, max_length=500)
 
 
@@ -423,8 +617,10 @@ class WorkstationAgentResponse(ApiModel):
     architecture: str
     agent_version: str
     enabled: bool
+    cura_management_enabled: bool
     capabilities: dict[str, Any]
     cura_installations: list[dict[str, Any]]
+    cura_materials: list[dict[str, Any]]
     last_seen_at: datetime | None
     last_error: str | None
     record_version: int
@@ -435,6 +631,7 @@ class WorkstationAgentUpdate(ApiModel):
     expected_version: int = Field(ge=1)
     display_name: str | None = Field(default=None, min_length=1, max_length=120)
     enabled: bool | None = None
+    cura_management_enabled: bool | None = None
 
 
 class CuraDeploymentCreate(ApiModel):
@@ -444,8 +641,8 @@ class CuraDeploymentCreate(ApiModel):
 class CuraDeploymentResponse(ApiModel):
     id: UUID
     agent_id: UUID
-    material_profile_id: UUID
-    requested_by: UUID
+    material_profile_id: UUID | None
+    requested_by: UUID | None
     status: CuraDeploymentStatus
     profile_checksum: str
     attempts: int

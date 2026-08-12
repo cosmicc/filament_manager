@@ -48,6 +48,8 @@ def test_docker_configuration_comes_from_environment_without_exposing_credential
     assert settings.database.url_file is None
     assert settings.database.resolved_url() == database_url
     assert settings.database.pool_size == 14
+    assert settings.database.auto_migrate is True
+    assert settings.database.migration_lock_timeout_seconds == 300
     assert str(settings.spoolman.base_url) == "http://spoolman:8000/"
     assert str(settings.spoolman.public_url) == "http://spoolman.example:7912/"
     assert settings.moonraker.printers[0].api_key_file is None

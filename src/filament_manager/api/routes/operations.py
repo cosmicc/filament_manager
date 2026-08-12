@@ -6,7 +6,7 @@ from uuid import UUID
 
 from fastapi import APIRouter, Request, status
 from sqlalchemy import func, select
-from sqlalchemy.orm import joinedload
+from sqlalchemy.orm import joinedload, selectinload
 
 from filament_manager.clients.google_sheets import GoogleSheetsClient, GoogleSheetsError
 from filament_manager.clients.moonraker import MoonrakerClient, MoonrakerError
@@ -14,14 +14,25 @@ from filament_manager.clients.spoolman import SpoolmanClient, SpoolmanError
 from filament_manager.config import PrinterConfig, get_settings
 from filament_manager.models.auth import User
 from filament_manager.models.enums import JobStatus, SpoolStatus
-from filament_manager.models.inventory import BuildPlate, FilamentProduct, Printer, Spool
+from filament_manager.models.inventory import (
+    BuildPlate,
+    BuildPlateSurface,
+    FilamentProduct,
+    Printer,
+    Spool,
+)
 from filament_manager.models.operations import AuditEvent, Device, OutboxJob
 from filament_manager.services.events import add_audit_event, add_outbox_job
 from filament_manager.services.seed import seed_configured_system
 
 from ..dependencies import Administrator, DatabaseSession, Operator, Viewer
 from ..errors import ApiError
-from ..schemas import BuildPlateResponse, DashboardResponse, IntegrationStatus
+from ..schemas import (
+    BuildPlateResponse,
+    BuildPlateSurfaceResponse,
+    DashboardResponse,
+    IntegrationStatus,
+)
 from .inventory import spool_response
 
 router = APIRouter(tags=["operations"])
@@ -126,8 +137,20 @@ async def dashboard(_: Viewer, session: DatabaseSession) -> DashboardResponse:
         .limit(1)
     )
     active_spool = active_result.unique().scalar_one_or_none()
-    plate = await session.scalar(
-        select(BuildPlate).join(Printer, Printer.active_plate_id == BuildPlate.id).limit(1)
+    printer = await session.scalar(select(Printer).where(Printer.active_plate_id.is_not(None)).limit(1))
+    plate = (
+        await session.scalar(
+            select(BuildPlate)
+            .where(BuildPlate.id == printer.active_plate_id)
+            .options(selectinload(BuildPlate.surfaces))
+        )
+        if printer
+        else None
+    )
+    plate_surface = (
+        await session.get(BuildPlateSurface, printer.active_plate_surface_id)
+        if printer and printer.active_plate_surface_id
+        else None
     )
     return DashboardResponse(
         total_spools=total,
@@ -136,6 +159,9 @@ async def dashboard(_: Viewer, session: DatabaseSession) -> DashboardResponse:
         empty_spools=empty,
         active_spool=spool_response(active_spool) if active_spool else None,
         active_plate=BuildPlateResponse.model_validate(plate) if plate else None,
+        active_plate_surface=(
+            BuildPlateSurfaceResponse.model_validate(plate_surface) if plate_surface else None
+        ),
         integrations=await _integration_statuses(),
     )
 
@@ -152,6 +178,7 @@ async def list_printers(_: Viewer, session: DatabaseSession) -> list[dict[str, o
             "name": printer.name,
             "nozzle_diameter_mm": printer.nozzle_diameter_mm,
             "active_plate_id": printer.active_plate_id,
+            "active_plate_surface_id": printer.active_plate_surface_id,
             "status": printer.status,
             "last_seen_at": printer.last_seen_at,
             "record_version": printer.record_version,

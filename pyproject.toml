@@ -48,6 +48,7 @@ dev = [
 filament-manager = "filament_manager.main:run"
 filament-manager-cli = "filament_manager.cli:app"
 filament-manager-worker = "filament_manager.workers.runner:run"
+filament-manager-startup = "filament_manager.startup:run"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/filament_manager"]

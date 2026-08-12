@@ -22,6 +22,8 @@
 - `POST /spools/{id}/labels`
 - `POST /spools/{id}/set-active`
 
+`PATCH /spools/{id}` accepts a bounded free-text `location` plus `expected_version`. Supplying a value or `null` establishes Filament Manager ownership and queues the Spoolman projection atomically.
+
 ### Filament products and profiles
 
 - `GET /filaments`
@@ -30,14 +32,29 @@
 - `POST /profiles`
 - `POST /profiles/{id}/publish`
 - `GET /profiles/{id}/exports/cura`
+- `GET/POST /profiles/templates`
+- `PATCH /profiles/templates/{id}`
+- `POST /profiles/templates/{id}/revisions`
+- `POST /profiles/templates/{id}/revisions/{revision_id}/publish`
+
+`POST /filaments` may select a published template revision and atomically creates the product plus its copied draft profile.
 
 ### Build plates
 
 - `GET /build-plates`
-- `POST /build-plates`
+- `POST /build-plates/synchronize` (Administrator only; imports exact P-number A/B side meshes)
 - `PATCH /build-plates/{id}`
-- `POST /build-plates/{id}/select`
+- `PATCH /build-plates/{id}/surfaces/{surface_id}`
+- `POST /build-plates/{id}/select` (requires `surface_id`)
 - `POST /build-plates/{id}/maintenance`
+
+### Material profiles
+
+- `GET /profiles/cura-settings/catalog`
+- `POST /profiles/import-cura-material`
+- `POST /profiles`
+- `POST /profiles/{id}/publish`
+- `GET /profiles/{id}/exports/cura`
 
 ### Calibration
 

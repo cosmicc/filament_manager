@@ -1,14 +1,24 @@
-"""Supported Moonraker HTTP client for active spool and plate selection."""
+"""Supported Moonraker HTTP client for spool, plate, and bed-mesh operations."""
 
+from dataclasses import dataclass
 from typing import Any
 
 import httpx
 
 from filament_manager.config import PrinterConfig
+from filament_manager.domain.build_plates import is_build_plate_surface_code
 
 
 class MoonrakerError(RuntimeError):
     """Sanitized Moonraker transport or API failure."""
+
+
+@dataclass(frozen=True, slots=True)
+class MoonrakerBedMeshState:
+    """Saved bed-mesh profile names and the currently loaded profile."""
+
+    profile_names: tuple[str, ...]
+    active_profile: str | None
 
 
 class MoonrakerClient:
@@ -32,6 +42,8 @@ class MoonrakerClient:
             raise MoonrakerError(f"Moonraker POST {path} failed") from exc
         if not isinstance(data, dict):
             raise MoonrakerError("Moonraker returned an invalid payload")
+        if "error" in data:
+            raise MoonrakerError(f"Moonraker POST {path} returned an API error")
         return data
 
     async def health(self) -> dict[str, Any]:
@@ -53,9 +65,34 @@ class MoonrakerClient:
 
         return await self._post("/server/spoolman/spool_id", {"spool_id": spoolman_id})
 
+    async def bed_mesh_state(self) -> MoonrakerBedMeshState:
+        """Read saved bed meshes and the loaded mesh through printer object status."""
+
+        payload = await self._post(
+            "/printer/objects/query",
+            {"objects": {"bed_mesh": ["profile_name", "profiles"]}},
+        )
+        result = payload.get("result")
+        if not isinstance(result, dict):
+            raise MoonrakerError("Moonraker bed-mesh query returned an invalid result")
+        status = result.get("status")
+        bed_mesh = status.get("bed_mesh") if isinstance(status, dict) else None
+        if not isinstance(bed_mesh, dict):
+            raise MoonrakerError("Moonraker did not return the bed_mesh printer object")
+        profiles = bed_mesh.get("profiles")
+        active_profile = bed_mesh.get("profile_name")
+        if not isinstance(profiles, dict) or not all(isinstance(name, str) for name in profiles):
+            raise MoonrakerError("Moonraker returned invalid bed-mesh profiles")
+        if not isinstance(active_profile, str):
+            raise MoonrakerError("Moonraker returned an invalid active bed-mesh profile")
+        return MoonrakerBedMeshState(
+            profile_names=tuple(profiles),
+            active_profile=active_profile or None,
+        )
+
     async def select_build_plate(self, plate_code: str) -> dict[str, Any]:
         """Call the documented integration macro without editing printer files."""
 
-        if plate_code not in {"P1", "P2", "P3", "P4", "P5"}:
-            raise ValueError("plate code must be P1 through P5")
+        if not is_build_plate_surface_code(plate_code):
+            raise ValueError("plate side must use the exact P<number> or P<number>b format")
         return await self._post("/printer/gcode/script", {"script": f"SELECT_BUILD_PLATE PLATE={plate_code}"})

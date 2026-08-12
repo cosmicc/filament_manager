@@ -3,71 +3,36 @@
   "title": "Build Plate",
   "type": "object",
   "additionalProperties": false,
-  "required": [
-    "id",
-    "plate_code",
-    "klipper_mesh_profile",
-    "status"
-  ],
+  "required": ["id", "plate_code", "status", "surfaces"],
   "properties": {
-    "id": {
-      "type": "string",
-      "format": "uuid"
-    },
-    "plate_code": {
-      "enum": [
-        "P1",
-        "P2",
-        "P3",
-        "P4",
-        "P5"
-      ]
-    },
-    "klipper_mesh_profile": {
-      "type": "string",
-      "minLength": 1
-    },
-    "surface_type": {
-      "type": [
-        "string",
-        "null"
-      ]
-    },
-    "condition": {
-      "enum": [
-        "new",
-        "good",
-        "worn",
-        "damaged",
-        "retired"
-      ]
-    },
-    "status": {
-      "enum": [
-        "active",
-        "maintenance",
-        "retired"
-      ]
-    },
-    "last_cleaned_at": {
-      "type": [
-        "string",
-        "null"
-      ],
-      "format": "date-time"
-    },
-    "last_mesh_calibrated_at": {
-      "type": [
-        "string",
-        "null"
-      ],
-      "format": "date-time"
-    },
-    "notes": {
-      "type": [
-        "string",
-        "null"
-      ]
+    "id": {"type": "string", "format": "uuid"},
+    "plate_code": {"type": "string", "pattern": "^P[1-9][0-9]*$", "maxLength": 32},
+    "display_name": {"type": "string", "minLength": 1, "maxLength": 120},
+    "description": {"type": ["string", "null"]},
+    "condition": {"enum": ["new", "good", "worn", "damaged", "retired"]},
+    "status": {"enum": ["active", "maintenance", "retired"]},
+    "last_cleaned_at": {"type": ["string", "null"], "format": "date-time"},
+    "notes": {"type": ["string", "null"]},
+    "surfaces": {
+      "type": "array",
+      "maxItems": 2,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["id", "side", "surface_code", "klipper_mesh_profile"],
+        "properties": {
+          "id": {"type": "string", "format": "uuid"},
+          "side": {"enum": ["a", "b"]},
+          "surface_code": {"type": "string", "pattern": "^P[1-9][0-9]*b?$", "maxLength": 32},
+          "klipper_mesh_profile": {"type": "string", "pattern": "^P[1-9][0-9]*b?$", "maxLength": 32},
+          "surface_material": {"type": ["string", "null"], "maxLength": 120},
+          "texture": {"enum": ["smooth", "textured", null]},
+          "mesh_available": {"type": ["boolean", "null"]},
+          "last_mesh_checked_at": {"type": ["string", "null"], "format": "date-time"},
+          "last_mesh_calibrated_at": {"type": ["string", "null"], "format": "date-time"},
+          "notes": {"type": ["string", "null"]}
+        }
+      }
     }
   }
 }

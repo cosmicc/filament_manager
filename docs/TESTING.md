@@ -62,6 +62,7 @@ Before production, separately verify:
 - duplicate measurement idempotency keys
 - suspicious increases and above-nominal Administrator overrides
 - re-running an earlier calibration step invalidates downstream completed results
-- P1–P5 selection rejects all other codes
+- exact plate-side discovery accepts P1, P4b, P6, and P10b while rejecting malformed names and G-code input
+- Moonraker synchronization groups A/B sides under physical plates, preserves metadata, marks missing side meshes unavailable without deletion, and aligns the active plate and side
 - pairing-code replay and disabled or cross-agent credentials
-- Cura running during deployment, ambiguous machine/nozzle matches, symlink/root escapes, partial-write rollback, and idempotent reapply
+- hardened existing-material parsing/allowlisting, clean versus takeover-required workstations, Cura running during deployment, ambiguous machine/nozzle matches, full desired-library XML/plugin rendering, bundled-material filtering, exclusive user-material cleanup, checksum drift, symlink/root escapes, partial-write rollback, and idempotent reapply

@@ -10,8 +10,8 @@ Browser -> FastAPI -> filament_manager PostgreSQL
                                                   |----> Moonraker HTTP API
                                                   `----> Google Sheets API
 
-Cura workstation agent -> outbound HTTPS polling -> FastAPI -> leased profile snapshot
-                     `-> local backup -> atomic Cura material/quality/start-G-code update
+Cura workstation agent -> outbound HTTPS polling -> FastAPI -> leased desired library
+                     `-> local backup -> atomic material/plugin replacement
 
 Moonraker/Fluidd -> Spoolman service -> periodic supported-API reconciliation
 ```
@@ -25,10 +25,10 @@ Docker services build their validated runtime configuration directly from stack 
 - local Users, revocable sessions, and Administrator/Operator/Viewer roles
 - Vendors, Filament Products, uniquely labeled Spools, and immutable physical Measurements
 - immutable Spool Usage Events imported from supported Spoolman state
-- Printers and physical Build Plates P1–P5 mapped to same-named Klipper mesh profiles
+- Printers, physical Build Plates, and printable sides; `P4` is Side A and `P4b` is Side B of physical plate P4
 - versioned Material Profiles and resumable six-step Calibration Sessions
 - append-only Audit Events, transactional Outbox Jobs, and Projection State
-- revocable Workstation Agents, single-use Pairing Codes, and immutable Cura Deployment snapshots
+- revisioned generic Material Templates, product-owned Material Profiles, revocable Workstation Agents, single-use Pairing Codes, and immutable desired-library Deployment snapshots
 - future authenticated Device adapters and identifier-only NFC mappings
 
 Mass, density, dimensions, calibration factors, and money use PostgreSQL `NUMERIC`. Technical identities use UUIDs. Mutable rows use optimistic integer record versions. Times are stored in UTC and presented in America/Detroit.
@@ -39,7 +39,9 @@ A canonical change, its audit record, and all required projection jobs commit in
 
 Physical measurements have higher confidence than usage estimates. A measurement stores gross, the exact tare used, net, expected-before, variance, confirmation, source, operator, and time. Unknown imported tare is established atomically with the first verified measurement. Historical usage is never rewritten.
 
-Spoolman reconciliation accepts only supported API data. Decreases create immutable usage events and update effective expected mass; identity-sensitive remote changes remain canonical in Filament Manager. Projection updates read and merge Spoolman `extra` fields so another integration's keys are preserved.
+Spoolman reconciliation accepts only supported API data. Decreases create immutable usage events and update effective expected mass; identity-sensitive remote changes remain canonical in Filament Manager. A legacy spool whose location ownership has never been established may adopt one existing, bounded Spoolman location. After import or any local edit, Filament Manager owns that free-text bucket value and reconciliation repairs remote drift. Projection updates read and merge Spoolman `extra` fields so another integration's keys are preserved.
+
+Administrator-triggered build-plate synchronization reads Moonraker's supported `bed_mesh` printer object before opening its short canonical transaction. Exact bounded `P<number>` and `P<number>b` profiles create physical plates and sides, missing meshes update side availability without deleting metadata, and a loaded matching mesh updates the printer's active physical plate and side. All other profile names are ignored.
 
 ## Security boundaries
 
@@ -52,7 +54,8 @@ Spoolman reconciliation accepts only supported API data. Decreases create immuta
 - Trusted hosts, exact CORS origins, security headers, sanitized API errors, login throttling, and least-privilege containers are enabled.
 - Spoolman has no built-in authentication; keep its LAN endpoint firewalled and put remote browser access behind an authenticated proxy.
 - Workstation agents have no listener. Pairing codes expire after ten minutes and are consumed once; long-lived agent credentials are stored as hashes and authorize only agent heartbeat, claim, and completion routes.
-- Cura writes occur only while Cura is closed, under verified discovered data roots, with symlink/root-escape rejection, automatic backups, checksums, atomic replacement, and rollback.
+- Cura writes occur only while Cura is closed, under verified discovered data roots, with symlink/root-escape rejection, automatic backups, full-library checksums, atomic desired-state material/plugin replacement, and rollback. Existing-material discovery uses hardened XML parsing, approved keys, bounded payloads, and no local paths. Authoritative takeover is automatic only for a clean user material directory and otherwise requires Administrator confirmation.
+- Docker web and worker startup coordinate Alembic upgrades with one bounded PostgreSQL session advisory lock before either long-running process starts.
 
 ## Repository map
 

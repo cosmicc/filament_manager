@@ -24,6 +24,17 @@
       "type": "string",
       "format": "uuid"
     },
+    "source_template_revision_id": {
+      "anyOf": [
+        {
+          "type": "string",
+          "format": "uuid"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
     "printer_id": {
       "type": "string"
     },
@@ -122,18 +133,16 @@
       "type": "number",
       "exclusiveMinimum": 0
     },
-    "preferred_build_plate_code": {
-      "type": [
-        "string",
-        "null"
-      ],
-      "enum": [
-        "P1",
-        "P2",
-        "P3",
-        "P4",
-        "P5",
-        null
+    "preferred_build_plate_surface_code": {
+      "anyOf": [
+        {
+          "type": "string",
+          "pattern": "^P[1-9][0-9]*b?$",
+          "maxLength": 32
+        },
+        {
+          "type": "null"
+        }
       ]
     },
     "cura_extensions": {

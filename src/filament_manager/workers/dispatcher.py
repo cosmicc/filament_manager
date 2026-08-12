@@ -33,6 +33,20 @@ def _fingerprint(value: object) -> str:
     ).hexdigest()
 
 
+def _remote_spool_location(remote: dict[str, object]) -> tuple[bool, str | None]:
+    """Return a bounded normalized Spoolman location and whether it is valid."""
+
+    value = remote.get("location")
+    if value is None:
+        return True, None
+    if not isinstance(value, str):
+        return False, None
+    normalized = value.strip()
+    if len(normalized) > 160:
+        return False, None
+    return True, normalized or None
+
+
 async def claim_jobs(session: AsyncSession, worker_id: str, limit: int = 10) -> list[OutboxJob]:
     """Claim due jobs without blocking other worker processes."""
 
@@ -266,6 +280,36 @@ async def _reconcile_spoolman(session: AsyncSession, client: SpoolmanClient) -> 
         spool = await session.scalar(select(Spool).where(Spool.id == spool_id).with_for_update())
         if spool is None:
             continue
+        location_is_valid, remote_location = _remote_spool_location(remote)
+        if not spool.location_authoritative and location_is_valid and remote_location is not None:
+            spool.location = remote_location
+            spool.location_authoritative = True
+            spool.record_version += 1
+            add_audit_event(
+                session,
+                actor_id=None,
+                source="spoolman",
+                action="spool.location.import",
+                object_type="spool",
+                object_id=spool.id,
+                before={"location": None},
+                after={"location": spool.location},
+                correlation_id=f"spoolman-location-{spool.id}",
+            )
+            add_outbox_job(
+                session,
+                job_type="google.inventory.publish",
+                idempotency_key=f"spool:{spool.id}:google:location:v{spool.record_version}",
+                aggregate_type="spool",
+                aggregate_id=spool.id,
+                aggregate_version=spool.record_version,
+                payload={"spool_id": str(spool.id)},
+            )
+        elif spool.location_authoritative and (not location_is_valid or remote_location != spool.location):
+            # Spoolman is the operational projection. Repair remote edits or
+            # invalid values from the canonical free-text location.
+            updated_remote = await client.update_spool(int(remote["id"]), {"location": spool.location})
+            remote = {**remote, **updated_remote}
         remote_remaining = Decimal(str(remote.get("remaining_weight", spool.remaining_mass_expected_g)))
         delta = remote_remaining - spool.remaining_mass_expected_g
         if delta < 0:

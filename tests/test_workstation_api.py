@@ -148,8 +148,27 @@ async def test_pair_queue_claim_and_complete_workstation_deployment(
                     "platform": "arch_linux",
                     "architecture": "x86_64",
                     "agent_version": "0.1.0",
-                    "capabilities": {"atomic_install": True},
-                    "cura_installations": [],
+                    "capabilities": {
+                        "atomic_install": True,
+                        "unmanaged_material_count": 0,
+                    },
+                    "cura_installations": [
+                        {
+                            "installation_id": "cura-test",
+                            "version": "5.13",
+                            "channel": "Linux Cura",
+                            "path_hint": "Linux Cura user data / 5.13",
+                            "setting_version": 27,
+                            "machines": [
+                                {
+                                    "machine_id": "flsun-v400",
+                                    "display_name": "FLSUN V400",
+                                    "definition_id": "flsun_v400",
+                                    "nozzle_diameter_mm": "0.4",
+                                }
+                            ],
+                        }
+                    ],
                 },
             )
             assert pair_response.status_code == 201, pair_response.text
@@ -175,6 +194,8 @@ async def test_pair_queue_claim_and_complete_workstation_deployment(
             )
             assert claimed.status_code == 200, claimed.text
             assert claimed.json()["deployment_id"] == deployment_id
+            assert claimed.json()["payload"]["schema_version"] == 2
+            assert claimed.json()["payload"]["hide_bundled_materials"] is True
             completed = await client.post(
                 f"/api/v1/workstation-agent/deployments/{deployment_id}/complete",
                 headers={"Authorization": f"Bearer {agent_token}"},

@@ -23,13 +23,14 @@ The stack creates its overlay and volumes. For a multi-node Swarm, use shared st
 
 ## Deployment order
 
-1. Run the Filament Manager Alembic migration as a one-shot Swarm job.
-2. Confirm that the migration completed successfully and remove the completed job.
-3. Validate the interpolated stack with `docker stack config`.
-4. Deploy `docker-stack.yml` as stack `filament-manager`.
-5. Seed the configured printer and P1-P5 once.
+1. Validate the interpolated stack with `docker stack config`.
+2. Deploy `docker-stack.yml` as stack `filament-manager`.
+3. Web and worker entry points each request the stable PostgreSQL advisory lock, apply `alembic upgrade head`, and start only after success.
+4. Confirm both service logs report migration completion; keep the documented one-shot migration only for stopped-service recovery.
+5. Seed the configured printer and initial physical P1-P5 plates with Side A once.
 6. Create the first Administrator through a short-lived bootstrap job.
-7. Verify all health endpoints, service logs, and remote database connections.
+7. Install the Klipper plate-side macro and synchronize later exact `P<number>` or `P<number>b` meshes from the Administrator Build Plates page.
+8. Verify all health endpoints, service logs, and remote database connections.
 
 Exact commands and environment-variable handling requirements are in `INSTALL.md`.
 

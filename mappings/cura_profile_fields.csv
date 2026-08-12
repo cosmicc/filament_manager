@@ -11,18 +11,18 @@ top_bottom_speed_mm_s,number,speed_topbottom,optional advanced,Profile
 initial_layer_speed_mm_s,number,speed_layer_0,optional advanced,Profile
 travel_speed_mm_s,number,speed_travel,optional advanced,Profile
 support_speed_mm_s,number,speed_support,optional advanced,Profile
-bridge_speed_mm_s,number,bridge_skin_speed,optional advanced,Profile
+bridge_speed_mm_s,number,not in current material catalog,application-only,Profile
 retraction_distance_mm,number,retraction_amount,required,Retraction Tower
 retraction_speed_mm_s,number,retraction_speed,required,Retraction Tower
 cooling_enabled,boolean,cool_fan_enabled,required,Temperature/overhang
 cooling_min_percent,number,cool_fan_speed_min,required,Temperature/overhang
 cooling_max_percent,number,cool_fan_speed,required,Temperature/overhang
 support_overhang_angle_deg,number,support_angle,required,Overhang Test
-tree_max_branch_angle_deg,number,support_tree_max_diameter_increase_by_merges_when_support_to_model,required concept; template mapping versioned,Overhang Test
-pressure_advance,number,Klipper start macro,required,PA Tower
+tree_max_branch_angle_deg,number,not in current material catalog,application-only,Overhang Test
+pressure_advance,number,klipper_pressure_advance_factor,required,PA Tower and Cura Klipper Settings plugin
 filament_density_g_cm3,number,material_density,required,Catalog/calibration
-preferred_build_plate_code,string,Filament Manager metadata,required,Operator selection
-ironing_enabled,boolean,ironing_enabled,optional,Ironing Test
-ironing_flow_percent,number,ironing_flow,optional,Ironing Test
-ironing_speed_mm_s,number,speed_ironing,optional,Ironing Test
-ironing_line_spacing_mm,number,ironing_line_spacing,optional,Ironing Test
+preferred_build_plate_surface_code,string,Filament Manager metadata,required,Operator selection
+ironing_enabled,boolean,not in current material catalog,application-only,Ironing Test
+ironing_flow_percent,number,not in current material catalog,application-only,Ironing Test
+ironing_speed_mm_s,number,not in current material catalog,application-only,Ironing Test
+ironing_line_spacing_mm,number,not in current material catalog,application-only,Ironing Test

@@ -5,26 +5,24 @@
 Each Arch Linux or Windows 11 workstation runs one agent under the same user account as Cura. The agent automatically:
 
 - discovers standard Cura, Flatpak, and Snap user-data locations on Arch Linux and `%APPDATA%\cura` on Windows;
-- reports only version and machine metadata, never absolute workstation paths;
-- receives published material-profile deployments through an outbound HTTPS poll;
+- reports version, machine metadata, verified desired-library checksum, unmanaged user-material count, and sanitized approved settings from existing materials, never absolute workstation paths;
+- receives the latest published generic templates and product profiles as one desired-state library through an outbound HTTPS poll;
 - waits while Cura is open;
 - matches the Filament Manager printer and nozzle to one Cura machine instance;
-- installs an official-format `.xml.fdm_material` plus paired global and extruder `quality_changes` profiles;
-- backs up every replaced file, writes same-filesystem temporary files, and atomically replaces targets;
-- records checksums so repeated deployments are idempotent; and
+- installs official-format `.xml.fdm_material` files plus the managed visibility plugin that hides bundled materials from Cura's selectors;
+- backs up every added, replaced, or removed user material and managed-plugin file, writes same-filesystem temporary files, and atomically replaces targets;
+- records a complete-library checksum so repeated deployments are idempotent and heartbeat drift is repaired; and
 - restores the backup automatically if any write fails.
 
-Pressure advance is inserted as a clearly delimited `SET_PRESSURE_ADVANCE` block when the matched Cura machine already has a `machine_start_gcode` override. If Cura is inheriting unknown start G-code and has no local override, the agent installs the remaining profile and reports a warning instead of replacing inherited start G-code. Create/save a machine start-G-code override once in Cura to make later pressure-advance updates fully automatic.
+Install and enable the Cura **Material Settings** and **Klipper Settings** plugins. Filament Manager stores pressure advance as `klipper_pressure_advance_factor` and smooth time as the Klipper plugin's material settings. The agent never patches machine start G-code and never creates or changes quality profiles.
+
+Existing Cura material files are parsed with a hardened XML parser. Only the approved Material Settings keys are reported; unsupported settings, file paths, and machine start G-code are discarded. Import any values you need before enabling authoritative management. Enabling it on a workstation with existing user material files requires an explicit Administrator confirmation because those files will be backed up and replaced by Filament Manager's complete library. Bundled files in Cura's installation remain untouched; the managed plugin hides them in material selectors.
 
 ## Server requirement
 
 Use an HTTPS Filament Manager public URL. Plain HTTP pairing is accepted only for an explicit loopback development installation. The agent follows no HTTP redirects and validates the normal operating-system certificate trust store.
 
-Apply the current database migration before pairing agents:
-
-```bash
-alembic upgrade head
-```
+Docker web and worker startup automatically applies the workstation schema migration under the shared PostgreSQL advisory lock. Confirm both services are healthy before pairing agents.
 
 ## Arch Linux
 
@@ -72,7 +70,7 @@ Start-ScheduledTask -TaskName 'Filament Manager Cura Agent'
 
 ## Use
 
-Publish a profile, then select **Deploy to all Cura workstations** on the Material profiles page. The Cura workstations page shows discovery, last contact, deployment state, warnings, and failures. Close Cura when a deployment is pending; the agent retries without manual requeueing.
+Create and publish generic material templates first. Add filament products from those templates, tune and publish each product profile, then open **Cura workstations**. A clean Cura installation is managed automatically; an installation with existing user materials requires **Manage and synchronize Cura** and the replacement warning. Publishing later template or product revisions queues the complete library automatically. Close Cura when synchronization is pending; the agent retries without manual requeueing.
 
 Useful local commands:
 
@@ -83,7 +81,7 @@ filament-manager-agent run-once
 filament-manager-agent rollback DEPLOYMENT_UUID
 ```
 
-Rollback changes only files captured by that deployment's backup. It never deletes or rewrites unrelated Cura profiles.
+Rollback restores the exact pre-synchronization user materials and managed plugin files captured by that deployment. Authoritative synchronization never changes Cura's machine, quality, start-G-code, or bundled installation files.
 
 ## Security and removal
 

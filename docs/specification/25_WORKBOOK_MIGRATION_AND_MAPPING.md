@@ -22,7 +22,7 @@ All 34 current inventory fields map to canonical database fields or calculated p
 - projection state
 - active printer/dryer location
 - profile version
-- preferred build plate
+- preferred build-plate side
 - label URL
 - accepted measurement metadata
 - audit metadata

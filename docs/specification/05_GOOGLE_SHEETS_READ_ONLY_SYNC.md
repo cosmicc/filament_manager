@@ -35,7 +35,7 @@ One row per published material profile version, including printer, nozzle, setti
 
 ### Build Plates
 
-`P1` through `P5`, surface, mesh profile, status, maintenance dates, and notes.
+All canonical physical P-number plates, including initial P1-P5 and later Moonraker-discovered records, plus nested A/B side code, surface material, finish, mesh profile/availability/check/calibration state, physical status/maintenance, and notes.
 
 ### Calibration Status
 

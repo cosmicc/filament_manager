@@ -5,7 +5,7 @@
 - UUID technical keys, immutable human business IDs.
 - Numeric types for mass, dimensions, density, flow, and money.
 - Immutable event tables for measurements, usage, and calibration results.
-- Versioned material profiles.
+- Versioned generic material templates and product-owned material profiles.
 - Explicit projection state for Spoolman and Google.
 - Soft archive rather than destructive delete for referenced records.
 
@@ -21,7 +21,7 @@ A purchasable material definition: material, filler, finish, color, product/grad
 
 ### spool
 
-A physical spool with immutable `spool_code`, tare mass, purchase details, current expected remaining mass, status, location, Spoolman ID, and label data.
+A physical spool with immutable `spool_code`, tare mass, purchase details, current expected remaining mass, status, bounded free-text location, internal location-ownership state, Spoolman ID, and label data. Existing rows with no canonical location may adopt one remote location; a local edit or clear makes the canonical value authoritative.
 
 ### spool_measurement
 
@@ -46,7 +46,11 @@ Printer identity, Moonraker endpoint, nozzle diameter, build volume, active plat
 
 ### build_plate
 
-Physical plate record. Business IDs start with `P1` through `P5`. Fields include surface, vendor, dimensions, condition, Klipper mesh profile, last clean, last mesh calibration, and notes.
+Physical plate record. Business IDs are exact uppercase `P<number>` values; `P1` through `P5` are the initial seeds. Fields include display name, description, vendor, dimensions, physical condition/status, last clean, and notes.
+
+### build_plate_surface
+
+One printable side of a physical plate. Side A uses the physical plate code (`P4`); Side B uses a lowercase `b` suffix (`P4b`). Fields include surface material, smooth/textured finish, same-named Klipper mesh, mesh availability/check time, last mesh calibration, and notes. Missing Moonraker meshes do not delete the physical plate, side, or metadata.
 
 ### material_profile
 
@@ -57,7 +61,11 @@ Versioned settings scoped to:
 - nozzle diameter
 - optional layer-height range
 
-Contains Cura and Klipper-related settings. Publishing creates a new immutable version rather than editing historical versions in place.
+Contains the approved Cura Material Settings values, including Cura Klipper Settings pressure advance and smooth time. Profiles are scoped to a filament product, printer, and nozzle and may reference a preferred plate side. Publishing creates a new immutable version rather than editing historical versions in place.
+
+### material_template and material_template_revision
+
+The template is a mutable identity for one generic material type, printer, nozzle, and filament diameter. Revisions store complete validated settings snapshots and become immutable when published. Creating a filament product from a published revision copies those settings into Material Profile version 1 in draft state, overrides generic density with the product's canonical density, and records revision provenance on both rows.
 
 ### calibration_session
 
@@ -128,10 +136,10 @@ Stable typed fields:
 - maximum branch angle
 - pressure advance
 - filament density
-- preferred build plate
+- preferred build-plate side
 - optional ironing fields
 
-Store future Cura fields in `cura_extensions JSONB` with a schema version.
+Store only approved less-common Cura Material Settings keys in `cura_extensions JSONB` with a schema version. Unknown settings and machine-level keys are rejected.
 
 ## Authoritative implementation references
 

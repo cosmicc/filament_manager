@@ -56,7 +56,7 @@ export default function DashboardPage() {
 
         <article className="card plate-card">
           <header className="card__header"><div><p className="eyebrow">Printer surface</p><h2>Active build plate</h2></div><Layers3 size={21} /></header>
-          {data.active_plate ? <div className="plate-summary"><div className="plate-illustration"><span>{data.active_plate.plate_code}</span></div><strong>{data.active_plate.display_name}</strong><span>{data.active_plate.klipper_mesh_profile}</span><StatusPill status={data.active_plate.condition} /></div> : <EmptyState icon={Layers3} title="No plate selected" description="Select one of the P1–P5 plates for a configured printer." action={<Link className="button" to="/plates">Open plates</Link>} />}
+          {data.active_plate ? <div className="plate-summary"><div className="plate-illustration"><span>{data.active_plate_surface?.surface_code ?? data.active_plate.plate_code}</span></div><strong>{data.active_plate.display_name}</strong><span>{data.active_plate_surface ? `Side ${data.active_plate_surface.side.toUpperCase()} · ${data.active_plate_surface.surface_material ?? 'Surface not specified'}` : 'Side not selected'}</span><StatusPill status={data.active_plate.condition} /></div> : <EmptyState icon={Layers3} title="No plate selected" description="Select a synchronized P-number plate side for a configured printer." action={<Link className="button" to="/plates">Open plates</Link>} />}
         </article>
 
         <article className="card integrations-card">

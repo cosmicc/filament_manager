@@ -7,18 +7,31 @@ from typing import Any
 import structlog
 
 from . import __version__
-from .apply import apply_rendered
+from .apply import apply_rendered, managed_library_checksum
 from .client import AgentClient
 from .config import load_config
-from .discovery import cura_is_running, discover_installations
+from .discovery import (
+    cura_is_running,
+    discover_installations,
+    discover_materials,
+    unmanaged_material_count,
+)
 from .render import render_deployment
 
 logger = structlog.get_logger()
 
 
-def heartbeat_payload(installations: list[Any], last_error: str | None = None) -> dict[str, Any]:
+def heartbeat_payload(
+    installations: list[Any],
+    last_error: str | None = None,
+) -> dict[str, Any]:
     """Build bounded capability and discovery metadata."""
 
+    installation_reports: list[dict[str, object]] = []
+    for installation in installations:
+        report = installation.report()
+        report["managed_library_checksum"] = managed_library_checksum(installation.data_path)
+        installation_reports.append(report)
     return {
         "agent_version": __version__,
         "capabilities": {
@@ -27,10 +40,14 @@ def heartbeat_payload(installations: list[Any], last_error: str | None = None) -
             "rollback": True,
             "cura_process_guard": True,
             "material_profiles": True,
-            "quality_changes": True,
-            "pressure_advance_guarded": True,
+            "material_settings_plugin": True,
+            "klipper_settings_plugin": True,
+            "authoritative_material_library": True,
+            "hide_bundled_materials": True,
+            "unmanaged_material_count": unmanaged_material_count(installations),
         },
-        "cura_installations": [installation.report() for installation in installations],
+        "cura_installations": installation_reports,
+        "cura_materials": [material.report() for material in discover_materials(installations)],
         "last_error": last_error,
     }
 

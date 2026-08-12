@@ -13,10 +13,12 @@
 - Validate proxy headers only when trusted-proxy mode is explicitly configured.
 - Use exact allowed origins and hosts; wildcard production CORS is prohibited.
 - Constrain outbound integration URLs to configured endpoints to reduce SSRF risk.
+- Treat Moonraker profile names as untrusted input. Only bounded exact uppercase `P<number>` Side A or `P<number>b` Side B names may create sides or reach the `SELECT_BUILD_PLATE` macro; ignore all other profiles and cap one synchronization at 1,000 discovered sides.
 - Rate-limit login and future device-event endpoints. Audit denied administrative actions without sensitive request bodies.
 - QR codes contain stable application URLs/identifiers only. NFC UIDs never grant access.
 - Production images run as a non-root user and omit package-manager and build tooling from the runtime layer.
 - Cura agents are outbound-only and run as the desktop user. Pairing codes are high-entropy, expire after ten minutes, work once, and are stored only as hashes.
 - Store agent bearer tokens only as server-side hashes and private per-user workstation config. Never return them after pairing, accept them on browser routes, or include them in logs/audit metadata.
 - Require HTTPS for non-loopback pairing and polling, do not follow redirects, and keep credentials scoped to heartbeat, claim, and completion routes.
-- Cura writes require a detected root, symlink/root-escape checks, a closed Cura process, an exact machine/nozzle match, backup, checksum manifest, atomic replacement, and rollback. Never replace inherited unknown start G-code to automate pressure advance.
+- Cura writes require a detected root, symlink/root-escape checks, a closed Cura process, an exact machine/nozzle match, backup of every desired or removed target, a full-library checksum manifest, atomic desired-state replacement, and rollback. Existing user materials require explicit Administrator takeover; a clean library may opt in automatically. The visibility plugin may filter Cura selectors but never alter bundled installation files, quality profiles, machine settings, or start G-code.
+- Existing Cura material discovery uses hardened XML parsing, file/count/size bounds, an exact approved-key allowlist, bounded scalar values, and path-free reports. Never evaluate Cura expressions or import machine-level settings.

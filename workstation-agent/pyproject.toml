@@ -10,6 +10,7 @@ readme = "README.md"
 requires-python = ">=3.12"
 license = { text = "Proprietary" }
 dependencies = [
+  "defusedxml>=0.7.1,<1",
   "httpx>=0.28,<1",
   "platformdirs>=4.3,<5",
   "psutil>=7.0,<8",
@@ -24,6 +25,7 @@ dev = [
   "pip-audit>=2.9,<3",
   "pytest>=9.0.3,<10",
   "ruff>=0.12,<1",
+  "types-defusedxml>=0.7.0.20250822,<1",
   "types-psutil>=7.0,<8",
 ]
 

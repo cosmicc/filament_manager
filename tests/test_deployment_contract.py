@@ -1,5 +1,6 @@
 """Deployment-variable and database-isolation contract tests."""
 
+import ast
 from pathlib import Path
 
 import yaml
@@ -72,6 +73,8 @@ def test_example_environment_matches_the_database_contract() -> None:
     assert values["FILAMENT_MANAGER_DB_SSLMODE"] == "disable"
     assert values["SPOOLMAN_DB_USERNAME"] == "spoolman_user"
     assert values["SPOOLMAN_DB_QUERY"] == "ssl=disable"
+    assert values["FILAMENT_MANAGER_DATABASE_AUTO_MIGRATE"] == "true"
+    assert values["FILAMENT_MANAGER_DATABASE_MIGRATION_LOCK_TIMEOUT_SECONDS"] == "300"
 
 
 def test_image_healthcheck_uses_the_trusted_host_aware_probe() -> None:
@@ -80,6 +83,22 @@ def test_image_healthcheck_uses_the_trusted_host_aware_probe() -> None:
     dockerfile = _read("Dockerfile")
     assert 'CMD ["python", "-m", "filament_manager.healthcheck"]' in dockerfile
     assert "urllib.request.urlopen('http://127.0.0.1:8080/health/ready'" not in dockerfile
+
+
+def test_image_runs_automatic_migrations_through_its_entrypoint() -> None:
+    """Every long-running image command must pass through the migration coordinator."""
+
+    dockerfile = _read("Dockerfile")
+    assert 'ENTRYPOINT ["filament-manager-startup"]' in dockerfile
+    assert 'filament-manager-startup = "filament_manager.startup:run"' in _read("pyproject.toml")
+    for relative_path in (
+        "docker-stack.yml",
+        "docker/filament-manager-stack.yml",
+        "docker/docker-compose.yml",
+    ):
+        content = _read(relative_path)
+        assert "FILAMENT_MANAGER_DATABASE_AUTO_MIGRATE" in content
+        assert "FILAMENT_MANAGER_DATABASE_MIGRATION_LOCK_TIMEOUT_SECONDS" in content
 
 
 def test_non_http_services_disable_the_image_healthcheck() -> None:
@@ -96,3 +115,16 @@ def test_non_http_services_disable_the_image_healthcheck() -> None:
 
     local_services = _read_yaml("docker/docker-compose.yml")["services"]
     assert local_services["bootstrap-admin"]["healthcheck"] == {"disable": True}
+
+
+def test_klipper_macro_variables_are_valid_python_literals() -> None:
+    """Klipper parses every macro variable with ``ast.literal_eval`` at startup."""
+
+    macro = _read("integrations/klipper/filament-manager-macros.cfg")
+    variable_lines = [line for line in macro.splitlines() if line.casefold().startswith("variable_")]
+
+    assert variable_lines
+    assert 'variable_active_plate: "UNSET"' in variable_lines
+    for line in variable_lines:
+        _name, literal = line.split(":", 1)
+        ast.literal_eval(literal.strip())

@@ -22,6 +22,7 @@ class CalibrationSession(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     printer_id: Mapped[UUID] = mapped_column(ForeignKey("printers.id"), nullable=False)
     nozzle_diameter_mm: Mapped[Decimal] = mapped_column(Numeric(12, 5), nullable=False)
     build_plate_id: Mapped[UUID | None] = mapped_column(ForeignKey("build_plates.id"))
+    build_plate_surface_id: Mapped[UUID | None] = mapped_column(ForeignKey("build_plate_surfaces.id"))
     baseline_profile_id: Mapped[UUID | None] = mapped_column(ForeignKey("material_profiles.id"))
     published_profile_id: Mapped[UUID | None] = mapped_column(ForeignKey("material_profiles.id"))
     target_layer_height_mm: Mapped[Decimal | None] = mapped_column(Numeric(12, 5))

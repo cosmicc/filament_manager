@@ -39,8 +39,10 @@ class WorkstationAgent(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     agent_version: Mapped[str] = mapped_column(String(32), nullable=False)
     token_hash: Mapped[str] = mapped_column(String(64), nullable=False, unique=True)
     enabled: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+    cura_management_enabled: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     capabilities: Mapped[dict[str, object]] = mapped_column(JSONB, nullable=False, default=dict)
     cura_installations: Mapped[list[dict[str, object]]] = mapped_column(JSONB, nullable=False, default=list)
+    cura_materials: Mapped[list[dict[str, object]]] = mapped_column(JSONB, nullable=False, default=list)
     last_seen_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), index=True)
     last_error: Mapped[str | None] = mapped_column(String(500))
     created_by: Mapped[UUID] = mapped_column(ForeignKey("users.id", ondelete="RESTRICT"), nullable=False)
@@ -59,10 +61,10 @@ class CuraDeployment(UUIDPrimaryKeyMixin, Base):
     agent_id: Mapped[UUID] = mapped_column(
         ForeignKey("workstation_agents.id", ondelete="RESTRICT"), nullable=False, index=True
     )
-    material_profile_id: Mapped[UUID] = mapped_column(
-        ForeignKey("material_profiles.id", ondelete="RESTRICT"), nullable=False
+    material_profile_id: Mapped[UUID | None] = mapped_column(
+        ForeignKey("material_profiles.id", ondelete="RESTRICT")
     )
-    requested_by: Mapped[UUID] = mapped_column(ForeignKey("users.id", ondelete="RESTRICT"), nullable=False)
+    requested_by: Mapped[UUID | None] = mapped_column(ForeignKey("users.id", ondelete="RESTRICT"))
     status: Mapped[CuraDeploymentStatus] = mapped_column(
         Enum(CuraDeploymentStatus, name="cura_deployment_status"),
         nullable=False,

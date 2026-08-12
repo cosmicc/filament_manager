@@ -27,4 +27,5 @@ RUN mkdir -p /data && chown -R filament-manager:filament-manager /data /app
 USER 10001:10001
 EXPOSE 8080
 HEALTHCHECK --interval=30s --timeout=5s --start-period=20s --retries=5 CMD ["python", "-m", "filament_manager.healthcheck"]
+ENTRYPOINT ["filament-manager-startup"]
 CMD ["filament-manager"]

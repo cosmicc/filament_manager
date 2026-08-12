@@ -20,6 +20,7 @@ from filament_manager.models.auth import User
 from filament_manager.models.enums import SpoolStatus, UserRole
 from filament_manager.models.inventory import (
     BuildPlate,
+    BuildPlateSurface,
     FilamentProduct,
     Printer,
     Spool,
@@ -225,6 +226,7 @@ async def test_seed_system_route_creates_configured_resources(monkeypatch: pytes
         async with factory() as session:
             assert await session.scalar(select(func.count(Printer.id))) == 1
             assert await session.scalar(select(func.count(BuildPlate.id))) == 5
+            assert await session.scalar(select(func.count(BuildPlateSurface.id))) == 5
             audit = await session.scalar(select(AuditEvent).where(AuditEvent.action == "system.seed.web"))
             assert audit is not None
             assert audit.after == {"plates": 5, "printers": 1}

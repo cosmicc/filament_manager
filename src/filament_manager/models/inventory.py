@@ -17,6 +17,7 @@ from sqlalchemy import (
     String,
     Text,
     UniqueConstraint,
+    text,
 )
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column, relationship
@@ -27,6 +28,7 @@ from .enums import (
     MeasurementStatus,
     PlateCondition,
     PlateStatus,
+    PlateSurfaceTexture,
     ProfileStatus,
     SpoolStatus,
 )
@@ -77,6 +79,9 @@ class FilamentProduct(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     density_g_cm3: Mapped[Decimal] = mapped_column(MEASUREMENT, nullable=False)
     nominal_net_mass_g: Mapped[Decimal] = mapped_column(MASS, nullable=False)
     notes: Mapped[str | None] = mapped_column(Text)
+    source_template_revision_id: Mapped[UUID | None] = mapped_column(
+        ForeignKey("material_template_revisions.id", ondelete="SET NULL"), index=True
+    )
     record_version: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
 
     vendor: Mapped[Vendor | None] = relationship()
@@ -115,6 +120,11 @@ class Spool(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     last_measurement_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     last_usage_event_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     location: Mapped[str | None] = mapped_column(String(160))
+    # Existing Spoolman locations may be adopted once. After this flag is set,
+    # Filament Manager owns the free-text location, including an intentional clear.
+    location_authoritative: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=True, server_default=text("true")
+    )
     active_printer_id: Mapped[UUID | None] = mapped_column(ForeignKey("printers.id"))
     spoolman_id: Mapped[int | None] = mapped_column(Integer, unique=True)
     label_path: Mapped[str | None] = mapped_column(String(512))
@@ -194,20 +204,26 @@ class Printer(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     nozzle_diameter_mm: Mapped[Decimal] = mapped_column(MEASUREMENT, nullable=False)
     build_volume: Mapped[dict[str, Decimal]] = mapped_column(JSONB, nullable=False, default=dict)
     active_plate_id: Mapped[UUID | None] = mapped_column(ForeignKey("build_plates.id"))
+    active_plate_surface_id: Mapped[UUID | None] = mapped_column(ForeignKey("build_plate_surfaces.id"))
     status: Mapped[str] = mapped_column(String(32), nullable=False, default="unknown")
     last_seen_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     record_version: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
 
 
 class BuildPlate(UUIDPrimaryKeyMixin, TimestampMixin, Base):
-    """A physical build plate mapped to a Klipper mesh profile."""
+    """A physical P-number build plate that may have two printable sides."""
 
     __tablename__ = "build_plates"
+    __table_args__ = (
+        CheckConstraint(
+            "plate_code ~ '^P[1-9][0-9]*$'",
+            name="build_plate_code_format",
+        ),
+    )
 
-    plate_code: Mapped[str] = mapped_column(String(2), nullable=False, unique=True)
+    plate_code: Mapped[str] = mapped_column(String(32), nullable=False, unique=True)
     display_name: Mapped[str] = mapped_column(String(120), nullable=False)
-    klipper_mesh_profile: Mapped[str] = mapped_column(String(120), nullable=False)
-    surface_type: Mapped[str | None] = mapped_column(String(120))
+    description: Mapped[str | None] = mapped_column(Text)
     manufacturer: Mapped[str | None] = mapped_column(String(120))
     dimensions_mm: Mapped[dict[str, Decimal]] = mapped_column(JSONB, nullable=False, default=dict)
     condition: Mapped[PlateCondition] = mapped_column(
@@ -219,9 +235,49 @@ class BuildPlate(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     preferred_materials: Mapped[list[str]] = mapped_column(JSONB, nullable=False, default=list)
     max_bed_temp_c: Mapped[Decimal | None] = mapped_column(MEASUREMENT)
     last_cleaned_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    notes: Mapped[str | None] = mapped_column(Text)
+    record_version: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
+    surfaces: Mapped[list["BuildPlateSurface"]] = relationship(
+        back_populates="plate",
+        cascade="all, delete-orphan",
+        lazy="selectin",
+        order_by="BuildPlateSurface.side",
+    )
+
+
+class BuildPlateSurface(UUIDPrimaryKeyMixin, TimestampMixin, Base):
+    """One printable side and its exact same-named Moonraker mesh profile."""
+
+    __tablename__ = "build_plate_surfaces"
+    __table_args__ = (
+        CheckConstraint("side IN ('a', 'b')", name="build_plate_surface_side"),
+        CheckConstraint(
+            "surface_code ~ '^P[1-9][0-9]*b?$'",
+            name="build_plate_surface_code_format",
+        ),
+        CheckConstraint(
+            "klipper_mesh_profile = surface_code",
+            name="build_plate_surface_mesh_matches_code",
+        ),
+        UniqueConstraint("build_plate_id", "side", name="uq_build_plate_surface_side"),
+    )
+
+    build_plate_id: Mapped[UUID] = mapped_column(
+        ForeignKey("build_plates.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    side: Mapped[str] = mapped_column(String(1), nullable=False)
+    surface_code: Mapped[str] = mapped_column(String(32), nullable=False, unique=True)
+    klipper_mesh_profile: Mapped[str] = mapped_column(String(32), nullable=False, unique=True)
+    surface_material: Mapped[str | None] = mapped_column(String(120))
+    texture: Mapped[PlateSurfaceTexture | None] = mapped_column(
+        Enum(PlateSurfaceTexture, name="plate_surface_texture")
+    )
+    mesh_available: Mapped[bool | None] = mapped_column(Boolean)
+    last_mesh_checked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     last_mesh_calibrated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     notes: Mapped[str | None] = mapped_column(Text)
     record_version: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
+    plate: Mapped[BuildPlate] = relationship(back_populates="surfaces")
 
 
 class MaterialProfile(UUIDPrimaryKeyMixin, TimestampMixin, Base):
@@ -267,13 +323,66 @@ class MaterialProfile(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     tree_max_branch_angle_deg: Mapped[Decimal | None] = mapped_column(MEASUREMENT)
     pressure_advance: Mapped[Decimal | None] = mapped_column(MEASUREMENT)
     filament_density_g_cm3: Mapped[Decimal] = mapped_column(MEASUREMENT, nullable=False)
-    preferred_build_plate_id: Mapped[UUID | None] = mapped_column(ForeignKey("build_plates.id"))
+    preferred_build_plate_surface_id: Mapped[UUID | None] = mapped_column(
+        ForeignKey("build_plate_surfaces.id")
+    )
+    source_template_revision_id: Mapped[UUID | None] = mapped_column(
+        ForeignKey("material_template_revisions.id", ondelete="SET NULL"), index=True
+    )
     ironing_enabled: Mapped[bool | None] = mapped_column(Boolean)
     ironing_flow_percent: Mapped[Decimal | None] = mapped_column(MEASUREMENT)
     ironing_speed_mm_s: Mapped[Decimal | None] = mapped_column(MEASUREMENT)
     ironing_line_spacing_mm: Mapped[Decimal | None] = mapped_column(MEASUREMENT)
     cura_extensions_schema_version: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
     cura_extensions: Mapped[dict[str, object]] = mapped_column(JSONB, nullable=False, default=dict)
+    checksum: Mapped[str | None] = mapped_column(String(64))
+    published_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    record_version: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
+
+
+class MaterialTemplate(UUIDPrimaryKeyMixin, TimestampMixin, Base):
+    """A reusable material family scoped to one printer and nozzle."""
+
+    __tablename__ = "material_templates"
+    __table_args__ = (
+        UniqueConstraint(
+            "material_type",
+            "printer_id",
+            "nozzle_diameter_mm",
+            name="uq_material_template_scope",
+        ),
+    )
+
+    name: Mapped[str] = mapped_column(String(160), nullable=False)
+    material_type: Mapped[str] = mapped_column(String(48), nullable=False, index=True)
+    description: Mapped[str | None] = mapped_column(Text)
+    printer_id: Mapped[UUID] = mapped_column(
+        ForeignKey("printers.id", ondelete="RESTRICT"), nullable=False, index=True
+    )
+    nozzle_diameter_mm: Mapped[Decimal] = mapped_column(MEASUREMENT, nullable=False)
+    filament_diameter_mm: Mapped[Decimal] = mapped_column(MEASUREMENT, nullable=False)
+    active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+    record_version: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
+
+
+class MaterialTemplateRevision(UUIDPrimaryKeyMixin, TimestampMixin, Base):
+    """An immutable material-template settings snapshot."""
+
+    __tablename__ = "material_template_revisions"
+    __table_args__ = (
+        UniqueConstraint(
+            "material_template_id",
+            "version",
+            name="uq_material_template_revision_version",
+        ),
+    )
+
+    material_template_id: Mapped[UUID] = mapped_column(
+        ForeignKey("material_templates.id", ondelete="RESTRICT"), nullable=False, index=True
+    )
+    version: Mapped[int] = mapped_column(Integer, nullable=False)
+    status: Mapped[ProfileStatus] = mapped_column(Enum(ProfileStatus, name="profile_status"), nullable=False)
+    settings: Mapped[dict[str, object]] = mapped_column(JSONB, nullable=False)
     checksum: Mapped[str | None] = mapped_column(String(64))
     published_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     record_version: Mapped[int] = mapped_column(Integer, nullable=False, default=1)

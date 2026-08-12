@@ -1,0 +1,55 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Material Template",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "id",
+    "name",
+    "material_type",
+    "printer_id",
+    "nozzle_diameter_mm",
+    "filament_diameter_mm",
+    "active",
+    "revisions"
+  ],
+  "properties": {
+    "id": { "type": "string", "format": "uuid" },
+    "name": { "type": "string", "minLength": 1, "maxLength": 160 },
+    "material_type": { "type": "string", "minLength": 1, "maxLength": 48 },
+    "description": { "type": ["string", "null"], "maxLength": 4000 },
+    "printer_id": { "type": "string", "format": "uuid" },
+    "nozzle_diameter_mm": { "type": "number", "exclusiveMinimum": 0 },
+    "filament_diameter_mm": { "type": "number", "exclusiveMinimum": 0 },
+    "active": { "type": "boolean" },
+    "revisions": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["id", "version", "status", "settings"],
+        "properties": {
+          "id": { "type": "string", "format": "uuid" },
+          "version": { "type": "integer", "minimum": 1 },
+          "status": {
+            "enum": [
+              "draft",
+              "calibration_in_progress",
+              "validated",
+              "published",
+              "superseded",
+              "archived"
+            ]
+          },
+          "settings": { "type": "object" },
+          "checksum": {
+            "anyOf": [
+              { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+              { "type": "null" }
+            ]
+          }
+        }
+      }
+    }
+  }
+}

@@ -19,8 +19,16 @@ from filament_manager.domain.mass import (
     MeasurementConfirmationRequired,
     calculate_measurement,
 )
-from filament_manager.models.enums import MeasurementStatus, SpoolStatus
-from filament_manager.models.inventory import FilamentProduct, Spool, SpoolMeasurement, Vendor
+from filament_manager.models.enums import MeasurementStatus, ProfileStatus, SpoolStatus
+from filament_manager.models.inventory import (
+    FilamentProduct,
+    MaterialProfile,
+    MaterialTemplate,
+    MaterialTemplateRevision,
+    Spool,
+    SpoolMeasurement,
+    Vendor,
+)
 from filament_manager.services.events import add_audit_event, add_outbox_job
 
 from ..dependencies import DatabaseSession, Operator, Viewer
@@ -28,6 +36,7 @@ from ..errors import ApiError
 from ..schemas import (
     FilamentCreate,
     FilamentResponse,
+    MaterialSettingsInput,
     MeasurementCreate,
     MeasurementResponse,
     Page,
@@ -93,6 +102,7 @@ def filament_response(product: FilamentProduct) -> FilamentResponse:
         density_g_cm3=product.density_g_cm3,
         nominal_net_mass_g=product.nominal_net_mass_g,
         notes=product.notes,
+        material_template_revision_id=product.source_template_revision_id,
         record_version=product.record_version,
     )
 
@@ -195,9 +205,55 @@ async def create_filament(
 ) -> FilamentResponse:
     """Create a canonical filament product definition."""
 
-    product = FilamentProduct(**payload.model_dump())
+    template_revision: MaterialTemplateRevision | None = None
+    template: MaterialTemplate | None = None
+    if payload.material_template_revision_id is not None:
+        template_revision = await session.get(MaterialTemplateRevision, payload.material_template_revision_id)
+        if template_revision is None or template_revision.status != ProfileStatus.PUBLISHED:
+            raise ApiError(
+                status.HTTP_422_UNPROCESSABLE_ENTITY,
+                "template_revision_unavailable",
+                "Select a published material template revision",
+            )
+        template = await session.get(MaterialTemplate, template_revision.material_template_id)
+        if template is None or not template.active:
+            raise ApiError(
+                status.HTTP_422_UNPROCESSABLE_ENTITY,
+                "material_template_inactive",
+                "The selected material template is inactive",
+            )
+        if template.material_type.casefold() != payload.material_type.strip().casefold():
+            raise ApiError(
+                status.HTTP_422_UNPROCESSABLE_ENTITY,
+                "material_type_template_mismatch",
+                "The filament material type must match the selected template",
+            )
+
+    product_values = payload.model_dump(exclude={"material_template_revision_id", "material_type"})
+    product = FilamentProduct(
+        **product_values,
+        material_type=payload.material_type.strip(),
+        source_template_revision_id=payload.material_template_revision_id,
+    )
     session.add(product)
     await session.flush()
+    profile: MaterialProfile | None = None
+    if template_revision is not None and template is not None:
+        profile_values = MaterialSettingsInput.model_validate(template_revision.settings).model_dump()
+        # Product density is canonical for the actual purchasable filament and
+        # intentionally supersedes the generic template's starting density.
+        profile_values["filament_density_g_cm3"] = product.density_g_cm3
+        profile = MaterialProfile(
+            **profile_values,
+            filament_product_id=product.id,
+            printer_id=template.printer_id,
+            nozzle_diameter_mm=template.nozzle_diameter_mm,
+            version=1,
+            status=ProfileStatus.DRAFT,
+            source_template_revision_id=template_revision.id,
+        )
+        session.add(profile)
+        await session.flush()
     add_audit_event(
         session,
         actor_id=operator.id,
@@ -206,7 +262,14 @@ async def create_filament(
         object_type="filament_product",
         object_id=product.id,
         before=None,
-        after={"material_type": product.material_type, "color_name": product.color_name},
+        after={
+            "material_type": product.material_type,
+            "color_name": product.color_name,
+            "source_template_revision_id": (
+                str(template_revision.id) if template_revision is not None else None
+            ),
+            "material_profile_id": str(profile.id) if profile is not None else None,
+        },
         correlation_id=request.state.correlation_id,
     )
     add_outbox_job(
@@ -337,6 +400,7 @@ async def create_spool(
         purchase_cost=payload.purchase_cost,
         currency=payload.currency,
         location=payload.location,
+        location_authoritative=True,
         notes=payload.notes,
     )
     session.add(spool)
@@ -398,6 +462,10 @@ async def update_spool(
     }
     for field in payload.model_fields_set - {"expected_version"}:
         setattr(spool, field, getattr(payload, field))
+    if "location" in payload.model_fields_set:
+        # A browser edit, including clearing the field, permanently establishes
+        # Filament Manager as the owner instead of re-importing a remote value.
+        spool.location_authoritative = True
     spool.record_version += 1
     after = {field: getattr(spool, field) for field in before}
     add_audit_event(

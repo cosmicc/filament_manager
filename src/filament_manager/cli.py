@@ -70,7 +70,7 @@ def bootstrap_admin(
 
 @app.command("seed-system")
 def seed_system() -> None:
-    """Idempotently seed P1-P5 and configured printers."""
+    """Idempotently seed the initial P1-P5 set and configured printers."""
 
     async def command() -> None:
         settings = get_settings()

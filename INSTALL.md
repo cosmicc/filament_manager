@@ -17,20 +17,22 @@ Requirements: Docker Engine with Compose, `openssl`, and ports `8080` and `7912`
 
    Replace every `replace_with_...` value in `.env`. Use a different generated value for `POSTGRES_ADMIN_PASSWORD`, `FILAMENT_MANAGER_DB_PASSWORD`, and `SPOOLMAN_DB_PASSWORD`. For local HTTP access, set `FILAMENT_MANAGER_BASE_URL=http://localhost:8080`, `FILAMENT_MANAGER_ALLOWED_HOSTS=localhost,127.0.0.1`, `FILAMENT_MANAGER_SECURE_COOKIES=false`, and `SPOOLMAN_PUBLIC_URL=http://localhost:7912`. Set the one printer's Moonraker ID, name, URL, and nozzle diameter, plus the initial Administrator username and display name. The ignored `.env` file contains credentials; never commit it.
 
-2. Build and start PostgreSQL and the distinct Spoolman service:
+2. Build and start PostgreSQL, Spoolman, Filament Manager, and its worker:
 
    ```bash
    docker compose --env-file .env -f docker/docker-compose.yml build
-   docker compose --env-file .env -f docker/docker-compose.yml up -d postgres spoolman
+   docker compose --env-file .env -f docker/docker-compose.yml up -d
    ```
 
-3. Apply the canonical schema:
+   The web and worker both check for pending Alembic revisions. A PostgreSQL advisory lock allows only one to upgrade the schema; the other waits and then starts. Either service stops if migration fails.
+
+3. Confirm the automatic migration completed:
 
    ```bash
-   docker compose --env-file .env -f docker/docker-compose.yml run --rm filament-manager alembic upgrade head
+   docker compose --env-file .env -f docker/docker-compose.yml logs filament-manager worker
    ```
 
-   The browser workbook import seeds the configured printer and P1-P5 automatically if they are missing. Administrators can also open Printers and choose **Seed configured printer** after signing in. If you want to verify setup separately from the browser, the idempotent seed command remains available:
+   The browser workbook import seeds the configured printer and initial physical P1-P5 plates with their Side A records automatically if they are missing. Administrators can also open **Printers** and choose **Seed configured printer** after signing in. To seed them separately from the browser, use the same idempotent service through the CLI:
 
    ```bash
    docker compose --env-file .env -f docker/docker-compose.yml run --rm filament-manager filament-manager-cli seed-system
@@ -42,10 +44,10 @@ Requirements: Docker Engine with Compose, `openssl`, and ports `8080` and `7912`
    docker compose --env-file .env -f docker/docker-compose.yml run --rm bootstrap-admin
    ```
 
-5. Start the web application and worker:
+5. Verify all services:
 
    ```bash
-   docker compose --env-file .env -f docker/docker-compose.yml up -d filament-manager worker
+   docker compose --env-file .env -f docker/docker-compose.yml ps
    ```
 
 6. Open `http://localhost:8080`, sign in as an Administrator, and use **Settings** > **Workbook import** to upload the `.xlsx` master workbook. Validate the workbook, review any row findings, then commit the validated run only if this is a new empty inventory.
@@ -156,27 +158,7 @@ export FILAMENT_MANAGER_DATABASE_URL="postgresql+psycopg://${FILAMENT_MANAGER_DB
 
 For Portainer Git-stack deployment, select the repository's root `docker-stack.yml` and enter the variables from `.env.example` in the stack environment-variable section. `POSTGRES_ADMIN_PASSWORD` is local-Compose-only, and the bootstrap variables belong only on the one-shot bootstrap job. No Docker config or Docker secret objects are required.
 
-### 3. Run the migration and deploy the stack
-
-Run migrations as a separate one-shot job before the application services. The migration receives only the Filament Manager database URL variable:
-
-```bash
-docker service create \
-  --name filament-manager-migrate-v0-1-3 \
-  --mode replicated-job \
-  --no-healthcheck \
-  --env "FILAMENT_MANAGER_DATABASE_URL=$FILAMENT_MANAGER_DATABASE_URL" \
-  "$FILAMENT_MANAGER_IMAGE" \
-  alembic upgrade head
-```
-
-Confirm the job completed successfully, inspect its logs, and then remove the completed job:
-
-```bash
-docker service ps filament-manager-migrate-v0-1-3 --no-trunc
-docker service logs filament-manager-migrate-v0-1-3
-docker service rm filament-manager-migrate-v0-1-3
-```
+### 3. Deploy the stack and let it migrate automatically
 
 Validate the fully interpolated stack and deploy it:
 
@@ -186,11 +168,32 @@ docker stack deploy --with-registry-auth -c docker-stack.yml filament-manager
 docker stack services filament-manager
 ```
 
+The web and worker entry points each check the canonical schema before starting. A stable PostgreSQL advisory lock serializes concurrent startup, so exactly one task applies pending Alembic revisions and the other continues afterward. Migration failure or a lock wait longer than `FILAMENT_MANAGER_DATABASE_MIGRATION_LOCK_TIMEOUT_SECONDS` stops that task. Confirm both services report `database_migration_completed` before normal startup:
+
+```bash
+docker service logs filament-manager_web
+docker service logs filament-manager_worker
+```
+
+`FILAMENT_MANAGER_DATABASE_AUTO_MIGRATE` defaults to `true`. Disable it only for a controlled recovery. A separate migration job remains available for diagnosing a failed upgrade while the application services are stopped:
+
+```bash
+docker service create \
+  --name filament-manager-migrate-recovery \
+  --mode replicated-job \
+  --no-healthcheck \
+  --env "FILAMENT_MANAGER_DATABASE_URL=$FILAMENT_MANAGER_DATABASE_URL" \
+  "$FILAMENT_MANAGER_IMAGE" \
+  alembic upgrade head
+docker service logs filament-manager-migrate-recovery
+docker service rm filament-manager-migrate-recovery
+```
+
 The stack creates its `filament-services` overlay plus `filament_manager_data` and `spoolman_data` volumes. On a multi-node Swarm, use shared storage or placement constraints so stateful volume paths cannot move to an empty node.
 
 ### 4. Seed the system and create the first Administrator
 
-After the web and worker services are running, Administrators can open Printers and choose **Seed configured printer** to seed the configured printer and P1-P5 from stack variables. If you need to do this without the browser, use a short-lived job:
+After the web and worker services are running, Administrators can open **Printers** and choose **Seed configured printer** to seed the configured printer and initial physical P1-P5 plates with Side A. Browser workbook import also seeds missing records automatically. If you need to perform setup without the browser, use a short-lived job:
 
 ```bash
 docker service create \
@@ -230,6 +233,53 @@ unset BOOTSTRAP_ADMIN_PASSWORD
 
 No default account is created. The bootstrap job refuses to run after any user already exists. Clear `BOOTSTRAP_ADMIN_PASSWORD` from `.env` and Portainer after success; the long-running web and worker services never receive it.
 
+### 5. Import the initial workbook on Swarm
+
+The workbook importer is for an empty canonical spool inventory. It imports all populated rows from the `Inventory` sheet into canonical vendors, filament products, spools, measurements, and draft material profiles where the required temperatures exist. Dashboard formulas, validation lists, the wishlist, and material-reference lookup data are supporting workbook content rather than canonical records and are not imported.
+
+Copy the unchanged workbook onto one Swarm manager using a path without spaces. Keep it readable only by the operator, and run both jobs on that same node because a bind mount is node-local:
+
+```bash
+sudo install -d -m 0700 /opt/filament-manager/import
+sudo install -m 0400 \
+  "reference/Filament Inventory Master.xlsx" \
+  /opt/filament-manager/import/filament-inventory.xlsx
+
+docker service create \
+  --name filament-manager-workbook-dry-run \
+  --mode replicated-job \
+  --constraint "node.hostname==$(hostname)" \
+  --no-healthcheck \
+  --env "FILAMENT_MANAGER_DATABASE_URL=$FILAMENT_MANAGER_DATABASE_URL" \
+  --mount type=bind,src=/opt/filament-manager/import/filament-inventory.xlsx,dst=/import/filament-inventory.xlsx,readonly \
+  "$FILAMENT_MANAGER_IMAGE" \
+  filament-manager-cli workbook-dry-run /import/filament-inventory.xlsx
+docker service logs --follow filament-manager-workbook-dry-run
+```
+
+Confirm that `invalid_rows` is `0`, then copy the returned `run_id`. Remove the completed validation job and commit the exact same hash-bound file using the existing Administrator username:
+
+```bash
+docker service rm filament-manager-workbook-dry-run
+
+docker service create \
+  --name filament-manager-workbook-commit \
+  --mode replicated-job \
+  --constraint "node.hostname==$(hostname)" \
+  --no-healthcheck \
+  --env "FILAMENT_MANAGER_DATABASE_URL=$FILAMENT_MANAGER_DATABASE_URL" \
+  --mount type=bind,src=/opt/filament-manager/import/filament-inventory.xlsx,dst=/import/filament-inventory.xlsx,readonly \
+  "$FILAMENT_MANAGER_IMAGE" \
+  filament-manager-cli workbook-commit \
+  --run-id DRY_RUN_UUID \
+  /import/filament-inventory.xlsx \
+  --approved-by ADMIN_USERNAME
+docker service logs --follow filament-manager-workbook-commit
+docker service rm filament-manager-workbook-commit
+```
+
+The commit is transactional and is refused if the workbook changed after validation, the approving account is not an Administrator, or any canonical spool already exists. After success, the worker projects the imported inventory to Spoolman through its supported API.
+
 Open Filament Manager on the configured public URL and Spoolman on port `7912`. Verify `/health/ready`, `/metrics`, Spoolman's `/api/v1/health`, worker logs, and both remote PostgreSQL connections. The web probe uses the hostname from `FILAMENT_MANAGER_BASE_URL`; the stack disables this HTTP-only probe for the worker.
 
 ### Independent-stack alternative
@@ -240,16 +290,19 @@ The separate `docker/spoolman-stack.yml` and `docker/filament-manager-stack.yml`
 
 - Add `integrations/moonraker/moonraker-spoolman.conf` to Moonraker after replacing the LAN hostname.
 - Include `integrations/klipper/filament-manager-macros.cfg` from `printer.cfg`.
-- Ensure Klipper already has P1, P2, P3, P4, and P5 mesh profiles and a configured `[save_variables]` section before using `SELECT_BUILD_PLATE`.
+- Before restarting, run `grep -Rns --include='*.cfg' 'variable_active_plate' ~/printer_data/config` on the Klipper host and confirm every included definition is exactly `variable_active_plate: "UNSET"`.
+- Ensure Klipper already has P1, P2, P3, P4, and P5 Side A mesh profiles and a configured `[save_variables]` section before using `SELECT_BUILD_PLATE`.
 - Restart Moonraker and Klipper, then test `SET_ACTIVE_SPOOL ID=<Spoolman ID>` and `SELECT_BUILD_PLATE PLATE=P1` with the printer idle.
+- Sign in as an Administrator, open **Build Plates**, select the printer, and choose **Synchronize with Moonraker**. Exact `P<number>` meshes become Side A; exact `P<number>b` meshes become Side B of the same physical plate. The loaded matching mesh becomes the active side.
+- To add a physical plate later, save Side A as the next name, such as `P6`. If it is double-sided, save its other mesh as `P6b`. Synchronize again; existing physical and side details are preserved, and missing meshes are shown as unavailable rather than deleted.
 
 ## Upgrade
 
 1. Back up both databases independently.
 2. Review release and migration notes.
-3. Run the new Filament Manager migration job.
-4. Redeploy `docker-stack.yml` with the new pinned Filament Manager image.
+3. Redeploy `docker-stack.yml` with the new pinned Filament Manager image; web and worker automatically serialize and apply the schema upgrade before starting.
+4. Confirm both service logs report a completed migration and that no task is restarting.
 5. Upgrade the Spoolman image separately in the same stack change, or leave its existing immutable tag unchanged.
-6. Verify `/health/ready`, `/metrics`, job state, reconciliation, Moonraker, and Google publication.
+6. Verify `/health/ready`, `/metrics`, job state, reconciliation, Moonraker, Cura synchronization, and Google publication.
 
 See [Operations](docs/OPERATIONS.md) for backup, restore, and troubleshooting procedures.

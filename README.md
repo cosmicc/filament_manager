@@ -9,23 +9,24 @@ PostgreSQL is the canonical data store. A distinct Spoolman service remains the 
 - Local Administrator, Operator, and Viewer accounts
 - Canonical spool, filament, profile, printer, and build-plate records
 - Browser-based `.xlsx` workbook upload and Printers page setup actions with first-run printer and build-plate seeding
+- Versioned printer/nozzle material templates that start each new product-specific profile
 - Manual gross-weight measurements with variance confirmation
 - Immutable audit history and transactional projection outbox
-- Spoolman REST projection and periodic reconciliation plus Moonraker control clients
-- P1-P5 build plates and six-step calibration workflow
-- Outbound-only Cura workstation agents for automated Arch Linux and Windows 11 profile deployment, backup, and rollback
+- Spoolman REST projection and periodic reconciliation, including Filament Manager-owned free-text bucket locations, plus Moonraker control clients
+- P1-P5 initial physical build plates, Side A/Side B Moonraker mesh discovery (`P4`/`P4b`), and a six-step calibration workflow
+- Outbound-only Cura workstation agents for importing materials and keeping an authoritative Filament Manager material library synchronized on Arch Linux and Windows 11, with backup, drift repair, bundled-material hiding, and rollback
 - Workshop Navy light and dark web interface
 - Health, readiness, and Prometheus metrics endpoints
 
 ## Start locally
 
-See [INSTALL.md](INSTALL.md) for prerequisites, deployment variables, database migration, first-user bootstrap, and Docker Compose instructions.
+See [INSTALL.md](INSTALL.md) for prerequisites, deployment variables, automatic database upgrades, first-user bootstrap, and Docker Compose instructions.
 
 The root [docker-stack.yml](docker-stack.yml) deploys Filament Manager, its worker, and Spoolman together against a remote PostgreSQL server. All deployer-supplied settings for the current one-printer Docker deployment come from stack variables; no separate application Docker config is required. Independent application stack examples remain under `docker/` for operators who need separate lifecycles.
 
 The current remote-database contract explicitly disables PostgreSQL TLS and therefore requires an operator-managed isolated network restricted to the approved Swarm nodes.
 
-The newest CI-passing `main` image is published as `ghcr.io/cosmicc/filament-manager:latest` for AMD64 and ARM64. The web image health check uses the hostname from `FILAMENT_MANAGER_BASE_URL`; worker services disable that HTTP-only check. Production deployments should pin the immutable `sha-<commit>` tag or image digest from the successful package workflow.
+The newest CI-passing `main` image is published as `ghcr.io/cosmicc/filament-manager:latest` for AMD64 and ARM64. Web and worker startup automatically applies pending Filament Manager Alembic migrations under a PostgreSQL advisory lock. The web image health check uses the hostname from `FILAMENT_MANAGER_BASE_URL`; worker services disable that HTTP-only check. Production deployments should pin the immutable `sha-<commit>` tag or image digest from the successful package workflow.
 
 ## Documentation
 

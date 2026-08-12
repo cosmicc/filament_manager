@@ -34,6 +34,8 @@ class DatabaseConfig(BaseModel):
     pool_size: int = Field(default=10, ge=1, le=100)
     max_overflow: int = Field(default=10, ge=0, le=100)
     statement_timeout_ms: int = Field(default=30_000, ge=1_000)
+    auto_migrate: bool = True
+    migration_lock_timeout_seconds: int = Field(default=300, ge=10, le=3600)
 
     @model_validator(mode="after")
     def require_one_url_source(self) -> "DatabaseConfig":
@@ -165,7 +167,7 @@ class SyncConfig(BaseModel):
 
 
 class PlateConfig(BaseModel):
-    """Physical plate selection guardrails."""
+    """Initial physical plate seeds and selection guardrails."""
 
     allowed_codes: list[Literal["P1", "P2", "P3", "P4", "P5"]]
     selection_policy: Literal["off", "warn", "require"] = "require"
@@ -174,10 +176,10 @@ class PlateConfig(BaseModel):
     @field_validator("allowed_codes")
     @classmethod
     def preserve_exact_plate_catalog(cls, value: list[str]) -> list[str]:
-        """Require the exact supplied plate set without duplicates or omissions."""
+        """Require the exact initial plate set without duplicates or omissions."""
 
         if value != ["P1", "P2", "P3", "P4", "P5"]:
-            raise ValueError("allowed_codes must preserve P1 through P5 in order")
+            raise ValueError("allowed_codes must preserve the initial P1 through P5 order")
         return value
 
 
@@ -294,6 +296,10 @@ def _deployment_environment_config() -> dict[str, Any]:
         "pool_size": os.environ.get("FILAMENT_MANAGER_DATABASE_POOL_SIZE", "10"),
         "max_overflow": os.environ.get("FILAMENT_MANAGER_DATABASE_MAX_OVERFLOW", "10"),
         "statement_timeout_ms": os.environ.get("FILAMENT_MANAGER_DATABASE_STATEMENT_TIMEOUT_MS", "30000"),
+        "auto_migrate": _environment_boolean("FILAMENT_MANAGER_DATABASE_AUTO_MIGRATE", True),
+        "migration_lock_timeout_seconds": os.environ.get(
+            "FILAMENT_MANAGER_DATABASE_MIGRATION_LOCK_TIMEOUT_SECONDS", "300"
+        ),
     }
     spoolman: dict[str, Any] = {
         "base_url": os.environ.get("FILAMENT_MANAGER_SPOOLMAN_BASE_URL", "http://spoolman:8000"),

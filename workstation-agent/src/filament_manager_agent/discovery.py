@@ -6,13 +6,82 @@ import os
 import re
 import sys
 from pathlib import Path
+from xml.etree.ElementTree import Element
 
 import psutil
+from defusedxml import ElementTree as ET
 
-from .models import CuraInstallation, CuraMachine
+from .models import CuraInstallation, CuraMachine, CuraMaterial
 
 VERSION_PATTERN = re.compile(r"^\d+(?:\.\d+){1,3}$")
 SETTING_VERSION_PATTERN = re.compile(r"^\s*setting_version\s*=\s*(\d+)\s*$", re.MULTILINE)
+MATERIAL_SETTING_KEYS = frozenset(
+    {
+        "build_volume_temperature",
+        "cool_fan_enabled",
+        "cool_fan_full_layer",
+        "cool_fan_speed",
+        "cool_fan_speed_0",
+        "cool_fan_speed_max",
+        "cool_fan_speed_min",
+        "cool_min_layer_time",
+        "cool_min_layer_time_fan_speed_max",
+        "cool_min_speed",
+        "default_material_bed_temperature",
+        "default_material_print_temperature",
+        "hole_xy_offset",
+        "hole_xy_offset_max_diameter",
+        "infill_material_flow",
+        "klipper_pressure_advance_factor",
+        "klipper_smooth_time_enable",
+        "klipper_smooth_time_factor",
+        "limit_support_retractions",
+        "material_bed_temperature",
+        "material_bed_temperature_layer_0",
+        "material_final_print_temperature",
+        "material_flow",
+        "material_flow_layer_0",
+        "material_initial_print_temperature",
+        "material_print_temperature",
+        "material_print_temperature_layer_0",
+        "material_standby_temperature",
+        "retract_at_layer_change",
+        "retraction_amount",
+        "retraction_enable",
+        "retraction_min_travel",
+        "retraction_prime_speed",
+        "retraction_retract_speed",
+        "retraction_speed",
+        "roofing_material_flow",
+        "skirt_brim_material_flow",
+        "skirt_brim_speed",
+        "speed_infill",
+        "speed_layer_0",
+        "speed_print",
+        "speed_print_layer_0",
+        "speed_roofing",
+        "speed_support",
+        "speed_topbottom",
+        "speed_travel",
+        "speed_travel_layer_0",
+        "speed_wall",
+        "speed_wall_0",
+        "speed_wall_x",
+        "support_angle",
+        "support_material_flow",
+        "xy_offset",
+        "xy_offset_layer_0",
+    }
+)
+STANDARD_MATERIAL_KEYS = {
+    "build volume temperature": "build_volume_temperature",
+    "heated bed temperature": "default_material_bed_temperature",
+    "print cooling": "cool_fan_speed",
+    "print temperature": "default_material_print_temperature",
+    "retraction amount": "retraction_amount",
+    "retraction speed": "retraction_speed",
+    "standby temperature": "material_standby_temperature",
+}
 
 
 def platform_key() -> str:
@@ -192,3 +261,94 @@ def discover_installations() -> list[CuraInstallation]:
                 )
             )
     return installations
+
+
+def _local_name(tag: str) -> str:
+    """Return an XML element name without its namespace."""
+
+    return tag.rsplit("}", 1)[-1]
+
+
+def _material_text(root: Element, path: tuple[str, ...], fallback: str) -> str:
+    """Read a bounded namespaced material metadata value by local-name path."""
+
+    current = root
+    for name in path:
+        matches = [child for child in current if _local_name(child.tag) == name]
+        if not matches:
+            return fallback
+        current = matches[0]
+    return (current.text or fallback).strip()[:160]
+
+
+def _material_from_file(path: Path, installation_id: str) -> CuraMaterial | None:
+    """Parse one bounded Cura XML material without retaining its local path."""
+
+    try:
+        if path.stat().st_size > 512 * 1024:
+            return None
+        data = path.read_bytes()
+        root = ET.fromstring(data)
+    except (OSError, ET.ParseError):
+        return None
+    if _local_name(root.tag) != "fdmmaterial":
+        return None
+    brand = _material_text(root, ("metadata", "name", "brand"), "Generic")
+    material_type = _material_text(root, ("metadata", "name", "material"), "Unknown")
+    color_name = _material_text(root, ("metadata", "name", "color"), "Unknown")
+    label = _material_text(root, ("metadata", "name", "label"), color_name)
+    settings: dict[str, str | bool] = {}
+    settings_element = next(
+        (child for child in root if _local_name(child.tag) == "settings"),
+        None,
+    )
+    if settings_element is not None:
+        for element in list(settings_element)[:200]:
+            key = element.attrib.get("key", "")
+            if element.tag.startswith("{") and "ultimaker.com/cura" not in element.tag:
+                key = STANDARD_MATERIAL_KEYS.get(key, "")
+            if key not in MATERIAL_SETTING_KEYS:
+                continue
+            value = (element.text or "").strip()
+            if len(value) > 500 or "\n" in value or "\r" in value:
+                continue
+            settings[key] = value == "True" if value in {"True", "False"} else value
+    if not settings:
+        return None
+    return CuraMaterial(
+        source_id=hashlib.sha256(data).hexdigest(),
+        installation_id=installation_id,
+        name=f"{brand} {material_type} · {label}"[:255],
+        brand=brand,
+        material_type=material_type,
+        color_name=color_name,
+        settings=settings,
+    )
+
+
+def discover_materials(installations: list[CuraInstallation]) -> list[CuraMaterial]:
+    """Discover bounded existing Cura materials for explicit server-side import."""
+
+    materials: list[CuraMaterial] = []
+    seen: set[tuple[str, str]] = set()
+    for installation in installations:
+        for path in sorted((installation.data_path / "materials").glob("*.xml.fdm_material"))[:200]:
+            if path.name.startswith("filament_manager_"):
+                continue
+            material = _material_from_file(path, installation.installation_id)
+            if material is None or (material.installation_id, material.source_id) in seen:
+                continue
+            seen.add((material.installation_id, material.source_id))
+            materials.append(material)
+    return materials[:500]
+
+
+def unmanaged_material_count(installations: list[CuraInstallation]) -> int:
+    """Count user material files that authoritative synchronization would replace."""
+
+    return sum(
+        1
+        for installation in installations
+        for path in (installation.data_path / "materials").glob("*.xml.fdm_material")
+        if path.is_file() and not path.name.startswith("filament_manager_")
+    )

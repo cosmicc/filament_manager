@@ -34,7 +34,7 @@
 - [ ] no Spoolman database credential passed to Filament Manager
 - [ ] one Moonraker printer name, URL, nozzle diameter, and optional credential validated
 - [ ] health/readiness/metrics endpoints
-- [ ] migration locking
+- [x] automatic web/worker Alembic startup with bounded PostgreSQL advisory-lock coordination
 - [ ] service restart tested without corrupting Spoolman state
 
 ## Canonical data and import
@@ -64,12 +64,15 @@
 
 ## Profiles and plates
 
-- [ ] all requested Cura fields typed
-- [ ] versioned extension settings
-- [ ] Cura export template
-- [ ] P1-P5 seeded
-- [ ] mesh mapping tested
-- [ ] preferred plate warnings
+- [x] frequently used Cura fields typed
+- [x] approved versioned extension settings
+- [x] material-only Cura export renderer
+- [x] sanitized existing-material import
+- [x] versioned generic material templates and copied product draft profiles
+- [x] full desired-state Cura library, explicit takeover, bundled-material hiding, drift repair, and rollback
+- [x] P1-P5 physical plates seeded
+- [x] dynamic P-number A/B side discovery and one-to-one side mesh mapping tested
+- [ ] preferred side warnings at print start
 
 ## Calibration wizard
 

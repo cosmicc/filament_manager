@@ -39,7 +39,7 @@
 ## Phase 5 - Profiles, plates, and wizard
 
 - Cura export
-- P1-P5 build plates and mesh mappings
+- P1-P5 initial physical build plates, `P<number>`/`P<number>b` side discovery, and one-to-one side-to-mesh mappings
 - calibration workflow
 
 ## Phase 6 - Scale and NFC

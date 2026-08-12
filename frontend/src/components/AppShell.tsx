@@ -1,6 +1,6 @@
 import {
   Activity, Boxes, ChevronLeft, ChevronRight, CircleGauge, FlaskConical,
-  Layers3, LogOut, Menu, Moon, PackageOpen, PanelLeftClose, Printer,
+  Layers3, Library, LogOut, Menu, Moon, PackageOpen, PanelLeftClose, Printer,
   MonitorCog, QrCode, Settings, SlidersHorizontal, Sun, Unplug, X,
 } from 'lucide-react'
 import { type ReactNode, useState } from 'react'
@@ -13,6 +13,7 @@ const primaryNavigation = [
   { to: '/spools', label: 'Spools', icon: Boxes },
   { to: '/filaments', label: 'Filaments', icon: PackageOpen },
   { to: '/profiles', label: 'Profiles', icon: SlidersHorizontal },
+  { to: '/templates', label: 'Templates', icon: Library },
   { to: '/calibration', label: 'Calibration', icon: FlaskConical },
   { to: '/plates', label: 'Build plates', icon: Layers3 },
   { to: '/printers', label: 'Printers', icon: Printer },

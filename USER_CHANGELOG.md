@@ -1,5 +1,37 @@
 # User Changelog
 
+## Unreleased - 08.11.2026
+
+### Added
+
+- Added Side A and Side B tracking for physical build plates. `P4` is Side A and `P4b` is Side B of the same P4 plate.
+- Added plate descriptions and independent surface material, smooth/textured finish, notes, mesh availability, mesh check time, and mesh calibration time for each side.
+- Added a **Synchronize with Moonraker** action that imports exact P-number side meshes, including later plates such as P6 and optional B sides such as P6b.
+- Added import of existing Cura materials from paired workstations into new draft material profiles.
+- Added reusable Generic PLA, PETG, ASA, PLA+, TPU, PCTPE, Nylon 645, and other material templates, with saved revisions for each printer and nozzle.
+- Added interface actions to create filament products from templates and add physical spools without using Spoolman.
+- Added automatic database updates whenever a newer Filament Manager container starts.
+- Added automatic full-library Cura synchronization, backup and rollback, drift repair, and an option to hide Cura's bundled materials.
+- Added existing Spoolman bucket import plus a free-text **Edit location** action for each spool.
+
+### Changed
+
+- Kept P1 through P5 as the starter physical plates while allowing later numbered plates and B sides to be added from Moonraker.
+- The currently loaded matching Moonraker mesh now records both the active physical plate and which side is facing up.
+- Cura deployments now install material settings only. The Cura Material Settings plugin exposes them for editing, and the Cura Klipper Settings plugin applies pressure advance and smooth time.
+- Each new filament product starts from a published generic template but receives its own draft settings that can be tuned without changing other products.
+- Filament Manager becomes the authoritative Cura material library after workstation management is enabled. Existing user materials require a clear Administrator confirmation before replacement.
+- Filament Manager becomes authoritative for a spool's bucket after importing, editing, or clearing it and keeps Spoolman synchronized.
+
+### Fixed
+
+- Fixed a Klipper startup error caused by the initial build-plate macro value.
+- Fixed later plates such as P6 and P10 being rejected or ordered incorrectly.
+- Missing meshes no longer remove plate records or their physical or side-specific details.
+- Database upgrades no longer need a separate migration command before every deployment.
+- Cura workstations now restore the complete published library when local material files drift.
+- The supplied Klipper macro now uses an explicit quoted initial plate value, and troubleshooting identifies older included copies.
+
 ## 0.1.4 - 08.11.2026
 
 ### Added

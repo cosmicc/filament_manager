@@ -5,8 +5,11 @@ from .base import Base
 from .calibration import CalibrationSession, CalibrationStep
 from .inventory import (
     BuildPlate,
+    BuildPlateSurface,
     FilamentProduct,
     MaterialProfile,
+    MaterialTemplate,
+    MaterialTemplateRevision,
     Printer,
     Spool,
     SpoolMeasurement,
@@ -20,6 +23,7 @@ __all__ = [
     "AuditEvent",
     "Base",
     "BuildPlate",
+    "BuildPlateSurface",
     "CalibrationSession",
     "CalibrationStep",
     "CuraDeployment",
@@ -27,6 +31,8 @@ __all__ = [
     "FilamentProduct",
     "ImportRun",
     "MaterialProfile",
+    "MaterialTemplate",
+    "MaterialTemplateRevision",
     "NfcTag",
     "OutboxJob",
     "Printer",

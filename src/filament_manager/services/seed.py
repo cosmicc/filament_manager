@@ -7,26 +7,40 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from filament_manager.config import Settings
 from filament_manager.models.enums import PlateCondition, PlateStatus
-from filament_manager.models.inventory import BuildPlate, Printer
+from filament_manager.models.inventory import BuildPlate, BuildPlateSurface, Printer
 
 
 async def seed_configured_system(session: AsyncSession, settings: Settings) -> dict[str, int]:
-    """Create missing configured printers and P1-P5 build plates without committing."""
+    """Create missing configured printers and initial build-plate sides without committing."""
 
     seeded_plates = 0
     seeded_printers = 0
     for code in settings.plates.allowed_codes:
-        if not await session.scalar(select(BuildPlate.id).where(BuildPlate.plate_code == code)):
+        plate = await session.scalar(select(BuildPlate).where(BuildPlate.plate_code == code))
+        if plate is None:
+            plate = BuildPlate(
+                plate_code=code,
+                display_name=f"Build Plate {code}",
+                condition=PlateCondition.GOOD,
+                status=PlateStatus.ACTIVE,
+            )
+            session.add(plate)
+            await session.flush()
+            seeded_plates += 1
+        if not await session.scalar(
+            select(BuildPlateSurface.id).where(
+                BuildPlateSurface.build_plate_id == plate.id,
+                BuildPlateSurface.side == "a",
+            )
+        ):
             session.add(
-                BuildPlate(
-                    plate_code=code,
-                    display_name=f"Build Plate {code}",
+                BuildPlateSurface(
+                    build_plate_id=plate.id,
+                    side="a",
+                    surface_code=code,
                     klipper_mesh_profile=code,
-                    condition=PlateCondition.GOOD,
-                    status=PlateStatus.ACTIVE,
                 )
             )
-            seeded_plates += 1
     for configured in settings.moonraker.printers:
         if not await session.scalar(select(Printer.id).where(Printer.printer_code == configured.id)):
             session.add(

@@ -37,6 +37,8 @@ Filament Manager PostgreSQL owns:
 
 Spoolman owns its internal schema and is authoritative for printer-originated consumption events until Filament Manager records and acknowledges them through the supported API.
 
+Spool locations are a narrow bootstrap exception: an existing non-empty Spoolman location may initialize a legacy canonical spool whose location has never been set. Filament Manager records that ownership transition and thereafter remains authoritative, projecting local edits and repairing remote location drift.
+
 ## PostgreSQL features used by Filament Manager
 
 - `NUMERIC` for mass, density, money, and calibrated factors
@@ -50,7 +52,7 @@ Spoolman owns its internal schema and is authoritative for printer-originated co
 
 ## Migration ownership
 
-Filament Manager migrations are run only by a dedicated migration command or one-shot service protected by an advisory lock. Spoolman migrations are performed by the upstream Spoolman container against only the `spoolman` database.
+Filament Manager web and worker container entry points automatically run Alembic before application startup while holding the stable application PostgreSQL advisory lock. A dedicated one-shot command is reserved for stopped-service recovery. Spoolman migrations are performed by the upstream Spoolman container against only the `spoolman` database.
 
 ## Backup policy
 

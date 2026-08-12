@@ -28,17 +28,27 @@
       "exclusiveMinimum": 0
     },
     "build_plate_code": {
-      "type": [
-        "string",
-        "null"
-      ],
-      "enum": [
-        "P1",
-        "P2",
-        "P3",
-        "P4",
-        "P5",
-        null
+      "anyOf": [
+        {
+          "type": "string",
+          "pattern": "^P[1-9][0-9]*$",
+          "maxLength": 32
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "build_plate_surface_code": {
+      "anyOf": [
+        {
+          "type": "string",
+          "pattern": "^P[1-9][0-9]*b?$",
+          "maxLength": 32
+        },
+        {
+          "type": "null"
+        }
       ]
     },
     "status": {

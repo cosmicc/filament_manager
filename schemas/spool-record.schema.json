@@ -10,6 +10,7 @@
     "nominal_net_mass_g",
     "tare_mass_g",
     "remaining_mass_effective_g",
+    "location_authoritative",
     "record_version"
   ],
   "properties": {
@@ -54,6 +55,16 @@
         "null"
       ],
       "minimum": 1
+    },
+    "location": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "maxLength": 160
+    },
+    "location_authoritative": {
+      "type": "boolean"
     },
     "record_version": {
       "type": "integer",

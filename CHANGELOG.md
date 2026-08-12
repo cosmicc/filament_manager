@@ -1,5 +1,44 @@
 # Changelog
 
+## Unreleased - 08.11.2026
+
+### Added
+
+- Added physical build plates with independent Side A and Side B records. `P4` represents Side A and `P4b` represents Side B of the same physical P4 plate.
+- Added a plate description plus per-side surface material, smooth/textured finish, notes, mesh availability, mesh check time, and mesh calibration time.
+- Added Administrator-triggered Moonraker synchronization that automatically creates bounded exact `P<number>` and `P<number>b` plate sides and records an audit event.
+- Added the operator's current Cura Material Settings catalog, sanitized discovery of existing Cura materials, and explicit import into new draft profiles.
+- Added material-only Cura rendering for all approved settings, including Cura Klipper Settings pressure advance and smooth time.
+- Added versioned generic material templates scoped to a printer and nozzle, publication, and template provenance for copied product profiles.
+- Added web workflows for creating templates and revisions, adding filament products from published templates, and adding physical spools without opening Spoolman.
+- Added automatic Alembic upgrades before web and worker startup with a bounded PostgreSQL advisory lock and fail-closed error handling.
+- Added authoritative full-library Cura synchronization, checksum-based drift repair, transactional cleanup/rollback of user material files, and a managed visibility plugin that hides bundled Cura materials.
+- Added one-time adoption of existing Spoolman free-text spool locations and an in-app bucket/location editor.
+
+### Changed
+
+- Kept P1-P5 as the initial physical set while allowing later plates and optional B sides to come from same-named saved Moonraker meshes.
+- Changed selection, calibration context, dashboard state, and material preferences to record the exact plate side facing up.
+- Changed Cura deployment to write one material file rather than quality-change profiles or machine start-G-code patches. The Material Settings and Klipper Settings plugins now consume the material values.
+- Changed synchronization to align the selected printer's active physical plate and side with Moonraker while preserving existing physical and side metadata.
+- Documented the hash-bound dry-run and commit procedure for importing the initial workbook with one-shot Swarm jobs.
+- Changed new filament products to copy a published generic template into an independently tunable draft material profile.
+- Changed Cura deployment from one selected profile to the latest published templates and product profiles as one desired-state library. Existing workstations with user materials require explicit Administrator takeover.
+- Changed Compose and Swarm upgrades to migrate automatically; a one-shot migration remains only for diagnosis and recovery.
+- Changed spool-location ownership so Filament Manager becomes authoritative after import, edit, or explicit clearing and repairs later Spoolman-side drift.
+
+### Fixed
+
+- Fixed the initial `SELECT_BUILD_PLATE` macro state using an unambiguous Python literal so Klipper accepts the macro during startup.
+- Fixed double-sided plates and different per-side meshes being impossible to represent.
+- Fixed later physical plates being impossible to represent because the database column, JSON contracts, API client, macro, and interface were limited to P1-P5.
+- Fixed lexicographic plate ordering that would place P10 before P2.
+- Prevented missing Moonraker meshes from deleting or overwriting canonical physical-plate and side details; they are retained and shown as unavailable.
+- Fixed web and worker replicas racing database upgrades or requiring the operator to pre-run every schema update.
+- Fixed clean Cura installations requiring manual first synchronization and managed Cura material files drifting away from canonical Filament Manager state.
+- Fixed routine product, spool, and generic-material setup requiring direct API or Spoolman access.
+- Fixed the shipped build-plate macro default to use the explicit quoted `"UNSET"` string and documented how to locate stale included copies.
+
 ## 0.1.4 - 08.11.2026
 
 ### Added

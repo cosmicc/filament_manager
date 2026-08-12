@@ -11,7 +11,13 @@ from sqlalchemy.orm import selectinload
 from filament_manager.domain.calibration import CALIBRATION_STEPS, invalidated_statuses, ready_to_publish
 from filament_manager.models.calibration import CalibrationSession, CalibrationStep
 from filament_manager.models.enums import CalibrationStatus, CalibrationStepStatus, ProfileStatus
-from filament_manager.models.inventory import FilamentProduct, MaterialProfile, Printer
+from filament_manager.models.inventory import (
+    BuildPlate,
+    BuildPlateSurface,
+    FilamentProduct,
+    MaterialProfile,
+    Printer,
+)
 from filament_manager.services.events import add_audit_event, add_outbox_job
 
 from ..dependencies import DatabaseSession, Operator, Viewer
@@ -68,8 +74,32 @@ async def create_calibration(
         raise ApiError(status.HTTP_422_UNPROCESSABLE_ENTITY, "unknown_filament", "Filament not found")
     if await session.get(Printer, payload.printer_id) is None:
         raise ApiError(status.HTTP_422_UNPROCESSABLE_ENTITY, "unknown_printer", "Printer not found")
+    build_plate_id = payload.build_plate_id
+    if payload.build_plate_surface_id is not None:
+        surface = await session.get(BuildPlateSurface, payload.build_plate_surface_id)
+        if surface is None:
+            raise ApiError(
+                status.HTTP_422_UNPROCESSABLE_ENTITY,
+                "unknown_build_plate_surface",
+                "Build plate side not found",
+            )
+        if build_plate_id is not None and surface.build_plate_id != build_plate_id:
+            raise ApiError(
+                status.HTTP_422_UNPROCESSABLE_ENTITY,
+                "build_plate_surface_mismatch",
+                "Build plate side does not belong to the selected physical plate",
+            )
+        build_plate_id = surface.build_plate_id
+    elif build_plate_id is not None and await session.get(BuildPlate, build_plate_id) is None:
+        raise ApiError(
+            status.HTTP_422_UNPROCESSABLE_ENTITY,
+            "unknown_build_plate",
+            "Build plate not found",
+        )
+    calibration_data = payload.model_dump()
+    calibration_data["build_plate_id"] = build_plate_id
     calibration = CalibrationSession(
-        **payload.model_dump(),
+        **calibration_data,
         status=CalibrationStatus.IN_PROGRESS,
         operator_id=operator.id,
         started_at=datetime.now(UTC),
@@ -296,7 +326,7 @@ async def publish_calibration_profile(
         tree_max_branch_angle_deg=_decimal_result(results, "tree_max_branch_angle_deg"),
         pressure_advance=_decimal_result(results, "pressure_advance"),
         filament_density_g_cm3=product.density_g_cm3,
-        preferred_build_plate_id=calibration.build_plate_id,
+        preferred_build_plate_surface_id=calibration.build_plate_surface_id,
         ironing_enabled=results.get("ironing_enabled"),
         ironing_flow_percent=_decimal_result(results, "ironing_flow_percent"),
         ironing_speed_mm_s=_decimal_result(results, "ironing_speed_mm_s"),

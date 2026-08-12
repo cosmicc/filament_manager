@@ -50,19 +50,47 @@ export interface Page<T> {
   offset: number
 }
 
+export interface BuildPlateSurface {
+  id: string
+  build_plate_id: string
+  side: 'a' | 'b'
+  surface_code: string
+  klipper_mesh_profile: string
+  surface_material: string | null
+  texture: 'smooth' | 'textured' | null
+  mesh_available: boolean | null
+  last_mesh_checked_at: string | null
+  last_mesh_calibrated_at: string | null
+  notes: string | null
+  record_version: number
+}
+
 export interface BuildPlate {
   id: string
   plate_code: string
   display_name: string
-  klipper_mesh_profile: string
-  surface_type: string | null
+  description: string | null
   condition: string
   status: string
   preferred_materials: string[]
   last_cleaned_at: string | null
-  last_mesh_calibrated_at: string | null
   notes: string | null
   record_version: number
+  surfaces: BuildPlateSurface[]
+}
+
+export interface BuildPlateSyncResult {
+  printer_id: string
+  discovered_codes: string[]
+  created_codes: string[]
+  unavailable_codes: string[]
+  ignored_profile_count: number
+  active_mesh_profile: string | null
+  active_plate_code: string | null
+  active_surface_code: string | null
+  active_plate_changed: boolean
+  active_surface_changed: boolean
+  synchronized_at: string
 }
 
 export interface DashboardData {
@@ -72,6 +100,7 @@ export interface DashboardData {
   empty_spools: number
   active_spool: Spool | null
   active_plate: BuildPlate | null
+  active_plate_surface: BuildPlateSurface | null
   integrations: IntegrationStatus[]
 }
 
@@ -90,6 +119,75 @@ export interface Filament {
   density_g_cm3: string
   nominal_net_mass_g: string
   notes: string | null
+  material_template_revision_id: string | null
+  record_version: number
+}
+
+export interface CuraSettingCatalogItem {
+  key: string
+  label: string
+  value_type: 'boolean' | 'number' | 'string'
+  unit: string | null
+  editable: boolean
+}
+
+export interface MaterialSettings {
+  chamber_temp_c: string | null
+  extruder_temp_c: string
+  bed_temp_c: string
+  flow_percent: string
+  print_speed_mm_s: string | null
+  outer_wall_speed_mm_s: string | null
+  inner_wall_speed_mm_s: string | null
+  infill_speed_mm_s: string | null
+  top_bottom_speed_mm_s: string | null
+  initial_layer_speed_mm_s: string | null
+  travel_speed_mm_s: string | null
+  support_speed_mm_s: string | null
+  retraction_distance_mm: string | null
+  retraction_speed_mm_s: string | null
+  cooling_enabled: boolean
+  cooling_min_percent: string
+  cooling_max_percent: string
+  support_overhang_angle_deg: string | null
+  tree_max_branch_angle_deg: string | null
+  pressure_advance: string | null
+  filament_density_g_cm3: string
+  preferred_build_plate_surface_id: string | null
+  cura_extensions: Record<string, string | number | boolean | null>
+}
+
+export interface MaterialTemplateRevision {
+  id: string
+  material_template_id: string
+  version: number
+  status: string
+  settings: MaterialSettings
+  checksum: string | null
+  published_at: string | null
+  record_version: number
+  created_at: string
+}
+
+export interface MaterialTemplate {
+  id: string
+  name: string
+  material_type: string
+  description: string | null
+  printer_id: string
+  nozzle_diameter_mm: string
+  filament_diameter_mm: string
+  active: boolean
+  record_version: number
+  created_at: string
+  updated_at: string
+  revisions: MaterialTemplateRevision[]
+}
+
+export interface Vendor {
+  id: string
+  name: string
+  preferred: boolean
   record_version: number
 }
 
@@ -99,6 +197,7 @@ export interface Printer {
   name: string
   nozzle_diameter_mm: string
   active_plate_id: string | null
+  active_plate_surface_id: string | null
   status: string
   last_seen_at: string | null
   record_version: number
@@ -119,6 +218,17 @@ export interface MaterialProfile {
   extruder_temp_c: string
   bed_temp_c: string
   flow_percent: string
+  print_speed_mm_s: string | null
+  outer_wall_speed_mm_s: string | null
+  inner_wall_speed_mm_s: string | null
+  infill_speed_mm_s: string | null
+  top_bottom_speed_mm_s: string | null
+  initial_layer_speed_mm_s: string | null
+  travel_speed_mm_s: string | null
+  support_speed_mm_s: string | null
+  preferred_build_plate_surface_id: string | null
+  cura_extensions: Record<string, string | number | boolean | null>
+  cura_settings: Record<string, string | number | boolean>
   pressure_advance: string | null
   published_at: string | null
   checksum: string | null
@@ -147,6 +257,7 @@ export interface Calibration {
   printer_id: string
   nozzle_diameter_mm: string
   build_plate_id: string | null
+  build_plate_surface_id: string | null
   status: string
   notes: string | null
   override_reason: string | null
@@ -246,7 +357,18 @@ export interface CuraInstallationReport {
   channel: string
   path_hint: string
   setting_version: number | null
+  managed_library_checksum: string | null
   machines: CuraMachineReport[]
+}
+
+export interface CuraMaterialReport {
+  source_id: string
+  installation_id: string
+  name: string
+  brand: string
+  material_type: string
+  color_name: string
+  settings: Record<string, string | boolean>
 }
 
 export interface WorkstationAgent {
@@ -258,8 +380,10 @@ export interface WorkstationAgent {
   architecture: string
   agent_version: string
   enabled: boolean
+  cura_management_enabled: boolean
   capabilities: Record<string, unknown>
   cura_installations: CuraInstallationReport[]
+  cura_materials: CuraMaterialReport[]
   last_seen_at: string | null
   last_error: string | null
   record_version: number
@@ -269,8 +393,8 @@ export interface WorkstationAgent {
 export interface CuraDeployment {
   id: string
   agent_id: string
-  material_profile_id: string
-  requested_by: string
+  material_profile_id: string | null
+  requested_by: string | null
   status: 'pending' | 'claimed' | 'succeeded' | 'failed' | 'cancelled'
   profile_checksum: string
   attempts: number

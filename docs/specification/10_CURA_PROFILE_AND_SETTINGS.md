@@ -2,50 +2,38 @@
 
 ## Scope
 
-Filament Manager stores calibrated material profiles and exports data that can be transformed into Cura material and quality/profile definitions.
+Filament Manager stores versioned generic templates and product-owned Cura material settings. A workstation deployment is the complete latest published library for every matching template and product profile. It does not create quality-change profiles and does not patch machine start G-code.
+
+Install and enable the Cura **Material Settings** plugin to expose the stored material values and the Cura **Klipper Settings** plugin to consume pressure advance and smooth time.
 
 ## Profile scope
 
-A profile is not global to a filament name. It is scoped by:
+A profile is scoped by filament product, printer, nozzle diameter, optional layer-height range, and version. It may reference a preferred build-plate side such as `P4` or `P4b`.
 
-- filament product
-- printer
-- nozzle diameter
-- optional layer-height range
-- version
+## Approved Cura material catalog
 
-## Required settings
+The ordered implementation catalog is `CURA_MATERIAL_SETTINGS` in `src/filament_manager/domain/cura_material_settings.py`. It mirrors the operator's active Cura 5.13 Material Settings configuration.
 
-| Group | Field |
-|---|---|
-| Temperature | Chamber temperature |
-| Temperature | Extruder temperature |
-| Temperature | Bed temperature |
-| Extrusion | Flow percentage |
-| Speed | Default print speed |
-| Speed | Outer wall speed |
-| Speed | Inner wall speed |
-| Speed | Infill speed |
-| Speed | Top/bottom speed |
-| Speed | Initial layer speed |
-| Speed | Travel speed |
-| Speed | Support speed |
-| Speed | Bridge speed |
-| Retraction | Retraction distance |
-| Retraction | Retraction speed |
-| Cooling | Cooling enabled |
-| Cooling | Minimum fan percentage |
-| Cooling | Maximum fan percentage |
-| Support | Support overhang angle |
-| Tree support | Maximum branch angle |
-| Klipper | Pressure advance factor |
-| Material | Filament density |
-| Build surface | Preferred build plate |
-| Ironing | Optional enabled/flow/speed/spacing |
+- Temperature: `material_print_temperature`, `default_material_print_temperature`, `material_print_temperature_layer_0`, `material_initial_print_temperature`, `material_final_print_temperature`, `material_standby_temperature`, `material_bed_temperature`, `default_material_bed_temperature`, `material_bed_temperature_layer_0`, `build_volume_temperature`.
+- Flow: `material_flow`, `material_flow_layer_0`, `infill_material_flow`, `support_material_flow`, `roofing_material_flow`, `skirt_brim_material_flow`.
+- Speed: `speed_print`, `speed_print_layer_0`, `speed_layer_0`, `speed_wall`, `speed_wall_0`, `speed_wall_x`, `speed_infill`, `speed_topbottom`, `speed_roofing`, `speed_support`, `speed_travel`, `speed_travel_layer_0`, `skirt_brim_speed`, `cool_min_speed`.
+- Retraction: `retraction_enable`, `retraction_amount`, `retraction_speed`, `retraction_retract_speed`, `retraction_prime_speed`, `retraction_min_travel`, `retract_at_layer_change`, `limit_support_retractions`.
+- Cooling: `cool_fan_enabled`, `cool_fan_speed`, `cool_fan_speed_0`, `cool_fan_speed_min`, `cool_fan_speed_max`, `cool_fan_full_layer`, `cool_min_layer_time`, `cool_min_layer_time_fan_speed_max`.
+- Geometry and support: `xy_offset`, `xy_offset_layer_0`, `hole_xy_offset`, `hole_xy_offset_max_diameter`, `support_angle`.
+- Cura Klipper Settings: `klipper_pressure_advance_factor`, `klipper_smooth_time_enable`, `klipper_smooth_time_factor`.
+- Derived read-only material metadata: `material_brand`, `material_type`.
 
-## Future fields
+Frequently used settings have typed PostgreSQL columns. Remaining approved settings use versioned `cura_extensions` JSONB. Arbitrary or machine-level Cura keys are rejected.
 
-Store additional Cura settings in a namespaced JSON object with schema version, but promote frequently used stable fields to typed columns through migrations.
+## Existing-material import
+
+Each paired workstation scans bounded Cura material files with a hardened XML parser. It reports only the approved keys and semantic material labels; it never reports absolute paths. The Profiles page requires an explicit mapping to a canonical filament, printer/nozzle, and optional plate side before creating a draft. Import never modifies the local Cura material. Printing and bed temperatures must be present. When Cura omitted inherited flow or fan values from the material XML, import stores 100% flow, 100% maximum fan, and the maximum fan value as the minimum in the draft.
+
+Import desired existing user materials before authoritative takeover. A clean user-material directory may enable management automatically. Otherwise, an Administrator must confirm that all user material files will be backed up and replaced.
+
+## Template and product lifecycle
+
+Generic templates are scoped to one printer and nozzle. Publishing a template revision makes it available to create products and adds it to the desired Cura library. A new filament product receives its own draft profile copied from that published revision; later template revisions do not rewrite already-tuned products. Publishing any template or product revision queues a new complete-library checksum for every managed workstation.
 
 ## Profile lifecycle
 
@@ -56,41 +44,27 @@ Store additional Cura settings in a namespaced JSON object with schema version, 
 - superseded
 - archived
 
-Published versions are immutable. Editing creates a new draft derived from the prior version.
+Published versions are immutable. A revision creates a new draft/version.
 
-## Export behavior
+## Deployment and export
 
-Provide:
+The JSON export includes the semantic profile, complete computed Cura setting map, checksum, and version. The workstation agent matches printer/nozzle entries, waits for Cura to close, backs up the union of existing and desired user material/plugin targets, atomically applies the exact desired state, removes stale user materials, and retains an idempotent rollback manifest. A managed Cura plugin filters selectors to `filament_manager_` material roots, hiding bundled choices without changing Cura's installation files.
 
-- human-readable JSON
-- Cura-oriented material profile output
-- API endpoint for profile retrieval
-- checksum and profile version in exported metadata
-
-Cura import compatibility varies by Cura version and printer definition. Keep export templates versioned and test them against the selected Cura release.
-
-## Klipper application
-
-Pressure advance may be applied at print start through an explicit macro or slicer start G-code generated from the selected profile. Filament Manager must not silently change printer configuration files.
+Known standard material fields use Cura's standard XML setting names. All other approved Cura and plugin values use `<cura:setting key="...">` within the material file. Pressure advance is `klipper_pressure_advance_factor`; the agent never injects `SET_PRESSURE_ADVANCE` itself.
 
 ## Validation
 
-- cooling minimum <= maximum
-- all fan values 0-100
-- positive density
-- temperatures inside configured hardware limits
-- pressure advance inside configured safety limits
-- preferred plate exists and is active
+- cooling minimum must not exceed maximum;
+- fan values are 0-100;
+- density and required speeds are positive;
+- pressure advance is non-negative and bounded by the Cura Klipper Settings definition;
+- extension keys must be in the approved catalog and match the expected boolean or numeric type;
+- strings are bounded and may not contain newlines;
+- preferred plate side must exist; and
+- import never evaluates Cura expressions.
 
 ## Authoritative implementation references
 
-- Spoolman repository and supported databases: https://github.com/Donkie/Spoolman
-- Spoolman installation and Docker port mapping: https://github.com/Donkie/Spoolman/wiki/Installation
-- Spoolman configuration variables: https://github.com/Donkie/Spoolman/blob/master/.env.example
-- Spoolman REST API: https://donkie.github.io/Spoolman/
-- Moonraker Spoolman configuration: https://moonraker.readthedocs.io/en/stable/configuration/#spoolman
-- Moonraker Spoolman integration API: https://moonraker.readthedocs.io/en/latest/external_api/integrations/#spoolman
-- Fluidd Spoolman support: https://docs.fluidd.xyz/features/spoolman
-- Google Sheets API: https://developers.google.com/workspace/sheets/api
-- Docker Swarm stack deployment: https://docs.docker.com/engine/swarm/stack-deploy/
+- Cura Material Settings plugin: https://github.com/fieldOfView/Cura-MaterialSettingsPlugin
+- Cura material XML serializer: https://github.com/Ultimaker/Cura/blob/main/plugins/XmlMaterialProfile/XmlMaterialProfile.py
 - PostgreSQL documentation: https://www.postgresql.org/docs/
