@@ -49,13 +49,19 @@ async def _integration_statuses() -> list[IntegrationStatus]:
 
     async def spoolman_status() -> IntegrationStatus:
         try:
-            await SpoolmanClient(settings.spoolman).health()
+            await SpoolmanClient(settings.spoolman).projection_health()
             return IntegrationStatus(
-                service="Spoolman", status="connected", detail="API healthy", checked_at=checked_at
+                service="Spoolman",
+                status="connected",
+                detail="API and managed projection fields ready",
+                checked_at=checked_at,
             )
         except SpoolmanError:
             return IntegrationStatus(
-                service="Spoolman", status="unavailable", detail="API check failed", checked_at=checked_at
+                service="Spoolman",
+                status="unavailable",
+                detail="API or managed projection fields unavailable",
+                checked_at=checked_at,
             )
 
     async def printer_status(printer_config: PrinterConfig) -> IntegrationStatus:

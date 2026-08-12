@@ -23,6 +23,7 @@ The product name is **Filament Manager**. Do not introduce the former project na
 13. Filament Manager owns spool locations after initial adoption. A legacy spool with no canonical location may import one existing bounded free-text Spoolman location; every local edit, including clearing the field, makes the canonical value authoritative and reconciliation repairs later remote drift.
 14. `filament_colors` owns the case-insensitive mapping from a human color name to its six-digit screen sample. A sample change updates every matching product mirror and queues their Spoolman projections; never treat per-product color hex as independent state.
 15. Printer information synchronization reads only documented Moonraker/Klipper server, printer, `configfile.settings`, and `toolhead` fields. Keep connection values server-side, sanitize all external text and numbers, and preserve manual manufacturer, model, nozzle material, extruder type, and notes.
+16. Canonical inventory changes queue Spoolman projection immediately. The one-minute safety sweep must first import printer-recorded usage, then converge every vendor, filament, and spool so an empty/rebuilt Spoolman database and missed/dead jobs repair automatically. Provision managed custom fields through the supported API, JSON-encode their values, preserve unknown fields, paginate complete collections, and never overwrite remote remaining weight during metadata-only convergence.
 
 ## Required stack
 
@@ -58,7 +59,7 @@ Use the approved Workshop Navy design system in [docs/design/palette.png](docs/d
 - Preserve unknown Spoolman `extra` fields.
 - Treat spool locations as bounded free text. Import a Spoolman location only for a legacy canonical row that has never established location ownership; thereafter project the Filament Manager value back through the supported REST API.
 - Google or Spoolman outages must queue work and must not corrupt canonical state.
-- Workers coordinate periodic Spoolman reconciliation and Google publication with PostgreSQL advisory locks.
+- Workers coordinate immediate outbox delivery, one-minute complete Spoolman convergence, and Google publication with PostgreSQL advisory locks. Reclaim abandoned running jobs after the configured lock timeout.
 - NFC UIDs are identifiers, not credentials. Scale readings remain telemetry until stability and identity checks pass.
 - Workstation pairing codes are single-use and short-lived; agent bearer credentials are hashed, revocable, scoped only to agent endpoints, and never logged.
 - Generic material templates are printer/nozzle scoped and revisioned. Published template revisions and product material-profile revisions are immutable. Creating a product from a published template copies its settings into a new product-owned draft and retains template provenance.

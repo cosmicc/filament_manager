@@ -31,6 +31,7 @@ The stack creates its overlay and volumes. For a multi-node Swarm, use shared st
 6. Create the first Administrator through a short-lived bootstrap job.
 7. Install the Klipper plate-side macro and synchronize later exact `P<number>` or `P<number>b` meshes from the Administrator Build Plates page.
 8. Verify all health endpoints, service logs, and remote database connections.
+9. Confirm Spoolman's managed projection fields are ready and a one-minute full convergence job projects existing canonical inventory.
 
 Exact commands and environment-variable handling requirements are in `INSTALL.md`.
 
@@ -67,6 +68,7 @@ Filament Manager:
 - `/metrics`
 - outbox depth and retry count
 - Spoolman reconciliation lag
+- managed-field readiness and last successful full convergence
 - Google publication lag
 
 The image readiness probe connects to the web process over loopback and sends the hostname from `FILAMENT_MANAGER_BASE_URL`, preserving trusted-host validation. Worker and one-shot services must disable this web-only HTTP health check because they do not listen on port 8080.

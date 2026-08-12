@@ -33,7 +33,7 @@ class FakeSpoolmanClient:
             "id": 7,
             "remaining_weight": "1000",
             "location": self.location,
-            "extra": {"filament_manager_spool_uuid": str(self.spool_id)},
+            "extra": {"filament_manager_spool_uuid": f'"{self.spool_id}"'},
         }
 
     async def list_spools(self) -> list[dict[str, object]]:

@@ -11,7 +11,9 @@
 - Cura workstations: last contact, detected Cura versions/machines, scoped credential state, deployment attempts, and warnings
 - Build Plates: per-side Moonraker mesh checks, newly discovered physical plates/sides, unavailable mappings, and the active loaded side
 
-Workers schedule supported-API Spoolman reconciliation at the configured interval. Google publication is also scheduled when enabled. External outages create bounded retries and never roll back already committed canonical changes.
+Canonical inventory changes create supported-API Spoolman jobs in the same transaction and dispatch normally begins within one worker polling cycle. Every minute by default, a safety sweep imports printer-recorded usage first and then converges every canonical vendor, filament product, and spool. This sweep rebuilds a blank Spoolman projection and repairs missed work without overwriting unimported remaining weight. Google publication is also scheduled when enabled. External outages create bounded retries and never roll back already committed canonical changes.
+
+The worker provisions Filament Manager's text custom fields through Spoolman's field API and JSON-encodes each value as required by Spoolman 0.23.1. It paginates complete collections, preserves custom fields owned by other integrations, uses managed UUIDs to avoid duplicate creates, and reclaims jobs abandoned by a terminated worker after `SYNC_OUTBOX_LOCK_TIMEOUT_SECONDS`.
 
 On the first reconciliation after the spool-location ownership migration, a legacy spool with no Filament Manager location adopts its existing non-empty Spoolman location. After that import, or after any location edit in Filament Manager, the canonical free-text value wins and later Spoolman-side edits are repaired automatically.
 
@@ -46,7 +48,9 @@ Use the current stack file and image together. The web health check must send th
 
 ### Jobs remain pending or fail
 
-Check worker logs, external DNS from the `filament-services` overlay, and the sanitized error class shown in Integrations. Repair the external service, then allow automatic retry or use Administrator retry for dead jobs.
+Check that the worker service is running, then inspect worker logs, external DNS from the `filament-services` overlay, and the sanitized error class shown in Integrations. The Spoolman card now verifies both API health and managed projection fields. Repair the external service, then allow automatic retry or use Administrator retry for unrelated dead jobs. The 0.1.5 repair migration automatically requeues Spoolman work affected by the former field contract, and the next one-minute sweep projects all existing canonical inventory even when no usable job remains.
+
+After redeployment, recent worker logs should show `spoolman.reconcile.full` completing. The Integrations job table should show new filament/spool upserts completing, and Spoolman should receive existing inventory no later than the next safety sweep when the internal API is reachable.
 
 ### Spoolman is unavailable
 

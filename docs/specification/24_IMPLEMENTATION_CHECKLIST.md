@@ -47,11 +47,11 @@
 
 ## Synchronization
 
-- [ ] outbox tables and workers
-- [ ] API-only Spoolman projection
-- [ ] unknown `extra` fields preserved
-- [ ] inbound usage reconciliation
-- [ ] restart and backlog recovery
+- [x] outbox tables and concurrent workers
+- [x] API-only Spoolman projection with complete convergence
+- [x] unknown `extra` fields preserved with managed JSON encoding
+- [x] inbound usage reconciliation before metadata convergence
+- [x] restart, stale-lock, and backlog recovery
 - [ ] stack/network outage tests
 
 ## Google publication

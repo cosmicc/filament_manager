@@ -7,6 +7,7 @@ from sqlalchemy import select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from filament_manager.config import get_settings
+from filament_manager.models.enums import JobStatus
 from filament_manager.models.operations import OutboxJob
 from filament_manager.services.events import add_outbox_job
 
@@ -38,6 +39,14 @@ async def schedule_periodic_jobs(session: AsyncSession) -> int:
 
     created = 0
     for job_type, interval_seconds in schedules:
+        active = await session.scalar(
+            select(OutboxJob.id).where(
+                OutboxJob.job_type == job_type,
+                OutboxJob.status.in_((JobStatus.PENDING, JobStatus.RUNNING)),
+            )
+        )
+        if active:
+            continue
         bucket = int(now.timestamp()) // interval_seconds
         idempotency_key = f"periodic:{job_type}:{bucket}"
         exists = await session.scalar(

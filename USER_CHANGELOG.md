@@ -4,6 +4,7 @@
 
 ### Added
 
+- Added automatic setup and verification of the Spoolman fields Filament Manager needs for synchronization.
 - Added Side A and Side B tracking for physical build plates. `P4` is Side A and `P4b` is Side B of the same P4 plate.
 - Added plate descriptions and independent surface material, smooth/textured finish, notes, mesh availability, mesh check time, and mesh calibration time for each side.
 - Added a **Synchronize with Moonraker** action that imports exact P-number side meshes, including later plates such as P6 and optional B sides such as P6b.
@@ -21,6 +22,7 @@
 
 ### Changed
 
+- Filament and spool changes now queue for Spoolman immediately, with a complete one-minute safety synchronization that also rebuilds missing Spoolman inventory.
 - Kept P1 through P5 as the starter physical plates while allowing later numbered plates and B sides to be added from Moonraker.
 - The currently loaded matching Moonraker mesh now records both the active physical plate and which side is facing up.
 - Cura deployments now install material settings only. The Cura Material Settings plugin exposes them for editing, and the Cura Klipper Settings plugin applies pressure advance and smooth time.
@@ -33,6 +35,9 @@
 
 ### Fixed
 
+- Fixed existing filaments and spools never appearing in Spoolman because its required custom fields and value format were not being prepared correctly.
+- Fixed failed or interrupted Spoolman work remaining stuck instead of recovering automatically after redeployment.
+- Fixed routine metadata synchronization being able to overwrite printer-recorded filament usage before it was imported.
 - Fixed a Klipper startup error caused by the initial build-plate macro value.
 - Fixed later plates such as P6 and P10 being rejected or ordered incorrectly.
 - Missing meshes no longer remove plate records or their physical or side-specific details.

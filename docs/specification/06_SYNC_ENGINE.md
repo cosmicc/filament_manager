@@ -8,7 +8,7 @@ The Spoolman service is operationally distinct. Filament Manager must tolerate i
 
 ## Transactional outbox
 
-Every canonical mutation and its projection request commit in one PostgreSQL transaction. Workers claim jobs with `FOR UPDATE SKIP LOCKED`.
+Every canonical mutation and its projection request commit in one PostgreSQL transaction. Workers claim jobs with `FOR UPDATE SKIP LOCKED`. Multiple configured dispatchers claim one job at a time, and a bounded lock timeout allows a replacement worker to reclaim work abandoned by a terminated process. Per-object PostgreSQL advisory locks prevent concurrent retries or convergence from creating duplicate remote objects.
 
 Suggested job types:
 
@@ -47,16 +47,17 @@ Out-of-order stale jobs complete without overwriting newer data.
 
 ## Spoolman inbound reconciliation
 
-Moonraker updates Spoolman. Filament Manager listens by WebSocket where practical and periodically polls as a safety net.
+Moonraker updates Spoolman. Filament Manager performs a complete API-only safety sweep every minute by default. Canonical mutations also enqueue immediate projection jobs, so the sweep is recovery and drift repair rather than the normal delivery delay.
 
 For each spool:
 
-1. Read the current Spoolman object through the API.
+1. Provision and validate managed custom fields, then read every paginated Spoolman object through the API.
 2. Compare it with the last acknowledged projection snapshot.
 3. Create a canonical usage event for a valid printer-originated delta.
 4. Update effective remaining mass.
 5. Queue Google publication and any necessary Spoolman normalization.
 6. Store a remote fingerprint and acknowledgment time.
+7. Converge every canonical vendor, filament, and spool after importing usage, omitting remaining weight from metadata-only updates.
 
 ## Measurement reconciliation
 
