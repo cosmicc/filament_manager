@@ -1,17 +1,20 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { Download, FileInput, MonitorUp, Pencil, SlidersHorizontal, Upload } from 'lucide-react'
+import { Download, FileInput, GitCompareArrows, MonitorUp, Pencil, SlidersHorizontal, Upload } from 'lucide-react'
 import { useState } from 'react'
 import { apiFetch } from '../api/client'
 import type {
   BuildPlate,
+  CuraSettingCatalogItem,
   Filament,
   MaterialProfile,
+  MaterialTemplate,
   Printer,
   WorkstationAgent,
 } from '../api/types'
 import { EditorSection } from '../components/EditorSection'
 import { EmptyState } from '../components/EmptyState'
 import { LoadingState } from '../components/LoadingState'
+import { MaterialComparisonModal } from '../components/MaterialComparisonModal'
 import { Modal } from '../components/Modal'
 import { PageHeader } from '../components/PageHeader'
 import { StatusPill } from '../components/StatusPill'
@@ -25,10 +28,13 @@ export default function ProfilesPage() {
   const filaments = useQuery({ queryKey: ['filaments'], queryFn: () => apiFetch<Filament[]>('/filaments') })
   const printers = useQuery({ queryKey: ['printers'], queryFn: () => apiFetch<Printer[]>('/printers') })
   const plates = useQuery({ queryKey: ['plates'], queryFn: () => apiFetch<BuildPlate[]>('/build-plates') })
+  const templates = useQuery({ queryKey: ['material-templates'], queryFn: () => apiFetch<MaterialTemplate[]>('/profiles/templates?include_inactive=true') })
+  const catalog = useQuery({ queryKey: ['cura-settings-catalog'], queryFn: () => apiFetch<CuraSettingCatalogItem[]>('/profiles/cura-settings/catalog') })
   const agents = useQuery({ queryKey: ['workstation-agents'], queryFn: () => apiFetch<WorkstationAgent[]>('/workstation-agents') })
   const publish = useMutation({ mutationFn: (id: string) => apiFetch(`/profiles/${id}/publish`, { method: 'POST' }), onSuccess: () => client.invalidateQueries({ queryKey: ['profiles'] }) })
   const [deploymentMessage, setDeploymentMessage] = useState<string | null>(null)
   const [importing, setImporting] = useState(false)
+  const [comparisonProfileId, setComparisonProfileId] = useState<string | null>(null)
   const deploy = useMutation({
     mutationFn: (id: string) => apiFetch(`/profiles/${id}/deployments`, { method: 'POST', body: '{}' }),
     onSuccess: () => setDeploymentMessage('Complete authoritative Cura library queued for every managed workstation.'),
@@ -60,13 +66,31 @@ export default function ProfilesPage() {
 
   return (
     <div>
-      <PageHeader eyebrow="Slicer-ready settings" title="Material profiles" description="Product-specific Cura settings copied from a generic template, then tuned and published independently." actions={user?.role !== 'viewer' && materialOptions.length ? <button className="button button--primary" onClick={() => setImporting(true)}><FileInput size={17} /> Import Cura material</button> : undefined} />
+      <PageHeader
+        eyebrow="Slicer-ready settings"
+        title="Material profiles"
+        description="Template-linked filament settings with sparse overrides and immutable resolved snapshots for Cura."
+        actions={<>
+          {profiles.data?.length ? <button className="button" onClick={() => setComparisonProfileId(profiles.data[0].id)}><GitCompareArrows size={17} /> Compare settings</button> : null}
+          {user?.role !== 'viewer' && materialOptions.length ? <button className="button button--primary" onClick={() => setImporting(true)}><FileInput size={17} /> Import Cura material</button> : null}
+        </>}
+      />
       {deploymentMessage ? <div className="deployment-note" role="status">{deploymentMessage}</div> : null}
       {profiles.isLoading ? <LoadingState /> : !profiles.data?.length ? (
         <EmptyState icon={SlidersHorizontal} title="No profiles yet" description={materialOptions.length ? 'Import an existing Cura material above or complete a calibration session.' : 'Complete a calibration session, or let a paired workstation report existing Cura materials for import.'} />
       ) : (
-        <div className="table-card"><table><thead><tr><th>Filament</th><th>Printer</th><th>Version</th><th>Temperatures</th><th>Flow</th><th>Cura settings</th><th>Pressure advance</th><th>Status</th><th>Actions</th></tr></thead><tbody>{profiles.data.map((profile) => <tr key={profile.id}><td><strong>{filamentName(profile.filament_product_id)}</strong></td><td>{printerName(profile.printer_id)} · {profile.nozzle_diameter_mm} mm</td><td>v{profile.version}</td><td>{profile.extruder_temp_c}° / {profile.bed_temp_c}°</td><td>{profile.flow_percent}%</td><td>{Object.keys(profile.cura_settings).length} stored</td><td>{profile.pressure_advance ?? '—'}</td><td><StatusPill status={profile.status} /></td><td><div className="table-actions"><Link className="icon-button" to={`/filaments/${profile.filament_product_id}`} title="Edit filament and profile settings"><Pencil size={17} /></Link>{user?.role !== 'viewer' && profile.status !== 'published' && <button className="icon-button" onClick={() => publish.mutate(profile.id)} title="Publish profile"><Upload size={17} /></button>}{user?.role !== 'viewer' && profile.status === 'published' && <button className="icon-button" disabled={deploy.isPending} onClick={() => deploy.mutate(profile.id)} title="Deploy material to all Cura workstations"><MonitorUp size={17} /></button>}<a className="icon-button" href={`/api/v1/profiles/${profile.id}/exports/cura`} title="Download Cura material settings"><Download size={17} /></a></div></td></tr>)}</tbody></table></div>
+        <div className="table-card"><table><thead><tr><th>Filament</th><th>Printer</th><th>Version</th><th>Template base</th><th>Overrides</th><th>Temperatures</th><th>Cura settings</th><th>Status</th><th>Actions</th></tr></thead><tbody>{profiles.data.map((profile) => <tr key={profile.id}><td><strong>{filamentName(profile.filament_product_id)}</strong></td><td>{printerName(profile.printer_id)} · {profile.nozzle_diameter_mm} mm</td><td>v{profile.version}</td><td>{profile.base_template_name ?? 'Missing'} · v{profile.base_template_version ?? '—'}{profile.latest_template_revision_id !== profile.base_template_revision_id ? <small>Update available</small> : null}</td><td>{profile.override_count ? `${profile.override_count} customized` : 'Inherited'}</td><td>{profile.extruder_temp_c}° / {profile.bed_temp_c}°</td><td>{Object.keys(profile.cura_settings).length} resolved</td><td><StatusPill status={profile.status} /></td><td><div className="table-actions"><button className="icon-button" onClick={() => setComparisonProfileId(profile.id)} title="Compare material settings" aria-label={`Compare ${filamentName(profile.filament_product_id)} profile settings`}><GitCompareArrows size={17} /></button><Link className="icon-button" to={`/filaments/${profile.filament_product_id}`} title="Edit filament and profile settings"><Pencil size={17} /></Link>{user?.role !== 'viewer' && profile.status !== 'published' && <button className="icon-button" onClick={() => publish.mutate(profile.id)} title="Publish profile"><Upload size={17} /></button>}{user?.role !== 'viewer' && profile.status === 'published' && <button className="icon-button" disabled={deploy.isPending} onClick={() => deploy.mutate(profile.id)} title="Deploy material to all Cura workstations"><MonitorUp size={17} /></button>}<a className="icon-button" href={`/api/v1/profiles/${profile.id}/exports/cura`} title="Download Cura material settings"><Download size={17} /></a></div></td></tr>)}</tbody></table></div>
       )}
+      {comparisonProfileId && profiles.data ? <MaterialComparisonModal
+        profiles={profiles.data}
+        templates={templates.data ?? []}
+        printers={printers.data ?? []}
+        filaments={filaments.data ?? []}
+        plates={plates.data ?? []}
+        catalog={catalog.data ?? []}
+        initialProfileId={comparisonProfileId}
+        onClose={() => setComparisonProfileId(null)}
+      /> : null}
       {importing ? <Modal title="Import a Cura material" description="Copy approved Material Settings values into a new Filament Manager draft. The local Cura file is not modified." onClose={() => setImporting(false)} size="wide" footer={<><button className="button" type="button" onClick={() => setImporting(false)}>Cancel</button><button className="button button--primary" form="import-cura-material" disabled={importMaterial.isPending}><FileInput size={17} />{importMaterial.isPending ? 'Importing…' : 'Import as draft'}</button></>}>
         <form
           id="import-cura-material"

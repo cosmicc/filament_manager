@@ -454,6 +454,7 @@ class ProfileCreate(MaterialSettingsInput):
     filament_product_id: UUID
     printer_id: UUID
     nozzle_diameter_mm: Decimal = Field(gt=0)
+    base_template_revision_id: UUID | None = None
 
 
 class ProfileRevisionCreate(ApiModel):
@@ -470,7 +471,18 @@ class ProfileResponse(ProfileCreate):
     checksum: str | None
     published_at: datetime | None
     record_version: int
-    source_template_revision_id: UUID | None = None
+    base_template_revision_id: UUID | None = None
+    setting_overrides: dict[str, Any] = Field(default_factory=dict)
+    override_keys: list[str] = Field(default_factory=list)
+    override_count: int = 0
+    inheritance_status: str = "inherited"
+    base_template_id: UUID | None = None
+    base_template_name: str | None = None
+    base_template_version: int | None = None
+    base_template_settings: MaterialSettingsInput | None = None
+    latest_template_revision_id: UUID | None = None
+    latest_template_version: int | None = None
+    template_update_changes: list[dict[str, Any]] = Field(default_factory=list)
 
     @computed_field  # type: ignore[prop-decorator]
     @property
@@ -488,6 +500,21 @@ class CuraMaterialImportRequest(ApiModel):
     filament_product_id: UUID
     printer_id: UUID
     nozzle_diameter_mm: Decimal = Field(gt=0)
+    preferred_build_plate_surface_id: UUID | None = None
+
+
+class CuraMaterialTemplateImportRequest(ApiModel):
+    """Preserve one workstation-discovered Cura material as a draft template."""
+
+    agent_id: UUID
+    source_id: str = Field(pattern=r"^[0-9a-f]{64}$")
+    name: str = Field(min_length=1, max_length=160)
+    material_type: str = Field(min_length=1, max_length=48)
+    description: str | None = Field(default=None, max_length=4000)
+    printer_id: UUID
+    nozzle_diameter_mm: Decimal = Field(gt=0)
+    filament_diameter_mm: Decimal = Field(default=Decimal("1.75"), gt=0)
+    filament_density_g_cm3: Decimal = Field(gt=0)
     preferred_build_plate_surface_id: UUID | None = None
 
 
@@ -540,6 +567,8 @@ class MaterialTemplateResponse(ApiModel):
     printer_id: UUID
     nozzle_diameter_mm: Decimal
     filament_diameter_mm: Decimal
+    source_workstation_agent_id: UUID | None
+    source_cura_material_id: str | None
     active: bool
     record_version: int
     created_at: datetime
@@ -705,6 +734,13 @@ class CuraMaterialReport(ApiModel):
         return value
 
 
+class CuraManagedMaterialReport(CuraMaterialReport):
+    """Sanitized edit candidate for one known managed Cura material."""
+
+    material_guid: UUID
+    content_checksum: str = Field(pattern=r"^[0-9a-f]{64}$")
+
+
 class WorkstationPairingCodeResponse(ApiModel):
     pairing_code: str
     expires_at: datetime
@@ -720,6 +756,7 @@ class WorkstationPairRequest(ApiModel):
     capabilities: dict[str, Any] = Field(default_factory=dict)
     cura_installations: list[CuraInstallationReport] = Field(default_factory=list, max_length=20)
     cura_materials: list[CuraMaterialReport] = Field(default_factory=list, max_length=200)
+    cura_managed_materials: list[CuraManagedMaterialReport] = Field(default_factory=list, max_length=500)
 
 
 class WorkstationPairResponse(ApiModel):
@@ -733,7 +770,15 @@ class WorkstationHeartbeat(ApiModel):
     capabilities: dict[str, Any] = Field(default_factory=dict)
     cura_installations: list[CuraInstallationReport] = Field(default_factory=list, max_length=20)
     cura_materials: list[CuraMaterialReport] = Field(default_factory=list, max_length=200)
+    cura_managed_materials: list[CuraManagedMaterialReport] = Field(default_factory=list, max_length=500)
     last_error: str | None = Field(default=None, max_length=500)
+
+
+class ProfileTemplateRebaseRequest(ApiModel):
+    """Confirm one filament profile's move to a published template revision."""
+
+    expected_profile_version: int = Field(ge=1)
+    target_template_revision_id: UUID
 
 
 class WorkstationAgentResponse(ApiModel):

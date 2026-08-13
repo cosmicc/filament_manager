@@ -245,6 +245,30 @@ async def test_seed_system_route_creates_configured_resources(monkeypatch: pytes
             )
             remembered_colors = await client.get("/api/v1/filament-colors")
             printers_response = await client.get("/api/v1/printers")
+            template = await client.post(
+                "/api/v1/profiles/templates",
+                json={
+                    "name": "Template PLA",
+                    "material_type": "PLA",
+                    "printer_id": printers_response.json()[0]["id"],
+                    "nozzle_diameter_mm": "0.4",
+                    "filament_diameter_mm": "1.75",
+                    "settings": {
+                        "extruder_temp_c": "205",
+                        "bed_temp_c": "60",
+                        "flow_percent": "100",
+                        "cooling_min_percent": "20",
+                        "cooling_max_percent": "100",
+                        "filament_density_g_cm3": "1.24",
+                    },
+                },
+            )
+            assert template.status_code == 201, template.text
+            template_revision_id = template.json()["revisions"][0]["id"]
+            published_template = await client.post(
+                f"/api/v1/profiles/templates/{template.json()['id']}/revisions/{template_revision_id}/publish"
+            )
+            assert published_template.status_code == 200, published_template.text
             profile = await client.post(
                 "/api/v1/profiles",
                 json={
@@ -258,6 +282,7 @@ async def test_seed_system_route_creates_configured_resources(monkeypatch: pytes
                     "cooling_max_percent": "100",
                     "filament_density_g_cm3": "1.24",
                     "cura_extensions": {"xy_offset": "0.05"},
+                    "base_template_revision_id": template_revision_id,
                 },
             )
             profile_revision = await client.post(

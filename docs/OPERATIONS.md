@@ -11,7 +11,7 @@
 - Cura workstations: last contact, detected Cura versions/machines, scoped credential state, deployment attempts, and warnings
 - Build Plates: per-side Moonraker mesh checks, newly discovered physical plates/sides, unavailable mappings, and the active loaded side
 
-Canonical inventory changes create supported-API Spoolman jobs in the same transaction and dispatch normally begins within one worker polling cycle. Every minute by default, a safety sweep imports printer-recorded usage first and then converges every canonical vendor, filament product, and spool. Every 15 seconds the worker reads Moonraker's supported active Spoolman ID and exact P-number mesh state, and every 5 minutes it refreshes sanitized printer information. These jobs also seed the configured printer and initial plates on a fresh database. Google publication is scheduled when enabled. External outages create bounded retries and never roll back already committed canonical changes.
+Canonical inventory changes create supported-API Spoolman jobs in the same transaction and dispatch normally begins within one worker polling cycle. Every minute by default, a safety sweep imports printer-recorded usage first and then converges every canonical vendor, filament product, and spool. Every 15 seconds the worker reads Moonraker's supported active Spoolman ID, persistent physical-spool macro state, and exact P-number mesh state; it repairs a direct active-ID mismatch back to the last completed physical boundary in every initialized phase and refreshes the bounded Cura-material/spool catalog. Every 5 minutes it refreshes sanitized printer information. These jobs also seed the configured printer and initial plates on a fresh database. Google publication is scheduled when enabled. External outages create bounded retries and never roll back already committed canonical changes.
 
 The web and worker emit structured console logs for request completion, stable API rejections, validation errors, scheduler and outbox activity, and Moonraker synchronization results. Browser API requests also log their method, path, status, and correlation ID. Error logs include safe messages and tracebacks but never credentials, connection URLs, request bodies, or external response bodies.
 
@@ -62,6 +62,14 @@ Verify `http://spoolman:8000/api/v1/health` from the combined Filament Manager s
 
 Confirm `MOONRAKER_BASE_URL` is reachable from the Swarm node and container network. If `MOONRAKER_WEBSOCKET_URL` is empty, Filament Manager derives the same host with `ws` or `wss` and the `/websocket` path. Confirm the configured API key only when Moonraker requires one. In worker logs, inspect `moonraker_active_spool_sync_failed`, `moonraker_build_plate_sync_failed`, or `moonraker_printer_information_sync_failed`; the associated outbox job retries automatically.
 
+### Spool workflow does not open or print preflight is blocked
+
+Run `FILAMENT_MANAGER_SPOOL_STATE` in Fluidd. Confirm the integration macro file is included last and the worker log shows `moonraker_spool_preflight_catalog_synchronized` and a one-time `moonraker_spool_preflight_state_initialized`. A missing catalog entry means Cura has a stale material revision, a `Template <material type>` entry was selected, no eligible projected spool remains, or the product lacks a current published profile for the configured printer/nozzle. Synchronize the Cura workstation and resend the sliced file after correcting inventory/profile readiness.
+
+Keep Fluidd's **Show spool selection dialog on print start** disabled. If someone uses Fluidd's global **Change Spool** control, the worker restores the persisted physical ID within the next 15-second state pass. Do not override that repair unless the macro was just installed and its one-time initial state was seeded incorrectly.
+
+During a change, `unloading` retains the old active ID, `inserting` means no active spool, and `loading` still means no active spool. `ready` means the exact new ID has been committed. A ten-minute insertion timeout turns off the nozzle and retains the last completed boundary. Use the prompt's cancel action or `FILAMENT_MANAGER_ABORT` after a macro error; never invoke the internal `_FILAMENT_MANAGER_RECORD_LOADED` helper manually.
+
 ### A saved build-plate side mesh does not appear
 
 Confirm the mesh is saved in Klipper as exact `P<number>` for Side A or `P<number>b` for Side B, such as `P6` or `P6b`. `P0`, `P01`, uppercase `B`, lowercase plate names, and descriptive profiles are intentionally ignored. Wait for the next 15-second automatic state pass, then confirm Klippy is ready and that Moonraker returns the `bed_mesh` object from `/printer/objects/query`. Inspect the worker log and the `moonraker.state.reconcile` job when the page remains stale.
@@ -95,6 +103,14 @@ Inspect both web and worker logs for `database_migration_started`, `database_mig
 ### A Cura material imports without some settings
 
 The workstation reports only the approved settings exposed by the configured Material Settings catalog. Unsupported keys and machine start G-code are intentionally discarded. Confirm the current Material Settings and Klipper Settings plugins are installed and the desired settings are stored on the Cura material, then let the agent heartbeat again before importing.
+
+### A managed Cura edit does not appear as a draft
+
+Confirm Cura is closed so its material file is complete, the workstation is under authoritative management, and the edited entry was originally synchronized by Filament Manager. The agent accepts setting changes only from a known deterministic managed GUID. New or copied Cura materials and metadata-only edits are intentionally ignored. After the next heartbeat, review the new draft on the linked Template or Filament detail page; the published library is automatically restored in Cura until the draft is explicitly published.
+
+### A filament shows a template update
+
+Review the effective setting differences on that filament and confirm the update only if they are correct for that specific product. Confirmation creates a new draft; it does not publish or change another filament. Existing customized values remain overrides. Review and publish the resulting draft to send it to Cura.
 
 ### A Cura deployment fails during file replacement
 

@@ -5,7 +5,7 @@
 - UUID technical keys, immutable human business IDs.
 - Numeric types for mass, dimensions, density, flow, and money.
 - Immutable event tables for measurements, usage, and calibration results.
-- Versioned generic material templates and product-owned material profiles.
+- Versioned material templates, sparse product overrides, and immutable resolved profile snapshots.
 - Explicit projection state for Spoolman and Google.
 - Soft archive rather than destructive delete for referenced records.
 
@@ -65,11 +65,15 @@ Versioned settings scoped to:
 - nozzle diameter
 - optional layer-height range
 
-Contains the approved Cura Material Settings values, including Cura Klipper Settings pressure advance and smooth time. Profiles are scoped to a filament product, printer, and nozzle and may reference a preferred plate side. Publishing creates a new immutable version rather than editing historical versions in place.
+Every revision directly references one published `material_template_revision`, stores only semantically different `setting_overrides`, and caches the complete resolved values in the typed columns plus `cura_extensions`. The resolved snapshot includes Cura Klipper Settings pressure advance and smooth time and may reference a preferred plate side. Publishing makes both the base identity, overrides, and resolved output immutable.
 
 ### material_template and material_template_revision
 
-The template is a mutable identity for one generic material type, printer, nozzle, and filament diameter. Revisions store complete validated settings snapshots and become immutable when published. Creating a filament product from a published revision copies those settings into Material Profile version 1 in draft state, overrides generic density with the product's canonical density, and records revision provenance on both rows.
+The template is a mutable identity for one material type, printer, nozzle, and filament diameter. Its canonical Cura identity is `Template <material type>` under the `Template` brand. Revisions store complete validated settings snapshots and become immutable when published. A selected pre-takeover Cura import records its source workstation and sanitized stable identifier. Creating a filament product links Material Profile version 1 to the selected published revision, records only product-specific differences such as density, and computes the resolved snapshot. Publishing a newer template revision does not rewrite linked profiles; each filament must explicitly confirm its own base update, which creates a draft and preserves its overrides.
+
+### cura_managed_edit_receipt
+
+Idempotently records one content checksum reported for a known managed Cura GUID and the draft template/profile revision it created. Unknown GUIDs and new Cura materials never create canonical records.
 
 ### calibration_session
 

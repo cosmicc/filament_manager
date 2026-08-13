@@ -18,7 +18,12 @@ from .inventory import (
     Vendor,
 )
 from .operations import AuditEvent, Device, ImportRun, NfcTag, OutboxJob, ProjectionState
-from .workstations import CuraDeployment, WorkstationAgent, WorkstationPairingCode
+from .workstations import (
+    CuraDeployment,
+    CuraManagedEditReceipt,
+    WorkstationAgent,
+    WorkstationPairingCode,
+)
 
 __all__ = [
     "AuditEvent",
@@ -28,6 +33,7 @@ __all__ = [
     "CalibrationSession",
     "CalibrationStep",
     "CuraDeployment",
+    "CuraManagedEditReceipt",
     "Device",
     "FilamentColor",
     "FilamentProduct",

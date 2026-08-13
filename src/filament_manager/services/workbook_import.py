@@ -1,6 +1,7 @@
 """One-time workbook analysis and explicitly approved PostgreSQL import."""
 
 import hashlib
+import json
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from decimal import Decimal, InvalidOperation
@@ -13,12 +14,18 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from filament_manager.domain.colors import normalize_color_name
+from filament_manager.domain.profile_inheritance import (
+    profile_columns_from_settings,
+    sparse_profile_overrides,
+)
 from filament_manager.models.auth import User
 from filament_manager.models.enums import ProfileStatus, SpoolStatus, UserRole
 from filament_manager.models.inventory import (
     FilamentColor,
     FilamentProduct,
     MaterialProfile,
+    MaterialTemplate,
+    MaterialTemplateRevision,
     Printer,
     Spool,
     Vendor,
@@ -239,6 +246,7 @@ async def commit_approved_run(
     colors: dict[str, FilamentColor] = {}
     imported_spools = 0
     imported_profiles = 0
+    template_revisions: dict[tuple[str, UUID, Decimal], MaterialTemplateRevision] = {}
     row_iterator = sheet.iter_rows(min_row=2, max_col=len(HEADERS), values_only=True)
     for _row_number, row_values in enumerate(row_iterator, start=2):
         values = dict(zip(HEADERS, row_values, strict=True))
@@ -345,27 +353,102 @@ async def commit_approved_run(
             )
         ):
             if values["Nozzle Temp (°C)"] is not None and values["Bed Temp (°C)"] is not None:
+                profile_settings: dict[str, object] = {
+                    "chamber_temp_c": str(values["Chamber Temp (°C)"] or 0),
+                    "extruder_temp_c": str(values["Nozzle Temp (°C)"]),
+                    "bed_temp_c": str(values["Bed Temp (°C)"]),
+                    "flow_percent": str(values["Flow (%)"] or 100),
+                    "print_speed_mm_s": None,
+                    "outer_wall_speed_mm_s": None,
+                    "inner_wall_speed_mm_s": None,
+                    "infill_speed_mm_s": None,
+                    "top_bottom_speed_mm_s": None,
+                    "initial_layer_speed_mm_s": None,
+                    "travel_speed_mm_s": None,
+                    "support_speed_mm_s": None,
+                    "retraction_distance_mm": str(values["Retraction Distance (mm)"] or 0),
+                    "retraction_speed_mm_s": str(values["Retraction Speed (mm/s)"] or 0),
+                    "cooling_enabled": True,
+                    "cooling_min_percent": "0",
+                    "cooling_max_percent": "100",
+                    "support_overhang_angle_deg": None,
+                    "tree_max_branch_angle_deg": None,
+                    "pressure_advance": (
+                        str(values["Pressure Advance"]) if values["Pressure Advance"] is not None else None
+                    ),
+                    "filament_density_g_cm3": str(product.density_g_cm3),
+                    "preferred_build_plate_surface_id": None,
+                    "cura_extensions": {},
+                }
+                template_key = (
+                    product.material_type.casefold(),
+                    printer.id,
+                    printer.nozzle_diameter_mm,
+                )
+                template_revision = template_revisions.get(template_key)
+                if template_revision is None:
+                    template_revision = await session.scalar(
+                        select(MaterialTemplateRevision)
+                        .join(
+                            MaterialTemplate,
+                            MaterialTemplate.id == MaterialTemplateRevision.material_template_id,
+                        )
+                        .where(
+                            func.lower(MaterialTemplate.material_type) == product.material_type.casefold(),
+                            MaterialTemplate.printer_id == printer.id,
+                            MaterialTemplate.nozzle_diameter_mm == printer.nozzle_diameter_mm,
+                            MaterialTemplateRevision.status == ProfileStatus.PUBLISHED,
+                        )
+                        .order_by(MaterialTemplateRevision.version.desc())
+                        .limit(1)
+                    )
+                if template_revision is None:
+                    template = MaterialTemplate(
+                        name=f"Template {product.material_type}",
+                        material_type=product.material_type,
+                        description="Created from the approved initial inventory import.",
+                        printer_id=printer.id,
+                        nozzle_diameter_mm=printer.nozzle_diameter_mm,
+                        filament_diameter_mm=product.diameter_mm,
+                        active=True,
+                    )
+                    session.add(template)
+                    await session.flush()
+                    checksum_payload = {
+                        "material_template_id": str(template.id),
+                        "version": 1,
+                        "settings": profile_settings,
+                    }
+                    template_revision = MaterialTemplateRevision(
+                        material_template_id=template.id,
+                        version=1,
+                        status=ProfileStatus.PUBLISHED,
+                        settings=profile_settings,
+                        checksum=hashlib.sha256(
+                            json.dumps(
+                                checksum_payload,
+                                sort_keys=True,
+                                separators=(",", ":"),
+                            ).encode("utf-8")
+                        ).hexdigest(),
+                        published_at=datetime.now(UTC),
+                    )
+                    session.add(template_revision)
+                    await session.flush()
+                template_revisions[template_key] = template_revision
+                product.source_template_revision_id = template_revision.id
                 profile = MaterialProfile(
+                    **profile_columns_from_settings(profile_settings),
                     filament_product_id=product.id,
                     printer_id=printer.id,
                     nozzle_diameter_mm=printer.nozzle_diameter_mm,
                     version=1,
                     status=ProfileStatus.DRAFT,
-                    chamber_temp_c=Decimal(str(values["Chamber Temp (°C)"] or 0)),
-                    extruder_temp_c=Decimal(str(values["Nozzle Temp (°C)"])),
-                    bed_temp_c=Decimal(str(values["Bed Temp (°C)"])),
-                    flow_percent=Decimal(str(values["Flow (%)"] or 100)),
-                    retraction_distance_mm=Decimal(str(values["Retraction Distance (mm)"] or 0)),
-                    retraction_speed_mm_s=Decimal(str(values["Retraction Speed (mm/s)"] or 0)),
-                    cooling_enabled=True,
-                    cooling_min_percent=Decimal("0"),
-                    cooling_max_percent=Decimal("100"),
-                    pressure_advance=(
-                        Decimal(str(values["Pressure Advance"]))
-                        if values["Pressure Advance"] is not None
-                        else None
+                    base_template_revision_id=template_revision.id,
+                    setting_overrides=sparse_profile_overrides(
+                        template_revision.settings,
+                        profile_settings,
                     ),
-                    filament_density_g_cm3=product.density_g_cm3,
                 )
                 session.add(profile)
                 imported_profiles += 1

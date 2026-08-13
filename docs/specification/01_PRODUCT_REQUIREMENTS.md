@@ -41,9 +41,11 @@ Filament Manager provides one trusted inventory for physical filament spools, me
 ### Spoolman and printer integration
 
 - Configure Spoolman to use the central PostgreSQL server.
-- Allow Fluidd to select or scan an active spool.
+- Use Fluidd to select the exact requested physical spool and confirm insertion without activating it before loading.
 - Receive consumption through Moonraker and Spoolman.
 - Warn when the selected spool is insufficient or materially incompatible where metadata permits.
+- Pass the Cura managed material GUID into a Klipper preflight that bypasses changing only when the matching physical spool is already loaded.
+- Unload at the removed filament's published nozzle temperature, clear active Spoolman state after physical unload, preheat/load at the selected filament's temperature, and activate the exact new ID only after physical load.
 - Interact through the Spoolman API; direct Spoolman database access is prohibited.
 
 ### Manual first-release workflow
@@ -56,7 +58,7 @@ Filament Manager provides one trusted inventory for physical filament spools, me
 
 ### Cura material profiles
 
-Store and export versioned profiles containing the approved Cura Material Settings catalog, including temperatures, flow, speeds, retraction, cooling, offsets, support angle, Cura Klipper Settings pressure advance/smooth time, density, and preferred build-plate side. Profiles are scoped by printer and nozzle diameter. Paired agents may report sanitized existing materials for explicit import into a draft.
+Store and export versioned profiles containing the approved Cura Material Settings catalog, including temperatures, flow, speeds, retraction, cooling, offsets, support angle, Cura Klipper Settings pressure advance/smooth time, density, and preferred build-plate side. Profiles are scoped by printer and nozzle diameter. Paired agents may report sanitized existing materials for explicit import into either a product-owned draft profile or a source-tracked draft template. A selected template import must be reviewed and published before authoritative takeover can proceed.
 
 ### Build plates
 
@@ -77,7 +79,7 @@ Guide a new filament through temperature, flow, pressure advance, retraction, ov
 - Accept a live load-cell stream from the dry box.
 - Identify the loaded spool with NFC.
 - Associate NFC UID with a spool record.
-- Set the active spool through Moonraker/Spoolman.
+- Confirm physical NFC identity before setting the active spool through Moonraker/Spoolman.
 - Keep manual fallback available.
 
 ## Non-functional requirements
@@ -97,12 +99,13 @@ Guide a new filament through temperature, flow, pressure advance, retraction, ov
 1. Workbook imports into PostgreSQL with no lost fields.
 2. Spoolman connects to its dedicated database on the central PostgreSQL server.
 3. Filament Manager connects to Spoolman across the stack overlay network.
-4. A spool selected in Fluidd records print consumption even during a Filament Manager restart.
+4. A physically loaded and confirmed spool remains active in Moonraker/Spoolman and records print consumption during a Filament Manager restart.
 5. Filament Manager reconciles the remaining mass into its canonical database.
 6. A protected Google Sheet shows the updated inventory.
 7. A user can record a manual gross weight and see the correction in Spoolman and the Sheet.
 8. `P1` through `P5` appear initially; synchronizing `P6` creates physical P6 Side A, and `P6b` adds Side B without changing existing metadata.
 9. A calibration session completes the seven-step workflow, calculates horizontal and hole expansion from recorded design/actual measurements, and produces a material-only Cura export containing the approved settings.
+10. A Cura print with the matching spool already loaded reaches the existing `START_PRINT` unchanged; a mismatch pauses for exact-spool selection, unload, insertion confirmation, load, and truthful Spoolman transitions.
 
 ## Authoritative implementation references
 

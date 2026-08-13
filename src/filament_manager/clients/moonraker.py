@@ -1,12 +1,18 @@
 """Supported Moonraker HTTP client for spool, plate, and bed-mesh operations."""
 
+import re
 from dataclasses import dataclass
+from decimal import Decimal
 from typing import Any
 
 import httpx
 
 from filament_manager.config import PrinterConfig
 from filament_manager.domain.build_plates import is_build_plate_surface_code
+from filament_manager.domain.spool_preflight import (
+    SpoolPreflightCatalog,
+    validate_catalog_revision,
+)
 
 
 class MoonrakerError(RuntimeError):
@@ -28,6 +34,31 @@ class MoonrakerPrinterInformation:
     server_info: dict[str, Any]
     printer_info: dict[str, Any]
     object_status: dict[str, Any]
+
+
+@dataclass(frozen=True, slots=True)
+class MoonrakerSpoolPreflightState:
+    """Persistent physical-spool state reported by the Klipper macro."""
+
+    restored: bool
+    initialized: bool
+    phase: str
+    loaded_spool_id: int | None
+    catalog_revision: str
+
+
+SPOOL_PROMPT_LABEL_PATTERN = re.compile(r"[A-Za-z0-9._#-]{1,96}")
+SPOOL_PREFLIGHT_PHASES = {
+    "idle",
+    "selecting",
+    "unloading",
+    "inserting",
+    "loading",
+    "ready",
+    "manual_select",
+    "manual_ready",
+    "error",
+}
 
 
 class MoonrakerClient:
@@ -122,6 +153,116 @@ class MoonrakerClient:
         if isinstance(spool_id, bool) or not isinstance(spool_id, int) or spool_id <= 0:
             raise MoonrakerError("Moonraker returned an invalid active spool ID")
         return int(spool_id)
+
+    async def spool_preflight_state(self) -> MoonrakerSpoolPreflightState | None:
+        """Read the app-owned macro state without treating a missing install as fatal."""
+
+        payload = await self._post(
+            "/printer/objects/query",
+            {
+                "objects": {
+                    "gcode_macro FILAMENT_MANAGER_SPOOL_STATE": [
+                        "restored",
+                        "initialized",
+                        "phase",
+                        "loaded_spool_id",
+                        "catalog_revision",
+                    ]
+                }
+            },
+        )
+        result = payload.get("result")
+        status = result.get("status") if isinstance(result, dict) else None
+        macro_state = (
+            status.get("gcode_macro FILAMENT_MANAGER_SPOOL_STATE") if isinstance(status, dict) else None
+        )
+        if macro_state is None:
+            return None
+        if not isinstance(macro_state, dict):
+            raise MoonrakerError("Moonraker returned invalid spool-preflight macro state")
+        restored = macro_state.get("restored")
+        initialized = macro_state.get("initialized")
+        phase = macro_state.get("phase")
+        loaded_spool_id = macro_state.get("loaded_spool_id")
+        revision = macro_state.get("catalog_revision")
+        if restored not in (0, 1, False, True):
+            raise MoonrakerError("Moonraker returned an invalid spool-preflight restored flag")
+        if initialized not in (0, 1, False, True):
+            raise MoonrakerError("Moonraker returned an invalid spool-preflight initialized flag")
+        if not isinstance(phase, str) or phase not in SPOOL_PREFLIGHT_PHASES:
+            raise MoonrakerError("Moonraker returned an invalid spool-preflight phase")
+        if isinstance(loaded_spool_id, bool) or not isinstance(loaded_spool_id, int):
+            raise MoonrakerError("Moonraker returned an invalid physically loaded spool ID")
+        if loaded_spool_id == 0 or loaded_spool_id < -1:
+            raise MoonrakerError("Moonraker returned an invalid physically loaded spool ID")
+        if not isinstance(revision, str):
+            raise MoonrakerError("Moonraker returned an invalid spool catalog revision")
+        if revision:
+            try:
+                validate_catalog_revision(revision)
+            except ValueError as exc:
+                raise MoonrakerError("Moonraker returned an invalid spool catalog revision") from exc
+        return MoonrakerSpoolPreflightState(
+            restored=bool(restored),
+            initialized=bool(initialized),
+            phase=phase,
+            loaded_spool_id=loaded_spool_id if loaded_spool_id > 0 else None,
+            catalog_revision=revision,
+        )
+
+    async def synchronize_spool_preflight_catalog(self, catalog: SpoolPreflightCatalog) -> dict[str, Any]:
+        """Persist a bounded catalog for offline-safe Fluidd macro prompts."""
+
+        revision = validate_catalog_revision(catalog.revision)
+        materials = catalog.materials_literal()
+        temperatures = catalog.temperatures_literal()
+        script = "\n".join(
+            (
+                f"SET_GCODE_VARIABLE MACRO=FILAMENT_MANAGER_SPOOL_STATE VARIABLE=catalog VALUE='{materials}'",
+                "SET_GCODE_VARIABLE MACRO=FILAMENT_MANAGER_SPOOL_STATE "
+                f"VARIABLE=temperatures VALUE='{temperatures}'",
+                "SET_GCODE_VARIABLE MACRO=FILAMENT_MANAGER_SPOOL_STATE "
+                f"VARIABLE=catalog_revision VALUE='\"{revision}\"'",
+                f"SAVE_VARIABLE VARIABLE=filament_manager_spool_catalog VALUE='{materials}'",
+                f"SAVE_VARIABLE VARIABLE=filament_manager_spool_temperatures VALUE='{temperatures}'",
+                f"SAVE_VARIABLE VARIABLE=filament_manager_spool_catalog_revision VALUE='\"{revision}\"'",
+            )
+        )
+        return await self._post("/printer/gcode/script", {"script": script})
+
+    async def initialize_spool_preflight_state(
+        self, *, spoolman_id: int | None, temperature_c: Decimal | None
+    ) -> dict[str, Any]:
+        """Seed persistent physical state once from the existing active Spoolman spool."""
+
+        if spoolman_id is not None and spoolman_id <= 0:
+            raise ValueError("spoolman_id must be positive")
+        temperature = temperature_c or Decimal("0")
+        if temperature < 0 or temperature > 500:
+            raise ValueError("temperature_c is outside the supported range")
+        script = (
+            "FILAMENT_MANAGER_SYNC_LOADED_SPOOL "
+            f"ID={spoolman_id if spoolman_id is not None else -1} "
+            f"TEMP={format(temperature, 'f')} INITIALIZED=1"
+        )
+        return await self._post("/printer/gcode/script", {"script": script})
+
+    async def request_spool_change(
+        self, *, spoolman_id: int, temperature_c: Decimal, prompt_label: str
+    ) -> dict[str, Any]:
+        """Ask Klipper to perform a physical, confirmed spool change."""
+
+        if spoolman_id <= 0:
+            raise ValueError("spoolman_id must be positive")
+        if temperature_c <= 0 or temperature_c > 500:
+            raise ValueError("temperature_c is outside the supported range")
+        if SPOOL_PROMPT_LABEL_PATTERN.fullmatch(prompt_label) is None:
+            raise ValueError("prompt_label contains unsupported characters")
+        script = (
+            f"FILAMENT_MANAGER_CHANGE_SPOOL ID={spoolman_id} "
+            f"TEMP={format(temperature_c, 'f')} LABEL={prompt_label}"
+        )
+        return await self._post("/printer/gcode/script", {"script": script})
 
     async def bed_mesh_state(self) -> MoonrakerBedMeshState:
         """Read saved bed meshes and the loaded mesh through printer object status."""

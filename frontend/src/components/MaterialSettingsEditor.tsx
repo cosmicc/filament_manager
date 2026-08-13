@@ -1,5 +1,6 @@
 /* This editor intentionally exports its form serializer and canonical typed-key set. */
 /* eslint-disable react-refresh/only-export-components */
+import { useState } from 'react'
 import type { BuildPlate, CuraSettingCatalogItem, MaterialSettings } from '../api/types'
 import { EditorSection } from './EditorSection'
 
@@ -90,13 +91,42 @@ export function settingsFromForm(
 
 export function MaterialSettingsEditor({
   settings,
+  baseSettings,
+  overrideKeys = [],
   catalog,
   plates,
 }: {
   settings?: MaterialSettings
+  baseSettings?: MaterialSettings | null
+  overrideKeys?: string[]
   catalog: CuraSettingCatalogItem[]
   plates: BuildPlate[]
 }) {
+  const [resetKeys, setResetKeys] = useState<Set<string>>(() => new Set())
+  const customized = (key: string) => overrideKeys.includes(key) && !resetKeys.has(key)
+  const resetControl = (
+    key: string,
+    baseValue: string | number | boolean | null | undefined,
+    button: HTMLButtonElement,
+  ) => {
+    const field = button.closest('.setting-field')
+    const control = field?.querySelector('input, select')
+    if (control instanceof HTMLInputElement && control.type === 'checkbox') {
+      control.checked = Boolean(baseValue)
+    } else if (control instanceof HTMLInputElement || control instanceof HTMLSelectElement) {
+      control.value = baseValue == null ? '' : String(baseValue)
+    }
+    setResetKeys((current) => new Set(current).add(key))
+  }
+  const ownership = (
+    key: string,
+    baseValue: string | number | boolean | null | undefined,
+  ) => baseSettings ? (
+    <div className="setting-ownership">
+      <span>{customized(key) ? 'Customized' : 'Inherited'} · Template: {baseValue == null || baseValue === '' ? 'Not set' : String(baseValue)}</span>
+      {customized(key) ? <button className="button button--small" type="button" onClick={(event) => resetControl(key, baseValue, event.currentTarget)}>Reset to Template</button> : null}
+    </div>
+  ) : null
   const extensionCatalog = catalog.filter((item) => item.editable && !typedCuraKeys.has(item.key))
   const fieldGroups = [
     {
@@ -126,36 +156,45 @@ export function MaterialSettingsEditor({
         <EditorSection key={group.title} title={group.title} description={group.description}>
           <div className="form-grid">
             {coreFields.filter((field) => group.keys.includes(field.key)).map((field) => (
-              <label key={field.key}>
-                {field.label}{field.unit ? ` (${field.unit})` : ''}
-                <input
-                  name={field.key}
-                  type="number"
-                  step="any"
-                  min={field.key === 'pressure_advance' ? '0' : undefined}
-                  required={field.required}
-                  defaultValue={settings?.[field.key] == null ? field.defaultValue ?? '' : String(settings[field.key])}
-                />
-              </label>
+              <div className="setting-field" key={field.key}>
+                <label>
+                  {field.label}{field.unit ? ` (${field.unit})` : ''}
+                  <input
+                    name={field.key}
+                    type="number"
+                    step="any"
+                    min={field.key === 'pressure_advance' ? '0' : undefined}
+                    required={field.required}
+                    defaultValue={settings?.[field.key] == null ? field.defaultValue ?? '' : String(settings[field.key])}
+                  />
+                </label>
+                {ownership(field.key, baseSettings?.[field.key] as string | number | boolean | null | undefined)}
+              </div>
             ))}
             {group.title === 'Retraction, cooling, and support' ? (
-              <label className="check-row">
-                <input name="cooling_enabled" type="checkbox" defaultChecked={settings?.cooling_enabled ?? true} />
-                <span><strong>Enable print cooling</strong><small>Stored with this material revision.</small></span>
-              </label>
+              <div className="setting-field">
+                <label className="check-row">
+                  <input name="cooling_enabled" type="checkbox" defaultChecked={settings?.cooling_enabled ?? true} />
+                  <span><strong>Enable print cooling</strong><small>Stored with this material revision.</small></span>
+                </label>
+                {ownership('cooling_enabled', baseSettings?.cooling_enabled)}
+              </div>
             ) : null}
             {group.title === 'Klipper and build plate' ? (
-              <label>
-                Preferred plate side
-                <select name="preferred_build_plate_surface_id" defaultValue={settings?.preferred_build_plate_surface_id ?? ''}>
-                  <option value="">No preference</option>
-                  {plates.flatMap((plate) => plate.surfaces.map((surface) => (
-                    <option key={surface.id} value={surface.id}>
-                      {surface.surface_code} · {surface.surface_material ?? 'Surface not specified'} · {surface.texture ?? 'texture not specified'}
-                    </option>
-                  )))}
-                </select>
-              </label>
+              <div className="setting-field">
+                <label>
+                  Preferred plate side
+                  <select name="preferred_build_plate_surface_id" defaultValue={settings?.preferred_build_plate_surface_id ?? ''}>
+                    <option value="">No preference</option>
+                    {plates.flatMap((plate) => plate.surfaces.map((surface) => (
+                      <option key={surface.id} value={surface.id}>
+                        {surface.surface_code} · {surface.surface_material ?? 'Surface not specified'} · {surface.texture ?? 'texture not specified'}
+                      </option>
+                    )))}
+                  </select>
+                </label>
+                {ownership('preferred_build_plate_surface_id', baseSettings?.preferred_build_plate_surface_id)}
+              </div>
             ) : null}
           </div>
         </EditorSection>
@@ -163,13 +202,13 @@ export function MaterialSettingsEditor({
       <EditorSection title={`Additional Cura Material Settings (${extensionCatalog.length})`} description="All supported advanced values remain visible and grouped instead of hidden behind a fold-down section.">
         {extensionCatalog.length ? (
           <div className="form-grid">
-            {extensionCatalog.map((item) => item.value_type === 'boolean' ? (
-              <label className="check-row" key={item.key}>
+            {extensionCatalog.map((item) => <div className="setting-field" key={item.key}>{item.value_type === 'boolean' ? (
+              <label className="check-row">
                 <input name={`cura__${item.key}`} type="checkbox" defaultChecked={Boolean(settings?.cura_extensions[item.key])} />
                 <span><strong>{item.label}</strong><small>{item.key}</small></span>
               </label>
             ) : (
-              <label key={item.key}>
+              <label>
                 {item.label}{item.unit ? ` (${item.unit})` : ''}
                 <input
                   name={`cura__${item.key}`}
@@ -179,7 +218,7 @@ export function MaterialSettingsEditor({
                 />
                 <small className="field-help">{item.key}</small>
               </label>
-            ))}
+            )}{ownership(item.key, baseSettings?.cura_extensions[item.key])}</div>)}
           </div>
         ) : <p className="muted">No additional editable settings were reported.</p>}
       </EditorSection>

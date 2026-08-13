@@ -8,6 +8,7 @@
 - Spoolman to its PostgreSQL database
 - Moonraker/Fluidd to Spoolman
 - Filament Manager to Google APIs
+- outbound-only Cura workstation agents to Filament Manager
 - future scale/NFC devices to Filament Manager
 
 ## Database isolation
@@ -54,6 +55,10 @@ Environment variables are intentionally transitional and are visible to authoriz
 - validate all Spoolman payloads
 - preserve unknown Spoolman `extra` fields
 - protect against SSRF by allowing only configured Spoolman and Moonraker endpoints
+- bound and sanitize every printer-side material GUID, Spoolman ID, prompt label, temperature, and catalog size before embedding it in G-code
+- treat requested spools as untrusted future targets; only a completed physical macro boundary may change active Spoolman identity
+- fail closed when Cura material identity, eligible inventory, published temperature, or persistent physical-spool state is unavailable
+- accept managed Cura setting edits only for deterministic known GUIDs and approved bounded keys; derive the idempotency checksum server-side, create drafts only, and reject new Cura-created materials as canonical input
 
 ## Future device security
 

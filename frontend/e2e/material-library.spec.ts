@@ -24,9 +24,10 @@ const settings = {
 }
 
 const template = {
-  id: 'template-id', name: 'Generic PLA', material_type: 'PLA',
+  id: 'template-id', name: 'Template PLA', material_type: 'PLA',
   description: 'Starting settings for ordinary PLA', printer_id: printer.id,
   nozzle_diameter_mm: '0.4', filament_diameter_mm: '1.75', active: true,
+  source_workstation_agent_id: null, source_cura_material_id: null,
   record_version: 2, created_at: '2026-08-11T12:00:00Z', updated_at: '2026-08-11T13:00:00Z',
   revisions: [{
     id: 'revision-id', material_template_id: 'template-id', version: 1,
@@ -42,6 +43,27 @@ const filament = {
   product_name: 'Workshop PLA', diameter_mm: '1.75', tolerance_mm: null,
   density_g_cm3: '1.24', nominal_net_mass_g: '1000', notes: null,
   material_template_revision_id: 'revision-id', record_version: 1,
+}
+
+const comparisonProfile = {
+  ...settings,
+  id: 'comparison-profile-id', filament_product_id: filament.id, printer_id: printer.id,
+  nozzle_diameter_mm: '0.4', version: 1, status: 'published',
+  extruder_temp_c: '215', flow_percent: '100.000',
+  cura_extensions: { ...settings.cura_extensions, retraction_enable: false },
+  cura_settings: { material_print_temperature: '215', retraction_enable: false },
+  published_at: '2026-08-11T13:00:00Z', checksum: 'b'.repeat(64), record_version: 1,
+  base_template_revision_id: 'revision-id', setting_overrides: {}, override_keys: [],
+  override_count: 0, inheritance_status: 'inherited', base_template_id: template.id,
+  base_template_name: template.name, base_template_version: 1, base_template_settings: settings,
+  latest_template_revision_id: 'revision-id', latest_template_version: 1,
+  template_update_changes: [],
+}
+
+const differentScopeProfile = {
+  ...comparisonProfile,
+  id: 'different-scope-profile-id', nozzle_diameter_mm: '0.6', version: 2,
+  extruder_temp_c: '220', record_version: 2,
 }
 
 const spool = {
@@ -66,22 +88,58 @@ test.beforeEach(async ({ page }) => {
 
 test('template library is usable at desktop and mobile sizes', async ({ page }) => {
   await page.route('**/api/v1/profiles/templates?include_inactive=true', (route) => route.fulfill({ json: [template] }))
+  await page.route('**/api/v1/profiles', (route) => route.fulfill({ json: [] }))
+  await page.route('**/api/v1/filaments', (route) => route.fulfill({ json: [] }))
   await page.route('**/api/v1/profiles/cura-settings/catalog', (route) => route.fulfill({ json: [
     { key: 'retraction_enable', label: 'Enable Retraction', value_type: 'boolean', unit: null, editable: true },
     { key: 'klipper_smooth_time_enable', label: 'Enable Klipper Smooth Time', value_type: 'boolean', unit: null, editable: true },
   ] }))
   await page.goto('/templates')
-  await expect(page.getByRole('heading', { name: 'Generic PLA' })).toBeVisible()
+  await expect(page.getByRole('heading', { name: 'Template PLA' })).toBeVisible()
   await expect(page.getByText('Workshop Printer')).toBeVisible()
   await page.getByRole('button', { name: 'New revision' }).click()
-  await expect(page.getByRole('dialog', { name: 'New Generic PLA revision' })).toBeVisible()
+  await expect(page.getByRole('dialog', { name: 'New Template PLA revision' })).toBeVisible()
   await expect(page.getByLabel('Printing temperature (°C)')).toHaveValue('210')
   await expect(page.getByRole('heading', { name: /Additional Cura Material Settings/ })).toBeVisible()
   await expect(page.getByText('Enable Klipper Smooth Time', { exact: true })).toBeVisible()
 
   await page.setViewportSize({ width: 390, height: 844 })
-  await expect(page.getByRole('dialog', { name: 'New Generic PLA revision' })).toBeVisible()
+  await expect(page.getByRole('dialog', { name: 'New Template PLA revision' })).toBeVisible()
   await expect(page.getByRole('button', { name: 'Save new revision' })).toBeVisible()
+})
+
+test('comparison shows only differences and warns across profile scopes', async ({ page }) => {
+  await page.route('**/api/v1/profiles/templates?include_inactive=true', (route) => route.fulfill({ json: [template] }))
+  await page.route('**/api/v1/profiles', (route) => route.fulfill({ json: [comparisonProfile, differentScopeProfile] }))
+  await page.route('**/api/v1/filaments', (route) => route.fulfill({ json: [filament] }))
+  await page.route('**/api/v1/workstation-agents', (route) => route.fulfill({ json: [] }))
+  await page.route('**/api/v1/profiles/cura-settings/catalog', (route) => route.fulfill({ json: [
+    { key: 'retraction_enable', label: 'Enable Retraction', value_type: 'boolean', unit: null, editable: true },
+    { key: 'klipper_smooth_time_enable', label: 'Enable Klipper Smooth Time', value_type: 'boolean', unit: null, editable: true },
+  ] }))
+
+  await page.goto('/templates')
+  await page.getByRole('button', { name: 'Compare settings' }).click()
+  const dialog = page.getByRole('dialog', { name: 'Compare material settings' })
+  await expect(dialog).toBeVisible()
+  await expect(dialog.getByText('2 setting differences')).toBeVisible()
+  await expect(dialog.getByText('Printing temperature', { exact: true })).toBeVisible()
+  await expect(dialog.getByText('Enable Retraction', { exact: true })).toBeVisible()
+  await expect(dialog.getByText('Flow', { exact: true })).toHaveCount(0)
+  await expect(dialog.getByRole('status')).toContainText('printer and nozzle scope match')
+
+  await dialog.getByLabel('Compare with').selectOption(`profile:${differentScopeProfile.id}`)
+  await expect(dialog.getByRole('alert')).toContainText('Scope mismatch: nozzle diameter differs')
+  await page.setViewportSize({ width: 390, height: 844 })
+  await expect(dialog.getByLabel('Compare with')).toHaveValue(`profile:${differentScopeProfile.id}`)
+  await dialog.getByText('220 °C', { exact: true }).scrollIntoViewIfNeeded()
+  await expect(dialog.getByText('220 °C', { exact: true })).toBeVisible()
+  await expect(dialog.getByRole('button', { name: 'Close comparison' })).toBeVisible()
+  await dialog.getByRole('button', { name: 'Close comparison' }).click()
+
+  await page.goto('/profiles')
+  await page.getByRole('button', { name: 'Compare settings', exact: true }).click()
+  await expect(page.getByRole('dialog', { name: 'Compare material settings' })).toBeVisible()
 })
 
 test('filament creation requires and submits a published template', async ({ page }) => {
@@ -101,7 +159,7 @@ test('filament creation requires and submits a published template', async ({ pag
   await page.getByRole('button', { name: 'Create filament' }).click()
   await expect.poll(() => submitted?.material_template_revision_id).toBe('revision-id')
   await expect.poll(() => submitted?.material_type).toBe('PLA')
-  await expect(page.getByText(/new draft profile copied/)).toBeVisible()
+  await expect(page.getByText(/draft profile linked to its published template base/)).toBeVisible()
 })
 
 test('filament details remember colors and save Cura edits as a new version', async ({ page }) => {
@@ -115,7 +173,13 @@ test('filament details remember colors and save Cura edits as a new version', as
     cura_extensions: { ...settings.cura_extensions, xy_offset: '0.05' },
     cura_settings: { material_print_temperature: '210', xy_offset: '0.05' },
     published_at: null, checksum: null, record_version: 1,
-    source_template_revision_id: 'revision-id',
+    base_template_revision_id: 'revision-id',
+    setting_overrides: { extruder_temp_c: '210', cura_extensions: { xy_offset: '0.05' } },
+    override_keys: ['extruder_temp_c', 'xy_offset'], override_count: 2,
+    inheritance_status: 'customized', base_template_id: template.id,
+    base_template_name: template.name, base_template_version: 1,
+    base_template_settings: settings, latest_template_revision_id: 'revision-id',
+    latest_template_version: 1, template_update_changes: [],
   }
   await page.route(`**/api/v1/filaments/${filament.id}`, async (route) => {
     if (route.request().method() === 'PATCH') {
@@ -142,6 +206,7 @@ test('filament details remember colors and save Cura edits as a new version', as
 
   await page.goto(`/filaments/${filament.id}`)
   await expect(page.getByRole('heading', { name: 'Workshop PLA' })).toBeVisible()
+  await expect(page.getByText('Template PLA · v1')).toBeVisible()
   await page.getByRole('button', { name: 'Edit', exact: true }).click()
   await expect(page.getByRole('dialog', { name: 'Edit filament product' })).toBeVisible()
   await page.getByLabel('Color name', { exact: true }).fill('Red')
@@ -151,10 +216,47 @@ test('filament details remember colors and save Cura edits as a new version', as
   await expect.poll(() => filamentUpdate?.color_hex).toBe('FF0000')
 
   await page.getByRole('button', { name: 'Edit as new version' }).click()
+  await expect(page.getByText('Customized · Template: 210')).toBeVisible()
   await page.getByLabel('Printing temperature (°C)').fill('215')
   await page.getByRole('button', { name: 'Save new draft version' }).click()
   await expect.poll(() => (profileRevision?.settings as Record<string, unknown>)?.extruder_temp_c).toBe('215')
   await expect.poll(() => (profileRevision?.settings as Record<string, unknown>)?.cura_extensions).toEqual({ xy_offset: '0.05' })
+})
+
+test('template updates require confirmation for one linked filament', async ({ page }) => {
+  let templateUpdate: Record<string, unknown> | null = null
+  const profileWithUpdate = {
+    ...comparisonProfile,
+    id: 'profile-with-update', filament_product_id: filament.id,
+    base_template_revision_id: 'revision-id',
+    setting_overrides: { filament_density_g_cm3: '1.24' },
+    override_keys: ['filament_density_g_cm3'], override_count: 1,
+    inheritance_status: 'customized', base_template_id: template.id,
+    base_template_name: template.name, base_template_version: 1,
+    base_template_settings: settings, latest_template_revision_id: 'revision-2',
+    latest_template_version: 2,
+    template_update_changes: [{
+      key: 'extruder_temp_c', current_value: '215', proposed_value: '220', overridden: false,
+    }],
+  }
+  await page.route(`**/api/v1/filaments/${filament.id}`, (route) => route.fulfill({ json: filament }))
+  await page.route('**/api/v1/vendors', (route) => route.fulfill({ json: [] }))
+  await page.route('**/api/v1/profiles', (route) => route.fulfill({ json: [profileWithUpdate] }))
+  await page.route('**/api/v1/profiles/cura-settings/catalog', (route) => route.fulfill({ json: [] }))
+  await page.route('**/api/v1/profiles/profile-with-update/template-base', async (route) => {
+    templateUpdate = route.request().postDataJSON() as Record<string, unknown>
+    await route.fulfill({ status: 201, json: { ...profileWithUpdate, id: 'profile-v2', version: 2 } })
+  })
+
+  await page.goto(`/filaments/${filament.id}`)
+  await expect(page.getByText('Template PLA v2 is available')).toBeVisible()
+  await page.getByRole('button', { name: 'Review template update' }).click()
+  const dialog = page.getByRole('dialog', { name: 'Update Template PLA base' })
+  await expect(dialog.getByText('215')).toBeVisible()
+  await expect(dialog.getByText('220')).toBeVisible()
+  await dialog.getByRole('button', { name: 'Confirm v2' }).click()
+  await expect.poll(() => templateUpdate?.target_template_revision_id).toBe('revision-2')
+  await expect(page.getByText(/saved as a reviewable draft profile/)).toBeVisible()
 })
 
 test('spool creation is available without opening Spoolman', async ({ page }) => {
@@ -180,13 +282,15 @@ test('spool creation is available without opening Spoolman', async ({ page }) =>
 
 test('free-text bucket location is editable from Filament Manager', async ({ page }) => {
   let submitted: Record<string, unknown> | null = null
+  let currentSpool = spool
   await page.route('**/api/v1/filaments', (route) => route.fulfill({ json: [filament] }))
   await page.route('**/api/v1/spools?**', (route) => route.fulfill({
-    json: { items: [spool], total: 1, limit: 200, offset: 0 },
+    json: { items: [currentSpool], total: 1, limit: 200, offset: 0 },
   }))
   await page.route('**/api/v1/spools/spool-id', async (route) => {
     submitted = route.request().postDataJSON() as Record<string, unknown>
-    await route.fulfill({ json: { ...spool, location: 'Bucket 12', record_version: 4 } })
+    currentSpool = { ...spool, location: 'Bucket 12', record_version: 4 }
+    await route.fulfill({ json: currentSpool })
   })
 
   await page.goto('/spools')
@@ -199,7 +303,7 @@ test('free-text bucket location is editable from Filament Manager', async ({ pag
 
   await expect.poll(() => submitted?.expected_version).toBe(3)
   await expect.poll(() => submitted?.location).toBe('Bucket 12')
-  await expect(page.getByText('Bucket 12', { exact: true })).toBeVisible()
+  await expect(page.getByText('Bucket 12', { exact: true }).last()).toBeVisible()
 })
 
 test('existing Cura materials require an explicit takeover warning', async ({ page }) => {
@@ -214,6 +318,7 @@ test('existing Cura materials require an explicit takeover warning', async ({ pa
   let accepted = false
   await page.route('**/api/v1/workstation-agents', (route) => route.fulfill({ json: [agent] }))
   await page.route('**/api/v1/cura-deployments', (route) => route.fulfill({ json: [] }))
+  await page.route('**/api/v1/profiles/templates?include_inactive=true', (route) => route.fulfill({ json: [] }))
   await page.route('**/api/v1/workstation-agents/agent-id', async (route) => {
     accepted = true
     await route.fulfill({ json: { ...agent, cura_management_enabled: true, record_version: 2 } })
@@ -226,4 +331,55 @@ test('existing Cura materials require an explicit takeover warning', async ({ pa
   await expect(page.getByText('18', { exact: true })).toBeVisible()
   await page.getByRole('button', { name: 'Manage and synchronize Cura' }).click()
   await expect.poll(() => accepted).toBe(true)
+})
+
+test('reported Cura material can be preserved as a draft before takeover', async ({ page }) => {
+  const material = {
+    source_id: 'b'.repeat(64), installation_id: 'cura-id', name: 'Polymaker PETG · PolyLite',
+    brand: 'Polymaker', material_type: 'PETG', color_name: 'Black',
+    settings: {
+      default_material_print_temperature: '225', default_material_bed_temperature: '70',
+      material_flow: '98.5', klipper_pressure_advance_factor: '0.035',
+    },
+  }
+  const agent = {
+    id: 'agent-id', agent_code: 'WS-TEST', display_name: 'Arch Cura', hostname: 'workstation',
+    platform: 'arch_linux', architecture: 'x86_64', agent_version: '0.2.0', enabled: true,
+    cura_management_enabled: false, capabilities: { unmanaged_material_count: 1 },
+    cura_installations: [{ installation_id: 'cura-id', version: '5.13', channel: 'Linux Cura', path_hint: 'Linux Cura user data / 5.13', setting_version: 27, managed_library_checksum: null, machines: [] }],
+    cura_materials: [material], last_seen_at: '2026-08-13T14:00:00Z', last_error: null,
+    record_version: 1, created_at: '2026-08-13T12:00:00Z',
+  }
+  let submitted: Record<string, unknown> | null = null
+  let importedTemplates: Record<string, unknown>[] = []
+  await page.route('**/api/v1/workstation-agents', (route) => route.fulfill({ json: [agent] }))
+  await page.route('**/api/v1/cura-deployments', (route) => route.fulfill({ json: [] }))
+  await page.route('**/api/v1/profiles/templates**', async (route) => {
+    if (route.request().method() === 'POST') {
+      submitted = route.request().postDataJSON() as Record<string, unknown>
+      importedTemplates = [{
+        ...template,
+        id: 'imported-template-id',
+        name: 'Polymaker PETG · PolyLite',
+        material_type: 'PETG',
+        source_workstation_agent_id: agent.id,
+        source_cura_material_id: material.source_id,
+        revisions: [{ ...template.revisions[0], id: 'imported-revision-id', status: 'draft', published_at: null, checksum: null }],
+      }]
+      await route.fulfill({ status: 201, json: importedTemplates[0] })
+    } else await route.fulfill({ json: importedTemplates })
+  })
+
+  await page.goto('/workstations')
+  await expect(page.getByRole('heading', { name: 'Preserve before takeover' })).toBeVisible()
+  await page.getByRole('button', { name: 'Import as draft' }).click()
+  await expect(page.getByRole('dialog', { name: 'Import Cura material as template' })).toBeVisible()
+  await page.getByLabel('Filament density').fill('1.27')
+  await page.getByRole('button', { name: 'Import draft template' }).click()
+
+  await expect.poll(() => submitted?.source_id).toBe(material.source_id)
+  await expect.poll(() => submitted?.filament_density_g_cm3).toBe('1.27')
+  await expect(page.getByText(/preserved as a draft template/i)).toBeVisible()
+  await expect(page.getByRole('link', { name: 'Review and publish' })).toBeVisible()
+  await expect(page.getByRole('button', { name: 'Manage and synchronize Cura' })).toBeDisabled()
 })

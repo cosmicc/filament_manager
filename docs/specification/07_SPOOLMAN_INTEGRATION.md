@@ -82,6 +82,8 @@ Material, vendor, product name/grade/hardness, diameter, density, nominal weight
 
 Physical spool, initial weight, tare weight, remaining and used weight, price, first/last use, location, comment, and managed identifiers.
 
+The Spoolman active ID is an operational observation of what is physically loaded, never a reservation for the next spool. Klipper clears it only after the physical unload routine completes and sets the exact replacement only after the physical load routine completes. Filament Manager Inventory and public macros request that workflow instead of pre-activating a target. The worker repairs accidental direct Fluidd/Moonraker changes to the persisted physical macro value.
+
 Canonical creates and edits enqueue an immediate transactional outbox projection. A complete convergence sweep runs every minute by default. It reads printer-originated remaining weight before metadata projection, then upserts every canonical vendor, filament, and spool. Routine metadata updates omit `remaining_weight`; only initial creation and explicit measurement jobs write it.
 
 ## Required custom fields

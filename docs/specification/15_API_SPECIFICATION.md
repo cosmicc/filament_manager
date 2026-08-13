@@ -24,6 +24,8 @@
 
 `PATCH /spools/{id}` accepts a bounded free-text `location` plus `expected_version`. Supplying a value or `null` establishes Filament Manager ownership and queues the Spoolman projection atomically.
 
+`POST /spools/{id}/set-active` is retained as the compatibility route for the Inventory **Load spool** action. It validates that the spool is available, projected, and has a current published profile for the configured printer/nozzle, records an audited request, and queues `moonraker.spool_change.request`. It does not mutate canonical or Spoolman active state. The physical Klipper workflow performs those changes only at completed unload/load boundaries; periodic reconciliation observes the result.
+
 ### Filament products and profiles
 
 - `GET /filaments`
@@ -119,6 +121,7 @@ Return stable machine codes such as:
 - `invalid_weight`
 - `unknown_spool`
 - `profile_incomplete`
+- `spool_change_not_ready`
 - `plate_mesh_unavailable`
 - `spoolman_unavailable`
 - `google_publish_failed`

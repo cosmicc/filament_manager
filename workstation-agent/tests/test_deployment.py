@@ -6,7 +6,11 @@ from pathlib import Path
 import pytest
 
 from filament_manager_agent.apply import apply_rendered, rollback
-from filament_manager_agent.discovery import discover_installations, discover_materials
+from filament_manager_agent.discovery import (
+    discover_installations,
+    discover_managed_materials,
+    discover_materials,
+)
 from filament_manager_agent.render import render_deployment
 
 
@@ -56,6 +60,7 @@ def _payload() -> dict[str, object]:
     entry = {
         "source_kind": "product",
         "source_id": "84e0fe98-5994-4c14-aafb-8bb8220b0b9c",
+        "cura_material_guid": "00000000-0000-4000-8000-000000000001",
         "profile": {
             "id": "84e0fe98-5994-4c14-aafb-8bb8220b0b9c",
             "version": 2,
@@ -121,6 +126,7 @@ def test_discovers_and_renders_complete_profile(tmp_path: Path, monkeypatch: obj
     assert b'key="klipper_pressure_advance_factor">0.035' in material_file
     assert b'key="klipper_smooth_time_enable">True' in material_file
     assert b'key="speed_print">180' in material_file
+    assert b"<GUID>00000000-0000-4000-8000-000000000001</GUID>" in material_file
     assert not any(path.startswith("quality_changes/") for path in paths)
     assert not any(path.startswith("definition_changes/") for path in paths)
     assert "plugins/FilamentManagerVisibility/FilamentManagerVisibility/plugin.json" in paths
@@ -146,6 +152,28 @@ def test_apply_is_idempotent_and_rollback_restores_original(tmp_path: Path, monk
     assert (version / "definition_changes" / "flsun-v400_settings.inst.cfg").read_bytes() == original
     assert unmanaged_material.read_text(encoding="utf-8") == "legacy"
     assert not (version / ".filament-manager" / "manifest.json").exists()
+
+
+def test_reports_managed_material_edits_by_guid_without_treating_them_as_new(
+    tmp_path: Path, monkeypatch: object
+) -> None:
+    """Only prefixed known-GUID material files enter the managed edit channel."""
+
+    version = _cura_fixture(tmp_path, monkeypatch)
+    installation = discover_installations()[0]
+    rendered = render_deployment(installation, _payload())
+    material_path = next(path for path in rendered.files if path.parts[0] == "materials")
+    target = version / material_path
+    target.parent.mkdir(parents=True)
+    target.write_bytes(rendered.files[material_path].replace(b">220<", b">225<"))
+
+    assert discover_materials([installation]) == []
+    managed = discover_managed_materials([installation])
+    assert len(managed) == 1
+    report = managed[0].report()
+    assert report["material_guid"] == "00000000-0000-4000-8000-000000000001"
+    assert report["content_checksum"]
+    assert report["settings"]["material_print_temperature"] == "225"
 
 
 def test_discovers_existing_material_settings_without_reporting_paths(

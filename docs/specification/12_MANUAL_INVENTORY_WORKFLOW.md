@@ -18,9 +18,11 @@ The initial release uses labels and manual measurements. Scale and NFC hardware 
 
 1. Scan or type the label code.
 2. Confirm spool identity and remaining mass.
-3. Set it as active through Moonraker/Spoolman.
-4. Confirm build plate and mesh.
-5. Start the print in Fluidd.
+3. Request **Load spool** in Filament Manager or select it in a guarded Fluidd prompt.
+4. Let the existing unload routine finish; Spoolman then records no active spool.
+5. Insert only the exact prompted spool and confirm insertion in Fluidd.
+6. Let the existing load routine finish; only then does Spoolman record that spool as active.
+7. Confirm build plate and mesh, then continue the Cura print.
 
 ## Manual weighing
 

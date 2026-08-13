@@ -293,10 +293,22 @@ The separate `docker/spoolman-stack.yml` and `docker/filament-manager-stack.yml`
 ## Moonraker and Klipper
 
 - Add `integrations/moonraker/moonraker-spoolman.conf` to Moonraker after replacing the LAN hostname.
-- Include `integrations/klipper/filament-manager-macros.cfg` from `printer.cfg`.
+- Copy `integrations/klipper/filament-manager-macros.cfg` to the Klipper configuration directory and include it **last**, after the files that define the existing `START_PRINT`, `END_PRINT`, `CANCEL_PRINT`, `M600`, `LOAD_FILAMENT`, `UNLOAD_FILAMENT`, and `PURGE_FILAMENT` macros. The integration wraps those existing routines; it does not replace their physical movement or completed-print behavior.
+- Confirm `[respond]`, `[save_variables]`, `[pause_resume]`, and `[virtual_sdcard]` are configured. The supplied macro reference persists physical spool identity and the bounded material catalog through `[save_variables]`.
 - Before restarting, run `grep -Rns --include='*.cfg' 'variable_active_plate' ~/printer_data/config` on the Klipper host and confirm every included definition is exactly `variable_active_plate: "UNSET"`.
 - Ensure Klipper already has P1, P2, P3, P4, and P5 Side A mesh profiles and a configured `[save_variables]` section before using `SELECT_BUILD_PLATE`.
-- Restart Moonraker and Klipper, then test `SET_ACTIVE_SPOOL ID=<Spoolman ID>` and `SELECT_BUILD_PLATE PLATE=P1` with the printer idle.
+- Restart Moonraker and Klipper. Wait for the worker to initialize `FILAMENT_MANAGER_SPOOL_STATE`, then run that macro in the Fluidd console and confirm it reports the spool that is physically loaded, or no spool. Correct the existing Spoolman active ID before this first initialization if necessary.
+- In Fluidd **Settings → Spoolman**, turn off **Show spool selection dialog on print start**. That independent selector activates its choice before a physical load and must not run alongside Filament Manager preflight. Do not use Fluidd's global **Change Spool** action to represent a future target; use the Filament Manager inventory **Load spool** action or the guarded macros instead.
+- In Cura's machine start G-code, replace only the existing `START_PRINT` call with the following call. Preserve every other start-G-code line and keep the existing Cura end G-code unchanged:
+
+```gcode
+FILAMENT_MANAGER_START_PRINT BED_TEMP={material_bed_temperature_layer_0} EXTRUDER_TEMP={material_print_temperature_layer_0} CHAMBER_TEMP={build_volume_temperature} MATERIAL_GUID={material_guid}
+```
+
+  If the current Cura start call uses different temperature placeholders, keep those existing placeholders and add `MATERIAL_GUID={material_guid}`. The workstation agent deliberately does not edit machine start G-code.
+- Publish a product material profile and allow the workstation agent to synchronize Cura before printing. `Template <material type>` entries have no exact physical inventory mapping and are intentionally blocked by preflight.
+- With the printer idle, verify `SELECT_BUILD_PLATE PLATE=P1`. Then request **Load spool** from Inventory and confirm Fluidd preheats and asks for the exact Spoolman ID. After the existing unload motion completes, Spoolman must show no active spool; only after insertion confirmation and the existing load motion completes may the new ID become active.
+- Send a Cura test file with the already loaded matching product material and confirm it reaches the unchanged `START_PRINT` path without a load prompt. Repeat with another material and confirm Fluidd asks which exact matching spool to insert when more than one is available.
 - Sign in, open **Build Plates**, and select the printer. Within 15 seconds, exact `P<number>` meshes become Side A, exact `P<number>b` meshes become Side B of the same physical plate, and the loaded matching mesh becomes the active side.
 - To add a physical plate later, save Side A as the next name, such as `P6`. If it is double-sided, save its other mesh as `P6b`. The next automatic state pass adds it; existing physical and side details are preserved, and missing meshes are shown as unavailable rather than deleted.
 

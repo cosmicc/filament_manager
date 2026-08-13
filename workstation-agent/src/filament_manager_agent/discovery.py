@@ -2,9 +2,11 @@
 
 import configparser
 import hashlib
+import json
 import os
 import re
 import sys
+import uuid
 from pathlib import Path
 from xml.etree.ElementTree import Element
 
@@ -297,6 +299,11 @@ def _material_from_file(path: Path, installation_id: str) -> CuraMaterial | None
     material_type = _material_text(root, ("metadata", "name", "material"), "Unknown")
     color_name = _material_text(root, ("metadata", "name", "color"), "Unknown")
     label = _material_text(root, ("metadata", "name", "label"), color_name)
+    guid_text = _material_text(root, ("metadata", "GUID"), "")
+    try:
+        material_guid = uuid.UUID(guid_text) if guid_text else None
+    except ValueError:
+        material_guid = None
     settings: dict[str, str | bool] = {}
     settings_element = next(
         (child for child in root if _local_name(child.tag) == "settings"),
@@ -315,6 +322,13 @@ def _material_from_file(path: Path, installation_id: str) -> CuraMaterial | None
             settings[key] = value == "True" if value in {"True", "False"} else value
     if not settings:
         return None
+    content_checksum = hashlib.sha256(
+        json.dumps(
+            {"material_guid": str(material_guid) if material_guid else None, "settings": settings},
+            sort_keys=True,
+            separators=(",", ":"),
+        ).encode("utf-8")
+    ).hexdigest()
     return CuraMaterial(
         source_id=hashlib.sha256(data).hexdigest(),
         installation_id=installation_id,
@@ -323,6 +337,8 @@ def _material_from_file(path: Path, installation_id: str) -> CuraMaterial | None
         material_type=material_type,
         color_name=color_name,
         settings=settings,
+        material_guid=material_guid,
+        content_checksum=content_checksum,
     )
 
 
@@ -339,6 +355,30 @@ def discover_materials(installations: list[CuraInstallation]) -> list[CuraMateri
             if material is None or (material.installation_id, material.source_id) in seen:
                 continue
             seen.add((material.installation_id, material.source_id))
+            materials.append(material)
+    return materials[:500]
+
+
+def discover_managed_materials(installations: list[CuraInstallation]) -> list[CuraMaterial]:
+    """Report bounded known-GUID managed materials for server-side edit detection."""
+
+    materials: list[CuraMaterial] = []
+    seen: set[tuple[str, uuid.UUID, str]] = set()
+    for installation in installations:
+        for path in sorted((installation.data_path / "materials").glob("*.xml.fdm_material"))[:500]:
+            if not path.name.startswith("filament_manager_"):
+                continue
+            material = _material_from_file(path, installation.installation_id)
+            if material is None or material.material_guid is None or material.content_checksum is None:
+                continue
+            identity = (
+                material.installation_id,
+                material.material_guid,
+                material.content_checksum,
+            )
+            if identity in seen:
+                continue
+            seen.add(identity)
             materials.append(material)
     return materials[:500]
 
