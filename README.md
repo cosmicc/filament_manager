@@ -7,17 +7,19 @@ PostgreSQL is the canonical data store. A distinct Spoolman service remains the 
 ## Current capabilities
 
 - Local Administrator, Operator, and Viewer accounts
-- Canonical spool, filament, profile, printer, remembered color, and build-plate records with in-app editors
-- Browser-based `.xlsx` workbook upload and Printers page setup actions with first-run printer and build-plate seeding
+- Canonical spool, filament, profile, printer, remembered color, and build-plate records with consistent grouped in-app editors
+- Browser-based `.xlsx` workbook upload with automatic first-run printer and build-plate seeding
 - Versioned printer/nozzle material templates that start each new product-specific profile
 - Manual gross-weight measurements with variance confirmation
 - Immutable audit history and transactional projection outbox
 - Immediate Spoolman REST projection plus one-minute complete convergence and usage reconciliation, including Filament Manager-owned free-text bucket locations, plus Moonraker control clients
-- P1-P5 initial physical build plates, Side A/Side B Moonraker mesh discovery (`P4`/`P4b`), and a seven-step calibration workflow with dimensional and hole compensation
-- Moonraker/Klipper printer information discovery with editable nozzle, kinematics, hardware, and build-volume metadata
+- Automatic 15-second Moonraker active-spool and P-number build-plate synchronization, including Side A/Side B mesh discovery (`P4`/`P4b`)
+- Automatic 5-minute Moonraker/Klipper printer information discovery with editable manual nozzle, hardware, and build-volume metadata
+- Seven-step calibration workflow with dimensional and hole compensation
 - Outbound-only Cura workstation agents for importing materials and keeping an authoritative Filament Manager material library synchronized on Arch Linux and Windows 11, with backup, drift repair, bundled-material hiding, and rollback
 - Workshop Navy light and dark web interface
 - Health, readiness, and Prometheus metrics endpoints
+- Structured service logs and browser-console request diagnostics with correlation IDs
 
 ## Start locally
 

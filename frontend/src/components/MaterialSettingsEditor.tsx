@@ -1,6 +1,7 @@
 /* This editor intentionally exports its form serializer and canonical typed-key set. */
 /* eslint-disable react-refresh/only-export-components */
 import type { BuildPlate, CuraSettingCatalogItem, MaterialSettings } from '../api/types'
+import { EditorSection } from './EditorSection'
 
 export const typedCuraKeys = new Set([
   'build_volume_temperature', 'cool_fan_enabled', 'cool_fan_speed',
@@ -97,60 +98,91 @@ export function MaterialSettingsEditor({
   plates: BuildPlate[]
 }) {
   const extensionCatalog = catalog.filter((item) => item.editable && !typedCuraKeys.has(item.key))
+  const fieldGroups = [
+    {
+      title: 'Temperature, flow, and filament',
+      description: 'Core material values used for every generated Cura profile.',
+      keys: ['extruder_temp_c', 'bed_temp_c', 'chamber_temp_c', 'flow_percent', 'filament_density_g_cm3'],
+    },
+    {
+      title: 'Print speeds',
+      description: 'Optional speed limits for walls, infill, travel, support, and the first layer.',
+      keys: ['print_speed_mm_s', 'outer_wall_speed_mm_s', 'inner_wall_speed_mm_s', 'infill_speed_mm_s', 'top_bottom_speed_mm_s', 'initial_layer_speed_mm_s', 'travel_speed_mm_s', 'support_speed_mm_s'],
+    },
+    {
+      title: 'Retraction, cooling, and support',
+      description: 'Material handling values that affect stringing, cooling, and overhang behavior.',
+      keys: ['retraction_distance_mm', 'retraction_speed_mm_s', 'cooling_min_percent', 'cooling_max_percent', 'support_overhang_angle_deg', 'tree_max_branch_angle_deg'],
+    },
+    {
+      title: 'Klipper and build plate',
+      description: 'Printer-specific pressure advance and the preferred printable surface.',
+      keys: ['pressure_advance'],
+    },
+  ]
   return (
-    <>
-      <div className="form-grid">
-        {coreFields.map((field) => (
-          <label key={field.key}>
-            {field.label}{field.unit ? ` (${field.unit})` : ''}
-            <input
-              name={field.key}
-              type="number"
-              step="any"
-              min={field.key === 'pressure_advance' ? '0' : undefined}
-              required={field.required}
-              defaultValue={settings?.[field.key] == null ? field.defaultValue ?? '' : String(settings[field.key])}
-            />
-          </label>
-        ))}
-        <label>
-          Preferred plate side
-          <select name="preferred_build_plate_surface_id" defaultValue={settings?.preferred_build_plate_surface_id ?? ''}>
-            <option value="">No preference</option>
-            {plates.flatMap((plate) => plate.surfaces.map((surface) => (
-              <option key={surface.id} value={surface.id}>
-                {surface.surface_code} · {surface.surface_material ?? 'Surface not specified'} · {surface.texture ?? 'texture not specified'}
-              </option>
-            )))}
-          </select>
-        </label>
-        <label className="check-row">
-          <input name="cooling_enabled" type="checkbox" defaultChecked={settings?.cooling_enabled ?? true} />
-          <span><strong>Enable print cooling</strong><small>Stored with this material revision.</small></span>
-        </label>
-      </div>
-      <details className="advanced-settings">
-        <summary>All additional Cura Material Settings ({extensionCatalog.length})</summary>
-        <div className="form-grid">
-          {extensionCatalog.map((item) => item.value_type === 'boolean' ? (
-            <label className="check-row" key={item.key}>
-              <input name={`cura__${item.key}`} type="checkbox" defaultChecked={Boolean(settings?.cura_extensions[item.key])} />
-              <span><strong>{item.label}</strong><small>{item.key}</small></span>
-            </label>
-          ) : (
-            <label key={item.key}>
-              {item.label}{item.unit ? ` (${item.unit})` : ''}
-              <input
-                name={`cura__${item.key}`}
-                type={item.value_type === 'number' ? 'number' : 'text'}
-                step={item.value_type === 'number' ? 'any' : undefined}
-                defaultValue={settings?.cura_extensions[item.key] == null ? '' : String(settings.cura_extensions[item.key])}
-              />
-              <small className="field-help">{item.key}</small>
-            </label>
-          ))}
-        </div>
-      </details>
-    </>
+    <div className="editor-form">
+      {fieldGroups.map((group) => (
+        <EditorSection key={group.title} title={group.title} description={group.description}>
+          <div className="form-grid">
+            {coreFields.filter((field) => group.keys.includes(field.key)).map((field) => (
+              <label key={field.key}>
+                {field.label}{field.unit ? ` (${field.unit})` : ''}
+                <input
+                  name={field.key}
+                  type="number"
+                  step="any"
+                  min={field.key === 'pressure_advance' ? '0' : undefined}
+                  required={field.required}
+                  defaultValue={settings?.[field.key] == null ? field.defaultValue ?? '' : String(settings[field.key])}
+                />
+              </label>
+            ))}
+            {group.title === 'Retraction, cooling, and support' ? (
+              <label className="check-row">
+                <input name="cooling_enabled" type="checkbox" defaultChecked={settings?.cooling_enabled ?? true} />
+                <span><strong>Enable print cooling</strong><small>Stored with this material revision.</small></span>
+              </label>
+            ) : null}
+            {group.title === 'Klipper and build plate' ? (
+              <label>
+                Preferred plate side
+                <select name="preferred_build_plate_surface_id" defaultValue={settings?.preferred_build_plate_surface_id ?? ''}>
+                  <option value="">No preference</option>
+                  {plates.flatMap((plate) => plate.surfaces.map((surface) => (
+                    <option key={surface.id} value={surface.id}>
+                      {surface.surface_code} · {surface.surface_material ?? 'Surface not specified'} · {surface.texture ?? 'texture not specified'}
+                    </option>
+                  )))}
+                </select>
+              </label>
+            ) : null}
+          </div>
+        </EditorSection>
+      ))}
+      <EditorSection title={`Additional Cura Material Settings (${extensionCatalog.length})`} description="All supported advanced values remain visible and grouped instead of hidden behind a fold-down section.">
+        {extensionCatalog.length ? (
+          <div className="form-grid">
+            {extensionCatalog.map((item) => item.value_type === 'boolean' ? (
+              <label className="check-row" key={item.key}>
+                <input name={`cura__${item.key}`} type="checkbox" defaultChecked={Boolean(settings?.cura_extensions[item.key])} />
+                <span><strong>{item.label}</strong><small>{item.key}</small></span>
+              </label>
+            ) : (
+              <label key={item.key}>
+                {item.label}{item.unit ? ` (${item.unit})` : ''}
+                <input
+                  name={`cura__${item.key}`}
+                  type={item.value_type === 'number' ? 'number' : 'text'}
+                  step={item.value_type === 'number' ? 'any' : undefined}
+                  defaultValue={settings?.cura_extensions[item.key] == null ? '' : String(settings.cura_extensions[item.key])}
+                />
+                <small className="field-help">{item.key}</small>
+              </label>
+            ))}
+          </div>
+        ) : <p className="muted">No additional editable settings were reported.</p>}
+      </EditorSection>
+    </div>
   )
 }

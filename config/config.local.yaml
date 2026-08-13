@@ -39,6 +39,8 @@ sync:
   max_retry_attempts: 12
   outbox_workers: 2
   outbox_lock_timeout_seconds: 300
+  moonraker_state_interval_seconds: 15
+  moonraker_info_interval_seconds: 300
   low_spool_threshold_percent: 25
   measurement_increase_tolerance_percent: 5
   measurement_increase_tolerance_g: 25

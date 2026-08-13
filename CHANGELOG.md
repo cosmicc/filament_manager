@@ -1,5 +1,32 @@
 # Changelog
 
+## 0.1.6 - 08.12.2026
+
+### Added
+
+- Added PostgreSQL-coordinated Moonraker polling for active spool and build-plate state every 15 seconds and sanitized printer information every 5 minutes.
+- Added structured web, worker, scheduler, outbox, API rejection, validation, and Moonraker synchronization logs with error details and tracebacks where safe.
+- Added browser-console diagnostics for every API request, including method, path, status, correlation ID, and safe rejection or network-error details.
+- Added a shared accessible grouped-editor dialog and applied it to build plates, plate sides, printers, filaments, material profiles, templates, Cura imports, spools, users, and calibration setup.
+- Added active-printer state to spool API responses and visible active indicators in inventory.
+
+### Changed
+
+- Changed the configured printer's active spool to follow Moonraker's supported Spoolman selection automatically, including selection changes and clearing.
+- Changed in-app active-spool selection to update canonical state immediately in the same transaction that queues the Moonraker request.
+- Changed Build Plates and Printers to display automatic synchronization freshness instead of requiring manual synchronization buttons.
+- Changed Build Plates and Printers to use full-width summaries, grouped facts, side-by-side surface/status sections, and consistent edit actions instead of narrow cards and fold-down forms.
+- Changed material setting editors to keep every supported Cura field visible in named groups instead of hiding additional settings in a fold-down section.
+- Changed the dashboard, spool inventory, build plates, and printers to refresh operational state every 15 seconds.
+- Changed the server and workstation-agent package versions to 0.1.6.
+
+### Fixed
+
+- Fixed printer and build-plate information remaining stale until a broken manual synchronization request was attempted.
+- Fixed spool selections made through Klipper, Moonraker, or Spoolman not being reflected as active in Filament Manager.
+- Fixed failed background scheduling or job claiming being able to stop ongoing synchronization without a diagnostic traceback.
+- Fixed editing controls being inconsistently embedded, hidden, or expanded across different pages.
+
 ## 0.1.5 - 08.11.2026
 
 ### Added

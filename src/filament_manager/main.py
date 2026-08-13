@@ -92,6 +92,14 @@ def create_app() -> FastAPI:
         path_label = getattr(route, "path", "unmatched")
         REQUESTS.labels(request.method, path_label, response.status_code).inc()
         LATENCY.labels(request.method, path_label).observe(elapsed)
+        logger.info(
+            "http_request_completed",
+            method=request.method,
+            path=request.url.path,
+            route=path_label,
+            status=response.status_code,
+            duration_ms=round(elapsed * 1000, 2),
+        )
         response.headers["X-Request-ID"] = correlation_id
         response.headers["X-Content-Type-Options"] = "nosniff"
         response.headers["Referrer-Policy"] = "same-origin"
@@ -103,7 +111,13 @@ def create_app() -> FastAPI:
         return response
 
     @app.exception_handler(RequestValidationError)
-    async def validation_error(request: Request, _: RequestValidationError) -> JSONResponse:
+    async def validation_error(request: Request, exc: RequestValidationError) -> JSONResponse:
+        logger.warning(
+            "request_validation_failed",
+            method=request.method,
+            path=request.url.path,
+            error_count=len(exc.errors()),
+        )
         return JSONResponse(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
             content={

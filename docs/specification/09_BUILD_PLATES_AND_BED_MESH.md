@@ -54,7 +54,7 @@ The provided macro validates exact `P<number>` or `P<number>b` input, stores the
 
 ## Moonraker synchronization
 
-The Administrator Build Plates action queries Moonraker's `bed_mesh` printer object. Every saved profile whose name exactly matches `P<number>` or `P<number>b` is created immediately if absent. Synchronization groups both sides under one physical P-number plate and preserves existing physical and side metadata. Records are never deleted when a mesh is missing; availability and latest check time are updated on the side independently from physical plate status.
+The worker queries Moonraker's `bed_mesh` printer object every 15 seconds by default. Every saved profile whose name exactly matches `P<number>` or `P<number>b` is created automatically if absent. Synchronization groups both sides under one physical P-number plate and preserves existing physical and side metadata. Records are never deleted when a mesh is missing; availability and latest check time are updated on the side independently from physical plate status.
 
 When `bed_mesh.profile_name` is a discovered plate-side mesh, the selected printer's canonical active physical plate and active side are updated together. An empty, unsaved, or invalid profile does not overwrite the recorded selection.
 

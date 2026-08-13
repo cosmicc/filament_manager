@@ -3,6 +3,7 @@ import { Check, ChevronRight, FlaskConical, Play, RefreshCw, Send } from 'lucide
 import { useEffect, useMemo, useState } from 'react'
 import { ApiClientError, apiFetch } from '../api/client'
 import type { BuildPlate, Calibration, CalibrationStep, Filament, Printer } from '../api/types'
+import { EditorSection } from '../components/EditorSection'
 import { EmptyState } from '../components/EmptyState'
 import { LoadingState } from '../components/LoadingState'
 import { Modal } from '../components/Modal'
@@ -80,13 +81,19 @@ function CreateCalibrationModal({ filaments, printers, plates, onClose }: { fila
       footer={<><button className="button" onClick={onClose}>Cancel</button><button form="create-calibration" className="button button--primary" disabled={mutation.isPending || !filamentId || !printerId}>Start seven-step workflow</button></>}
     >
       <form id="create-calibration" className="form-stack" onSubmit={(event) => { event.preventDefault(); mutation.mutate() }}>
-        <label>Filament product<select value={filamentId} onChange={(event) => setFilamentId(event.target.value)} required>{filaments.map((item) => <option key={item.id} value={item.id}>{item.vendor_name} {item.material_type} · {item.color_name}</option>)}</select></label>
-        <div className="form-grid">
-          <label>Printer<select value={printerId} onChange={(event) => { const id = event.target.value; setPrinterId(id); setNozzle(printers.find((item) => item.id === id)?.nozzle_diameter_mm ?? '0.4') }} required>{printers.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}</select></label>
-          <label>Nozzle diameter<div className="input-suffix"><input type="number" min="0.1" step="0.1" value={nozzle} onChange={(event) => setNozzle(event.target.value)} required /><span>mm</span></div></label>
-        </div>
-        <label>Starting build plate side<select value={surfaceId} onChange={(event) => setSurfaceId(event.target.value)}><option value="">No plate side selected</option>{plates.flatMap((plate) => plate.surfaces.map((surface) => <option key={surface.id} value={surface.id}>{surface.surface_code} · {plate.display_name} · {surface.surface_material ?? 'Surface not specified'}</option>))}</select></label>
-        <label>Operator notes <span className="label-optional">Optional</span><textarea rows={3} value={notes} onChange={(event) => setNotes(event.target.value)} /></label>
+        <EditorSection title="Material and printer" description="The exact combination this calibration will tune.">
+          <div className="form-grid">
+            <label className="form-grid__wide">Filament product<select value={filamentId} onChange={(event) => setFilamentId(event.target.value)} required autoFocus>{filaments.map((item) => <option key={item.id} value={item.id}>{item.vendor_name} {item.material_type} · {item.color_name}</option>)}</select></label>
+            <label>Printer<select value={printerId} onChange={(event) => { const id = event.target.value; setPrinterId(id); setNozzle(printers.find((item) => item.id === id)?.nozzle_diameter_mm ?? '0.4') }} required>{printers.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}</select></label>
+            <label>Nozzle diameter<div className="input-suffix"><input type="number" min="0.1" step="0.1" value={nozzle} onChange={(event) => setNozzle(event.target.value)} required /><span>mm</span></div></label>
+          </div>
+        </EditorSection>
+        <EditorSection title="Build surface and notes" description="Choose the surface used for the test artifacts and record any starting context.">
+          <div className="form-stack">
+            <label>Starting build plate side<select value={surfaceId} onChange={(event) => setSurfaceId(event.target.value)}><option value="">No plate side selected</option>{plates.flatMap((plate) => plate.surfaces.map((surface) => <option key={surface.id} value={surface.id}>{surface.surface_code} · {plate.display_name} · {surface.surface_material ?? 'Surface not specified'}</option>))}</select></label>
+            <label>Operator notes <span className="label-optional">Optional</span><textarea rows={3} value={notes} onChange={(event) => setNotes(event.target.value)} /></label>
+          </div>
+        </EditorSection>
         {error && <p className="form-error">{error}</p>}
       </form>
     </Modal>
@@ -116,7 +123,25 @@ function StepEditor({ calibration, step }: { calibration: Calibration; step: Cal
   }, onSuccess: invalidate, onError: (caught) => setError(caught instanceof ApiClientError ? caught.message : 'Could not save result') })
   if (step.status === 'not_started') return <div className="step-prompt"><p>Record the test conditions and selected result. Later steps stay locked until this required step is complete.</p><button className="button button--primary" onClick={() => start.mutate()} disabled={start.isPending}><Play size={16} /> Start this step</button>{error && <p className="form-error">{error}</p>}</div>
   const fields = step.step_key === 'dimensional' ? dimensionalInputFields.map((field) => ({ ...field, unit: 'mm' })) : resultFields[step.step_key] ?? []
-  return <form className="step-form" onSubmit={(event) => { event.preventDefault(); save.mutate({ complete: true, repeat: false }) }}>{step.step_key === 'dimensional' && <p className="muted">Print an X/Y and hole test, then enter the model dimensions and caliper measurements. Filament Manager calculates Cura Horizontal Expansion and Hole Horizontal Expansion.</p>}<div className="form-grid">{fields.map((field) => 'type' in field && field.type === 'checkbox' ? <label className="check-row" key={field.key}><input type="checkbox" checked={Boolean(values[field.key])} onChange={(event) => setValues((current) => ({ ...current, [field.key]: event.target.checked }))} /><span><strong>{field.label}</strong></span></label> : <label key={field.key}>{field.label}<div className="input-suffix"><input type="number" min={step.step_key === 'dimensional' ? '0.001' : undefined} step="any" value={String(values[field.key] ?? '')} onChange={(event) => setValues((current) => ({ ...current, [field.key]: event.target.value }))} required={step.required} />{field.unit && <span>{field.unit}</span>}</div></label>)}</div>{step.step_key === 'dimensional' && step.status === 'completed' && <div className={step.result.axis_warning ? 'form-error' : 'success-note'}><span>Horizontal Expansion: {String(step.result.xy_offset)} mm · Hole Horizontal Expansion: {String(step.result.hole_xy_offset)} mm.{step.result.axis_warning ? ` X and Y corrections differ by ${String(step.result.axis_difference_mm)} mm; check mechanics or calibrate axes before relying on their average.` : ' X and Y corrections agree within 0.05 mm.'}</span></div>}<label>Observations and artifact reference <span className="label-optional">Recommended</span><textarea rows={4} value={notes} onChange={(event) => setNotes(event.target.value)} placeholder="Visual quality, test range, Cura project, G-code, photo, or print job reference" /></label>{error && <p className="form-error">{error}</p>}<div className="form-actions">{step.status === 'completed' && <button type="button" className="button" onClick={() => save.mutate({ complete: false, repeat: true })}><RefreshCw size={16} /> Repeat and review downstream</button>}<button className="button button--primary" disabled={save.isPending}><Check size={16} /> {step.status === 'completed' ? 'Update result' : 'Complete step'}</button></div></form>
+  return (
+    <form className="step-form editor-form" onSubmit={(event) => { event.preventDefault(); save.mutate({ complete: true, repeat: false }) }}>
+      <EditorSection title="Test result" description={step.step_key === 'dimensional' ? 'Enter the model dimensions and caliper measurements; corrections are calculated by Filament Manager.' : 'Record the selected value from the printed test artifact.'}>
+        <div className="form-grid">
+          {fields.map((field) => 'type' in field && field.type === 'checkbox' ? (
+            <label className="check-row" key={field.key}><input type="checkbox" checked={Boolean(values[field.key])} onChange={(event) => setValues((current) => ({ ...current, [field.key]: event.target.checked }))} /><span><strong>{field.label}</strong></span></label>
+          ) : (
+            <label key={field.key}>{field.label}<div className="input-suffix"><input type="number" min={step.step_key === 'dimensional' ? '0.001' : undefined} step="any" value={String(values[field.key] ?? '')} onChange={(event) => setValues((current) => ({ ...current, [field.key]: event.target.value }))} required={step.required} />{field.unit && <span>{field.unit}</span>}</div></label>
+          ))}
+        </div>
+        {step.step_key === 'dimensional' && step.status === 'completed' ? <div className={step.result.axis_warning ? 'form-error' : 'success-note'}><span>Horizontal Expansion: {String(step.result.xy_offset)} mm · Hole Horizontal Expansion: {String(step.result.hole_xy_offset)} mm.{step.result.axis_warning ? ` X and Y corrections differ by ${String(step.result.axis_difference_mm)} mm; check mechanics or calibrate axes before relying on their average.` : ' X and Y corrections agree within 0.05 mm.'}</span></div> : null}
+      </EditorSection>
+      <EditorSection title="Observations" description="Keep the visual result and artifact reference with this immutable calibration history.">
+        <label>Observations and artifact reference <span className="label-optional">Recommended</span><textarea rows={4} value={notes} onChange={(event) => setNotes(event.target.value)} placeholder="Visual quality, test range, Cura project, G-code, photo, or print job reference" /></label>
+      </EditorSection>
+      {error ? <p className="form-error">{error}</p> : null}
+      <div className="form-actions">{step.status === 'completed' ? <button type="button" className="button" onClick={() => save.mutate({ complete: false, repeat: true })}><RefreshCw size={16} /> Repeat and review downstream</button> : null}<button className="button button--primary" disabled={save.isPending}><Check size={16} /> {step.status === 'completed' ? 'Update result' : 'Complete step'}</button></div>
+    </form>
+  )
 }
 
 export default function CalibrationPage() {

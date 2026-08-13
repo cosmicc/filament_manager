@@ -1,4 +1,4 @@
-1. Print history tied to exact material state
+- **Print history tied to exact material state**
 Finished Print info can be obtained from moonraker/klipper
 Create a canonical PrintJob record containing things like:
 printer
@@ -24,7 +24,7 @@ Moonraker job ID
 Timelapse video link
 
 
-2. Print outcome / quality scoring
+- **Print outcome / quality scoring**
 After a print finishes, offer a very small assessment (and/or pull from moonraker/klipper completed prints):
 Successful
 Failed
@@ -48,7 +48,7 @@ supports fused
 seam artifacts
 
 
-3. Calibration results as actual measurements
+- **Calibration results as actual measurements**
 current calibration workflow already covers temperature, flow, pressure advance, retraction, overhang, and ironing.
 I would make every calibration test produce structured results instead of just a final selected number.
 For example:
@@ -75,7 +75,7 @@ retraction versus stringing
 speed versus print-quality score
 
 
-4. Make profiles hierarchical
+- **Make profiles hierarchical**
 At the moment profiles are scoped by printer and nozzle diameter. I would extend this to inheritance.
 For example:
 Material Family
@@ -113,7 +113,7 @@ FLSun QQ-S
 The effective profile is composed automatically.
 
 
-5. Filament environmental tracking
+- **Filament environmental tracking**
 This could be a major differentiator.
 Add:
 drying_status
@@ -176,7 +176,7 @@ The architecture already anticipates authenticated device adapters and NFC mappi
 
 
 
-6. Create a device API
+- **Create a device API**
 Instead of writing special server integrations for every sensor, expose a generic API:
 /api/devices
 /api/devices/{id}/telemetry
@@ -194,7 +194,7 @@ camera
 temperature probe
 
 
-7. Filament consumption prediction
+- **Filament consumption prediction**
 Once you have print history, you can compare:
 Cura estimated consumption
 Spoolman measured consumption
@@ -243,7 +243,7 @@ Print requires approximately 328 g.
 You might not actually stop prints by default, but provide configurable policies.
 
 
-8. G-code inspection
+- **G-code inspection**
 
 When Moonraker receives a file, Filament Manager could inspect the G-code header.
 Cura embeds a lot of useful metadata.
@@ -271,7 +271,7 @@ Current SPLA profile specifies 225°C
 That is a very useful safety net.
 
 
-9. Profile drift detection
+- **Profile drift detection**
 Because your Cura workstation agent deploys actual Cura files and tracks checksums, you have an opportunity to detect local edits.
 For example:
 Cura workstation: GARUDA-LAPTOP
@@ -297,7 +297,7 @@ Ignore
 That would make your profile deployment system unusually robust.
 
 
-10. Profile branching
+- **Profile branching**
 may eventually want profiles like:
 
 PETG / Quality
@@ -318,7 +318,7 @@ base profile
 Each only overrides a few parameters.
 
 
-11. Dimensional calibration
+- **Dimensional calibration**
 Given that you're already doing dimensional tuning on the printer, I would absolutely add this to the calibration system.
 
 Track:
@@ -347,7 +347,7 @@ material shrinkage correction
 Those shouldn't be treated as the same thing.
 
 
-12. Material property database
+- **Material property database**
 Extend materials beyond slicer settings.
 Store things like:
 density
@@ -371,7 +371,7 @@ For example:
 Show me materials I own that are suitable for outdoor use and can handle 70°C.
 
 
-13. Nozzle tracking
+- **Nozzle tracking**
 I'd strongly recommend turning nozzles into inventory objects.
 
 Something like:
@@ -392,7 +392,7 @@ wear_index
 weighted based on material abrasiveness.
 
 
-14. Printer component lifecycle
+- **Printer component lifecycle**
 You could generalize that concept to:
 nozzle
 Bowden tube
@@ -413,7 +413,7 @@ Filament passed: 18.7 kg
 This turns the application slightly toward printer fleet management without losing the filament focus.
 
 
-15. Build plate lifecycle
+- **Build plate lifecycle**
 build plates currently track condition, cleaning, mesh calibration and material suitability.
 
 I'd expand that into:
@@ -432,7 +432,7 @@ You may discover:
 72% of PETG adhesion failures occur on P2.
 
 
-16. Print failure analytics
+- **Print failure analytics**
 Once you combine print jobs + outcome tags:
 
 Failure rate by:
@@ -459,7 +459,7 @@ Or:
 Retraction >5 mm correlates with increased nozzle clogs.
 
 
-17. Automatic profile recommendations
+- **Automatic profile recommendations**
 Eventually, Filament Manager could calculate a candidate profile from history.
 
 Not “AI” in the marketing sense. Simple statistics first.
@@ -483,7 +483,7 @@ Create profile v14
 No silent changes.
 
 
-18. Compare profiles visually
+- **Compare profiles visually**
 Build a side-by-side diff:
 
 Parameter	v10	v11	v12
@@ -501,7 +501,7 @@ v12  96%
 This would fit naturally with the immutable profile-version architecture you already have.
 
 
-19. QR label improvements
+- **QR label improvements**
 Labels could contain more than just spool ID.
 I'd support configurable templates:
 
@@ -526,7 +526,7 @@ drying
 prints
 
 
-20. Mobile-first scanner mode
+- **Mobile-first scanner mode**
 Create a stripped-down /scan interface.
 The workflow:
 Scan QR
@@ -543,7 +543,7 @@ This would be ideal next to the printer.
 A USB scanner could also send IDs directly into this interface.
 
 
-21. Material purchasing and cost analytics
+- **Material purchasing and cost analytics**
 You're already storing costs.
 Expand this to:
 price/kg
@@ -569,7 +569,7 @@ Failed attempts: $2.87
 Total material cost: $7.08
 
 
-22. Reorder management
+- **Reorder management**
 Once spool inventory is accurate:
 
 Polymaker PETG Black
@@ -583,7 +583,7 @@ Average usage: 380 g/month
 Estimated remaining supply: 1.9 months
 
 
-23. API-first architecture
+- **API-first architecture**
 make basically everything the UI does available through a stable API:
 
 /api/v1/spools
@@ -603,7 +603,7 @@ fm.spools.get("SP-0142")
 fm.printers.set_active_spool(...)
 
 
-24. Webhooks
+- **Webhooks**
 Add outgoing webhooks:
 spool.low
 spool.loaded
@@ -618,7 +618,7 @@ device.offline
 Then Home Assistant, Node-RED, Discord, MQTT bridges, etc. become trivial.
 
 
-25. Backup/restore validation
+- **Backup/restore validation**
 Since PostgreSQL is deliberately canonical and projections are rebuildable, add an application-level command like:
 
 filament-manager verify
@@ -636,7 +636,7 @@ Then:
 filament-manager rebuild-projections
 
 
-26. Observability
+- **Observability**
 You already expose Prometheus metrics.
 Expand them with domain metrics:
 
@@ -655,7 +655,7 @@ drybox_humidity
 Then your Grafana stack can monitor the printing environment too.
 
 
-27. The architecture I think this should evolve toward
+- **The architecture I think this should evolve toward**
 Something like:
 
                         ┌───────────────────┐
@@ -712,3 +712,20 @@ Generic Device API + MQTT for scale/NFC/dry box
 Profile inheritance + profile comparison/analytics
 
 After those, add G-code preflight, material environmental tracking, nozzle/component lifecycle, and statistical profile recommendations.
+
+GUI audit follow-ups
+
+- **Account lifecycle controls**
+  Add secure Administrator workflows to edit roles and display names, deactivate or reactivate accounts, and reset passwords without recreating users.
+
+- **Build-plate maintenance history**
+  Add explicit Mark Cleaned and Mark Mesh Calibrated actions, immutable maintenance records, due-state reminders, and filterable plate history.
+
+- **Active-context controls**
+  Add an intentional in-app Clear Active Spool action, identify the assigned printer by name, and provide the same explicit clear behavior for the selected build-plate side.
+
+- **Mobile data views**
+  Replace horizontally scrolling inventory, profile, activity, integration-job, label, and deployment tables with compact mobile cards that keep their primary actions visible.
+
+- **Operator notifications**
+  Add an in-app notification center for unavailable Moonraker connections, dead projection jobs, low or empty spools, overdue plate maintenance, and Cura deployment failures while retaining structured service logs.

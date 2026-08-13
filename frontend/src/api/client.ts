@@ -26,14 +26,39 @@ export async function apiFetch<T>(path: string, init: RequestInit = {}): Promise
     const csrf = cookieValue('fm_csrf')
     if (csrf) headers.set('X-CSRF-Token', csrf)
   }
-  const response = await fetch(`/api/v1${path}`, {
-    ...init,
-    headers,
-    credentials: 'include',
+  let response: Response
+  try {
+    response = await fetch(`/api/v1${path}`, {
+      ...init,
+      headers,
+      credentials: 'include',
+    })
+  } catch (error) {
+    console.error('[Filament Manager API] Network request failed', {
+      method,
+      path,
+      error: error instanceof Error ? error.message : 'Unknown network error',
+    })
+    throw new ApiClientError(0, 'network_error', 'The application service could not be reached')
+  }
+  const correlationId = response.headers.get('X-Request-ID')
+  console.info('[Filament Manager API] Request completed', {
+    method,
+    path,
+    status: response.status,
+    correlationId,
   })
   if (response.status === 204) return undefined as T
   const body = await response.json().catch(() => null)
   if (!response.ok) {
+    console.error('[Filament Manager API] Request rejected', {
+      method,
+      path,
+      status: response.status,
+      code: body?.code ?? 'request_failed',
+      message: body?.message ?? 'The request could not be completed',
+      correlationId: body?.correlation_id ?? correlationId,
+    })
     throw new ApiClientError(
       response.status,
       body?.code ?? 'request_failed',

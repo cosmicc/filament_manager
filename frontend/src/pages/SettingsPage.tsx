@@ -19,6 +19,7 @@ import type {
   WorkbookImportCounts,
   WorkbookImportRun,
 } from '../api/types'
+import { EditorSection } from '../components/EditorSection'
 import { EmptyState } from '../components/EmptyState'
 import { LoadingState } from '../components/LoadingState'
 import { Modal } from '../components/Modal'
@@ -68,52 +69,18 @@ function CreateUserModal({ onClose }: { onClose: () => void }) {
       )}
     >
       <form id="create-user" className="form-stack" onSubmit={submit}>
-        <div className="form-grid">
-          <label>
-            Username
-            <input
-              value={username}
-              onChange={(event) => setUsername(event.target.value)}
-              minLength={2}
-              maxLength={80}
-              autoComplete="off"
-              required
-            />
-          </label>
-          <label>
-            Display name
-            <input
-              value={displayName}
-              onChange={(event) => setDisplayName(event.target.value)}
-              maxLength={120}
-              required
-            />
-          </label>
-        </div>
-        <label>
-          Role
-          <select value={role} onChange={(event) => setRole(event.target.value as UserRole)}>
-            <option value="administrator">Administrator</option>
-            <option value="operator">Operator</option>
-            <option value="viewer">Viewer</option>
-          </select>
-          <small className="field-help">
-            Administrators manage users and overrides. Operators update workshop data. Viewers are read-only.
-          </small>
-        </label>
-        <label>
-          Temporary password
-          <input
-            type="password"
-            value={password}
-            onChange={(event) => setPassword(event.target.value)}
-            minLength={10}
-            maxLength={256}
-            autoComplete="new-password"
-            required
-          />
-          <small className="field-help">Use at least 10 characters. Share it through a secure channel.</small>
-        </label>
+        <EditorSection title="Account identity" description="Names used for sign-in and attribution in the audit trail.">
+          <div className="form-grid">
+            <label>Username<input value={username} onChange={(event) => setUsername(event.target.value)} minLength={2} maxLength={80} autoComplete="off" required autoFocus /></label>
+            <label>Display name<input value={displayName} onChange={(event) => setDisplayName(event.target.value)} maxLength={120} required /></label>
+          </div>
+        </EditorSection>
+        <EditorSection title="Access and sign-in" description="Assign the least-privileged role and a securely shared temporary password.">
+          <div className="form-stack">
+            <label>Role<select value={role} onChange={(event) => setRole(event.target.value as UserRole)}><option value="administrator">Administrator</option><option value="operator">Operator</option><option value="viewer">Viewer</option></select><small className="field-help">Administrators manage users and overrides. Operators update workshop data. Viewers are read-only.</small></label>
+            <label>Temporary password<input type="password" value={password} onChange={(event) => setPassword(event.target.value)} minLength={10} maxLength={256} autoComplete="new-password" required /><small className="field-help">Use at least 10 characters. Share it through a secure channel.</small></label>
+          </div>
+        </EditorSection>
         {error && <p className="form-error">{error}</p>}
       </form>
     </Modal>

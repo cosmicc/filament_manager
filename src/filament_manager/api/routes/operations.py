@@ -2,8 +2,6 @@
 
 import asyncio
 from datetime import UTC, datetime
-from decimal import Decimal, InvalidOperation
-from typing import Any
 from uuid import UUID
 
 from fastapi import APIRouter, Request, status
@@ -25,6 +23,9 @@ from filament_manager.models.inventory import (
 )
 from filament_manager.models.operations import AuditEvent, Device, OutboxJob
 from filament_manager.services.events import add_audit_event, add_outbox_job
+from filament_manager.services.moonraker_sync import (
+    synchronize_printer_information as apply_printer_information,
+)
 from filament_manager.services.seed import seed_configured_system
 
 from ..dependencies import Administrator, DatabaseSession, Operator, Viewer
@@ -184,85 +185,6 @@ async def list_printers(_: Viewer, session: DatabaseSession) -> list[Printer]:
     return list(result.scalars())
 
 
-def _bounded_text(value: object, limit: int) -> str | None:
-    """Return one safe single-line external value without exposing arbitrary payloads."""
-
-    if not isinstance(value, str):
-        return None
-    normalized = value.strip().replace("\r", " ").replace("\n", " ")
-    return normalized[:limit] or None
-
-
-def _positive_decimal_text(value: object) -> str | None:
-    """Convert a finite positive external number to JSON-safe decimal text."""
-
-    try:
-        parsed = Decimal(str(value))
-    except (InvalidOperation, TypeError):
-        return None
-    if not parsed.is_finite() or parsed <= 0:
-        return None
-    return format(parsed, "f")
-
-
-def _axis_values(value: object) -> tuple[Decimal, Decimal, Decimal] | None:
-    """Read the documented toolhead xyz vector while ignoring an optional E value."""
-
-    if not isinstance(value, list | tuple) or len(value) < 3:
-        return None
-    try:
-        values = tuple(Decimal(str(item)) for item in value[:3])
-    except (InvalidOperation, TypeError):
-        return None
-    if not all(item.is_finite() for item in values):
-        return None
-    return values  # type: ignore[return-value]
-
-
-def _discovered_printer_values(information: Any) -> dict[str, object]:
-    """Extract the allowed canonical subset from Moonraker's documented responses."""
-
-    configfile = information.object_status.get("configfile")
-    settings = configfile.get("settings") if isinstance(configfile, dict) else None
-    settings = settings if isinstance(settings, dict) else {}
-    printer_settings = settings.get("printer")
-    printer_settings = printer_settings if isinstance(printer_settings, dict) else {}
-    extruder_settings = settings.get("extruder")
-    extruder_settings = extruder_settings if isinstance(extruder_settings, dict) else {}
-    kinematics = _bounded_text(printer_settings.get("kinematics"), 48)
-
-    build_volume: dict[str, object] = {}
-    toolhead = information.object_status.get("toolhead")
-    toolhead = toolhead if isinstance(toolhead, dict) else {}
-    axis_minimum = _axis_values(toolhead.get("axis_minimum"))
-    axis_maximum = _axis_values(toolhead.get("axis_maximum"))
-    if axis_minimum and axis_maximum:
-        spans = tuple(maximum - minimum for minimum, maximum in zip(axis_minimum, axis_maximum, strict=True))
-        if all(value > 0 for value in spans):
-            build_volume = {
-                "shape": "round" if kinematics == "delta" else "rectangular",
-                "x_mm": format(spans[0], "f"),
-                "y_mm": format(spans[1], "f"),
-                "z_mm": format(spans[2], "f"),
-            }
-            if kinematics == "delta":
-                build_volume["diameter_mm"] = format(min(spans[0], spans[1]), "f")
-
-    values: dict[str, object] = {
-        "kinematics": kinematics,
-        "klipper_version": _bounded_text(information.printer_info.get("software_version"), 96),
-        "moonraker_version": _bounded_text(information.server_info.get("moonraker_version"), 96),
-        "host_name": _bounded_text(information.printer_info.get("hostname"), 255),
-        "status": _bounded_text(information.printer_info.get("state"), 32) or "unknown",
-    }
-    nozzle = _positive_decimal_text(extruder_settings.get("nozzle_diameter"))
-    if nozzle is not None:
-        values["nozzle_diameter_mm"] = Decimal(nozzle)
-    if build_volume:
-        values["build_volume"] = build_volume
-    return values
-
-
 @router.patch("/printers/{printer_id}", response_model=PrinterResponse)
 async def update_printer(
     printer_id: UUID,
@@ -358,45 +280,16 @@ async def synchronize_printer_information(
             "moonraker_printer_sync_failed",
             "Moonraker printer information synchronization failed",
         ) from exc
-    values = _discovered_printer_values(information)
-    synced_printer: Printer | None = await session.scalar(
-        select(Printer).where(Printer.id == printer_id).with_for_update()
-    )
-    if synced_printer is None:
-        raise ApiError(status.HTTP_404_NOT_FOUND, "unknown_printer", "Printer not found")
-    before: dict[str, object] = {
-        "kinematics": synced_printer.kinematics,
-        "nozzle_diameter_mm": str(synced_printer.nozzle_diameter_mm),
-        "klipper_version": synced_printer.klipper_version,
-        "moonraker_version": synced_printer.moonraker_version,
-        "build_volume": synced_printer.build_volume,
-    }
-    for field, value in values.items():
-        if value is not None:
-            setattr(synced_printer, field, value)
-    now = datetime.now(UTC)
-    synced_printer.last_seen_at = now
-    synced_printer.last_info_sync_at = now
-    synced_printer.record_version += 1
-    add_audit_event(
-        session,
-        actor_id=administrator.id,
-        source="moonraker",
-        action="printer.synchronize_info",
-        object_type="printer",
-        object_id=synced_printer.id,
-        before=before,
-        after={
-            "kinematics": synced_printer.kinematics,
-            "nozzle_diameter_mm": str(synced_printer.nozzle_diameter_mm),
-            "klipper_version": synced_printer.klipper_version,
-            "moonraker_version": synced_printer.moonraker_version,
-            "build_volume": synced_printer.build_volume,
-        },
-        correlation_id=request.state.correlation_id,
-    )
-    await session.commit()
-    return synced_printer
+    try:
+        return await apply_printer_information(
+            session,
+            printer_id=printer_id,
+            information=information,
+            actor_id=administrator.id,
+            correlation_id=request.state.correlation_id,
+        )
+    except LookupError as exc:
+        raise ApiError(status.HTTP_404_NOT_FOUND, "unknown_printer", "Printer not found") from exc
 
 
 @router.post("/system/seed")

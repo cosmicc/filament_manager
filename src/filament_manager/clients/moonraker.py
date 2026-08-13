@@ -109,6 +109,20 @@ class MoonrakerClient:
 
         return await self._post("/server/spoolman/spool_id", {"spool_id": spoolman_id})
 
+    async def active_spool_id(self) -> int | None:
+        """Read the Spoolman ID Moonraker currently tracks for filament usage."""
+
+        payload = await self._get("/server/spoolman/spool_id")
+        result = payload.get("result")
+        if not isinstance(result, dict):
+            raise MoonrakerError("Moonraker active-spool query returned an invalid result")
+        spool_id = result.get("spool_id")
+        if spool_id is None:
+            return None
+        if isinstance(spool_id, bool) or not isinstance(spool_id, int) or spool_id <= 0:
+            raise MoonrakerError("Moonraker returned an invalid active spool ID")
+        return int(spool_id)
+
     async def bed_mesh_state(self) -> MoonrakerBedMeshState:
         """Read saved bed meshes and the loaded mesh through printer object status."""
 

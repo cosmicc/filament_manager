@@ -65,25 +65,10 @@ describe('BuildPlatesPage', () => {
     apiFetchMock.mockReset()
   })
 
-  it('synchronizes Moonraker meshes and reports automatically added plates', async () => {
+  it('reports automatic Moonraker synchronization without requiring a manual control', async () => {
     apiFetchMock.mockImplementation((path: string) => {
       if (path === '/build-plates') return Promise.resolve([plate])
       if (path === '/printers') return Promise.resolve([printer])
-      if (path === '/build-plates/synchronize') {
-        return Promise.resolve({
-          printer_id: printer.id,
-          discovered_codes: ['P1', 'P6'],
-          created_codes: ['P6'],
-          unavailable_codes: [],
-          ignored_profile_count: 1,
-          active_mesh_profile: 'P6',
-          active_plate_code: 'P6',
-          active_surface_code: 'P6',
-          active_plate_changed: true,
-          active_surface_changed: true,
-          synchronized_at: '2026-08-11T14:01:00Z',
-        })
-      }
       return Promise.reject(new Error(`Unexpected API path: ${path}`))
     })
     const queryClient = new QueryClient({
@@ -96,18 +81,26 @@ describe('BuildPlatesPage', () => {
       </QueryClientProvider>,
     )
 
-    const synchronize = await screen.findByRole('button', { name: 'Synchronize with Moonraker' })
-    fireEvent.click(synchronize)
+    expect(await screen.findByText('Automatic Moonraker synchronization is on.')).toBeTruthy()
+    expect(screen.queryByRole('button', { name: 'Synchronize with Moonraker' })).toBeNull()
+    expect(apiFetchMock).not.toHaveBeenCalledWith('/build-plates/synchronize', expect.anything())
+  })
 
-    expect((await screen.findByText(/Added P6/)).textContent).toBe(
-      'Added P6. Checked 2 P-number side meshes. Active side: P6. Ignored 1 non-plate mesh.',
-    )
-    await waitFor(() => {
-      expect(apiFetchMock).toHaveBeenCalledWith(
-        '/build-plates/synchronize',
-        expect.objectContaining({ method: 'POST' }),
-      )
+  it('opens physical plate options in visible grouped sections', async () => {
+    apiFetchMock.mockImplementation((path: string) => {
+      if (path === '/build-plates') return Promise.resolve([plate])
+      if (path === '/printers') return Promise.resolve([printer])
+      return Promise.reject(new Error(`Unexpected API path: ${path}`))
     })
+    const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false }, mutations: { retry: false } } })
+
+    render(<QueryClientProvider client={queryClient}><BuildPlatesPage /></QueryClientProvider>)
+    fireEvent.click(await screen.findByRole('button', { name: 'Edit physical plate' }))
+
+    expect(await screen.findByRole('dialog', { name: 'Edit P1' })).toBeTruthy()
+    expect(screen.getByRole('heading', { name: 'Identity' })).toBeTruthy()
+    expect(screen.getByRole('heading', { name: 'Geometry' })).toBeTruthy()
+    expect(screen.getByRole('heading', { name: 'Condition and use' })).toBeTruthy()
   })
 
   it('selects the exact side instead of assuming the physical plate', async () => {

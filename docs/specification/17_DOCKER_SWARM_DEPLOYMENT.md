@@ -29,7 +29,7 @@ The stack creates its overlay and volumes. For a multi-node Swarm, use shared st
 4. Confirm both service logs report migration completion; keep the documented one-shot migration only for stopped-service recovery.
 5. Seed the configured printer and initial physical P1-P5 plates with Side A once.
 6. Create the first Administrator through a short-lived bootstrap job.
-7. Install the Klipper plate-side macro and synchronize later exact `P<number>` or `P<number>b` meshes from the Administrator Build Plates page.
+7. Install the Klipper plate-side macro; the worker automatically discovers later exact `P<number>` or `P<number>b` meshes and current active state.
 8. Verify all health endpoints, service logs, and remote database connections.
 9. Confirm Spoolman's managed projection fields are ready and a one-minute full convergence job projects existing canonical inventory.
 
@@ -69,6 +69,8 @@ Filament Manager:
 - outbox depth and retry count
 - Spoolman reconciliation lag
 - managed-field readiness and last successful full convergence
+- active-spool and build-plate reconciliation freshness
+- sanitized printer-information synchronization freshness
 - Google publication lag
 
 The image readiness probe connects to the web process over loopback and sends the hostname from `FILAMENT_MANAGER_BASE_URL`, preserving trusted-host validation. Worker and one-shot services must disable this web-only HTTP health check because they do not listen on port 8080.

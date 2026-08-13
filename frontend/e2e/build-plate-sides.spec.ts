@@ -78,6 +78,17 @@ test('groups both sides under one physical plate on desktop and mobile', async (
   await expect(page.getByRole('heading', { name: 'P4b', exact: true })).toBeVisible()
   await expect(page.getByText('PEX', { exact: true })).toBeVisible()
   await expect(page.getByRole('button', { name: 'Active side' })).toBeDisabled()
+  await expect(page.getByText('Automatic Moonraker synchronization is on.')).toBeVisible()
+  await expect(page.getByRole('button', { name: 'Synchronize with Moonraker' })).toHaveCount(0)
+
+  await page.getByRole('button', { name: 'Edit physical plate' }).click()
+  const editor = page.getByRole('dialog', { name: 'Edit P4' })
+  await expect(editor).toBeVisible()
+  await expect(editor.getByRole('heading', { name: 'Identity' })).toBeVisible()
+  await expect(editor.getByRole('heading', { name: 'Geometry' })).toBeVisible()
+  await expect(editor.getByRole('heading', { name: 'Condition and use' })).toBeVisible()
+  await page.keyboard.press('Escape')
+  await expect(editor).toBeHidden()
 
   await page.setViewportSize({ width: 390, height: 844 })
   await expect(page.getByRole('heading', { name: 'Flexible P4' })).toBeVisible()
