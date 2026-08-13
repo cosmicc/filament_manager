@@ -144,7 +144,7 @@ Leave `MOONRAKER_WEBSOCKET_URL` empty to derive `ws://.../websocket` or `wss://.
 
 For initial testing, `ghcr.io/cosmicc/filament-manager:latest` tracks the newest CI-passing `main` build for AMD64 and ARM64. Before production use, replace it with the workflow's immutable `sha-<commit>` tag or resolved digest.
 
-Keep `SPOOLMAN_RECONCILE_INTERVAL_MINUTES=1` so immediate event-driven projections have a frequent complete-rebuild safety net. `SYNC_OUTBOX_WORKERS=2` runs two fair dispatchers, and `SYNC_OUTBOX_LOCK_TIMEOUT_SECONDS=300` allows work abandoned by a terminated worker to be reclaimed without racing a normal bounded API request.
+Keep `SPOOLMAN_RECONCILE_INTERVAL_MINUTES=1` so immediate event-driven projections have a frequent complete-rebuild safety net. `MOONRAKER_STATE_INTERVAL_SECONDS=15` aligns the active spool and build-plate side automatically, while `MOONRAKER_INFO_INTERVAL_SECONDS=300` refreshes sanitized printer details. `SYNC_OUTBOX_WORKERS=2` runs two fair dispatchers, and `SYNC_OUTBOX_LOCK_TIMEOUT_SECONDS=300` allows work abandoned by a terminated worker to be reclaimed without racing a normal bounded API request.
 
 When Google publication is enabled, set `GOOGLE_ENABLED=true`, `GOOGLE_SPREADSHEET_ID`, and `GOOGLE_SERVICE_ACCOUNT_JSON`. The JSON must be compact and one line. When sourcing `.env` in a shell, surround the complete JSON value with single quotes.
 
@@ -297,8 +297,8 @@ The separate `docker/spoolman-stack.yml` and `docker/filament-manager-stack.yml`
 - Before restarting, run `grep -Rns --include='*.cfg' 'variable_active_plate' ~/printer_data/config` on the Klipper host and confirm every included definition is exactly `variable_active_plate: "UNSET"`.
 - Ensure Klipper already has P1, P2, P3, P4, and P5 Side A mesh profiles and a configured `[save_variables]` section before using `SELECT_BUILD_PLATE`.
 - Restart Moonraker and Klipper, then test `SET_ACTIVE_SPOOL ID=<Spoolman ID>` and `SELECT_BUILD_PLATE PLATE=P1` with the printer idle.
-- Sign in as an Administrator, open **Build Plates**, select the printer, and choose **Synchronize with Moonraker**. Exact `P<number>` meshes become Side A; exact `P<number>b` meshes become Side B of the same physical plate. The loaded matching mesh becomes the active side.
-- To add a physical plate later, save Side A as the next name, such as `P6`. If it is double-sided, save its other mesh as `P6b`. Synchronize again; existing physical and side details are preserved, and missing meshes are shown as unavailable rather than deleted.
+- Sign in, open **Build Plates**, and select the printer. Within 15 seconds, exact `P<number>` meshes become Side A, exact `P<number>b` meshes become Side B of the same physical plate, and the loaded matching mesh becomes the active side.
+- To add a physical plate later, save Side A as the next name, such as `P6`. If it is double-sided, save its other mesh as `P6b`. The next automatic state pass adds it; existing physical and side details are preserved, and missing meshes are shown as unavailable rather than deleted.
 
 ## Upgrade
 

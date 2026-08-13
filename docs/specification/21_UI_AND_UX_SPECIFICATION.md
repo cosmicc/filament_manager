@@ -45,13 +45,17 @@ Use a persistent stepper with the exact seven steps. Each step has instructions,
 
 ## Build plate UX
 
-Cards begin with physical P1-P5 and naturally order later discovered plates. Each physical card edits and shows its description, manufacturer/product, shape/dimensions, magnetic/flexible state, condition/status, preferred materials, temperature limit, cleaning state, and nested Side A/Side B panels with exact mesh, surface material, smooth/textured finish, mesh availability/check/calibration time, and notes. The active side is visually explicit. Administrators receive synchronization feedback; Operators may edit metadata and select available sides without importing integration-controlled records.
+Full-width summaries begin with physical P1-P5 and naturally order later discovered plates. Each physical card shows its description, manufacturer/product, shape/dimensions, magnetic/flexible state, condition/status, preferred materials, temperature limit, cleaning state, and nested Side A/Side B panels with exact mesh, surface material, smooth/textured finish, mesh availability/check/calibration time, and notes. The active side is visually explicit. State synchronizes automatically every 15 seconds; Operators may edit metadata and select available sides without directly creating integration-controlled records.
 
 The Material Profiles page lists sanitized existing Cura material candidates reported by paired agents. Import requires explicit canonical filament, printer/nozzle, and optional preferred-side mapping and creates a draft without modifying the workstation file.
 
 The Templates page creates complete generic material settings revisions and publishes them per printer/nozzle. The Filaments page requires a published template in its routine creation flow, explains that a product-owned draft is copied, renders real remembered color samples, and links each product to a complete detail/settings editor. A color sample change states that it applies to all matching existing and future color names. The Spools page creates physical spools from canonical products and lets Operators edit or clear their free-text bucket locations while explaining that Filament Manager synchronizes the value to Spoolman. Cura Workstations shows unmanaged material count and requires an explicit replacement warning before authoritative takeover of an existing user library.
 
-The Printers page shows sanitized discovered Klipper/Moonraker versions, hostname, kinematics, nozzle, and build volume alongside editable hardware metadata. Only Administrators may synchronize or edit printer information, and no connection address or secret appears in the browser.
+The Printers page shows sanitized discovered Klipper/Moonraker versions, hostname, kinematics, nozzle, and build volume alongside editable hardware metadata. Information synchronizes automatically every 5 minutes, while operational state refreshes every 15 seconds. Only Administrators may edit printer information, and no connection address or secret appears in the browser.
+
+## Editing pattern
+
+Record creation and editing uses one shared accessible modal shell with a clear title and description, visible named option groups, a scrollable body, and consistent Cancel/Save footer actions. Do not hide editable fields in fold-down sections. Persistent multi-step workflows such as calibration and workbook import remain in-page but use the same visible grouped-section treatment.
 
 ## Google status
 

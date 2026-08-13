@@ -32,7 +32,15 @@ async def schedule_periodic_jobs(session: AsyncSession) -> int:
         (
             "spoolman.reconcile.full",
             settings.spoolman.full_reconcile_interval_minutes * 60,
-        )
+        ),
+        (
+            "moonraker.state.reconcile",
+            settings.sync.moonraker_state_interval_seconds,
+        ),
+        (
+            "moonraker.printer_info.reconcile",
+            settings.sync.moonraker_info_interval_seconds,
+        ),
     ]
     if settings.google.enabled:
         schedules.append(("google.publish.pending", settings.google.publish_interval_seconds))

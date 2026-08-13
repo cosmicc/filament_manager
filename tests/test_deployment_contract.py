@@ -77,6 +77,8 @@ def test_example_environment_matches_the_database_contract() -> None:
     assert values["FILAMENT_MANAGER_DATABASE_MIGRATION_LOCK_TIMEOUT_SECONDS"] == "300"
     assert values["SPOOLMAN_RECONCILE_INTERVAL_MINUTES"] == "1"
     assert values["SYNC_OUTBOX_LOCK_TIMEOUT_SECONDS"] == "300"
+    assert values["MOONRAKER_STATE_INTERVAL_SECONDS"] == "15"
+    assert values["MOONRAKER_INFO_INTERVAL_SECONDS"] == "300"
 
     for relative_path in (
         "docker-stack.yml",
@@ -86,6 +88,8 @@ def test_example_environment_matches_the_database_contract() -> None:
         content = _read(relative_path)
         assert "${SPOOLMAN_RECONCILE_INTERVAL_MINUTES:-1}" in content
         assert "${SYNC_OUTBOX_LOCK_TIMEOUT_SECONDS:-300}" in content
+        assert "${MOONRAKER_STATE_INTERVAL_SECONDS:-15}" in content
+        assert "${MOONRAKER_INFO_INTERVAL_SECONDS:-300}" in content
 
 
 def test_image_healthcheck_uses_the_trusted_host_aware_probe() -> None:

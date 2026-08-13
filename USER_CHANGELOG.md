@@ -1,5 +1,27 @@
 # User Changelog
 
+## 0.1.6 - 08.12.2026
+
+### Added
+
+- Added automatic active-spool, active build-plate, mesh, and printer-information updates from Moonraker.
+- Added clear active-spool indicators in the spool table and selected-spool details.
+- Added consistent grouped editing dialogs throughout the application, with all options visible in named sections.
+- Added browser and service console diagnostics so failed requests and background synchronization errors include useful context.
+
+### Changed
+
+- Build Plates and Printers now synchronize automatically; manual synchronization buttons are no longer required.
+- Build Plates and Printers now use roomier full-width layouts with clearly grouped summaries and editing actions.
+- Filament, template, profile, spool, account, printer, plate, and calibration setup editors now share the same editing pattern.
+- Cura material settings are shown in visible named groups instead of a fold-down advanced section.
+
+### Fixed
+
+- Fixed a spool selected in Klipper, Moonraker, or Spoolman not becoming active in Filament Manager.
+- Fixed Moonraker printer and build-plate data appearing not to load because synchronization depended on nonworking manual actions.
+- Fixed errors being too generic to analyze from application and browser consoles.
+
 ## 0.1.5 - 08.11.2026
 
 ### Added

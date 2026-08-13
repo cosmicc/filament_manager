@@ -24,6 +24,7 @@ The product name is **Filament Manager**. Do not introduce the former project na
 14. `filament_colors` owns the case-insensitive mapping from a human color name to its six-digit screen sample. A sample change updates every matching product mirror and queues their Spoolman projections; never treat per-product color hex as independent state.
 15. Printer information synchronization reads only documented Moonraker/Klipper server, printer, `configfile.settings`, and `toolhead` fields. Keep connection values server-side, sanitize all external text and numbers, and preserve manual manufacturer, model, nozzle material, extruder type, and notes.
 16. Canonical inventory changes queue Spoolman projection immediately. The one-minute safety sweep must first import printer-recorded usage, then converge every vendor, filament, and spool so an empty/rebuilt Spoolman database and missed/dead jobs repair automatically. Provision managed custom fields through the supported API, JSON-encode their values, preserve unknown fields, paginate complete collections, and never overwrite remote remaining weight during metadata-only convergence.
+17. The worker automatically aligns the configured printer's active spool and exact P-number build-plate side with Moonraker every 15 seconds and refreshes sanitized printer information every 5 minutes. Preserve these automatic defaults, keep manual integration actions optional, and never log connection credentials or external response bodies.
 
 ## Required stack
 

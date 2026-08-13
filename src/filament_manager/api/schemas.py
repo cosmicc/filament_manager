@@ -179,6 +179,7 @@ class SpoolResponse(ApiModel):
     status: str
     location: str | None
     spoolman_id: int | None
+    active_printer_id: UUID | None
     last_measurement_at: datetime | None
     notes: str | None
     archived: bool

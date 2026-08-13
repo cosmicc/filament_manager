@@ -1,8 +1,9 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Boxes, CheckCircle2, Filter, MapPin, Plus, QrCode, Scale, Search, Star } from 'lucide-react'
-import { type CSSProperties, type FormEvent, useMemo, useState } from 'react'
+import { type CSSProperties, type FormEvent, useEffect, useMemo, useState } from 'react'
 import { ApiClientError, apiFetch, idempotencyKey } from '../api/client'
 import type { Filament, Page, Spool } from '../api/types'
+import { EditorSection } from '../components/EditorSection'
 import { EmptyState } from '../components/EmptyState'
 import { LoadingState } from '../components/LoadingState'
 import { Modal } from '../components/Modal'
@@ -60,12 +61,20 @@ function WeighModal({ spool, onClose }: { spool: Spool; onClose: () => void }) {
     <Modal title={`Weigh ${spool.spool_code}`} description="Enter the complete spool weight. Tare is deducted automatically." onClose={onClose} footer={<><button className="button" onClick={onClose}>Cancel</button><button className="button button--primary" form="weigh-form" disabled={mutation.isPending || !grossMass}><Scale size={17} />{confirmed ? 'Confirm measurement' : 'Record measurement'}</button></>}>
       <form id="weigh-form" className="form-stack" onSubmit={(event) => void submit(event)}>
         <div className="spool-identity-callout"><span className="filament-swatch" style={{ '--swatch': `#${spool.color_hex ?? '2F80A5'}` } as CSSProperties} /><div><strong>{spool.vendor_name ?? 'Unspecified'} {spool.material_type}</strong><span>{spool.color_name} · expected {grams(spool.remaining_mass_expected_g)}</span></div></div>
-        <label>Gross weight (grams)<div className="input-suffix"><input type="number" min="0" step="0.1" inputMode="decimal" value={grossMass} onChange={(event) => setGrossMass(event.target.value)} autoFocus required /><span>g</span></div></label>
-        {Number(spool.tare_mass_g) <= 0 && <label>Verified empty-spool tare<div className="input-suffix"><input type="number" min="0.1" step="0.1" inputMode="decimal" value={tareMass} onChange={(event) => setTareMass(event.target.value)} required /><span>g</span></div><small className="field-help">This establishes the previously unknown tare and is preserved with the measurement.</small></label>}
-        <div className="measurement-math"><span><small>{Number(spool.tare_mass_g) > 0 ? 'Stored tare' : 'New tare'}</small><strong>{tareMass ? grams(tareMass, 1) : '—'}</strong></span><span className="math-symbol">−</span><span><small>Calculated filament</small><strong>{net == null ? '—' : grams(net, 1)}</strong></span></div>
-        <label>Notes <span className="label-optional">Optional</span><textarea value={notes} onChange={(event) => setNotes(event.target.value)} rows={3} maxLength={4000} placeholder="Scale, reason for correction, or other context" /></label>
-        {confirmed && <label className="check-row"><input type="checkbox" checked={confirmed} onChange={(event) => setConfirmed(event.target.checked)} /><span><strong>Confirm unexpected increase</strong><small>This preserves the correction in the audit trail.</small></span></label>}
-        {user?.role === 'administrator' && net != null && net > Number(spool.nominal_net_mass_g) && <label className="check-row"><input type="checkbox" checked={override} onChange={(event) => setOverride(event.target.checked)} /><span><strong>Allow value above nominal capacity</strong><small>Administrator override; use only after verifying the tare and scale.</small></span></label>}
+        <EditorSection title="Measurement" description="Enter the full spool weight; Filament Manager calculates remaining filament from the trusted tare.">
+          <div className="form-stack">
+            <label>Gross weight (grams)<div className="input-suffix"><input type="number" min="0" step="0.1" inputMode="decimal" value={grossMass} onChange={(event) => setGrossMass(event.target.value)} autoFocus required /><span>g</span></div></label>
+            {Number(spool.tare_mass_g) <= 0 && <label>Verified empty-spool tare<div className="input-suffix"><input type="number" min="0.1" step="0.1" inputMode="decimal" value={tareMass} onChange={(event) => setTareMass(event.target.value)} required /><span>g</span></div><small className="field-help">This establishes the previously unknown tare and is preserved with the measurement.</small></label>}
+            <div className="measurement-math"><span><small>{Number(spool.tare_mass_g) > 0 ? 'Stored tare' : 'New tare'}</small><strong>{tareMass ? grams(tareMass, 1) : '—'}</strong></span><span className="math-symbol">−</span><span><small>Calculated filament</small><strong>{net == null ? '—' : grams(net, 1)}</strong></span></div>
+          </div>
+        </EditorSection>
+        <EditorSection title="Audit context" description="Record why the measurement or correction was made.">
+          <div className="form-stack">
+            <label>Notes <span className="label-optional">Optional</span><textarea value={notes} onChange={(event) => setNotes(event.target.value)} rows={3} maxLength={4000} placeholder="Scale, reason for correction, or other context" /></label>
+            {confirmed && <label className="check-row"><input type="checkbox" checked={confirmed} onChange={(event) => setConfirmed(event.target.checked)} /><span><strong>Confirm unexpected increase</strong><small>This preserves the correction in the audit trail.</small></span></label>}
+            {user?.role === 'administrator' && net != null && net > Number(spool.nominal_net_mass_g) && <label className="check-row"><input type="checkbox" checked={override} onChange={(event) => setOverride(event.target.checked)} /><span><strong>Allow value above nominal capacity</strong><small>Administrator override; use only after verifying the tare and scale.</small></span></label>}
+          </div>
+        </EditorSection>
         {error && <p className="form-error" role="alert">{error}</p>}
       </form>
     </Modal>
@@ -109,9 +118,15 @@ function CreateSpoolModal({ filaments, onClose }: { filaments: Filament[]; onClo
   })
   return <Modal title="Add a physical spool" description="Choose the canonical filament product, label the spool, and optionally record its first measured weight." onClose={onClose} footer={<><button className="button" onClick={onClose}>Cancel</button><button className="button button--primary" form="create-spool-form" disabled={mutation.isPending || !selected}><Plus size={17} />{mutation.isPending ? 'Creating…' : 'Create spool'}</button></>}>
     <form id="create-spool-form" className="form-stack" onSubmit={(event) => { event.preventDefault(); setError(''); mutation.mutate(event.currentTarget) }}>
-      <label>Filament product<select value={filamentId} onChange={(event) => setFilamentId(event.target.value)} required>{filaments.map((filament) => <option key={filament.id} value={filament.id}>{filament.vendor_name ?? 'Unspecified'} · {filament.material_type} · {filament.color_name}</option>)}</select></label>
-      <div className="form-grid"><label>Spool code<input name="spool_code" pattern="[A-Za-z0-9_-]+" maxLength={64} placeholder="SPOOL-001" required autoFocus /></label><label>Empty spool tare (g)<input name="tare_mass_g" type="number" min="0" step="0.1" defaultValue="0" required /><small className="field-help">Use 0 if unknown; the first weighing will establish it.</small></label><label>Initial gross weight (g)<input name="initial_gross_mass_g" type="number" min="0" step="0.1" /></label><label>Location<input name="location" maxLength={160} placeholder="Rack A" /></label><label>Purchase source<input name="purchase_source" maxLength={160} /></label><label>Purchase date<input name="purchase_date" type="date" /></label><label>Purchase cost<input name="purchase_cost" type="number" min="0" step="0.01" /></label></div>
-      <label>Notes <span className="label-optional">Optional</span><textarea name="notes" rows={2} maxLength={4000} /></label>
+      <EditorSection title="Spool identity" description="Connect the physical label to its canonical filament product.">
+        <div className="form-grid"><label className="form-grid__wide">Filament product<select value={filamentId} onChange={(event) => setFilamentId(event.target.value)} required autoFocus>{filaments.map((filament) => <option key={filament.id} value={filament.id}>{filament.vendor_name ?? 'Unspecified'} · {filament.material_type} · {filament.color_name}</option>)}</select></label><label>Spool code<input name="spool_code" pattern="[A-Za-z0-9_-]+" maxLength={64} placeholder="SPOOL-001" required /></label><label>Location<input name="location" maxLength={160} placeholder="Rack A" /></label></div>
+      </EditorSection>
+      <EditorSection title="Starting weight" description="Record the tare and optional first gross measurement.">
+        <div className="form-grid"><label>Empty spool tare (g)<input name="tare_mass_g" type="number" min="0" step="0.1" defaultValue="0" required /><small className="field-help">Use 0 if unknown; the first weighing will establish it.</small></label><label>Initial gross weight (g)<input name="initial_gross_mass_g" type="number" min="0" step="0.1" /></label></div>
+      </EditorSection>
+      <EditorSection title="Purchase and notes" description="Optional acquisition details and operator context.">
+        <div className="form-grid"><label>Purchase source<input name="purchase_source" maxLength={160} /></label><label>Purchase date<input name="purchase_date" type="date" /></label><label>Purchase cost<input name="purchase_cost" type="number" min="0" step="0.01" /></label><label className="form-grid__wide">Notes <span className="label-optional">Optional</span><textarea name="notes" rows={2} maxLength={4000} /></label></div>
+      </EditorSection>
       {selected && <p className="muted">Nominal filament mass: {grams(selected.nominal_net_mass_g)}. The new spool will be projected to Spoolman automatically.</p>}
       {error && <p className="form-error" role="alert">{error}</p>}
     </form>
@@ -142,8 +157,10 @@ function EditLocationModal({ spool, onClose, onSaved }: { spool: Spool; onClose:
 
   return <Modal title={`Move ${spool.spool_code}`} description="Set the free-text bucket or storage location used by Filament Manager and Spoolman." onClose={onClose} footer={<><button className="button" onClick={onClose}>Cancel</button><button className="button button--primary" form="edit-location-form" disabled={mutation.isPending}><MapPin size={17} />{mutation.isPending ? 'Saving…' : 'Save location'}</button></>}>
     <form id="edit-location-form" className="form-stack" onSubmit={(event) => { event.preventDefault(); setError(''); mutation.mutate() }}>
-      <label>Bucket or location<input value={location} onChange={(event) => setLocation(event.target.value)} maxLength={160} placeholder="Bucket 12" autoFocus /><small className="field-help">Leave this blank to mark the spool as not currently assigned to a bucket.</small></label>
-      <p className="security-note"><MapPin size={16} /> Filament Manager is authoritative after this save and will restore this value if it changes in Spoolman.</p>
+      <EditorSection title="Storage assignment" description="Filament Manager owns this value and projects it to Spoolman.">
+        <label>Bucket or location<input value={location} onChange={(event) => setLocation(event.target.value)} maxLength={160} placeholder="Bucket 12" autoFocus /><small className="field-help">Leave this blank to mark the spool as not currently assigned to a bucket.</small></label>
+        <p className="security-note"><MapPin size={16} /> Filament Manager will restore this value if it changes in Spoolman.</p>
+      </EditorSection>
       {error && <p className="form-error" role="alert">{error}</p>}
     </form>
   </Modal>
@@ -163,9 +180,15 @@ export default function SpoolsPage() {
   const query = useQuery({
     queryKey: ['spools', search, status],
     queryFn: () => apiFetch<Page<Spool>>(`/spools?limit=200${search ? `&search=${encodeURIComponent(search)}` : ''}${status ? `&status=${encodeURIComponent(status)}` : ''}`),
+    refetchInterval: 15_000,
   })
   const filaments = useQuery({ queryKey: ['filaments'], queryFn: () => apiFetch<Filament[]>('/filaments') })
   const items = useMemo(() => query.data?.items ?? [], [query.data?.items])
+  useEffect(() => {
+    if (!selected) return
+    const current = items.find((spool) => spool.id === selected.id)
+    if (current && current !== selected) setSelected(current)
+  }, [items, selected])
   const setActive = useMutation({
     mutationFn: (spool: Spool) => apiFetch(`/spools/${spool.id}/set-active`, { method: 'POST' }),
     onSuccess: async () => {
@@ -193,12 +216,12 @@ export default function SpoolsPage() {
           <div className="table-card">
             <table>
               <thead><tr><th>Spool</th><th>Material</th><th>Remaining</th><th>Status</th><th>Location</th><th>Last weighed</th></tr></thead>
-              <tbody>{items.map((spool) => <tr key={spool.id} className={selected?.id === spool.id ? 'table-row--selected' : ''} onClick={() => setSelected(spool)} tabIndex={0} onKeyDown={(event) => event.key === 'Enter' && setSelected(spool)}><td><div className="table-identity"><span className="filament-swatch" style={{ '--swatch': `#${spool.color_hex ?? '2F80A5'}` } as CSSProperties} /><span><strong>{spool.spool_code}</strong><small>{spool.vendor_name ?? 'No vendor'}</small></span></div></td><td><strong>{spool.material_type}{spool.filler ? ` ${spool.filler}` : ''}</strong><small className="table-subtext">{spool.color_name}</small></td><td><div className="table-progress"><span><strong>{grams(spool.remaining_mass_effective_g)}</strong><small>{percent(spool.remaining_percent)}</small></span><div className="progress progress--small"><span style={{ width: `${Math.min(100, Number(spool.remaining_percent))}%` }} /></div></div></td><td><StatusPill status={spool.status} /></td><td>{spool.location ?? '—'}</td><td>{dateTime(spool.last_measurement_at)}</td></tr>)}</tbody>
+              <tbody>{items.map((spool) => <tr key={spool.id} className={selected?.id === spool.id ? 'table-row--selected' : ''} onClick={() => setSelected(spool)} tabIndex={0} onKeyDown={(event) => event.key === 'Enter' && setSelected(spool)}><td><div className="table-identity"><span className="filament-swatch" style={{ '--swatch': `#${spool.color_hex ?? '2F80A5'}` } as CSSProperties} /><span><strong>{spool.spool_code}</strong><small>{spool.vendor_name ?? 'No vendor'}</small></span></div></td><td><strong>{spool.material_type}{spool.filler ? ` ${spool.filler}` : ''}</strong><small className="table-subtext">{spool.color_name}</small></td><td><div className="table-progress"><span><strong>{grams(spool.remaining_mass_effective_g)}</strong><small>{percent(spool.remaining_percent)}</small></span><div className="progress progress--small"><span style={{ width: `${Math.min(100, Number(spool.remaining_percent))}%` }} /></div></div></td><td><div className="status-stack">{spool.active_printer_id ? <StatusPill status="active" /> : null}<StatusPill status={spool.status} /></div></td><td>{spool.location ?? '—'}</td><td>{dateTime(spool.last_measurement_at)}</td></tr>)}</tbody>
             </table>
           </div>
 
           <aside className={`detail-panel${selected ? ' detail-panel--open' : ''}`}>
-            {selected ? <><header className="detail-panel__header"><div className="table-identity"><span className="filament-swatch filament-swatch--large" style={{ '--swatch': `#${selected.color_hex ?? '2F80A5'}` } as CSSProperties} /><span><p className="eyebrow">Selected spool</p><h2>{selected.spool_code}</h2></span></div><StatusPill status={selected.status} /></header><div className="detail-panel__body"><dl className="definition-list"><div><dt>Filament</dt><dd>{selected.vendor_name} {selected.material_type} · {selected.color_name}</dd></div><div><dt>Remaining</dt><dd>{grams(selected.remaining_mass_effective_g)} / {grams(selected.nominal_net_mass_g)}</dd></div><div><dt>Confidence</dt><dd>{selected.weight_confidence}</dd></div><div><dt>Tare mass</dt><dd>{Number(selected.tare_mass_g) > 0 ? grams(selected.tare_mass_g, 1) : 'Unknown'}</dd></div><div><dt>Spoolman</dt><dd>{selected.spoolman_id ? `ID ${selected.spoolman_id}` : 'Projection pending'}</dd></div><div><dt>Location</dt><dd>{selected.location || 'Not set'}</dd></div></dl><div className="detail-actions">{canEdit && <button className="button button--primary" onClick={() => setWeighing(selected)}><Scale size={17} /> Weigh spool</button>}{canEdit && <button className="button" onClick={() => setEditingLocation(selected)}><MapPin size={17} /> Edit location</button>}{canEdit && <button className="button" disabled={!selected.spoolman_id || setActive.isPending} title={!selected.spoolman_id ? 'Project this spool to Spoolman first' : undefined} onClick={() => setActive.mutate(selected)}><Star size={17} /> Set active</button>}<a className="button" href={`/api/v1/spools/${selected.id}/label`} target="_blank" rel="noreferrer"><QrCode size={17} /> View label</a></div>{actionError && <p className="form-error">{actionError}</p>}{selected.weight_confidence === 'measured' && <p className="success-note"><CheckCircle2 size={17} /> Physical measurement is the trusted remaining value.</p>}</div></> : <EmptyState icon={Boxes} title="Select a spool" description="Choose a row to inspect its trusted mass and available actions." />}
+            {selected ? <><header className="detail-panel__header"><div className="table-identity"><span className="filament-swatch filament-swatch--large" style={{ '--swatch': `#${selected.color_hex ?? '2F80A5'}` } as CSSProperties} /><span><p className="eyebrow">Selected spool</p><h2>{selected.spool_code}</h2></span></div><StatusPill status={selected.active_printer_id ? 'active' : selected.status} /></header><div className="detail-panel__body"><dl className="definition-list"><div><dt>Filament</dt><dd>{selected.vendor_name} {selected.material_type} · {selected.color_name}</dd></div><div><dt>Remaining</dt><dd>{grams(selected.remaining_mass_effective_g)} / {grams(selected.nominal_net_mass_g)}</dd></div><div><dt>Confidence</dt><dd>{selected.weight_confidence}</dd></div><div><dt>Tare mass</dt><dd>{Number(selected.tare_mass_g) > 0 ? grams(selected.tare_mass_g, 1) : 'Unknown'}</dd></div><div><dt>Spoolman</dt><dd>{selected.spoolman_id ? `ID ${selected.spoolman_id}` : 'Projection pending'}</dd></div><div><dt>Printer assignment</dt><dd>{selected.active_printer_id ? 'Active spool' : 'Not active'}</dd></div><div><dt>Location</dt><dd>{selected.location || 'Not set'}</dd></div></dl><div className="detail-actions">{canEdit && <button className="button button--primary" onClick={() => setWeighing(selected)}><Scale size={17} /> Weigh spool</button>}{canEdit && <button className="button" onClick={() => setEditingLocation(selected)}><MapPin size={17} /> Edit location</button>}{canEdit && <button className="button" disabled={!selected.spoolman_id || setActive.isPending || Boolean(selected.active_printer_id)} title={!selected.spoolman_id ? 'Project this spool to Spoolman first' : selected.active_printer_id ? 'This spool is already active' : undefined} onClick={() => setActive.mutate(selected)}><Star size={17} />{selected.active_printer_id ? 'Active spool' : 'Set active'}</button>}<a className="button" href={`/api/v1/spools/${selected.id}/label`} target="_blank" rel="noreferrer"><QrCode size={17} /> View label</a></div>{actionError && <p className="form-error">{actionError}</p>}{selected.weight_confidence === 'measured' && <p className="success-note"><CheckCircle2 size={17} /> Physical measurement is the trusted remaining value.</p>}</div></> : <EmptyState icon={Boxes} title="Select a spool" description="Choose a row to inspect its trusted mass and available actions." />}
           </aside>
         </div>
       )}

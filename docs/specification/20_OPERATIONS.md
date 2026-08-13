@@ -36,7 +36,7 @@ Check:
 - Google publication status
 - Moonraker reachability
 
-Canonical mutations normally begin Spoolman projection within one worker polling cycle. The default one-minute full sweep imports usage before repairing every canonical vendor, filament, and spool. Confirm the Spoolman integration card reports both API and managed-field readiness, and confirm recent `spoolman.reconcile.full` jobs complete.
+Canonical mutations normally begin Spoolman projection within one worker polling cycle. The default one-minute full sweep imports usage before repairing every canonical vendor, filament, and spool. The 15-second Moonraker state job aligns active spool and plate state, while the 5-minute printer-information job refreshes sanitized discovered fields. Confirm the Spoolman integration card reports both API and managed-field readiness, and confirm recent `spoolman.reconcile.full`, `moonraker.state.reconcile`, and `moonraker.printer_info.reconcile` jobs complete. Structured web and worker logs include safe request, scheduler, job, and synchronization diagnostics with correlation IDs but never credentials or external response bodies.
 
 ## Upgrade Spoolman
 

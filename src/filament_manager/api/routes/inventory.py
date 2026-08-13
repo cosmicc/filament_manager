@@ -27,11 +27,13 @@ from filament_manager.models.inventory import (
     MaterialProfile,
     MaterialTemplate,
     MaterialTemplateRevision,
+    Printer,
     Spool,
     SpoolMeasurement,
     Vendor,
 )
 from filament_manager.services.events import add_audit_event, add_outbox_job
+from filament_manager.services.moonraker_sync import synchronize_active_spool
 
 from ..dependencies import DatabaseSession, Operator, Viewer
 from ..errors import ApiError
@@ -156,6 +158,7 @@ def spool_response(spool: Spool) -> SpoolResponse:
         status=spool.status.value,
         location=spool.location,
         spoolman_id=spool.spoolman_id,
+        active_printer_id=spool.active_printer_id,
         last_measurement_at=spool.last_measurement_at,
         notes=spool.notes,
         archived=spool.archived,
@@ -844,11 +847,27 @@ async def set_active_spool(
     operator: Operator,
     session: DatabaseSession,
 ) -> dict[str, str]:
-    """Queue a supported Moonraker active-spool request."""
+    """Set canonical state immediately and queue the supported Moonraker request."""
 
     spool = await _get_spool(session, spool_id)
     if spool.spoolman_id is None:
         raise ApiError(status.HTTP_409_CONFLICT, "spool_not_projected", "Project spool to Spoolman first")
+    configured_printer_code = get_settings().moonraker.printers[0].id
+    printer = await session.scalar(select(Printer).where(Printer.printer_code == configured_printer_code))
+    if printer is None:
+        raise ApiError(
+            status.HTTP_409_CONFLICT,
+            "printer_not_configured",
+            "The configured Moonraker printer is not ready",
+        )
+    await synchronize_active_spool(
+        session,
+        printer_id=printer.id,
+        spoolman_id=spool.spoolman_id,
+        actor_id=operator.id,
+        correlation_id=request.state.correlation_id,
+        commit=False,
+    )
     add_outbox_job(
         session,
         job_type="moonraker.active_spool.set",
@@ -857,17 +876,6 @@ async def set_active_spool(
         aggregate_id=spool.id,
         aggregate_version=spool.record_version,
         payload={"spoolman_id": spool.spoolman_id},
-    )
-    add_audit_event(
-        session,
-        actor_id=operator.id,
-        source="web",
-        action="spool.set_active.requested",
-        object_type="spool",
-        object_id=spool.id,
-        before=None,
-        after={"spoolman_id": spool.spoolman_id},
-        correlation_id=request.state.correlation_id,
     )
     await session.commit()
     return {"status": "queued"}

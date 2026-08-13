@@ -44,7 +44,7 @@ async def synchronize_build_plates(
     *,
     printer_id: UUID,
     mesh_state: MoonrakerBedMeshState,
-    actor_id: UUID,
+    actor_id: UUID | None,
     correlation_id: str,
 ) -> BuildPlateSyncResult:
     """Create discovered plate sides and align availability and active side atomically."""
@@ -108,12 +108,14 @@ async def synchronize_build_plates(
     await session.flush()
 
     unavailable_codes: list[str] = []
+    availability_changed = False
     created_set = set(created_codes)
     for code, surface in surfaces_by_code.items():
         available = code in discovered_set and surface.klipper_mesh_profile == code
         if code not in created_set and surface.mesh_available != available:
             surface.mesh_available = available
             surface.record_version += 1
+            availability_changed = True
         surface.last_mesh_checked_at = synchronized_at
         if not available:
             unavailable_codes.append(code)
@@ -152,34 +154,38 @@ async def synchronize_build_plates(
             payload={"plate_id": str(plate.id)},
         )
 
-    add_audit_event(
-        session,
-        actor_id=actor_id,
-        source="web",
-        action="build_plate.synchronize",
-        object_type="printer",
-        object_id=printer.id,
-        before={
-            "active_plate_id": str(previous_active_plate_id) if previous_active_plate_id else None,
-            "active_plate_surface_id": (
-                str(previous_active_surface_id) if previous_active_surface_id else None
-            ),
-        },
-        after={
-            "active_plate_id": str(printer.active_plate_id) if printer.active_plate_id else None,
-            "active_plate_surface_id": (
-                str(printer.active_plate_surface_id) if printer.active_plate_surface_id else None
-            ),
-            "active_plate_code": active_plate.plate_code if active_plate else None,
-            "active_surface_code": active_surface.surface_code if active_surface else None,
-            "active_mesh_profile": mesh_state.active_profile,
-            "created_surface_codes": created_codes,
-            "discovered_surface_count": len(discovered_codes),
-            "unavailable_surface_codes": sorted(unavailable_codes, key=build_plate_sort_key),
-            "ignored_profile_count": ignored_profile_count,
-        },
-        correlation_id=correlation_id,
+    state_changed = bool(
+        created_codes or availability_changed or active_plate_changed or active_surface_changed
     )
+    if actor_id is not None or state_changed:
+        add_audit_event(
+            session,
+            actor_id=actor_id,
+            source="web" if actor_id is not None else "moonraker",
+            action="build_plate.synchronize",
+            object_type="printer",
+            object_id=printer.id,
+            before={
+                "active_plate_id": str(previous_active_plate_id) if previous_active_plate_id else None,
+                "active_plate_surface_id": (
+                    str(previous_active_surface_id) if previous_active_surface_id else None
+                ),
+            },
+            after={
+                "active_plate_id": str(printer.active_plate_id) if printer.active_plate_id else None,
+                "active_plate_surface_id": (
+                    str(printer.active_plate_surface_id) if printer.active_plate_surface_id else None
+                ),
+                "active_plate_code": active_plate.plate_code if active_plate else None,
+                "active_surface_code": active_surface.surface_code if active_surface else None,
+                "active_mesh_profile": mesh_state.active_profile,
+                "created_surface_codes": created_codes,
+                "discovered_surface_count": len(discovered_codes),
+                "unavailable_surface_codes": sorted(unavailable_codes, key=build_plate_sort_key),
+                "ignored_profile_count": ignored_profile_count,
+            },
+            correlation_id=correlation_id,
+        )
     await session.commit()
     return BuildPlateSyncResult(
         printer_id=printer.id,

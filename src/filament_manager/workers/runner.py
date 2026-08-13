@@ -21,10 +21,17 @@ async def scheduler_loop() -> None:
 
     session_factory = get_session_factory()
     while True:
-        async with session_factory() as session:
-            scheduled = await schedule_periodic_jobs(session)
-            if scheduled:
-                logger.info("periodic_jobs_scheduled", count=scheduled)
+        try:
+            async with session_factory() as session:
+                scheduled = await schedule_periodic_jobs(session)
+                if scheduled:
+                    logger.info("periodic_jobs_scheduled", count=scheduled)
+        except Exception as exc:
+            logger.exception(
+                "periodic_job_scheduling_failed",
+                error_class=type(exc).__name__,
+                error=str(exc),
+            )
         await asyncio.sleep(1)
 
 
@@ -34,12 +41,28 @@ async def dispatcher_loop(worker_number: int) -> None:
     worker_id = f"{socket.gethostname()}-{worker_number}-{uuid4()}"
     session_factory = get_session_factory()
     while True:
-        async with session_factory() as session:
-            jobs = await claim_jobs(session, worker_id, limit=1)
+        try:
+            async with session_factory() as session:
+                jobs = await claim_jobs(session, worker_id, limit=1)
+        except Exception as exc:
+            logger.exception(
+                "outbox_job_claim_failed",
+                worker_number=worker_number,
+                error_class=type(exc).__name__,
+                error=str(exc),
+            )
+            await asyncio.sleep(1)
+            continue
         if not jobs:
             await asyncio.sleep(1)
             continue
         claimed = jobs[0]
+        logger.info(
+            "outbox_job_started",
+            job_id=str(claimed.id),
+            job_type=claimed.job_type,
+            attempt=claimed.attempts + 1,
+        )
         async with session_factory() as session:
             try:
                 await dispatch_job(session, claimed)
@@ -48,11 +71,12 @@ async def dispatcher_loop(worker_number: int) -> None:
             except Exception as exc:
                 await session.rollback()
                 await fail_job(session, claimed, exc)
-                logger.warning(
+                logger.exception(
                     "outbox_job_failed",
                     job_id=str(claimed.id),
                     job_type=claimed.job_type,
                     error_class=type(exc).__name__,
+                    error=str(exc),
                 )
 
 

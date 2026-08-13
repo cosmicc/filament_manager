@@ -11,7 +11,9 @@
 - Cura workstations: last contact, detected Cura versions/machines, scoped credential state, deployment attempts, and warnings
 - Build Plates: per-side Moonraker mesh checks, newly discovered physical plates/sides, unavailable mappings, and the active loaded side
 
-Canonical inventory changes create supported-API Spoolman jobs in the same transaction and dispatch normally begins within one worker polling cycle. Every minute by default, a safety sweep imports printer-recorded usage first and then converges every canonical vendor, filament product, and spool. This sweep rebuilds a blank Spoolman projection and repairs missed work without overwriting unimported remaining weight. Google publication is also scheduled when enabled. External outages create bounded retries and never roll back already committed canonical changes.
+Canonical inventory changes create supported-API Spoolman jobs in the same transaction and dispatch normally begins within one worker polling cycle. Every minute by default, a safety sweep imports printer-recorded usage first and then converges every canonical vendor, filament product, and spool. Every 15 seconds the worker reads Moonraker's supported active Spoolman ID and exact P-number mesh state, and every 5 minutes it refreshes sanitized printer information. These jobs also seed the configured printer and initial plates on a fresh database. Google publication is scheduled when enabled. External outages create bounded retries and never roll back already committed canonical changes.
+
+The web and worker emit structured console logs for request completion, stable API rejections, validation errors, scheduler and outbox activity, and Moonraker synchronization results. Browser API requests also log their method, path, status, and correlation ID. Error logs include safe messages and tracebacks but never credentials, connection URLs, request bodies, or external response bodies.
 
 The worker provisions Filament Manager's text custom fields through Spoolman's field API and JSON-encodes each value as required by Spoolman 0.23.1. It paginates complete collections, preserves custom fields owned by other integrations, uses managed UUIDs to avoid duplicate creates, and reclaims jobs abandoned by a terminated worker after `SYNC_OUTBOX_LOCK_TIMEOUT_SECONDS`.
 
@@ -58,11 +60,11 @@ Verify `http://spoolman:8000/api/v1/health` from the combined Filament Manager s
 
 ### Moonraker is unavailable
 
-Confirm `MOONRAKER_BASE_URL` is reachable from the Swarm node and container network. If `MOONRAKER_WEBSOCKET_URL` is empty, Filament Manager derives the same host with `ws` or `wss` and the `/websocket` path. Confirm the configured API key only when Moonraker requires one.
+Confirm `MOONRAKER_BASE_URL` is reachable from the Swarm node and container network. If `MOONRAKER_WEBSOCKET_URL` is empty, Filament Manager derives the same host with `ws` or `wss` and the `/websocket` path. Confirm the configured API key only when Moonraker requires one. In worker logs, inspect `moonraker_active_spool_sync_failed`, `moonraker_build_plate_sync_failed`, or `moonraker_printer_information_sync_failed`; the associated outbox job retries automatically.
 
 ### A saved build-plate side mesh does not appear
 
-Confirm the mesh is saved in Klipper as exact `P<number>` for Side A or `P<number>b` for Side B, such as `P6` or `P6b`. `P0`, `P01`, uppercase `B`, lowercase plate names, and descriptive profiles are intentionally ignored. Sign in as an Administrator and use **Build Plates → Synchronize with Moonraker**. If the request fails, confirm Klippy is ready and that Moonraker returns the `bed_mesh` object from `/printer/objects/query`.
+Confirm the mesh is saved in Klipper as exact `P<number>` for Side A or `P<number>b` for Side B, such as `P6` or `P6b`. `P0`, `P01`, uppercase `B`, lowercase plate names, and descriptive profiles are intentionally ignored. Wait for the next 15-second automatic state pass, then confirm Klippy is ready and that Moonraker returns the `bed_mesh` object from `/printer/objects/query`. Inspect the worker log and the `moonraker.state.reconcile` job when the page remains stale.
 
 Synchronization never deletes canonical plates or sides or overwrites their descriptive and maintenance metadata. A previously known side is marked unavailable when its same-named mesh is missing. If Moonraker has a valid plate-side mesh loaded, that physical plate and side become active for the selected printer.
 

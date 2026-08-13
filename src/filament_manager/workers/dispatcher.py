@@ -9,6 +9,7 @@ from decimal import Decimal
 from typing import cast
 from uuid import UUID
 
+import structlog
 from sqlalchemy import and_, or_, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import joinedload
@@ -16,7 +17,7 @@ from sqlalchemy.orm import joinedload
 from filament_manager.clients.google_sheets import GoogleSheetsClient
 from filament_manager.clients.moonraker import MoonrakerClient
 from filament_manager.clients.spoolman import SpoolmanClient, SpoolmanNotFoundError
-from filament_manager.config import get_settings
+from filament_manager.config import PrinterConfig, get_settings
 from filament_manager.domain.spoolman import decode_text_extra_field
 from filament_manager.models.enums import JobStatus, SpoolStatus
 from filament_manager.models.inventory import (
@@ -27,12 +28,19 @@ from filament_manager.models.inventory import (
     Vendor,
 )
 from filament_manager.models.operations import OutboxJob, ProjectionState
+from filament_manager.services.build_plate_sync import synchronize_build_plates
 from filament_manager.services.events import add_audit_event, add_outbox_job
+from filament_manager.services.moonraker_sync import (
+    synchronize_active_spool,
+    synchronize_printer_information,
+)
+from filament_manager.services.seed import seed_configured_system
 
 SPOOLMAN_FIELD_LOCK_KEY = 0x464D53504649454C
 SPOOLMAN_FIELD_CACHE_SECONDS = 30
 _spoolman_fields_ready_until = 0.0
 _spoolman_fields_lock = asyncio.Lock()
+logger = structlog.get_logger()
 
 
 def _fingerprint(value: object) -> str:
@@ -678,6 +686,133 @@ async def _reconcile_spoolman(session: AsyncSession, client: SpoolmanClient) -> 
     return remotes
 
 
+async def _configured_printer_bindings(
+    session: AsyncSession,
+) -> list[tuple[Printer, PrinterConfig]]:
+    """Seed and bind canonical printers to validated server-side configuration."""
+
+    settings = get_settings()
+    seeded = await seed_configured_system(session, settings)
+    await session.commit()
+    if seeded["printers"] or seeded["plates"]:
+        logger.info("configured_system_seeded", **seeded)
+    result = await session.execute(
+        select(Printer).where(Printer.printer_code.in_([item.id for item in settings.moonraker.printers]))
+    )
+    printers = {printer.printer_code: printer for printer in result.scalars()}
+    bindings: list[tuple[Printer, PrinterConfig]] = []
+    for configured in settings.moonraker.printers:
+        printer = printers.get(configured.id)
+        if printer is None:
+            raise LookupError(f"Configured printer {configured.id} was not seeded")
+        bindings.append((printer, configured))
+    return bindings
+
+
+async def _reconcile_moonraker_state(session: AsyncSession, job: OutboxJob) -> None:
+    """Poll active spool and build-plate state without one surface blocking the other."""
+
+    failures: list[Exception] = []
+    for printer, configured in await _configured_printer_bindings(session):
+        client = MoonrakerClient(configured)
+        active_result, mesh_result = await asyncio.gather(
+            client.active_spool_id(),
+            client.bed_mesh_state(),
+            return_exceptions=True,
+        )
+        correlation_prefix = f"automatic:{job.id}:{printer.printer_code}"
+        if isinstance(active_result, BaseException):
+            if not isinstance(active_result, Exception):
+                raise active_result
+            failures.append(active_result)
+            logger.error(
+                "moonraker_active_spool_sync_failed",
+                printer_code=printer.printer_code,
+                error_class=type(active_result).__name__,
+                error=str(active_result),
+                exc_info=(type(active_result), active_result, active_result.__traceback__),
+            )
+        else:
+            active_sync = await synchronize_active_spool(
+                session,
+                printer_id=printer.id,
+                spoolman_id=active_result,
+                actor_id=None,
+                correlation_id=f"{correlation_prefix}:active-spool",
+            )
+            logger.info(
+                "moonraker_active_spool_synchronized",
+                printer_code=printer.printer_code,
+                spoolman_id=active_sync.spoolman_id,
+                active_spool_id=(str(active_sync.active_spool_id) if active_sync.active_spool_id else None),
+                changed=active_sync.changed,
+            )
+        if isinstance(mesh_result, BaseException):
+            if not isinstance(mesh_result, Exception):
+                raise mesh_result
+            failures.append(mesh_result)
+            logger.error(
+                "moonraker_build_plate_sync_failed",
+                printer_code=printer.printer_code,
+                error_class=type(mesh_result).__name__,
+                error=str(mesh_result),
+                exc_info=(type(mesh_result), mesh_result, mesh_result.__traceback__),
+            )
+        else:
+            plate_sync = await synchronize_build_plates(
+                session,
+                printer_id=printer.id,
+                mesh_state=mesh_result,
+                actor_id=None,
+                correlation_id=f"{correlation_prefix}:build-plates",
+            )
+            logger.info(
+                "moonraker_build_plates_synchronized",
+                printer_code=printer.printer_code,
+                discovered_count=len(plate_sync.discovered_codes),
+                created_codes=plate_sync.created_codes,
+                unavailable_codes=plate_sync.unavailable_codes,
+                active_surface_code=plate_sync.active_surface_code,
+            )
+    if failures:
+        raise RuntimeError(f"Moonraker state synchronization had {len(failures)} failure(s)") from failures[0]
+
+
+async def _reconcile_moonraker_printer_information(session: AsyncSession, job: OutboxJob) -> None:
+    """Refresh sanitized printer identity and hardware facts on a slower interval."""
+
+    failures: list[Exception] = []
+    for printer, configured in await _configured_printer_bindings(session):
+        try:
+            information = await MoonrakerClient(configured).printer_information()
+            synchronized = await synchronize_printer_information(
+                session,
+                printer_id=printer.id,
+                information=information,
+                actor_id=None,
+                correlation_id=f"automatic:{job.id}:{printer.printer_code}:printer-info",
+            )
+            logger.info(
+                "moonraker_printer_information_synchronized",
+                printer_code=printer.printer_code,
+                status=synchronized.status,
+                klipper_version=synchronized.klipper_version,
+                moonraker_version=synchronized.moonraker_version,
+            )
+        except Exception as exc:
+            failures.append(exc)
+            logger.exception(
+                "moonraker_printer_information_sync_failed",
+                printer_code=printer.printer_code,
+                error_class=type(exc).__name__,
+                error=str(exc),
+            )
+    if failures:
+        raise RuntimeError(
+            f"Moonraker printer-information synchronization had {len(failures)} failure(s)"
+        ) from failures[0]
+
+
 async def dispatch_job(session: AsyncSession, job: OutboxJob) -> None:
     """Execute one claimed job with current canonical state."""
 
@@ -713,6 +848,10 @@ async def dispatch_job(session: AsyncSession, job: OutboxJob) -> None:
         # the potentially longer full metadata convergence pass.
         await session.commit()
         await _converge_spoolman(session, spoolman, remote_spools)
+    elif job.job_type == "moonraker.state.reconcile":
+        await _reconcile_moonraker_state(session, job)
+    elif job.job_type == "moonraker.printer_info.reconcile":
+        await _reconcile_moonraker_printer_information(session, job)
     elif job.job_type == "moonraker.active_spool.set":
         spoolman_id = int(str(job.payload["spoolman_id"]))
         await MoonrakerClient(settings.moonraker.printers[0]).set_active_spool(spoolman_id)

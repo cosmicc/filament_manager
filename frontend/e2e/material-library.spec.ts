@@ -51,7 +51,7 @@ const spool = {
   nominal_net_mass_g: '1000', tare_mass_g: '200', remaining_mass_expected_g: '800',
   remaining_mass_measured_g: '800', remaining_mass_effective_g: '800',
   remaining_percent: '80', weight_confidence: 'measured', status: 'in_stock',
-  location: 'Bucket 3', spoolman_id: 7, last_measurement_at: '2026-08-11T14:00:00Z',
+  location: 'Bucket 3', spoolman_id: 7, active_printer_id: null, last_measurement_at: '2026-08-11T14:00:00Z',
   notes: null, archived: false, record_version: 3,
 }
 
@@ -74,13 +74,13 @@ test('template library is usable at desktop and mobile sizes', async ({ page }) 
   await expect(page.getByRole('heading', { name: 'Generic PLA' })).toBeVisible()
   await expect(page.getByText('Workshop Printer')).toBeVisible()
   await page.getByRole('button', { name: 'New revision' }).click()
-  await expect(page.getByRole('heading', { name: 'Copy and adjust settings' })).toBeVisible()
+  await expect(page.getByRole('dialog', { name: 'New Generic PLA revision' })).toBeVisible()
   await expect(page.getByLabel('Printing temperature (°C)')).toHaveValue('210')
-  await page.getByText(/All additional Cura Material Settings/).click()
+  await expect(page.getByRole('heading', { name: /Additional Cura Material Settings/ })).toBeVisible()
   await expect(page.getByText('Enable Klipper Smooth Time', { exact: true })).toBeVisible()
 
   await page.setViewportSize({ width: 390, height: 844 })
-  await expect(page.getByRole('heading', { name: 'Copy and adjust settings' })).toBeVisible()
+  await expect(page.getByRole('dialog', { name: 'New Generic PLA revision' })).toBeVisible()
   await expect(page.getByRole('button', { name: 'Save new revision' })).toBeVisible()
 })
 
@@ -142,6 +142,8 @@ test('filament details remember colors and save Cura edits as a new version', as
 
   await page.goto(`/filaments/${filament.id}`)
   await expect(page.getByRole('heading', { name: 'Workshop PLA' })).toBeVisible()
+  await page.getByRole('button', { name: 'Edit', exact: true }).click()
+  await expect(page.getByRole('dialog', { name: 'Edit filament product' })).toBeVisible()
   await page.getByLabel('Color name', { exact: true }).fill('Red')
   await page.getByLabel('Screen color sample').fill('#ff0000')
   await page.getByRole('button', { name: 'Save filament' }).click()

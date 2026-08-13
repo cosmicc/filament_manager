@@ -61,11 +61,11 @@ Spoolman has no built-in user authentication. Keep the printer-facing endpoint o
 
 ## Filament Manager relationship
 
-Filament Manager reads and reconciles Spoolman through the API. It may also request active-spool changes through Moonraker, but it does not proxy Moonraker's normal usage traffic.
+Filament Manager reads and reconciles Spoolman through the API. It may also request active-spool changes through Moonraker, but it does not proxy Moonraker's normal usage traffic. Every 15 seconds by default, it reads Moonraker's supported `GET /server/spoolman/spool_id` response and aligns the canonical active spool, including clearing the assignment.
 
-An Administrator may synchronize Build Plates through Moonraker's supported `POST /printer/objects/query` endpoint. Filament Manager reads `bed_mesh.profiles`, groups exact P-number A/B side meshes under physical plates, tracks missing meshes without deletion, and uses `bed_mesh.profile_name` to align the active physical plate and side.
+The same automatic state pass reads Build Plates through Moonraker's supported `POST /printer/objects/query` endpoint. Filament Manager reads `bed_mesh.profiles`, groups exact P-number A/B side meshes under physical plates, tracks missing meshes without deletion, and uses `bed_mesh.profile_name` to align the active physical plate and side.
 
-An Administrator may also synchronize useful Printer information. Filament Manager reads `/server/info`, `/printer/info`, `configfile.settings`, and the documented `toolhead` envelope to discover Moonraker/Klipper versions, sanitized hostname, kinematics, nozzle diameter, and build volume. Connection URLs, process details, and paths never reach the browser. Manufacturer, model, nozzle material, extruder type, and notes remain editable manual fields.
+Every 5 minutes by default, Filament Manager reads `/server/info`, `/printer/info`, `configfile.settings`, and the documented `toolhead` envelope to discover Moonraker/Klipper versions, sanitized hostname, kinematics, nozzle diameter, and build volume. Connection URLs, process details, and paths never reach the browser. Manufacturer, model, nozzle material, extruder type, and notes remain editable manual fields.
 
 ## Authoritative implementation references
 

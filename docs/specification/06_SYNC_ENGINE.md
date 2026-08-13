@@ -20,6 +20,8 @@ Suggested job types:
 - `google.profile.publish`
 - `google.plate.publish`
 - `moonraker.active_spool.set`
+- `moonraker.state.reconcile`
+- `moonraker.printer_info.reconcile`
 
 ## Connection model
 
@@ -58,6 +60,10 @@ For each spool:
 5. Queue Google publication and any necessary Spoolman normalization.
 6. Store a remote fingerprint and acknowledgment time.
 7. Converge every canonical vendor, filament, and spool after importing usage, omitting remaining weight from metadata-only updates.
+
+## Moonraker inbound reconciliation
+
+The worker reads Moonraker's supported active Spoolman ID and exact P-number bed-mesh state every 15 seconds by default. It updates canonical active-spool, active physical-plate, active side, availability, and last-seen state without requiring a browser request. A separate 5-minute job reads only the approved sanitized printer-information fields. Each state request may make safe partial progress when the other endpoint is unavailable, then the outbox job retries the failed portion.
 
 ## Measurement reconciliation
 

@@ -109,6 +109,37 @@ async def test_moonraker_bed_mesh_state_rejects_missing_object() -> None:
 
 @respx.mock
 @pytest.mark.asyncio
+async def test_moonraker_active_spool_reads_supported_endpoint() -> None:
+    """The active-spool reader accepts a tracked ID and an explicit clear."""
+
+    route = respx.get("http://moonraker.test:7125/server/spoolman/spool_id").mock(
+        side_effect=[
+            httpx.Response(200, json={"result": {"spool_id": 17}}),
+            httpx.Response(200, json={"result": {"spool_id": None}}),
+        ]
+    )
+    client = MoonrakerClient(printer_config())
+
+    assert await client.active_spool_id() == 17
+    assert await client.active_spool_id() is None
+    assert route.call_count == 2
+
+
+@respx.mock
+@pytest.mark.asyncio
+async def test_moonraker_active_spool_rejects_malformed_id() -> None:
+    """Malformed integration state cannot select an arbitrary canonical spool."""
+
+    respx.get("http://moonraker.test:7125/server/spoolman/spool_id").mock(
+        return_value=httpx.Response(200, json={"result": {"spool_id": "17"}})
+    )
+
+    with pytest.raises(MoonrakerError, match="invalid active spool ID"):
+        await MoonrakerClient(printer_config()).active_spool_id()
+
+
+@respx.mock
+@pytest.mark.asyncio
 async def test_moonraker_printer_information_uses_documented_fields() -> None:
     """Printer discovery reads server, printer, configfile, and toolhead data only."""
 

@@ -37,6 +37,7 @@ export interface Spool {
   status: 'needs_weighing' | 'in_stock' | 'low' | 'empty' | 'archived'
   location: string | null
   spoolman_id: number | null
+  active_printer_id: string | null
   last_measurement_at: string | null
   notes: string | null
   archived: boolean
