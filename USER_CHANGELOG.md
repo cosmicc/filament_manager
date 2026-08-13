@@ -1,5 +1,34 @@
 # User Changelog
 
+## 0.2.0 - 08.13.2026
+
+### Added
+
+- Added **Preserve before takeover** on Cura Workstations so selected existing Cura materials can become reviewable draft templates before synchronization replaces the local library.
+- Added clear draft and published states for preserved materials, with direct links to review imported templates.
+- Added **Compare settings** on Material Profiles and Material Templates. It compares any profile with another profile or any saved template revision and lists only changed values.
+- Added automatic Cura print spool checks. A matching loaded spool starts normally; a mismatch pauses in Fluidd so you can choose and insert the exact matching spool.
+- Added a safer manual filament-change workflow that clears Spoolman after unload, preheats for the selected replacement, and activates it only after loading finishes.
+- Added direct template links to filament profile details, including inherited/customized settings and a **Reset to Template** action for each override.
+- Added automatic capture of edits made to existing managed Cura materials as new drafts in Filament Manager for review and publication.
+
+### Changed
+
+- Running either workstation-agent installer again now upgrades the existing installation while preserving pairing details, backups, and local agent state.
+- Cura takeover remains unavailable until every material selected for preservation has been reviewed and published.
+- Comparisons remain available across different printers and nozzle sizes, with a prominent scope warning before the difference list.
+- **Set active** is now **Load spool** in Inventory. It sends the request to Fluidd and keeps showing the current physical spool until the change completes.
+- Templates now appear in Cura as `Template PLA`, `Template PETG`, and the equivalent material type under the `Template` brand.
+- A template update now shows its effect separately on each linked filament and creates a draft only after that filament's update is confirmed.
+
+### Fixed
+
+- Fixed Moonraker worker synchronization stopping when an automatic audit identifier exceeded the database limit.
+- Fixed the worker showing a secondary database rollback error instead of retaining the useful original synchronization failure.
+- Fixed agent upgrades conflicting with an already-running Arch Linux service or Windows scheduled task.
+- Fixed a canceled or interrupted spool change being able to show the replacement spool as active before it was physically loaded.
+- Fixed filament profile details not showing which template revision supplies inherited settings.
+
 ## 0.1.6 - 08.12.2026
 
 ### Added

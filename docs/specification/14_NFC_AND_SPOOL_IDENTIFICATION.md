@@ -2,7 +2,7 @@
 
 ## Goal
 
-Detect which spool is placed in the dryer connected to the printer and set the operational active spool with minimal manual work.
+Detect which spool is physically placed in the printer feed path and confirm operational active-spool state with minimal manual work.
 
 ## Tag model
 
@@ -15,7 +15,8 @@ Detect which spool is placed in the dryer connected to the printer and set the o
 
 ```text
 NFC reader -> authenticated adapter event -> Filament Manager lookup
-           -> operator policy check -> Moonraker set active spool
+           -> operator policy check -> guarded load or physical-presence confirmation
+           -> Moonraker sets active spool only after confirmed physical presence
            -> record dryer/printer location and event
 ```
 
@@ -23,7 +24,7 @@ NFC reader -> authenticated adapter event -> Filament Manager lookup
 
 - `detect_only`: display the detected spool
 - `prompt`: ask for confirmation before activation
-- `auto_when_idle`: set active only while printer is idle
+- `auto_when_idle`: request a guarded load only while the printer is idle
 - `strict`: reject unknown tags and warn
 
 Default should be `prompt` until hardware reliability is established.

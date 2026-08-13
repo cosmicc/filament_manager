@@ -84,3 +84,33 @@ class CuraDeployment(UUIDPrimaryKeyMixin, Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     cancellation_reason: Mapped[str | None] = mapped_column(Text)
+
+
+class CuraManagedEditReceipt(UUIDPrimaryKeyMixin, Base):
+    """Idempotent receipt for one edited, known Filament Manager Cura material."""
+
+    __tablename__ = "cura_managed_edit_receipts"
+    __table_args__ = (
+        UniqueConstraint(
+            "material_guid",
+            "content_checksum",
+            name="uq_cura_managed_edit_receipt_content",
+        ),
+        Index("ix_cura_managed_edit_receipt_source", "source_kind", "source_revision_id"),
+    )
+
+    agent_id: Mapped[UUID] = mapped_column(
+        ForeignKey("workstation_agents.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    installation_id: Mapped[str] = mapped_column(String(96), nullable=False)
+    material_guid: Mapped[str] = mapped_column(String(36), nullable=False)
+    source_kind: Mapped[str] = mapped_column(String(16), nullable=False)
+    source_revision_id: Mapped[UUID] = mapped_column(nullable=False)
+    content_checksum: Mapped[str] = mapped_column(String(64), nullable=False)
+    created_profile_revision_id: Mapped[UUID | None] = mapped_column(
+        ForeignKey("material_profiles.id", ondelete="SET NULL")
+    )
+    created_template_revision_id: Mapped[UUID | None] = mapped_column(
+        ForeignKey("material_template_revisions.id", ondelete="SET NULL")
+    )
+    detected_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)

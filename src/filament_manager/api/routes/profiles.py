@@ -3,17 +3,24 @@
 import hashlib
 import json
 from datetime import UTC, datetime
-from decimal import Decimal, InvalidOperation
+from decimal import Decimal
 from uuid import UUID
 
 from fastapi import APIRouter, Request, status
 from fastapi.responses import JSONResponse
 from sqlalchemy import func, select
 
+from filament_manager.domain.cura_import import material_settings_from_cura
 from filament_manager.domain.cura_material_settings import (
-    CURA_EXTENSION_SETTING_KEYS,
     cura_material_settings_catalog,
     cura_settings_for_profile,
+)
+from filament_manager.domain.profile_inheritance import (
+    override_setting_keys,
+    profile_columns_from_settings,
+    resolve_profile_settings,
+    settings_snapshot_from_profile,
+    sparse_profile_overrides,
 )
 from filament_manager.models.enums import ProfileStatus
 from filament_manager.models.inventory import (
@@ -32,6 +39,8 @@ from ..dependencies import DatabaseSession, Operator, Viewer
 from ..errors import ApiError
 from ..schemas import (
     CuraMaterialImportRequest,
+    CuraMaterialTemplateImportRequest,
+    MaterialSettingsInput,
     MaterialTemplateCreate,
     MaterialTemplateResponse,
     MaterialTemplateRevisionCreate,
@@ -40,9 +49,16 @@ from ..schemas import (
     ProfileCreate,
     ProfileResponse,
     ProfileRevisionCreate,
+    ProfileTemplateRebaseRequest,
 )
 
 router = APIRouter(prefix="/profiles", tags=["material profiles"])
+
+
+def _template_name(material_type: str) -> str:
+    """Return the canonical template identity shown in the app and Cura."""
+
+    return f"Template {material_type.strip()}"
 
 
 @router.get("/cura-settings/catalog", response_model=list[dict[str, object]])
@@ -91,11 +107,116 @@ async def _template_response(
         printer_id=template.printer_id,
         nozzle_diameter_mm=template.nozzle_diameter_mm,
         filament_diameter_mm=template.filament_diameter_mm,
+        source_workstation_agent_id=template.source_workstation_agent_id,
+        source_cura_material_id=template.source_cura_material_id,
         active=template.active,
         record_version=template.record_version,
         created_at=template.created_at,
         updated_at=template.updated_at,
         revisions=[_template_revision_response(item) for item in revisions],
+    )
+
+
+async def _profile_base(
+    session: DatabaseSession,
+    profile: MaterialProfile,
+) -> tuple[MaterialTemplateRevision, MaterialTemplate]:
+    """Load the required active template relationship for one material profile."""
+
+    revision = (
+        await session.get(MaterialTemplateRevision, profile.base_template_revision_id)
+        if profile.base_template_revision_id
+        else None
+    )
+    template = await session.get(MaterialTemplate, revision.material_template_id) if revision else None
+    if revision is None or template is None:
+        raise RuntimeError("A material profile is missing its template base")
+    return revision, template
+
+
+def _template_update_changes(
+    current: dict[str, object],
+    proposed: dict[str, object],
+    override_keys: set[str],
+) -> list[dict[str, object]]:
+    """Describe effective per-setting changes for an explicit base update."""
+
+    differences = sparse_profile_overrides(current, proposed)
+    rows = [
+        {
+            "key": key,
+            "current_value": current.get(key),
+            "proposed_value": proposed.get(key),
+            "overridden": key in override_keys,
+        }
+        for key in differences
+        if key != "cura_extensions"
+    ]
+    extension_changes = differences.get("cura_extensions")
+    current_extensions = current.get("cura_extensions", {})
+    proposed_extensions = proposed.get("cura_extensions", {})
+    if isinstance(extension_changes, dict):
+        assert isinstance(current_extensions, dict)
+        assert isinstance(proposed_extensions, dict)
+        rows.extend(
+            {
+                "key": key,
+                "current_value": current_extensions.get(key),
+                "proposed_value": proposed_extensions.get(key),
+                "overridden": key in override_keys,
+            }
+            for key in extension_changes
+        )
+    return sorted(rows, key=lambda row: str(row["key"]))
+
+
+async def _profile_response(
+    session: DatabaseSession,
+    profile: MaterialProfile,
+) -> ProfileResponse:
+    """Return resolved settings, sparse ownership, and template-update context."""
+
+    base_revision, template = await _profile_base(session, profile)
+    latest_revision = await session.scalar(
+        select(MaterialTemplateRevision)
+        .where(
+            MaterialTemplateRevision.material_template_id == template.id,
+            MaterialTemplateRevision.status == ProfileStatus.PUBLISHED,
+        )
+        .order_by(MaterialTemplateRevision.version.desc())
+        .limit(1)
+    )
+    current = settings_snapshot_from_profile(profile)
+    overrides = dict(profile.setting_overrides or {})
+    customized_keys = override_setting_keys(overrides)
+    changes: list[dict[str, object]] = []
+    if latest_revision is not None and latest_revision.id != base_revision.id:
+        proposed = resolve_profile_settings(latest_revision.settings, overrides)
+        changes = _template_update_changes(current, proposed, customized_keys)
+    settings = MaterialSettingsInput.model_validate(current)
+    return ProfileResponse(
+        **settings.model_dump(),
+        id=profile.id,
+        filament_product_id=profile.filament_product_id,
+        printer_id=profile.printer_id,
+        nozzle_diameter_mm=profile.nozzle_diameter_mm,
+        version=profile.version,
+        status=profile.status,
+        checksum=profile.checksum,
+        published_at=profile.published_at,
+        record_version=profile.record_version,
+        base_template_revision_id=base_revision.id,
+        setting_overrides=overrides,
+        override_keys=sorted(customized_keys),
+        override_count=len(customized_keys),
+        inheritance_status="customized" if customized_keys else "inherited",
+        base_template_id=template.id,
+        base_template_name=template.name,
+        base_template_version=base_revision.version,
+        base_template_settings=base_revision.settings,
+        latest_template_revision_id=latest_revision.id if latest_revision else base_revision.id,
+        latest_template_version=latest_revision.version if latest_revision else base_revision.version,
+        template_update_changes=changes,
     )
 
 
@@ -140,6 +261,7 @@ async def create_material_template(
         )
     existing = await session.scalar(
         select(MaterialTemplate.id).where(
+            MaterialTemplate.source_cura_material_id.is_(None),
             func.lower(MaterialTemplate.material_type) == payload.material_type.strip().casefold(),
             MaterialTemplate.printer_id == payload.printer_id,
             MaterialTemplate.nozzle_diameter_mm == payload.nozzle_diameter_mm,
@@ -152,7 +274,7 @@ async def create_material_template(
             "A template already exists for this material, printer, and nozzle",
         )
     template = MaterialTemplate(
-        name=payload.name.strip(),
+        name=_template_name(payload.material_type),
         material_type=payload.material_type.strip(),
         description=payload.description,
         printer_id=payload.printer_id,
@@ -185,6 +307,108 @@ async def create_material_template(
     return await _template_response(session, template)
 
 
+@router.post(
+    "/templates/import-cura-material",
+    response_model=MaterialTemplateResponse,
+    status_code=status.HTTP_201_CREATED,
+)
+async def import_cura_material_template(
+    payload: CuraMaterialTemplateImportRequest,
+    request: Request,
+    operator: Operator,
+    session: DatabaseSession,
+) -> MaterialTemplateResponse:
+    """Preserve one reported Cura material as a reviewable draft template."""
+
+    agent, candidate, settings = await _reported_cura_material(
+        session,
+        agent_id=payload.agent_id,
+        source_id=payload.source_id,
+    )
+    if await session.get(Printer, payload.printer_id) is None:
+        raise ApiError(status.HTTP_422_UNPROCESSABLE_ENTITY, "unknown_printer", "Printer not found")
+    if (
+        payload.preferred_build_plate_surface_id
+        and await session.get(BuildPlateSurface, payload.preferred_build_plate_surface_id) is None
+    ):
+        raise ApiError(
+            status.HTTP_422_UNPROCESSABLE_ENTITY,
+            "unknown_build_plate_surface",
+            "Build plate side not found",
+        )
+    imported = await session.scalar(
+        select(MaterialTemplate.id).where(
+            MaterialTemplate.source_workstation_agent_id == agent.id,
+            MaterialTemplate.source_cura_material_id == payload.source_id,
+        )
+    )
+    if imported is not None:
+        raise ApiError(
+            status.HTTP_409_CONFLICT,
+            "cura_material_already_imported",
+            "This Cura material has already been imported as a template",
+        )
+    try:
+        imported_settings = MaterialSettingsInput.model_validate(
+            material_settings_from_cura(
+                settings,
+                filament_density_g_cm3=payload.filament_density_g_cm3,
+                preferred_build_plate_surface_id=payload.preferred_build_plate_surface_id,
+            )
+        )
+    except ValueError as exc:
+        raise ApiError(
+            status.HTTP_422_UNPROCESSABLE_ENTITY,
+            "cura_material_invalid",
+            str(exc),
+        ) from exc
+    candidate_name = str(candidate.get("name") or payload.name).strip()
+    template = MaterialTemplate(
+        name=_template_name(payload.material_type),
+        material_type=payload.material_type.strip(),
+        description=payload.description
+        or (
+            f'Imported from Cura material "{candidate_name}" on {agent.display_name}. '
+            "Review before publishing."
+        ),
+        printer_id=payload.printer_id,
+        nozzle_diameter_mm=payload.nozzle_diameter_mm,
+        filament_diameter_mm=payload.filament_diameter_mm,
+        source_workstation_agent_id=agent.id,
+        source_cura_material_id=payload.source_id,
+        active=True,
+    )
+    session.add(template)
+    await session.flush()
+    revision = MaterialTemplateRevision(
+        material_template_id=template.id,
+        version=1,
+        status=ProfileStatus.DRAFT,
+        settings=imported_settings.model_dump(mode="json"),
+    )
+    session.add(revision)
+    await session.flush()
+    add_audit_event(
+        session,
+        actor_id=operator.id,
+        source="web",
+        action="material_template.import_cura_material",
+        object_type="material_template",
+        object_id=template.id,
+        before=None,
+        after={
+            "material_type": template.material_type,
+            "revision_id": str(revision.id),
+            "status": revision.status.value,
+            "workstation_agent_id": str(agent.id),
+            "cura_material_source_id": payload.source_id,
+        },
+        correlation_id=request.state.correlation_id,
+    )
+    await session.commit()
+    return await _template_response(session, template)
+
+
 @router.patch("/templates/{template_id}", response_model=MaterialTemplateResponse)
 async def update_material_template(
     template_id: UUID,
@@ -202,10 +426,11 @@ async def update_material_template(
         raise ApiError(status.HTTP_404_NOT_FOUND, "unknown_template", "Template not found")
     if template.record_version != payload.expected_version:
         raise ApiError(status.HTTP_409_CONFLICT, "version_conflict", "Template was changed elsewhere")
-    if payload.material_type is not None:
+    if payload.material_type is not None and template.source_cura_material_id is None:
         conflicting_template = await session.scalar(
             select(MaterialTemplate.id).where(
                 MaterialTemplate.id != template.id,
+                MaterialTemplate.source_cura_material_id.is_(None),
                 func.lower(MaterialTemplate.material_type) == payload.material_type.strip().casefold(),
                 MaterialTemplate.printer_id == template.printer_id,
                 MaterialTemplate.nozzle_diameter_mm == template.nozzle_diameter_mm,
@@ -223,10 +448,9 @@ async def update_material_template(
         "description": template.description,
         "active": template.active,
     }
-    if payload.name is not None:
-        template.name = payload.name.strip()
     if payload.material_type is not None:
         template.material_type = payload.material_type.strip()
+    template.name = _template_name(template.material_type)
     if "description" in payload.model_fields_set:
         template.description = payload.description
     if payload.active is not None:
@@ -421,7 +645,48 @@ def _profile_payload(profile: MaterialProfile) -> dict[str, object]:
         else None,
         "cura_extensions_schema_version": profile.cura_extensions_schema_version,
         "cura_extensions": profile.cura_extensions,
+        "base_template_revision_id": (
+            str(profile.base_template_revision_id) if profile.base_template_revision_id else None
+        ),
+        "setting_overrides": profile.setting_overrides,
     }
+
+
+async def _validate_profile_base(
+    session: DatabaseSession,
+    *,
+    revision_id: UUID | None,
+    product: FilamentProduct,
+    printer_id: UUID,
+    nozzle_diameter_mm: Decimal,
+) -> tuple[MaterialTemplateRevision, MaterialTemplate]:
+    """Require one published matching template revision as a profile base."""
+
+    revision = await session.get(MaterialTemplateRevision, revision_id) if revision_id else None
+    template = await session.get(MaterialTemplate, revision.material_template_id) if revision else None
+    if revision is None or revision.status != ProfileStatus.PUBLISHED or template is None:
+        raise ApiError(
+            status.HTTP_422_UNPROCESSABLE_ENTITY,
+            "profile_template_required",
+            "Select a published material template revision",
+        )
+    if not template.active:
+        raise ApiError(
+            status.HTTP_422_UNPROCESSABLE_ENTITY,
+            "material_template_inactive",
+            "The selected material template is inactive",
+        )
+    if (
+        template.material_type.casefold() != product.material_type.casefold()
+        or template.printer_id != printer_id
+        or template.nozzle_diameter_mm != nozzle_diameter_mm
+    ):
+        raise ApiError(
+            status.HTTP_422_UNPROCESSABLE_ENTITY,
+            "profile_template_scope_mismatch",
+            "The template material, printer, and nozzle must match the profile",
+        )
+    return revision, template
 
 
 @router.get("", response_model=list[ProfileResponse])
@@ -431,7 +696,7 @@ async def list_profiles(_: Viewer, session: DatabaseSession) -> list[ProfileResp
     result = await session.execute(
         select(MaterialProfile).order_by(MaterialProfile.updated_at.desc(), MaterialProfile.version.desc())
     )
-    return [ProfileResponse.model_validate(profile) for profile in result.scalars()]
+    return [await _profile_response(session, profile) for profile in result.scalars()]
 
 
 @router.post("", response_model=ProfileResponse, status_code=status.HTTP_201_CREATED)
@@ -443,7 +708,8 @@ async def create_profile(
 ) -> ProfileResponse:
     """Create a new draft version scoped to product, printer, and nozzle."""
 
-    if await session.get(FilamentProduct, payload.filament_product_id) is None:
+    product = await session.get(FilamentProduct, payload.filament_product_id)
+    if product is None:
         raise ApiError(status.HTTP_422_UNPROCESSABLE_ENTITY, "unknown_filament", "Filament not found")
     if await session.get(Printer, payload.printer_id) is None:
         raise ApiError(status.HTTP_422_UNPROCESSABLE_ENTITY, "unknown_printer", "Printer not found")
@@ -456,6 +722,14 @@ async def create_profile(
             "unknown_build_plate_surface",
             "Build plate side not found",
         )
+    base_revision, _ = await _validate_profile_base(
+        session,
+        revision_id=payload.base_template_revision_id or product.source_template_revision_id,
+        product=product,
+        printer_id=payload.printer_id,
+        nozzle_diameter_mm=payload.nozzle_diameter_mm,
+    )
+    desired_settings = MaterialSettingsInput.model_validate(payload).model_dump(mode="json")
     latest = await session.scalar(
         select(func.max(MaterialProfile.version)).where(
             MaterialProfile.filament_product_id == payload.filament_product_id,
@@ -464,9 +738,14 @@ async def create_profile(
         )
     )
     profile = MaterialProfile(
-        **payload.model_dump(),
+        **profile_columns_from_settings(desired_settings),
+        filament_product_id=payload.filament_product_id,
+        printer_id=payload.printer_id,
+        nozzle_diameter_mm=payload.nozzle_diameter_mm,
         version=(latest or 0) + 1,
         status=ProfileStatus.DRAFT,
+        base_template_revision_id=base_revision.id,
+        setting_overrides=sparse_profile_overrides(base_revision.settings, desired_settings),
     )
     session.add(profile)
     await session.flush()
@@ -482,7 +761,7 @@ async def create_profile(
         correlation_id=request.state.correlation_id,
     )
     await session.commit()
-    return ProfileResponse.model_validate(profile)
+    return await _profile_response(session, profile)
 
 
 @router.post(
@@ -519,6 +798,8 @@ async def create_profile_revision(
             "unknown_build_plate_surface",
             "Build plate side not found",
         )
+    base_revision, _ = await _profile_base(session, source)
+    desired_settings = payload.settings.model_dump(mode="json")
     latest = await session.scalar(
         select(func.max(MaterialProfile.version)).where(
             MaterialProfile.filament_product_id == source.filament_product_id,
@@ -527,13 +808,14 @@ async def create_profile_revision(
         )
     )
     revision = MaterialProfile(
-        **payload.settings.model_dump(),
+        **profile_columns_from_settings(desired_settings),
         filament_product_id=source.filament_product_id,
         printer_id=source.printer_id,
         nozzle_diameter_mm=source.nozzle_diameter_mm,
         version=(latest or 0) + 1,
         status=ProfileStatus.DRAFT,
-        source_template_revision_id=source.source_template_revision_id,
+        base_template_revision_id=base_revision.id,
+        setting_overrides=sparse_profile_overrides(base_revision.settings, desired_settings),
     )
     session.add(revision)
     await session.flush()
@@ -549,61 +831,18 @@ async def create_profile_revision(
         correlation_id=request.state.correlation_id,
     )
     await session.commit()
-    return ProfileResponse.model_validate(revision)
+    return await _profile_response(session, revision)
 
 
-def _import_decimal(
-    settings: dict[str, object],
-    *keys: str,
-    required: bool = False,
-) -> Decimal | None:
-    """Read the first finite decimal setting without evaluating Cura expressions."""
-
-    value = next((settings[key] for key in keys if settings.get(key) not in {None, ""}), None)
-    if value is None:
-        if required:
-            raise ValueError(f"Cura material is missing required setting {keys[0]}")
-        return None
-    if isinstance(value, bool):
-        raise ValueError(f"Cura material setting {keys[0]} must be numeric")
-    try:
-        parsed = Decimal(str(value))
-    except InvalidOperation as exc:
-        raise ValueError(f"Cura material setting {keys[0]} must be a decimal value") from exc
-    if not parsed.is_finite():
-        raise ValueError(f"Cura material setting {keys[0]} must be finite")
-    return parsed
-
-
-def _import_boolean(settings: dict[str, object], key: str, *, default: bool) -> bool:
-    """Read one explicit boolean without truthy string coercion."""
-
-    value = settings.get(key)
-    if value is None:
-        return default
-    if isinstance(value, bool):
-        return value
-    if value in {"True", "true"}:
-        return True
-    if value in {"False", "false"}:
-        return False
-    raise ValueError(f"Cura material setting {key} must be a boolean")
-
-
-@router.post(
-    "/import-cura-material",
-    response_model=ProfileResponse,
-    status_code=status.HTTP_201_CREATED,
-)
-async def import_cura_material(
-    payload: CuraMaterialImportRequest,
-    request: Request,
-    operator: Operator,
+async def _reported_cura_material(
     session: DatabaseSession,
-) -> ProfileResponse:
-    """Create a draft from one existing material reported by a paired workstation."""
+    *,
+    agent_id: UUID,
+    source_id: str,
+) -> tuple[WorkstationAgent, dict[str, object], dict[str, object]]:
+    """Load one still-reported sanitized Cura material from an enabled agent."""
 
-    agent = await session.get(WorkstationAgent, payload.agent_id)
+    agent = await session.get(WorkstationAgent, agent_id)
     if agent is None or not agent.enabled:
         raise ApiError(
             status.HTTP_422_UNPROCESSABLE_ENTITY,
@@ -611,7 +850,7 @@ async def import_cura_material(
             "Workstation is unavailable",
         )
     candidate = next(
-        (material for material in agent.cura_materials if material.get("source_id") == payload.source_id),
+        (material for material in agent.cura_materials if material.get("source_id") == source_id),
         None,
     )
     if candidate is None:
@@ -627,6 +866,27 @@ async def import_cura_material(
             "cura_material_invalid",
             "Cura material settings are invalid",
         )
+    return agent, candidate, settings
+
+
+@router.post(
+    "/import-cura-material",
+    response_model=ProfileResponse,
+    status_code=status.HTTP_201_CREATED,
+)
+async def import_cura_material(
+    payload: CuraMaterialImportRequest,
+    request: Request,
+    operator: Operator,
+    session: DatabaseSession,
+) -> ProfileResponse:
+    """Create a draft from one existing material reported by a paired workstation."""
+
+    agent, _, settings = await _reported_cura_material(
+        session,
+        agent_id=payload.agent_id,
+        source_id=payload.source_id,
+    )
     product = await session.get(FilamentProduct, payload.filament_product_id)
     if product is None:
         raise ApiError(status.HTTP_422_UNPROCESSABLE_ENTITY, "unknown_filament", "Filament not found")
@@ -642,55 +902,19 @@ async def import_cura_material(
             "Build plate side not found",
         )
     try:
-        cooling_max = _import_decimal(settings, "cool_fan_speed_max", "cool_fan_speed")
-        if cooling_max is None:
-            cooling_max = Decimal("100")
-        cooling_min = _import_decimal(settings, "cool_fan_speed_min")
-        if cooling_min is None:
-            cooling_min = cooling_max
-        flow_percent = _import_decimal(settings, "material_flow")
-        if flow_percent is None:
-            flow_percent = Decimal("100")
-        typed = {
-            "chamber_temp_c": _import_decimal(settings, "build_volume_temperature"),
-            "extruder_temp_c": _import_decimal(
+        imported_settings = MaterialSettingsInput.model_validate(
+            material_settings_from_cura(
                 settings,
-                "material_print_temperature",
-                "default_material_print_temperature",
-                required=True,
-            ),
-            "bed_temp_c": _import_decimal(
-                settings,
-                "material_bed_temperature",
-                "default_material_bed_temperature",
-                required=True,
-            ),
-            "flow_percent": flow_percent,
-            "print_speed_mm_s": _import_decimal(settings, "speed_print"),
-            "outer_wall_speed_mm_s": _import_decimal(settings, "speed_wall_0"),
-            "inner_wall_speed_mm_s": _import_decimal(settings, "speed_wall_x"),
-            "infill_speed_mm_s": _import_decimal(settings, "speed_infill"),
-            "top_bottom_speed_mm_s": _import_decimal(settings, "speed_topbottom"),
-            "initial_layer_speed_mm_s": _import_decimal(settings, "speed_print_layer_0", "speed_layer_0"),
-            "travel_speed_mm_s": _import_decimal(settings, "speed_travel"),
-            "support_speed_mm_s": _import_decimal(settings, "speed_support"),
-            "retraction_distance_mm": _import_decimal(settings, "retraction_amount"),
-            "retraction_speed_mm_s": _import_decimal(settings, "retraction_speed"),
-            "cooling_enabled": _import_boolean(settings, "cool_fan_enabled", default=True),
-            "cooling_min_percent": cooling_min,
-            "cooling_max_percent": cooling_max,
-            "support_overhang_angle_deg": _import_decimal(settings, "support_angle"),
-            "pressure_advance": _import_decimal(settings, "klipper_pressure_advance_factor"),
-        }
-        extensions = {key: value for key, value in settings.items() if key in CURA_EXTENSION_SETTING_KEYS}
+                filament_density_g_cm3=product.density_g_cm3,
+                preferred_build_plate_surface_id=payload.preferred_build_plate_surface_id,
+            )
+        )
         profile_input = ProfileCreate(
+            **imported_settings.model_dump(),
             filament_product_id=payload.filament_product_id,
             printer_id=payload.printer_id,
             nozzle_diameter_mm=payload.nozzle_diameter_mm,
-            filament_density_g_cm3=product.density_g_cm3,
-            preferred_build_plate_surface_id=payload.preferred_build_plate_surface_id,
-            cura_extensions=extensions,
-            **typed,
+            base_template_revision_id=product.source_template_revision_id,
         )
     except ValueError as exc:
         raise ApiError(
@@ -698,6 +922,14 @@ async def import_cura_material(
             "cura_material_invalid",
             str(exc),
         ) from exc
+    base_revision, _ = await _validate_profile_base(
+        session,
+        revision_id=profile_input.base_template_revision_id,
+        product=product,
+        printer_id=profile_input.printer_id,
+        nozzle_diameter_mm=profile_input.nozzle_diameter_mm,
+    )
+    desired_settings = imported_settings.model_dump(mode="json")
     latest = await session.scalar(
         select(func.max(MaterialProfile.version)).where(
             MaterialProfile.filament_product_id == profile_input.filament_product_id,
@@ -706,9 +938,14 @@ async def import_cura_material(
         )
     )
     profile = MaterialProfile(
-        **profile_input.model_dump(),
+        **profile_columns_from_settings(desired_settings),
+        filament_product_id=profile_input.filament_product_id,
+        printer_id=profile_input.printer_id,
+        nozzle_diameter_mm=profile_input.nozzle_diameter_mm,
         version=(latest or 0) + 1,
         status=ProfileStatus.DRAFT,
+        base_template_revision_id=base_revision.id,
+        setting_overrides=sparse_profile_overrides(base_revision.settings, desired_settings),
     )
     session.add(profile)
     await session.flush()
@@ -729,7 +966,7 @@ async def import_cura_material(
         correlation_id=request.state.correlation_id,
     )
     await session.commit()
-    return ProfileResponse.model_validate(profile)
+    return await _profile_response(session, profile)
 
 
 @router.post("/{profile_id}/publish", response_model=ProfileResponse)
@@ -747,7 +984,7 @@ async def publish_profile(
     if profile is None:
         raise ApiError(status.HTTP_404_NOT_FOUND, "unknown_profile", "Profile not found")
     if profile.status == ProfileStatus.PUBLISHED:
-        return ProfileResponse.model_validate(profile)
+        return await _profile_response(session, profile)
     if profile.status not in {ProfileStatus.DRAFT, ProfileStatus.VALIDATED}:
         raise ApiError(status.HTTP_409_CONFLICT, "profile_not_publishable", "Profile is not publishable")
     payload = _profile_payload(profile)
@@ -789,7 +1026,99 @@ async def publish_profile(
     if managed_agents:
         await queue_cura_library(session, managed_agents, requested_by=operator.id, force=True)
     await session.commit()
-    return ProfileResponse.model_validate(profile)
+    return await _profile_response(session, profile)
+
+
+@router.post(
+    "/{profile_id}/template-base",
+    response_model=ProfileResponse,
+    status_code=status.HTTP_201_CREATED,
+)
+async def confirm_profile_template_base(
+    profile_id: UUID,
+    payload: ProfileTemplateRebaseRequest,
+    request: Request,
+    operator: Operator,
+    session: DatabaseSession,
+) -> ProfileResponse:
+    """Create one draft after explicit confirmation for one filament profile."""
+
+    source = await session.scalar(
+        select(MaterialProfile).where(MaterialProfile.id == profile_id).with_for_update()
+    )
+    if source is None:
+        raise ApiError(status.HTTP_404_NOT_FOUND, "unknown_profile", "Profile not found")
+    if source.record_version != payload.expected_profile_version:
+        raise ApiError(status.HTTP_409_CONFLICT, "version_conflict", "Profile changed; reload and retry")
+    current_base, template = await _profile_base(session, source)
+    target = await session.get(MaterialTemplateRevision, payload.target_template_revision_id)
+    if (
+        target is None
+        or target.material_template_id != template.id
+        or target.status != ProfileStatus.PUBLISHED
+    ):
+        raise ApiError(
+            status.HTTP_422_UNPROCESSABLE_ENTITY,
+            "template_base_unavailable",
+            "Select a published revision of this profile's linked template",
+        )
+    if target.id == current_base.id:
+        raise ApiError(
+            status.HTTP_409_CONFLICT,
+            "template_base_unchanged",
+            "This profile already uses the selected template revision",
+        )
+    proposed = resolve_profile_settings(target.settings, source.setting_overrides)
+    proposed_input = MaterialSettingsInput.model_validate(proposed)
+    latest = await session.scalar(
+        select(func.max(MaterialProfile.version)).where(
+            MaterialProfile.filament_product_id == source.filament_product_id,
+            MaterialProfile.printer_id == source.printer_id,
+            MaterialProfile.nozzle_diameter_mm == source.nozzle_diameter_mm,
+        )
+    )
+    new_overrides = sparse_profile_overrides(
+        target.settings,
+        proposed_input.model_dump(mode="json"),
+    )
+    revision = MaterialProfile(
+        **profile_columns_from_settings(proposed_input.model_dump(mode="json")),
+        filament_product_id=source.filament_product_id,
+        printer_id=source.printer_id,
+        nozzle_diameter_mm=source.nozzle_diameter_mm,
+        version=(latest or 0) + 1,
+        status=ProfileStatus.DRAFT,
+        base_template_revision_id=target.id,
+        setting_overrides=new_overrides,
+    )
+    session.add(revision)
+    await session.flush()
+    changes = _template_update_changes(
+        settings_snapshot_from_profile(source),
+        proposed_input.model_dump(mode="json"),
+        override_setting_keys(source.setting_overrides),
+    )
+    add_audit_event(
+        session,
+        actor_id=operator.id,
+        source="web",
+        action="profile.template_base.confirm",
+        object_type="material_profile",
+        object_id=revision.id,
+        before={
+            "source_profile_id": str(source.id),
+            "base_template_revision_id": str(current_base.id),
+        },
+        after={
+            "base_template_revision_id": str(target.id),
+            "version": revision.version,
+            "status": "draft",
+            "effective_change_count": len(changes),
+        },
+        correlation_id=request.state.correlation_id,
+    )
+    await session.commit()
+    return await _profile_response(session, revision)
 
 
 @router.get("/{profile_id}/exports/cura")

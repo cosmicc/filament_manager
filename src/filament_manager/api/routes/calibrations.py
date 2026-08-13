@@ -13,6 +13,11 @@ from filament_manager.domain.dimensional_calibration import (
     DimensionalCalibrationError,
     calculate_dimensional_compensation,
 )
+from filament_manager.domain.profile_inheritance import (
+    profile_columns_from_settings,
+    settings_snapshot_from_profile,
+    sparse_profile_overrides,
+)
 from filament_manager.models.calibration import CalibrationSession, CalibrationStep
 from filament_manager.models.enums import CalibrationStatus, CalibrationStepStatus, ProfileStatus
 from filament_manager.models.inventory import (
@@ -20,6 +25,7 @@ from filament_manager.models.inventory import (
     BuildPlateSurface,
     FilamentProduct,
     MaterialProfile,
+    MaterialTemplateRevision,
     Printer,
 )
 from filament_manager.services.events import add_audit_event, add_outbox_job
@@ -363,34 +369,20 @@ async def publish_calibration_profile(
         if calibration.baseline_profile_id
         else None
     )
+    base_revision_id = (
+        baseline.base_template_revision_id if baseline is not None else product.source_template_revision_id
+    )
+    base_revision = (
+        await session.get(MaterialTemplateRevision, base_revision_id) if base_revision_id else None
+    )
+    if base_revision is None or base_revision.status != ProfileStatus.PUBLISHED:
+        raise ApiError(
+            status.HTTP_409_CONFLICT,
+            "profile_template_required",
+            "Link this filament to a published template before publishing calibration results",
+        )
     base_settings = (
-        MaterialSettingsInput.model_validate(baseline).model_dump()
-        if baseline is not None
-        else {
-            "chamber_temp_c": None,
-            "extruder_temp_c": Decimal("0"),
-            "bed_temp_c": Decimal("0"),
-            "flow_percent": Decimal("100"),
-            "print_speed_mm_s": None,
-            "outer_wall_speed_mm_s": None,
-            "inner_wall_speed_mm_s": None,
-            "infill_speed_mm_s": None,
-            "top_bottom_speed_mm_s": None,
-            "initial_layer_speed_mm_s": None,
-            "travel_speed_mm_s": None,
-            "support_speed_mm_s": None,
-            "retraction_distance_mm": None,
-            "retraction_speed_mm_s": None,
-            "cooling_enabled": True,
-            "cooling_min_percent": Decimal("0"),
-            "cooling_max_percent": Decimal("100"),
-            "support_overhang_angle_deg": None,
-            "tree_max_branch_angle_deg": None,
-            "pressure_advance": None,
-            "filament_density_g_cm3": product.density_g_cm3,
-            "preferred_build_plate_surface_id": calibration.build_plate_surface_id,
-            "cura_extensions": {},
-        }
+        settings_snapshot_from_profile(baseline) if baseline is not None else dict(base_revision.settings)
     )
     for key in (
         "chamber_temp_c",
@@ -409,7 +401,8 @@ async def publish_calibration_profile(
             base_settings[key] = _decimal_result(results, key)
     if "cooling_enabled" in results:
         base_settings["cooling_enabled"] = bool(results["cooling_enabled"])
-    extensions = dict(base_settings.get("cura_extensions", {}))
+    raw_extensions = base_settings.get("cura_extensions", {})
+    extensions = dict(raw_extensions) if isinstance(raw_extensions, dict) else {}
     for key in ("xy_offset", "hole_xy_offset"):
         if key in results:
             extensions[key] = format(Decimal(str(results[key])), "f")
@@ -418,14 +411,16 @@ async def publish_calibration_profile(
     if calibration.build_plate_surface_id is not None:
         base_settings["preferred_build_plate_surface_id"] = calibration.build_plate_surface_id
 
+    validated_settings = MaterialSettingsInput.model_validate(base_settings).model_dump(mode="json")
     profile = MaterialProfile(
-        **base_settings,
+        **profile_columns_from_settings(validated_settings),
         filament_product_id=calibration.filament_product_id,
         printer_id=calibration.printer_id,
         nozzle_diameter_mm=calibration.nozzle_diameter_mm,
         version=(latest or 0) + 1,
         status=ProfileStatus.PUBLISHED,
-        source_template_revision_id=(baseline.source_template_revision_id if baseline is not None else None),
+        base_template_revision_id=base_revision.id,
+        setting_overrides=sparse_profile_overrides(base_revision.settings, validated_settings),
         ironing_enabled=results.get(
             "ironing_enabled",
             baseline.ironing_enabled if baseline is not None else None,

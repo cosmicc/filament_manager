@@ -18,40 +18,38 @@ Use a DNS name or virtual IP that remains valid when Swarm reschedules the servi
 - Restarting or upgrading only the Filament Manager services must not interrupt the Spoolman endpoint.
 - Spoolman maintenance is scheduled separately and should preserve queued or recoverable usage reporting according to Moonraker behavior.
 
-## Active spool macros
+## Physical spool authority and macros
 
-```ini
-[gcode_macro SET_ACTIVE_SPOOL]
-gcode:
-  {% if params.ID %}
-    {% set id = params.ID|int %}
-    {action_call_remote_method(
-       "spoolman_set_active_spool",
-       spool_id=id
-    )}
-  {% else %}
-    {action_respond_info("Parameter 'ID' is required")}
-  {% endif %}
+The complete required reference is `integrations/klipper/filament-manager-macros.cfg`. Include it after the printer's existing motion macros. It uses `rename_existing` wrappers so the printer's current `LOAD_FILAMENT`, `UNLOAD_FILAMENT`, `M600`, and `CANCEL_PRINT` behavior remains the physical implementation. It never replaces `START_PRINT` or `END_PRINT`.
 
-[gcode_macro CLEAR_ACTIVE_SPOOL]
-gcode:
-  {action_call_remote_method(
-    "spoolman_set_active_spool",
-    spool_id=None
-  )}
-```
+`FILAMENT_MANAGER_SPOOL_STATE` persists the last completed physical boundary:
 
-The package also includes `integrations/klipper/filament-manager-macros.cfg`. Its plate macro accepts only exact `P<number>` Side A or `P<number>b` Side B values before passing the same bounded name to `BED_MESH_PROFILE LOAD`.
+- the old ID stays active while the existing unload routine is running;
+- after that routine and its `M400` finish, the macro clears active Spoolman state and persists no loaded spool;
+- the target ID remains inactive while preheating, waiting for insertion, and running the existing load routine; and
+- after that load routine and its `M400` finish, the macro persists and activates the exact target ID.
+
+Public `LOAD_FILAMENT`, `SET_ACTIVE_SPOOL`, and Inventory **Load spool** actions therefore request the same confirmed physical workflow instead of changing metadata directly. Public `UNLOAD_FILAMENT` and `CLEAR_ACTIVE_SPOOL` run physical unload before clearing. `M600` retains pause, unload, purge-more, temperature restore, and resume behavior but requires an exact Fluidd Target Spool through `FILAMENT_MANAGER_LOAD_TARGET` before loading.
+
+The same file provides the existing bounded plate behavior: `SELECT_BUILD_PLATE` accepts only exact `P<number>` Side A or `P<number>b` Side B values before passing the value to `BED_MESH_PROFILE LOAD`.
+
+## Cura print preflight
+
+Cura calls `FILAMENT_MANAGER_START_PRINT` with `{material_guid}` and the existing bed, nozzle, and chamber temperature placeholders. The worker publishes a bounded mapping from each current managed product-material GUID to eligible projected Spoolman IDs, safe Fluidd labels, and the published profile nozzle temperature.
+
+If the persisted loaded ID is one of the candidates, the wrapper immediately hands the original values to the unchanged `START_PRINT`. Otherwise it pauses virtual-SD execution, prompts in Fluidd for the exact matching spool, unloads the old spool at its stored profile temperature, clears Spoolman, preheats to the new profile temperature, waits for insertion confirmation, calls the existing load routine, activates the selected ID, and then hands off to `START_PRINT`. No candidates is a fail-closed print block. Generic templates do not identify a physical product and are not eligible print materials.
 
 ## Fluidd
 
-Fluidd uses Moonraker's Spoolman integration to:
+Fluidd remains the prompt and operational display for:
 
-- select the active spool
+- selecting the exact requested spool in Filament Manager prompts or the `FILAMENT_MANAGER_LOAD_TARGET` Target Spool control
 - view remaining filament
 - scan compatible labels where supported
 - warn about insufficient remaining filament
 - compare spool material with slicer metadata
+
+Disable Fluidd's **Show spool selection dialog on print start** setting because its independent selection path activates a spool before physical loading. The global Spoolman **Change Spool** control must not be used for future targets. Filament Manager repairs that kind of direct active-ID drift to the last completed physical macro boundary on the next 15-second state pass, including while a guarded workflow is pending.
 
 If Fluidd is served from a different browser origin than Spoolman, add the exact origin, including scheme and port when non-default, to `SPOOLMAN_CORS_ORIGIN`.
 
@@ -61,7 +59,7 @@ Spoolman has no built-in user authentication. Keep the printer-facing endpoint o
 
 ## Filament Manager relationship
 
-Filament Manager reads and reconciles Spoolman through the API. It may also request active-spool changes through Moonraker, but it does not proxy Moonraker's normal usage traffic. Every 15 seconds by default, it reads Moonraker's supported `GET /server/spoolman/spool_id` response and aligns the canonical active spool, including clearing the assignment.
+Filament Manager reads and reconciles Spoolman through the API and does not proxy Moonraker's normal usage traffic. Every 15 seconds it reads both Moonraker's supported active Spoolman ID and `FILAMENT_MANAGER_SPOOL_STATE`. After one-time initialization, the persisted macro ID represents the last completed physical boundary in every phase. When the remote active ID differs, the worker repairs Moonraker/Spoolman to that value before aligning canonical state. The worker also refreshes the bounded material/spool/temperature catalog when published profiles or eligible inventory change.
 
 The same automatic state pass reads Build Plates through Moonraker's supported `POST /printer/objects/query` endpoint. Filament Manager reads `bed_mesh.profiles`, groups exact P-number A/B side meshes under physical plates, tracks missing meshes without deletion, and uses `bed_mesh.profile_name` to align the active physical plate and side.
 

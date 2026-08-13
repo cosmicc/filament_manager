@@ -11,6 +11,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from filament_manager.domain.cura_material_settings import cura_settings_for_profile
+from filament_manager.domain.spool_preflight import cura_material_guid
 from filament_manager.models.enums import CuraDeploymentStatus, ProfileStatus
 from filament_manager.models.inventory import (
     BuildPlate,
@@ -29,7 +30,7 @@ def _decimal(value: Decimal | None) -> str | None:
     return format(value, "f") if value is not None else None
 
 
-def _settings_from_template(snapshot: dict[str, object]) -> dict[str, object]:
+def settings_from_template(snapshot: dict[str, object]) -> dict[str, object]:
     """Convert a validated JSON template snapshot into the Cura setting map."""
 
     decimal_fields = {
@@ -121,18 +122,19 @@ async def build_cura_library(session: AsyncSession) -> dict[str, object]:
             {
                 "source_kind": "template",
                 "source_id": str(revision.id),
+                "cura_material_guid": cura_material_guid("template", revision.id),
                 "profile": {
                     "id": str(revision.id),
                     "version": revision.version,
                     "checksum": revision.checksum,
-                    "settings": _settings_from_template(revision.settings),
+                    "settings": settings_from_template(revision.settings),
                 },
                 "material": {
                     "product_id": None,
-                    "brand": "Filament Manager",
+                    "brand": "Template",
                     "material_type": template.material_type,
-                    "product_name": template.name,
-                    "color_name": "Generic",
+                    "product_name": f"Template {template.material_type}",
+                    "color_name": f"Template {template.material_type}",
                     "color_hex": "#808080",
                     "diameter_mm": _decimal(template.filament_diameter_mm),
                     "density_g_cm3": str(revision.settings["filament_density_g_cm3"]),
@@ -175,6 +177,7 @@ async def build_cura_library(session: AsyncSession) -> dict[str, object]:
             {
                 "source_kind": "product",
                 "source_id": str(profile.id),
+                "cura_material_guid": cura_material_guid("product", profile.id),
                 "profile": {
                     "id": str(profile.id),
                     "version": profile.version,

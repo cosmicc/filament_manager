@@ -13,6 +13,7 @@ from .config import load_config
 from .discovery import (
     cura_is_running,
     discover_installations,
+    discover_managed_materials,
     discover_materials,
     unmanaged_material_count,
 )
@@ -48,6 +49,9 @@ def heartbeat_payload(
         },
         "cura_installations": installation_reports,
         "cura_materials": [material.report() for material in discover_materials(installations)],
+        "cura_managed_materials": [
+            material.report() for material in discover_managed_materials(installations)
+        ],
         "last_error": last_error,
     }
 

@@ -432,6 +432,13 @@ You may discover:
 72% of PETG adhesion failures occur on P2.
 
 
+- **Automatic build-plate recommendation**
+At print preparation, recommend a physical build plate and side using material compatibility,
+surface properties, temperature limits, condition, maintenance state, mesh freshness, and
+recorded print outcomes. Keep the recommendation advisory and defer it until the application
+has enough compatibility and print-history data to make a useful choice.
+
+
 - **Print failure analytics**
 Once you combine print jobs + outcome tags:
 

@@ -9,14 +9,16 @@ PostgreSQL is the canonical data store. A distinct Spoolman service remains the 
 - Local Administrator, Operator, and Viewer accounts
 - Canonical spool, filament, profile, printer, remembered color, and build-plate records with consistent grouped in-app editors
 - Browser-based `.xlsx` workbook upload with automatic first-run printer and build-plate seeding
-- Versioned printer/nozzle material templates that start each new product-specific profile
+- Versioned `Template <material type>` Cura entries whose published revisions are inherited by directly linked filament profiles with sparse overrides
+- Difference-only profile-to-profile and profile-to-template revision comparison with printer/nozzle scope warnings
 - Manual gross-weight measurements with variance confirmation
 - Immutable audit history and transactional projection outbox
 - Immediate Spoolman REST projection plus one-minute complete convergence and usage reconciliation, including Filament Manager-owned free-text bucket locations, plus Moonraker control clients
-- Automatic 15-second Moonraker active-spool and P-number build-plate synchronization, including Side A/Side B mesh discovery (`P4`/`P4b`)
+- Automatic 15-second physical-spool drift repair and P-number build-plate synchronization, including Side A/Side B mesh discovery (`P4`/`P4b`)
+- Cura-to-Fluidd spool preflight that reuses existing printer motion macros, prompts for an exact matching physical spool, and updates Spoolman only at completed unload/load boundaries
 - Automatic 5-minute Moonraker/Klipper printer information discovery with editable manual nozzle, hardware, and build-volume metadata
 - Seven-step calibration workflow with dimensional and hole compensation
-- Outbound-only Cura workstation agents for importing materials and keeping an authoritative Filament Manager material library synchronized on Arch Linux and Windows 11, with backup, drift repair, bundled-material hiding, and rollback
+- Outbound-only Cura workstation agents with upgrade-safe installers, pre-takeover import of selected Cura materials, draft-only intake of edits to known managed materials, and authoritative synchronization on Arch Linux and Windows 11 with backup, drift repair, bundled-material hiding, and rollback
 - Workshop Navy light and dark web interface
 - Health, readiness, and Prometheus metrics endpoints
 - Structured service logs and browser-console request diagnostics with correlation IDs

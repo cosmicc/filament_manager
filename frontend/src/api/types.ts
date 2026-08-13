@@ -198,6 +198,8 @@ export interface MaterialTemplate {
   printer_id: string
   nozzle_diameter_mm: string
   filament_diameter_mm: string
+  source_workstation_agent_id: string | null
+  source_cura_material_id: string | null
   active: boolean
   record_version: number
   created_at: string
@@ -257,7 +259,23 @@ export interface MaterialProfile extends MaterialSettings {
   published_at: string | null
   checksum: string | null
   record_version: number
-  source_template_revision_id: string | null
+  base_template_revision_id: string | null
+  setting_overrides: Record<string, unknown>
+  override_keys: string[]
+  override_count: number
+  inheritance_status: 'inherited' | 'customized'
+  base_template_id: string | null
+  base_template_name: string | null
+  base_template_version: number | null
+  base_template_settings: MaterialSettings | null
+  latest_template_revision_id: string | null
+  latest_template_version: number | null
+  template_update_changes: Array<{
+    key: string
+    current_value: unknown
+    proposed_value: unknown
+    overridden: boolean
+  }>
 }
 
 export interface CalibrationStep {

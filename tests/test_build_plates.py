@@ -1,6 +1,8 @@
 """Build-plate identifier and Moonraker bed-mesh contract tests."""
 
+import json
 from collections.abc import AsyncIterator
+from decimal import Decimal
 from typing import Any
 
 import httpx
@@ -18,6 +20,7 @@ from filament_manager.domain.build_plates import (
     is_build_plate_surface_code,
     split_build_plate_surface_code,
 )
+from filament_manager.domain.spool_preflight import SpoolPreflightCatalog
 from filament_manager.models.auth import User
 from filament_manager.models.enums import UserRole
 
@@ -136,6 +139,80 @@ async def test_moonraker_active_spool_rejects_malformed_id() -> None:
 
     with pytest.raises(MoonrakerError, match="invalid active spool ID"):
         await MoonrakerClient(printer_config()).active_spool_id()
+
+
+@respx.mock
+@pytest.mark.asyncio
+async def test_moonraker_reads_persistent_physical_spool_state() -> None:
+    """Only the bounded app macro fields become authoritative physical state."""
+
+    route = respx.post("http://moonraker.test:7125/printer/objects/query").mock(
+        return_value=httpx.Response(
+            200,
+            json={
+                "result": {
+                    "status": {
+                        "gcode_macro FILAMENT_MANAGER_SPOOL_STATE": {
+                            "restored": 1,
+                            "initialized": 1,
+                            "phase": "idle",
+                            "loaded_spool_id": 17,
+                            "catalog_revision": "a" * 64,
+                        }
+                    }
+                }
+            },
+        )
+    )
+
+    state = await MoonrakerClient(printer_config()).spool_preflight_state()
+
+    assert state is not None
+    assert state.restored is True
+    assert state.initialized is True
+    assert state.loaded_spool_id == 17
+    assert state.catalog_revision == "a" * 64
+    assert route.calls.last.request.read() == (
+        b'{"objects":{"gcode_macro FILAMENT_MANAGER_SPOOL_STATE":'
+        b'["restored","initialized","phase","loaded_spool_id","catalog_revision"]}}'
+    )
+
+
+@respx.mock
+@pytest.mark.asyncio
+async def test_moonraker_sends_bounded_catalog_and_physical_change_macro() -> None:
+    """Catalog and change requests use one supported G-code script endpoint."""
+
+    route = respx.post("http://moonraker.test:7125/printer/gcode/script").mock(
+        return_value=httpx.Response(200, json={"result": "ok"})
+    )
+    materials = {"11111111-2222-3333-4444-555555555555": [[17, "FM-001-PLA-Blue"]]}
+    temperatures = {"17": "215.0"}
+    catalog = SpoolPreflightCatalog(
+        materials=materials,
+        temperatures=temperatures,
+        revision="a" * 64,
+    )
+    client = MoonrakerClient(printer_config())
+
+    await client.synchronize_spool_preflight_catalog(catalog)
+    catalog_script = json.loads(route.calls.last.request.content)["script"]
+    assert 'VARIABLE=catalog VALUE=\'{"11111111-2222-3333-4444-555555555555"' in catalog_script
+    assert "filament_manager_spool_temperatures" in catalog_script
+    await client.request_spool_change(
+        spoolman_id=17,
+        temperature_c=Decimal("215"),
+        prompt_label="FM-001-PLA-Blue",
+    )
+    assert json.loads(route.calls.last.request.content) == {
+        "script": "FILAMENT_MANAGER_CHANGE_SPOOL ID=17 TEMP=215 LABEL=FM-001-PLA-Blue"
+    }
+    with pytest.raises(ValueError, match="unsupported"):
+        await client.request_spool_change(
+            spoolman_id=17,
+            temperature_c=Decimal("215"),
+            prompt_label="FM-001|CANCEL_PRINT",
+        )
 
 
 @respx.mock

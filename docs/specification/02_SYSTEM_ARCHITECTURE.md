@@ -54,6 +54,8 @@ The root `docker-stack.yml` is the default deployment. The independent files und
 
 Filament Manager's Docker services receive their complete validated runtime configuration from scoped environment variables. They do not mount an application config object. The current Docker contract configures one Moonraker printer.
 
+The worker publishes a bounded Cura-material-to-Spoolman catalog through Moonraker and observes the persisted Klipper physical-spool macro every 15 seconds. Klipper owns the unload/load commit boundary; requested future targets never become active state in Spoolman or canonical PostgreSQL before physical loading completes.
+
 ## Central PostgreSQL server
 
 Hosts two isolated databases:

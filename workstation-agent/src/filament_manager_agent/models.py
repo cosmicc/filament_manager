@@ -77,6 +77,8 @@ class CuraMaterial(BaseModel):
     material_type: str
     color_name: str
     settings: dict[str, str | bool]
+    material_guid: UUID | None = None
+    content_checksum: str | None = Field(default=None, pattern=r"^[0-9a-f]{64}$")
 
     def report(self) -> dict[str, object]:
         """Return bounded semantic data without exposing the local source path."""

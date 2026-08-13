@@ -35,6 +35,10 @@ from filament_manager.services.moonraker_sync import (
     synchronize_printer_information,
 )
 from filament_manager.services.seed import seed_configured_system
+from filament_manager.services.spool_preflight import (
+    build_spool_preflight_catalog,
+    spool_change_target,
+)
 
 SPOOLMAN_FIELD_LOCK_KEY = 0x464D53504649454C
 SPOOLMAN_FIELD_CACHE_SECONDS = 30
@@ -715,12 +719,13 @@ async def _reconcile_moonraker_state(session: AsyncSession, job: OutboxJob) -> N
     failures: list[Exception] = []
     for printer, configured in await _configured_printer_bindings(session):
         client = MoonrakerClient(configured)
-        active_result, mesh_result = await asyncio.gather(
+        active_result, mesh_result, preflight_result = await asyncio.gather(
             client.active_spool_id(),
             client.bed_mesh_state(),
+            client.spool_preflight_state(),
             return_exceptions=True,
         )
-        correlation_prefix = f"automatic:{job.id}:{printer.printer_code}"
+        correlation_id = f"auto:{job.id}:state"
         if isinstance(active_result, BaseException):
             if not isinstance(active_result, Exception):
                 raise active_result
@@ -733,20 +738,104 @@ async def _reconcile_moonraker_state(session: AsyncSession, job: OutboxJob) -> N
                 exc_info=(type(active_result), active_result, active_result.__traceback__),
             )
         else:
-            active_sync = await synchronize_active_spool(
-                session,
-                printer_id=printer.id,
-                spoolman_id=active_result,
-                actor_id=None,
-                correlation_id=f"{correlation_prefix}:active-spool",
+            effective_active_spool_id = active_result
+            preflight_is_restoring = (
+                not isinstance(preflight_result, BaseException)
+                and preflight_result is not None
+                and not preflight_result.restored
             )
-            logger.info(
-                "moonraker_active_spool_synchronized",
-                printer_code=printer.printer_code,
-                spoolman_id=active_sync.spoolman_id,
-                active_spool_id=(str(active_sync.active_spool_id) if active_sync.active_spool_id else None),
-                changed=active_sync.changed,
-            )
+            if isinstance(preflight_result, BaseException):
+                logger.warning(
+                    "moonraker_spool_preflight_macro_unavailable",
+                    printer_code=printer.printer_code,
+                    error_class=type(preflight_result).__name__,
+                    error=str(preflight_result),
+                )
+            elif preflight_result is None:
+                logger.warning(
+                    "moonraker_spool_preflight_macro_not_installed",
+                    printer_code=printer.printer_code,
+                )
+            elif preflight_is_restoring:
+                logger.info(
+                    "moonraker_spool_preflight_state_restoring",
+                    printer_code=printer.printer_code,
+                )
+            elif preflight_result.initialized and preflight_result.loaded_spool_id != active_result:
+                # The persisted macro state advances only after a completed
+                # physical unload/load routine. Keep canonical state aligned
+                # with that physical boundary even if the repair call fails.
+                effective_active_spool_id = preflight_result.loaded_spool_id
+                try:
+                    await client.set_active_spool(preflight_result.loaded_spool_id)
+                    logger.warning(
+                        "moonraker_active_spool_drift_repaired",
+                        printer_code=printer.printer_code,
+                        phase=preflight_result.phase,
+                        reported_spoolman_id=active_result,
+                        physically_loaded_spoolman_id=preflight_result.loaded_spool_id,
+                    )
+                except Exception as exc:
+                    failures.append(exc)
+                    logger.exception(
+                        "moonraker_active_spool_drift_repair_failed",
+                        printer_code=printer.printer_code,
+                        phase=preflight_result.phase,
+                        error_class=type(exc).__name__,
+                        error=str(exc),
+                    )
+            if not preflight_is_restoring:
+                active_sync = await synchronize_active_spool(
+                    session,
+                    printer_id=printer.id,
+                    spoolman_id=effective_active_spool_id,
+                    actor_id=None,
+                    correlation_id=correlation_id,
+                )
+                logger.info(
+                    "moonraker_active_spool_synchronized",
+                    printer_code=printer.printer_code,
+                    spoolman_id=active_sync.spoolman_id,
+                    active_spool_id=(
+                        str(active_sync.active_spool_id) if active_sync.active_spool_id else None
+                    ),
+                    changed=active_sync.changed,
+                )
+                if not isinstance(preflight_result, BaseException) and preflight_result is not None:
+                    try:
+                        catalog = await build_spool_preflight_catalog(session, printer=printer)
+                        if catalog.revision != preflight_result.catalog_revision:
+                            await client.synchronize_spool_preflight_catalog(catalog)
+                            logger.info(
+                                "moonraker_spool_preflight_catalog_synchronized",
+                                printer_code=printer.printer_code,
+                                revision=catalog.revision,
+                                material_count=len(catalog.materials),
+                                spool_count=len(catalog.temperatures),
+                            )
+                        if not preflight_result.initialized:
+                            temperature_text = (
+                                catalog.temperatures.get(str(effective_active_spool_id))
+                                if effective_active_spool_id is not None
+                                else None
+                            )
+                            await client.initialize_spool_preflight_state(
+                                spoolman_id=effective_active_spool_id,
+                                temperature_c=(Decimal(temperature_text) if temperature_text else None),
+                            )
+                            logger.info(
+                                "moonraker_spool_preflight_state_initialized",
+                                printer_code=printer.printer_code,
+                                spoolman_id=effective_active_spool_id,
+                            )
+                    except Exception as exc:
+                        failures.append(exc)
+                        logger.exception(
+                            "moonraker_spool_preflight_synchronization_failed",
+                            printer_code=printer.printer_code,
+                            error_class=type(exc).__name__,
+                            error=str(exc),
+                        )
         if isinstance(mesh_result, BaseException):
             if not isinstance(mesh_result, Exception):
                 raise mesh_result
@@ -764,7 +853,7 @@ async def _reconcile_moonraker_state(session: AsyncSession, job: OutboxJob) -> N
                 printer_id=printer.id,
                 mesh_state=mesh_result,
                 actor_id=None,
-                correlation_id=f"{correlation_prefix}:build-plates",
+                correlation_id=correlation_id,
             )
             logger.info(
                 "moonraker_build_plates_synchronized",
@@ -783,6 +872,7 @@ async def _reconcile_moonraker_printer_information(session: AsyncSession, job: O
 
     failures: list[Exception] = []
     for printer, configured in await _configured_printer_bindings(session):
+        printer_code = printer.printer_code
         try:
             information = await MoonrakerClient(configured).printer_information()
             synchronized = await synchronize_printer_information(
@@ -790,20 +880,21 @@ async def _reconcile_moonraker_printer_information(session: AsyncSession, job: O
                 printer_id=printer.id,
                 information=information,
                 actor_id=None,
-                correlation_id=f"automatic:{job.id}:{printer.printer_code}:printer-info",
+                correlation_id=f"auto:{job.id}:info",
             )
             logger.info(
                 "moonraker_printer_information_synchronized",
-                printer_code=printer.printer_code,
+                printer_code=printer_code,
                 status=synchronized.status,
                 klipper_version=synchronized.klipper_version,
                 moonraker_version=synchronized.moonraker_version,
             )
         except Exception as exc:
+            await session.rollback()
             failures.append(exc)
             logger.exception(
                 "moonraker_printer_information_sync_failed",
-                printer_code=printer.printer_code,
+                printer_code=printer_code,
                 error_class=type(exc).__name__,
                 error=str(exc),
             )
@@ -852,9 +943,25 @@ async def dispatch_job(session: AsyncSession, job: OutboxJob) -> None:
         await _reconcile_moonraker_state(session, job)
     elif job.job_type == "moonraker.printer_info.reconcile":
         await _reconcile_moonraker_printer_information(session, job)
-    elif job.job_type == "moonraker.active_spool.set":
-        spoolman_id = int(str(job.payload["spoolman_id"]))
-        await MoonrakerClient(settings.moonraker.printers[0]).set_active_spool(spoolman_id)
+    elif job.job_type in {"moonraker.active_spool.set", "moonraker.spool_change.request"}:
+        spool = await session.get(Spool, job.aggregate_id)
+        if spool is None:
+            raise LookupError("Spool change request references a missing spool")
+        configured_printer = await session.scalar(
+            select(Printer).where(Printer.printer_code == settings.moonraker.printers[0].id)
+        )
+        if configured_printer is None:
+            raise LookupError("Configured Moonraker printer is not ready")
+        target = await spool_change_target(
+            session,
+            spool=spool,
+            printer=configured_printer,
+        )
+        await MoonrakerClient(settings.moonraker.printers[0]).request_spool_change(
+            spoolman_id=target.spoolman_id,
+            temperature_c=target.temperature_c,
+            prompt_label=target.prompt_label,
+        )
     elif job.job_type == "moonraker.build_plate.select":
         printer_id = UUID(str(job.payload["printer_id"]))
         printer = await session.get(Printer, printer_id)

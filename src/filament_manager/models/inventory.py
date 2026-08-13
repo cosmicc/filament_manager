@@ -17,6 +17,7 @@ from sqlalchemy import (
     String,
     Text,
     UniqueConstraint,
+    func,
     text,
 )
 from sqlalchemy.dialects.postgresql import JSONB
@@ -306,7 +307,7 @@ class BuildPlateSurface(UUIDPrimaryKeyMixin, TimestampMixin, Base):
 
 
 class MaterialProfile(UUIDPrimaryKeyMixin, TimestampMixin, Base):
-    """A versioned printer/nozzle-scoped material profile."""
+    """A template-linked override revision with a complete resolved snapshot."""
 
     __tablename__ = "material_profiles"
     __table_args__ = (
@@ -351,9 +352,15 @@ class MaterialProfile(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     preferred_build_plate_surface_id: Mapped[UUID | None] = mapped_column(
         ForeignKey("build_plate_surfaces.id")
     )
-    source_template_revision_id: Mapped[UUID | None] = mapped_column(
-        ForeignKey("material_template_revisions.id", ondelete="SET NULL"), index=True
+    # Keep the established database column name for a non-destructive upgrade,
+    # but treat the relationship as the active inherited base, not provenance.
+    base_template_revision_id: Mapped[UUID] = mapped_column(
+        "source_template_revision_id",
+        ForeignKey("material_template_revisions.id", ondelete="RESTRICT"),
+        nullable=False,
+        index=True,
     )
+    setting_overrides: Mapped[dict[str, object]] = mapped_column(JSONB, nullable=False, default=dict)
     ironing_enabled: Mapped[bool | None] = mapped_column(Boolean)
     ironing_flow_percent: Mapped[Decimal | None] = mapped_column(MEASUREMENT)
     ironing_speed_mm_s: Mapped[Decimal | None] = mapped_column(MEASUREMENT)
@@ -369,14 +376,6 @@ class MaterialTemplate(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     """A reusable material family scoped to one printer and nozzle."""
 
     __tablename__ = "material_templates"
-    __table_args__ = (
-        UniqueConstraint(
-            "material_type",
-            "printer_id",
-            "nozzle_diameter_mm",
-            name="uq_material_template_scope",
-        ),
-    )
 
     name: Mapped[str] = mapped_column(String(160), nullable=False)
     material_type: Mapped[str] = mapped_column(String(48), nullable=False, index=True)
@@ -386,8 +385,32 @@ class MaterialTemplate(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     )
     nozzle_diameter_mm: Mapped[Decimal] = mapped_column(MEASUREMENT, nullable=False)
     filament_diameter_mm: Mapped[Decimal] = mapped_column(MEASUREMENT, nullable=False)
+    source_workstation_agent_id: Mapped[UUID | None] = mapped_column(
+        ForeignKey(
+            "workstation_agents.id",
+            name="fk_material_templates_cura_source_agent",
+            ondelete="SET NULL",
+        ),
+        index=True,
+    )
+    source_cura_material_id: Mapped[str | None] = mapped_column(String(64))
     active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
     record_version: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
+    __table_args__ = (
+        Index(
+            "uq_material_template_manual_scope",
+            func.lower(material_type),
+            printer_id,
+            nozzle_diameter_mm,
+            unique=True,
+            postgresql_where=source_cura_material_id.is_(None),
+        ),
+        UniqueConstraint(
+            "source_workstation_agent_id",
+            "source_cura_material_id",
+            name="uq_material_template_cura_source",
+        ),
+    )
 
 
 class MaterialTemplateRevision(UUIDPrimaryKeyMixin, TimestampMixin, Base):

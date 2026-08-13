@@ -10,6 +10,7 @@
 - Google output escaping
 - idempotency-key generation
 - Spoolman extra-field merge
+- deterministic Cura material GUIDs, bounded prompt labels/catalogs, Klipper macro syntax, and physical unload/load commit ordering
 
 ## PostgreSQL integration tests
 
@@ -28,7 +29,7 @@ Use a real disposable PostgreSQL instance for:
 Mock or containerize:
 
 - Spoolman REST and WebSocket
-- Moonraker status and active-spool calls
+- Moonraker status, physical-spool macro state, bounded catalog, and guarded change calls
 - Google Sheets batch updates and quota failures
 
 ## End-to-end scenarios
@@ -44,6 +45,8 @@ Mock or containerize:
 9. Repeating temperature step invalidates dependent results.
 10. Scale replay and unstable sample rejection.
 11. NFC unknown tag and confirmed activation.
+12. Matching Cura material bypasses the change workflow without altering the existing `START_PRINT` behavior.
+13. Mismatched Cura material clears Spoolman only after unload and sets the selected ID only after load; cancellation at either prompt retains the last completed physical state.
 
 ## Swarm tests
 

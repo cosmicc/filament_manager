@@ -70,7 +70,7 @@ Back up both databases independently through the central PostgreSQL backup platf
 2. Restore `spoolman`, or initialize a blank Spoolman database.
 3. Deploy the Spoolman service and verify health.
 4. Reproject canonical inventory through the Spoolman API.
-5. Reconcile active spool and printer-originated usage.
+5. Reconcile printer-originated usage and align canonical active spool only after validating Moonraker against persisted physical Klipper state.
 6. Rebuild the Google Sheet.
 
 ## Example provisioning

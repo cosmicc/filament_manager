@@ -20,6 +20,11 @@ from filament_manager.domain.mass import (
     MeasurementConfirmationRequired,
     calculate_measurement,
 )
+from filament_manager.domain.profile_inheritance import (
+    profile_columns_from_settings,
+    sparse_profile_overrides,
+)
+from filament_manager.domain.spool_preflight import SpoolPreflightError
 from filament_manager.models.enums import MeasurementStatus, ProfileStatus, SpoolStatus
 from filament_manager.models.inventory import (
     FilamentColor,
@@ -33,7 +38,7 @@ from filament_manager.models.inventory import (
     Vendor,
 )
 from filament_manager.services.events import add_audit_event, add_outbox_job
-from filament_manager.services.moonraker_sync import synchronize_active_spool
+from filament_manager.services.spool_preflight import spool_change_target
 
 from ..dependencies import DatabaseSession, Operator, Viewer
 from ..errors import ApiError
@@ -357,18 +362,24 @@ async def create_filament(
     await session.flush()
     profile: MaterialProfile | None = None
     if template_revision is not None and template is not None:
-        profile_values = MaterialSettingsInput.model_validate(template_revision.settings).model_dump()
+        profile_values = MaterialSettingsInput.model_validate(template_revision.settings).model_dump(
+            mode="json"
+        )
         # Product density is canonical for the actual purchasable filament and
         # intentionally supersedes the generic template's starting density.
         profile_values["filament_density_g_cm3"] = product.density_g_cm3
         profile = MaterialProfile(
-            **profile_values,
+            **profile_columns_from_settings(profile_values),
             filament_product_id=product.id,
             printer_id=template.printer_id,
             nozzle_diameter_mm=template.nozzle_diameter_mm,
             version=1,
             status=ProfileStatus.DRAFT,
-            source_template_revision_id=template_revision.id,
+            base_template_revision_id=template_revision.id,
+            setting_overrides=sparse_profile_overrides(
+                template_revision.settings,
+                profile_values,
+            ),
         )
         session.add(profile)
         await session.flush()
@@ -841,13 +852,13 @@ async def record_measurement(
 
 
 @router.post("/spools/{spool_id}/set-active", status_code=status.HTTP_202_ACCEPTED)
-async def set_active_spool(
+async def request_spool_load(
     spool_id: UUID,
     request: Request,
     operator: Operator,
     session: DatabaseSession,
 ) -> dict[str, str]:
-    """Set canonical state immediately and queue the supported Moonraker request."""
+    """Request a confirmed physical spool change without pre-activating the spool."""
 
     spool = await _get_spool(session, spool_id)
     if spool.spoolman_id is None:
@@ -860,25 +871,49 @@ async def set_active_spool(
             "printer_not_configured",
             "The configured Moonraker printer is not ready",
         )
-    await synchronize_active_spool(
+    try:
+        target = await spool_change_target(session, spool=spool, printer=printer)
+    except SpoolPreflightError as exc:
+        raise ApiError(
+            status.HTTP_409_CONFLICT,
+            "spool_change_not_ready",
+            str(exc),
+        ) from exc
+    current = await session.scalar(select(Spool).where(Spool.active_printer_id == printer.id))
+    add_audit_event(
         session,
-        printer_id=printer.id,
-        spoolman_id=spool.spoolman_id,
         actor_id=operator.id,
+        source="web",
+        action="spool.change.request",
+        object_type="spool",
+        object_id=spool.id,
+        before={
+            "printer_id": str(printer.id),
+            "active_spool_id": str(current.id) if current else None,
+            "active_spoolman_id": current.spoolman_id if current else None,
+        },
+        after={
+            "printer_id": str(printer.id),
+            "requested_spool_id": str(spool.id),
+            "requested_spoolman_id": target.spoolman_id,
+        },
         correlation_id=request.state.correlation_id,
-        commit=False,
     )
     add_outbox_job(
         session,
-        job_type="moonraker.active_spool.set",
-        idempotency_key=f"active-spool:{spool.id}:v{spool.record_version}",
+        job_type="moonraker.spool_change.request",
+        idempotency_key=f"spool-change:{spool.id}:{request.state.correlation_id}",
         aggregate_type="spool",
         aggregate_id=spool.id,
         aggregate_version=spool.record_version,
-        payload={"spoolman_id": spool.spoolman_id},
+        payload={
+            "spoolman_id": target.spoolman_id,
+            "temperature_c": str(target.temperature_c),
+            "prompt_label": target.prompt_label,
+        },
     )
     await session.commit()
-    return {"status": "queued"}
+    return {"status": "change_queued"}
 
 
 @router.get("/spools/{spool_id}/label")

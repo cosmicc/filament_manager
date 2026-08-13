@@ -1,5 +1,6 @@
 """Transactional audit and outbox helpers."""
 
+import hashlib
 from datetime import UTC, datetime
 from uuid import UUID
 
@@ -7,6 +8,18 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from filament_manager.config import get_settings
 from filament_manager.models.operations import AuditEvent, OutboxJob
+
+AUDIT_CORRELATION_ID_MAX_LENGTH = 64
+
+
+def bounded_correlation_id(value: str) -> str:
+    """Fit a correlation identifier into storage while retaining collision resistance."""
+
+    if len(value) <= AUDIT_CORRELATION_ID_MAX_LENGTH:
+        return value
+    digest = hashlib.sha256(value.encode("utf-8")).hexdigest()[:16]
+    prefix_length = AUDIT_CORRELATION_ID_MAX_LENGTH - len(digest) - 1
+    return f"{value[:prefix_length]}:{digest}"
 
 
 def add_audit_event(
@@ -33,7 +46,7 @@ def add_audit_event(
         before=before,
         after=after,
         metadata_json=metadata or {},
-        correlation_id=correlation_id,
+        correlation_id=bounded_correlation_id(correlation_id),
         occurred_at=datetime.now(UTC),
     )
     session.add(event)

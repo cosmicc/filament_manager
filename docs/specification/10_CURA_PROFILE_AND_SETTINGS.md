@@ -2,13 +2,13 @@
 
 ## Scope
 
-Filament Manager stores versioned generic templates and product-owned Cura material settings. A workstation deployment is the complete latest published library for every matching template and product profile. It does not create quality-change profiles and does not patch machine start G-code.
+Filament Manager stores versioned material templates plus template-linked sparse product overrides and complete immutable resolved snapshots. A workstation deployment is the complete latest published library for every matching template and product profile. It does not create quality-change profiles and does not patch machine start G-code.
 
 Install and enable the Cura **Material Settings** plugin to expose the stored material values and the Cura **Klipper Settings** plugin to consume pressure advance and smooth time.
 
 ## Profile scope
 
-A profile is scoped by filament product, printer, nozzle diameter, optional layer-height range, and version. It may reference a preferred build-plate side such as `P4` or `P4b`.
+A profile is scoped by filament product, printer, nozzle diameter, optional layer-height range, and version. It directly references one published template revision, stores only semantic differences from that base, and retains the resolved snapshot used by Cura. It may reference a preferred build-plate side such as `P4` or `P4b`.
 
 ## Approved Cura material catalog
 
@@ -27,15 +27,17 @@ Frequently used settings have typed PostgreSQL columns. Remaining approved setti
 
 ## Existing-material import
 
-Each paired workstation scans bounded Cura material files with a hardened XML parser. It reports only the approved keys and semantic material labels; it never reports absolute paths. The Profiles page requires an explicit mapping to a canonical filament, printer/nozzle, and optional plate side before creating a draft. Import never modifies the local Cura material. Printing and bed temperatures must be present. When Cura omitted inherited flow or fan values from the material XML, import stores 100% flow, 100% maximum fan, and the maximum fan value as the minimum in the draft.
+Each paired workstation scans bounded Cura material files with a hardened XML parser. It reports only the approved keys and semantic material labels; it never reports absolute paths. The Profiles page may map a reported material to a canonical filament, printer/nozzle, and optional plate side before creating a product-owned draft. Before takeover, the Cura Workstations page may instead map a selected material to a printer/nozzle, filament diameter, density, and optional plate side to create a source-tracked template with an initial draft revision. Import never modifies the local Cura material. Printing and bed temperatures must be present. When Cura omitted inherited flow or fan values from the material XML, import stores 100% flow, 100% maximum fan, and the maximum fan value as the minimum in the draft.
 
-Import desired existing user materials before authoritative takeover. A clean user-material directory may enable management automatically. Otherwise, an Administrator must confirm that all user material files will be backed up and replaced.
+Import desired existing user materials before authoritative takeover. Each selected template import records the source workstation and sanitized material identifier, rejects duplicate imports, and must remain active with at least one published revision before takeover is allowed. A clean user-material directory may enable management automatically. Otherwise, an Administrator must confirm that all user material files will be backed up and replaced.
+
+After takeover, the workstation agent separately reports approved settings from Filament Manager-prefixed files with known deterministic GUIDs. A semantic change to a known template or product material creates one idempotent draft revision in the application for review and publication. The canonical published library remains authoritative and is redeployed after capture. Unknown GUIDs, copied/new Cura materials, metadata edits, and machine settings never create application records; new templates and products can be added only in Filament Manager.
 
 ## Template and product lifecycle
 
-Generic templates are scoped to one printer and nozzle. Publishing a template revision makes it available to create products and adds it to the desired Cura library. A new filament product receives its own draft profile copied from that published revision; later template revisions do not rewrite already-tuned products. Publishing any template or product revision queues a new complete-library checksum for every managed workstation.
+Templates are scoped to one printer and nozzle and synchronize to Cura with the exact name `Template <material type>` and brand `Template`. Publishing a template revision makes it available to create products and adds it to the desired Cura library. A new filament product receives a linked draft containing only differences from that published base. A newer template appears as an available update on every linked filament, including a comparison of effective values; each filament requires its own confirmation before a rebased draft is created, and its overrides remain untouched. Publishing any template or product revision queues a new complete-library checksum for every managed workstation.
 
-Selecting a filament opens its canonical detail and complete approved Cura settings editor. Saving settings always creates the next draft profile version; it never mutates a published snapshot. Calibration publication starts from the session's baseline profile and overlays measured results so unrelated template-derived settings are retained.
+Selecting a filament opens its canonical detail, exact template base/version, inherited/customized count, and complete resolved Cura settings editor. Each field identifies its template value; **Reset to Template** removes that override when the next draft is saved. Saving always creates the next draft profile version. Calibration publication starts from the session's baseline and records calibrated differences without duplicating unrelated inherited values.
 
 ## Profile lifecycle
 
@@ -50,7 +52,9 @@ Published versions are immutable. A revision creates a new draft/version.
 
 ## Deployment and export
 
-The JSON export includes the semantic profile, complete computed Cura setting map, checksum, and version. The workstation agent matches printer/nozzle entries, waits for Cura to close, backs up the union of existing and desired user material/plugin targets, atomically applies the exact desired state, removes stale user materials, and retains an idempotent rollback manifest. A managed Cura plugin filters selectors to `filament_manager_` material roots, hiding bundled choices without changing Cura's installation files.
+The JSON export includes the semantic profile, complete computed Cura setting map, checksum, version, and deterministic managed material GUID. The workstation agent writes that GUID into Cura XML so `{material_guid}` identifies the exact current product profile during Klipper print preflight. It matches printer/nozzle entries, waits for Cura to close, backs up the union of existing and desired user material/plugin targets, atomically applies the exact desired state, removes stale user materials, and retains an idempotent rollback manifest. A managed Cura plugin filters selectors to `filament_manager_` material roots, hiding bundled choices without changing Cura's installation files.
+
+The agent never changes machine start G-code. The operator replaces only the existing Cura `START_PRINT` call with the documented `FILAMENT_MANAGER_START_PRINT ... MATERIAL_GUID={material_guid}` wrapper and preserves every other start/end line. Product materials map to physical inventory; `Template <material type>` entries remain design-time starting points and intentionally have no eligible spool preflight mapping.
 
 Known standard material fields use Cura's standard XML setting names. All other approved Cura and plugin values use `<cura:setting key="...">` within the material file. Pressure advance is `klipper_pressure_advance_factor`; the agent never injects `SET_PRESSURE_ADVANCE` itself.
 

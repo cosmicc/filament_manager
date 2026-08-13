@@ -48,7 +48,7 @@ def test_previous_schema_automatically_upgrades_to_metadata_head(
 
         upgrade_database(DatabaseConfig(url=database_url))
         with engine.connect() as connection:
-            assert connection.scalar(text("SELECT version_num FROM alembic_version")) == "e5c8b31d7a24"
+            assert connection.scalar(text("SELECT version_num FROM alembic_version")) == "a7b8c9d0e123"
             recovered = connection.execute(
                 text(
                     """
@@ -62,6 +62,13 @@ def test_previous_schema_automatically_upgrades_to_metadata_head(
         inspector = inspect(engine)
         assert "material_templates" in inspector.get_table_names()
         assert "material_template_revisions" in inspector.get_table_names()
+        assert {"source_workstation_agent_id", "source_cura_material_id"} <= {
+            column["name"] for column in inspector.get_columns("material_templates")
+        }
+        profile_columns = {column["name"]: column for column in inspector.get_columns("material_profiles")}
+        assert "setting_overrides" in profile_columns
+        assert profile_columns["source_template_revision_id"]["nullable"] is False
+        assert "cura_managed_edit_receipts" in inspector.get_table_names()
         assert "cura_management_enabled" in {
             column["name"] for column in inspector.get_columns("workstation_agents")
         }

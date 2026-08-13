@@ -177,6 +177,7 @@ export default function SpoolsPage() {
   const [editingLocation, setEditingLocation] = useState<Spool | null>(null)
   const [creating, setCreating] = useState(false)
   const [actionError, setActionError] = useState('')
+  const [actionMessage, setActionMessage] = useState('')
   const query = useQuery({
     queryKey: ['spools', search, status],
     queryFn: () => apiFetch<Page<Spool>>(`/spools?limit=200${search ? `&search=${encodeURIComponent(search)}` : ''}${status ? `&status=${encodeURIComponent(status)}` : ''}`),
@@ -189,16 +190,24 @@ export default function SpoolsPage() {
     const current = items.find((spool) => spool.id === selected.id)
     if (current && current !== selected) setSelected(current)
   }, [items, selected])
-  const setActive = useMutation({
+  useEffect(() => {
+    setActionError('')
+    setActionMessage('')
+  }, [selected?.id])
+  const requestLoad = useMutation({
     mutationFn: (spool: Spool) => apiFetch(`/spools/${spool.id}/set-active`, { method: 'POST' }),
     onSuccess: async () => {
       setActionError('')
+      setActionMessage('Load request sent to Fluidd. Spoolman will update after the physical load finishes.')
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: ['spools'] }),
         queryClient.invalidateQueries({ queryKey: ['dashboard'] }),
       ])
     },
-    onError: (caught) => setActionError(caught instanceof Error ? caught.message : 'Could not queue active spool'),
+    onError: (caught) => {
+      setActionMessage('')
+      setActionError(caught instanceof Error ? caught.message : 'Could not request the spool change')
+    },
   })
   const needsAttention = useMemo(() => items.filter((spool) => spool.status === 'needs_weighing' || spool.status === 'low').length, [items])
 
@@ -221,7 +230,7 @@ export default function SpoolsPage() {
           </div>
 
           <aside className={`detail-panel${selected ? ' detail-panel--open' : ''}`}>
-            {selected ? <><header className="detail-panel__header"><div className="table-identity"><span className="filament-swatch filament-swatch--large" style={{ '--swatch': `#${selected.color_hex ?? '2F80A5'}` } as CSSProperties} /><span><p className="eyebrow">Selected spool</p><h2>{selected.spool_code}</h2></span></div><StatusPill status={selected.active_printer_id ? 'active' : selected.status} /></header><div className="detail-panel__body"><dl className="definition-list"><div><dt>Filament</dt><dd>{selected.vendor_name} {selected.material_type} · {selected.color_name}</dd></div><div><dt>Remaining</dt><dd>{grams(selected.remaining_mass_effective_g)} / {grams(selected.nominal_net_mass_g)}</dd></div><div><dt>Confidence</dt><dd>{selected.weight_confidence}</dd></div><div><dt>Tare mass</dt><dd>{Number(selected.tare_mass_g) > 0 ? grams(selected.tare_mass_g, 1) : 'Unknown'}</dd></div><div><dt>Spoolman</dt><dd>{selected.spoolman_id ? `ID ${selected.spoolman_id}` : 'Projection pending'}</dd></div><div><dt>Printer assignment</dt><dd>{selected.active_printer_id ? 'Active spool' : 'Not active'}</dd></div><div><dt>Location</dt><dd>{selected.location || 'Not set'}</dd></div></dl><div className="detail-actions">{canEdit && <button className="button button--primary" onClick={() => setWeighing(selected)}><Scale size={17} /> Weigh spool</button>}{canEdit && <button className="button" onClick={() => setEditingLocation(selected)}><MapPin size={17} /> Edit location</button>}{canEdit && <button className="button" disabled={!selected.spoolman_id || setActive.isPending || Boolean(selected.active_printer_id)} title={!selected.spoolman_id ? 'Project this spool to Spoolman first' : selected.active_printer_id ? 'This spool is already active' : undefined} onClick={() => setActive.mutate(selected)}><Star size={17} />{selected.active_printer_id ? 'Active spool' : 'Set active'}</button>}<a className="button" href={`/api/v1/spools/${selected.id}/label`} target="_blank" rel="noreferrer"><QrCode size={17} /> View label</a></div>{actionError && <p className="form-error">{actionError}</p>}{selected.weight_confidence === 'measured' && <p className="success-note"><CheckCircle2 size={17} /> Physical measurement is the trusted remaining value.</p>}</div></> : <EmptyState icon={Boxes} title="Select a spool" description="Choose a row to inspect its trusted mass and available actions." />}
+            {selected ? <><header className="detail-panel__header"><div className="table-identity"><span className="filament-swatch filament-swatch--large" style={{ '--swatch': `#${selected.color_hex ?? '2F80A5'}` } as CSSProperties} /><span><p className="eyebrow">Selected spool</p><h2>{selected.spool_code}</h2></span></div><StatusPill status={selected.active_printer_id ? 'active' : selected.status} /></header><div className="detail-panel__body"><dl className="definition-list"><div><dt>Filament</dt><dd>{selected.vendor_name} {selected.material_type} · {selected.color_name}</dd></div><div><dt>Remaining</dt><dd>{grams(selected.remaining_mass_effective_g)} / {grams(selected.nominal_net_mass_g)}</dd></div><div><dt>Confidence</dt><dd>{selected.weight_confidence}</dd></div><div><dt>Tare mass</dt><dd>{Number(selected.tare_mass_g) > 0 ? grams(selected.tare_mass_g, 1) : 'Unknown'}</dd></div><div><dt>Spoolman</dt><dd>{selected.spoolman_id ? `ID ${selected.spoolman_id}` : 'Projection pending'}</dd></div><div><dt>Printer assignment</dt><dd>{selected.active_printer_id ? 'Active spool' : 'Not active'}</dd></div><div><dt>Location</dt><dd>{selected.location || 'Not set'}</dd></div></dl><div className="detail-actions">{canEdit && <button className="button button--primary" onClick={() => setWeighing(selected)}><Scale size={17} /> Weigh spool</button>}{canEdit && <button className="button" onClick={() => setEditingLocation(selected)}><MapPin size={17} /> Edit location</button>}{canEdit && <button className="button" disabled={!selected.spoolman_id || requestLoad.isPending || Boolean(selected.active_printer_id)} title={!selected.spoolman_id ? 'Project this spool to Spoolman first' : selected.active_printer_id ? 'This spool is already physically loaded' : 'Open the confirmed load workflow in Fluidd'} onClick={() => requestLoad.mutate(selected)}><Star size={17} />{selected.active_printer_id ? 'Active spool' : 'Load spool'}</button>}<a className="button" href={`/api/v1/spools/${selected.id}/label`} target="_blank" rel="noreferrer"><QrCode size={17} /> View label</a></div>{actionError && <p className="form-error" role="alert">{actionError}</p>}{actionMessage && <p className="success-note"><CheckCircle2 size={17} /> {actionMessage}</p>}{selected.weight_confidence === 'measured' && <p className="success-note"><CheckCircle2 size={17} /> Physical measurement is the trusted remaining value.</p>}</div></> : <EmptyState icon={Boxes} title="Select a spool" description="Choose a row to inspect its trusted mass and available actions." />}
           </aside>
         </div>
       )}

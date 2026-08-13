@@ -107,9 +107,14 @@ def _material_xml(payload: dict[str, Any]) -> bytes:
         ET.SubElement(name, f"{{{namespace}}}{key}").text = str(value)
     ET.SubElement(metadata, f"{{{namespace}}}version").text = str(profile["version"])
     ET.SubElement(metadata, f"{{{namespace}}}color_code").text = str(material["color_hex"])
-    guid = uuid.uuid5(
-        uuid.NAMESPACE_URL,
-        f"filament-manager-{payload['source_kind']}:{payload['source_id']}",
+    supplied_guid = payload.get("cura_material_guid")
+    guid = (
+        uuid.UUID(str(supplied_guid))
+        if supplied_guid is not None
+        else uuid.uuid5(
+            uuid.NAMESPACE_URL,
+            f"filament-manager-{payload['source_kind']}:{payload['source_id']}",
+        )
     )
     ET.SubElement(metadata, f"{{{namespace}}}GUID").text = str(guid)
     properties = ET.SubElement(root, f"{{{namespace}}}properties")

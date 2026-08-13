@@ -9,7 +9,7 @@
 - Browser authentication uses random server-side sessions in HttpOnly cookies. State-changing requests require a matching CSRF header.
 - Session cookies are `Secure` in production, `SameSite=Strict`, path `/`, and have bounded absolute and idle expiration.
 - Administrator: user management, settings, overrides, retries, and all operator actions.
-- Operator: inventory, measurement, labels, active spool/plate, profiles, and calibration workflows.
+- Operator: inventory, measurement, labels, confirmed physical spool-load/plate workflows, profiles, and calibration workflows.
 - Viewer: authenticated read-only access.
 - Validate proxy headers only when trusted-proxy mode is explicitly configured.
 - Use exact allowed origins and hosts; wildcard production CORS is prohibited.
@@ -24,3 +24,7 @@
 - Require HTTPS for non-loopback pairing and polling, do not follow redirects, and keep credentials scoped to heartbeat, claim, and completion routes.
 - Cura writes require a detected root, symlink/root-escape checks, a closed Cura process, an exact machine/nozzle match, backup of every desired or removed target, a full-library checksum manifest, atomic desired-state replacement, and rollback. Existing user materials require explicit Administrator takeover; a clean library may opt in automatically. The visibility plugin may filter Cura selectors but never alter bundled installation files, quality profiles, machine settings, or start G-code.
 - Existing Cura material discovery uses hardened XML parsing, file/count/size bounds, an exact approved-key allowlist, bounded scalar values, and path-free reports. Never evaluate Cura expressions or import machine-level settings.
+- Managed Cura edit intake accepts only exact known deterministic GUIDs, approved bounded material-setting keys, and idempotent content checksums from a scoped agent. It creates drafts only; unknown GUIDs, metadata changes, and new Cura materials must not enter canonical state.
+- Treat the persisted Klipper physical-spool macro state as authoritative after initialization in every workflow phase. A requested ID is never active early: clear only after completed unload motion and set only after completed load motion. The worker repairs direct Fluidd/Moonraker active-ID drift to the last completed boundary before canonical synchronization.
+- Bound material GUIDs, catalog spool counts, per-material choices, prompt labels, numeric IDs, and temperatures before sending G-code. Prompt labels use an ASCII command-safe allowlist; do not embed vendor/product text directly in a command.
+- The underscore-prefixed physical commit helper is internal operational machinery, not a user action or authorization boundary. Anyone with unrestricted printer/Moonraker access can bypass macros, so keep those surfaces on the trusted network and rely on drift repair for accidental direct selection, not hostile access.

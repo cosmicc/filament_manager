@@ -52,6 +52,7 @@
 - [x] unknown `extra` fields preserved with managed JSON encoding
 - [x] inbound usage reconciliation before metadata convergence
 - [x] restart, stale-lock, and backlog recovery
+- [x] persistent physical-spool state, bounded Cura material catalog, and direct active-ID drift repair
 - [ ] stack/network outage tests
 
 ## Google publication
@@ -68,8 +69,9 @@
 - [x] approved versioned extension settings
 - [x] material-only Cura export renderer
 - [x] sanitized existing-material import
-- [x] versioned generic material templates and copied product draft profiles
+- [x] versioned `Template <material type>` bases and directly linked sparse product draft profiles
 - [x] full desired-state Cura library, explicit takeover, bundled-material hiding, drift repair, and rollback
+- [x] deterministic Cura material GUID and exact-spool Klipper/Fluidd print preflight
 - [x] P1-P5 physical plates seeded
 - [x] dynamic P-number A/B side discovery and one-to-one side mesh mapping tested
 - [ ] preferred side warnings at print start

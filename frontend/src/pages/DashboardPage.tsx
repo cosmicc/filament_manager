@@ -51,7 +51,7 @@ export default function DashboardPage() {
               <div className="remaining-visual"><div className="remaining-visual__labels"><span>{grams(data.active_spool.remaining_mass_effective_g)}</span><strong>{percent(data.active_spool.remaining_percent)}</strong></div><div className="progress"><span style={{ width: `${Math.min(100, Number(data.active_spool.remaining_percent))}%` }} /></div><small>{data.active_spool.weight_confidence} confidence</small></div>
               <Link className="text-link" to="/spools">View inventory <ArrowRight size={15} /></Link>
             </div>
-          ) : <EmptyState icon={Boxes} title="No active spool" description="Select a spool in Klipper, Moonraker, Spoolman, or Inventory. The current printing context updates automatically." action={<Link className="button" to="/spools">Open inventory</Link>} />}
+          ) : <EmptyState icon={Boxes} title="No active spool" description="Load a spool through Inventory or the confirmed Fluidd workflow. The current physical spool updates automatically." action={<Link className="button" to="/spools">Open inventory</Link>} />}
         </article>
 
         <article className="card plate-card">

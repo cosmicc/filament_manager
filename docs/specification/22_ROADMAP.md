@@ -55,6 +55,7 @@
 - dryer-slot and storage-location modeling
 - notification policies
 - richer profile export targets
+- advisory build-plate and side recommendations after sufficient compatibility and print-outcome data exists
 - calibrated spool tare library by vendor/product
 - high-availability review for the shared endpoint after usage justifies it
 

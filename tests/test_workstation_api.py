@@ -1,5 +1,6 @@
 """PostgreSQL-backed workstation pairing and deployment lifecycle tests."""
 
+import json
 from collections.abc import AsyncIterator
 from datetime import UTC, datetime
 from decimal import Decimal
@@ -13,12 +14,24 @@ from testcontainers.community.postgres import PostgresContainer
 from filament_manager.api import dependencies
 from filament_manager.api.routes import workstations
 from filament_manager.config import Settings
+from filament_manager.domain.spool_preflight import cura_material_guid
 from filament_manager.models import Base
 from filament_manager.models.auth import User
 from filament_manager.models.enums import CuraDeploymentStatus, ProfileStatus, UserRole
-from filament_manager.models.inventory import FilamentProduct, MaterialProfile, Printer, Vendor
+from filament_manager.models.inventory import (
+    FilamentProduct,
+    MaterialProfile,
+    MaterialTemplate,
+    MaterialTemplateRevision,
+    Printer,
+    Vendor,
+)
 from filament_manager.models.operations import AuditEvent
-from filament_manager.models.workstations import CuraDeployment, WorkstationAgent
+from filament_manager.models.workstations import (
+    CuraDeployment,
+    CuraManagedEditReceipt,
+    WorkstationAgent,
+)
 from filament_manager.security import hash_password
 
 
@@ -94,6 +107,37 @@ async def test_pair_queue_claim_and_complete_workstation_deployment(
             )
             session.add(product)
             await session.flush()
+            template = MaterialTemplate(
+                name="Template PETG",
+                material_type="PETG",
+                printer_id=printer.id,
+                nozzle_diameter_mm=Decimal("0.4"),
+                filament_diameter_mm=Decimal("1.75"),
+                active=True,
+            )
+            session.add(template)
+            await session.flush()
+            template_revision = MaterialTemplateRevision(
+                material_template_id=template.id,
+                version=1,
+                status=ProfileStatus.PUBLISHED,
+                settings={
+                    "extruder_temp_c": "220",
+                    "bed_temp_c": "70",
+                    "flow_percent": "98",
+                    "cooling_enabled": True,
+                    "cooling_min_percent": "20",
+                    "cooling_max_percent": "70",
+                    "filament_density_g_cm3": "1.27",
+                    "pressure_advance": "0.035",
+                    "cura_extensions": {},
+                },
+                checksum="b" * 64,
+                published_at=datetime.now(UTC),
+            )
+            session.add(template_revision)
+            await session.flush()
+            product.source_template_revision_id = template_revision.id
             profile = MaterialProfile(
                 filament_product_id=product.id,
                 printer_id=printer.id,
@@ -109,6 +153,8 @@ async def test_pair_queue_claim_and_complete_workstation_deployment(
                 filament_density_g_cm3=Decimal("1.27"),
                 checksum="a" * 64,
                 published_at=datetime.now(UTC),
+                base_template_revision_id=template_revision.id,
+                setting_overrides={},
             )
             session.add(profile)
             await session.commit()
@@ -202,6 +248,56 @@ async def test_pair_queue_claim_and_complete_workstation_deployment(
                 json={"outcome": "succeeded", "result": {"managed_files": 4}},
             )
             assert completed.status_code == 204, completed.text
+            edited = await client.post(
+                "/api/v1/workstation-agent/heartbeat",
+                headers={"Authorization": f"Bearer {agent_token}"},
+                json={
+                    "agent_version": "0.2.0",
+                    "capabilities": {
+                        "atomic_install": True,
+                        "unmanaged_material_count": 0,
+                    },
+                    "cura_installations": [
+                        {
+                            "installation_id": "cura-test",
+                            "version": "5.13",
+                            "channel": "Linux Cura",
+                            "path_hint": "Linux Cura user data / 5.13",
+                            "setting_version": 27,
+                            "managed_library_checksum": "a" * 64,
+                            "machines": [],
+                        }
+                    ],
+                    "cura_managed_materials": [
+                        {
+                            "source_id": "c" * 64,
+                            "installation_id": "cura-test",
+                            "name": "Test Filament PETG · Black",
+                            "brand": "Test Filament",
+                            "material_type": "PETG",
+                            "color_name": "Black",
+                            "material_guid": cura_material_guid("product", profile_id),
+                            "content_checksum": "d" * 64,
+                            "settings": {
+                                "material_print_temperature": "225",
+                                "material_bed_temperature": "70",
+                                "material_flow": "98",
+                                "cool_fan_enabled": True,
+                                "cool_fan_speed_min": "20",
+                                "cool_fan_speed_max": "70",
+                                "klipper_pressure_advance_factor": "0.035",
+                            },
+                        }
+                    ],
+                },
+            )
+            assert edited.status_code == 204, edited.text
+            edited_again = await client.post(
+                "/api/v1/workstation-agent/heartbeat",
+                headers={"Authorization": f"Bearer {agent_token}"},
+                json=json.loads(edited.request.content),
+            )
+            assert edited_again.status_code == 204, edited_again.text
 
         async with factory() as session:
             agent = await session.scalar(select(WorkstationAgent))
@@ -209,7 +305,23 @@ async def test_pair_queue_claim_and_complete_workstation_deployment(
             assert agent.token_hash != agent_token
             deployment = await session.get(CuraDeployment, deployment_id)
             assert deployment is not None
-            assert deployment.status == CuraDeploymentStatus.SUCCEEDED
-            assert await session.scalar(select(func.count(AuditEvent.id))) == 4
+            # Capturing the local draft immediately re-queues the last published
+            # library so Cura returns to canonical state until review/publication.
+            assert deployment.status == CuraDeploymentStatus.PENDING
+            draft = await session.scalar(
+                select(MaterialProfile)
+                .where(MaterialProfile.filament_product_id == profile.filament_product_id)
+                .order_by(MaterialProfile.version.desc())
+                .limit(1)
+            )
+            assert draft is not None and draft.version == 2
+            assert draft.status == ProfileStatus.DRAFT
+            assert draft.extruder_temp_c == Decimal("225.00000")
+            assert draft.base_template_revision_id == template_revision.id
+            receipt = await session.scalar(select(CuraManagedEditReceipt))
+            assert receipt is not None
+            assert receipt.content_checksum != "d" * 64
+            assert await session.scalar(select(func.count(CuraManagedEditReceipt.id))) == 1
+            assert await session.scalar(select(func.count(AuditEvent.id))) == 5
 
         await engine.dispose()

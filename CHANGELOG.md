@@ -1,5 +1,38 @@
 # Changelog
 
+## 0.2.0 - 08.13.2026
+
+### Added
+
+- Added a Cura Workstations preservation workflow that imports selected reported Cura materials as source-tracked draft templates for review and publication before takeover.
+- Added duplicate-safe Cura template-import provenance plus a server-side guard that blocks authoritative management until every selected import is active and published; distinct imported source variants can coexist with a base template of the same material type.
+- Added repeated-install regression coverage for the Arch Linux and Windows workstation installers.
+- Added a difference-only material comparator for profile-to-profile and profile-to-template-revision review, including complete canonical and additional Cura settings.
+- Added Cura material-GUID print preflight with exact matching-spool choices in Fluidd, profile-specific unload/load temperatures, persistent physical-spool state, bounded printer catalog synchronization, and a complete Klipper/Moonraker macro reference.
+- Added guarded manual load, unload, `M600`, active-spool, cancellation, purge-more, and resume paths that reuse the printer's existing physical routines.
+- Added direct template-revision links, sparse per-filament overrides, complete resolved snapshots, inherited/customized field indicators, and per-filament template-update review.
+- Added draft-only intake of setting changes made to known managed Cura templates and product materials; unchanged content is ignored, unknown or new Cura materials are rejected, and publication remains an explicit application action.
+
+### Changed
+
+- Changed both workstation installers to perform safe in-place upgrades when run again, preserving pairing configuration, Cura backups, and agent state while refreshing managed code and service/task definitions.
+- Changed installer upgrades to restart the agent only when it was already running and to restore the previous standalone executable if replacement fails.
+- Changed material comparisons to allow any printer/nozzle pairing while clearly warning when either scope dimension differs.
+- Changed Inventory **Set active** to **Load spool**. The request now opens the confirmed printer workflow without changing canonical or Spoolman active state early.
+- Changed 15-second Moonraker reconciliation to repair direct active-ID drift to the last completed physical Klipper state before synchronizing the application.
+- Changed the server, frontend, and workstation-agent package versions to 0.2.0.
+- Changed every template's application and Cura identity to `Template <material type>` under the `Template` brand, while continuing to synchronize one material entry for every published filament profile.
+- Changed a published template update to require separate confirmation for each linked filament; confirmation creates a reviewable draft and preserves that filament's explicit overrides.
+
+### Fixed
+
+- Fixed overlong automatic Moonraker audit correlation IDs causing PostgreSQL `StringDataRightTruncation` errors in the worker.
+- Fixed worker error reporting attempting to reuse an aborted database transaction, which obscured the original Moonraker synchronization failure with `PendingRollbackError`.
+- Fixed repeated workstation-agent installation being unsafe while the existing agent executable or service task was running.
+- Fixed aborted spool changes being able to leave a future target recorded as active: unload now clears only after motion completes, and load sets the new ID only after motion completes.
+- Fixed the high-severity transitive `nanoid` development dependency advisory by updating the locked package to 3.3.18.
+- Fixed profile/template ownership being implicit: profile details and history now identify the exact linked template revision and which settings are inherited or customized.
+
 ## 0.1.6 - 08.12.2026
 
 ### Added
