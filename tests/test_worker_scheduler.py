@@ -16,7 +16,7 @@ async def test_scheduler_does_not_queue_overlapping_reconciliation(
     """A slow or retrying full sweep must not accumulate one job per minute."""
 
     session = SimpleNamespace(
-        scalar=AsyncMock(side_effect=[True, uuid4(), uuid4(), uuid4()]),
+        scalar=AsyncMock(side_effect=[True, uuid4(), uuid4(), uuid4(), uuid4(), uuid4()]),
         commit=AsyncMock(),
     )
     monkeypatch.setattr(
@@ -27,6 +27,7 @@ async def test_scheduler_does_not_queue_overlapping_reconciliation(
             sync=SimpleNamespace(
                 moonraker_state_interval_seconds=15,
                 moonraker_info_interval_seconds=300,
+                moonraker_print_interval_seconds=5,
             ),
             google=SimpleNamespace(enabled=False),
         ),

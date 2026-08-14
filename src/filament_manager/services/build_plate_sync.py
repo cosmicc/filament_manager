@@ -132,11 +132,23 @@ async def synchronize_build_plates(
     )
     previous_active_plate_id = printer.active_plate_id
     previous_active_surface_id = printer.active_plate_surface_id
-    active_plate_changed = active_plate is not None and active_plate.id != previous_active_plate_id
-    active_surface_changed = active_surface is not None and active_surface.id != previous_active_surface_id
+    clear_confirmed = mesh_state.active_profile is None
+    active_plate_changed = (
+        active_plate.id != previous_active_plate_id
+        if active_plate is not None
+        else clear_confirmed and previous_active_plate_id is not None
+    )
+    active_surface_changed = (
+        active_surface.id != previous_active_surface_id
+        if active_surface is not None
+        else clear_confirmed and previous_active_surface_id is not None
+    )
     if active_plate is not None and active_surface is not None:
         printer.active_plate_id = active_plate.id
         printer.active_plate_surface_id = active_surface.id
+    elif clear_confirmed:
+        printer.active_plate_id = None
+        printer.active_plate_surface_id = None
     if active_plate_changed or active_surface_changed or printer.status != "connected":
         printer.record_version += 1
     printer.status = "connected"

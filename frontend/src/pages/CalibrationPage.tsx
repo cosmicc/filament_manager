@@ -40,8 +40,14 @@ const dimensionalInputFields = [
   { key: 'measured_x_mm', label: 'Actual measured X size' },
   { key: 'design_y_mm', label: 'Recorded design Y size' },
   { key: 'measured_y_mm', label: 'Actual measured Y size' },
+  { key: 'design_z_mm', label: 'Recorded design Z size' },
+  { key: 'measured_z_mm', label: 'Actual measured Z size' },
   { key: 'design_hole_mm', label: 'Recorded design hole diameter' },
   { key: 'measured_hole_mm', label: 'Actual measured hole diameter' },
+  { key: 'design_shaft_mm', label: 'Recorded design shaft diameter' },
+  { key: 'measured_shaft_mm', label: 'Actual measured shaft diameter' },
+  { key: 'design_wall_thickness_mm', label: 'Recorded design wall thickness' },
+  { key: 'measured_wall_thickness_mm', label: 'Actual measured wall thickness' },
 ]
 
 function CreateCalibrationModal({ filaments, printers, plates, onClose }: { filaments: Filament[]; printers: Printer[]; plates: BuildPlate[]; onClose: () => void }) {
@@ -133,7 +139,7 @@ function StepEditor({ calibration, step }: { calibration: Calibration; step: Cal
             <label key={field.key}>{field.label}<div className="input-suffix"><input type="number" min={step.step_key === 'dimensional' ? '0.001' : undefined} step="any" value={String(values[field.key] ?? '')} onChange={(event) => setValues((current) => ({ ...current, [field.key]: event.target.value }))} required={step.required} />{field.unit && <span>{field.unit}</span>}</div></label>
           ))}
         </div>
-        {step.step_key === 'dimensional' && step.status === 'completed' ? <div className={step.result.axis_warning ? 'form-error' : 'success-note'}><span>Horizontal Expansion: {String(step.result.xy_offset)} mm · Hole Horizontal Expansion: {String(step.result.hole_xy_offset)} mm.{step.result.axis_warning ? ` X and Y corrections differ by ${String(step.result.axis_difference_mm)} mm; check mechanics or calibrate axes before relying on their average.` : ' X and Y corrections agree within 0.05 mm.'}</span></div> : null}
+        {step.step_key === 'dimensional' && step.status === 'completed' ? <div className="dimensional-results"><div className={step.result.axis_warning || step.result.shaft_warning ? 'warning-note' : 'success-note'}><span><strong>{step.result.correction_classification === 'printer_geometry_review' ? 'Printer geometry review recommended' : 'Material compensation is consistent'}</strong> · No Klipper configuration was changed.</span></div><dl className="definition-list"><div><dt>Cura Horizontal Expansion</dt><dd>{String(step.result.xy_offset)} mm</dd></div><div><dt>Hole Horizontal Expansion</dt><dd>{String(step.result.hole_xy_offset)} mm</dd></div><div><dt>Shaft expansion reference</dt><dd>{String(step.result.shaft_horizontal_expansion_mm)} mm</dd></div><div><dt>Recommended flow</dt><dd>{String(step.result.flow_percent)}%</dd></div><div><dt>Printer X/Y/Z scale review</dt><dd>{String(step.result.printer_x_correction_percent)}% / {String(step.result.printer_y_correction_percent)}% / {String(step.result.printer_z_correction_percent)}%</dd></div><div><dt>Material X/Y/Z shrinkage</dt><dd>{String(step.result.material_shrinkage_x_percent)}% / {String(step.result.material_shrinkage_y_percent)}% / {String(step.result.material_shrinkage_z_percent)}%</dd></div></dl>{step.result.axis_warning ? <p className="warning-note">X and Y expansions differ by {String(step.result.axis_difference_mm)} mm. Check mechanics before applying printer scale correction.</p> : null}{step.result.shaft_warning ? <p className="warning-note">The shaft result differs from the X/Y expansion by {String(step.result.shaft_difference_mm)} mm. Review extrusion and feature-specific behavior.</p> : null}</div> : null}
       </EditorSection>
       <EditorSection title="Observations" description="Keep the visual result and artifact reference with this immutable calibration history.">
         <label>Observations and artifact reference <span className="label-optional">Recommended</span><textarea rows={4} value={notes} onChange={(event) => setNotes(event.target.value)} placeholder="Visual quality, test range, Cura project, G-code, photo, or print job reference" /></label>

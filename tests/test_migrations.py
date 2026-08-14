@@ -48,7 +48,7 @@ def test_previous_schema_automatically_upgrades_to_metadata_head(
 
         upgrade_database(DatabaseConfig(url=database_url))
         with engine.connect() as connection:
-            assert connection.scalar(text("SELECT version_num FROM alembic_version")) == "a7b8c9d0e123"
+            assert connection.scalar(text("SELECT version_num FROM alembic_version")) == "b8c9d0e1f234"
             recovered = connection.execute(
                 text(
                     """
@@ -69,6 +69,11 @@ def test_previous_schema_automatically_upgrades_to_metadata_head(
         assert "setting_overrides" in profile_columns
         assert profile_columns["source_template_revision_id"]["nullable"] is False
         assert "cura_managed_edit_receipts" in inspector.get_table_names()
+        assert "print_jobs" in inspector.get_table_names()
+        assert "print_material_segments" in inspector.get_table_names()
+        assert "print_assessments" in inspector.get_table_names()
+        assert "notifications" in inspector.get_table_names()
+        assert "build_plate_maintenance_events" in inspector.get_table_names()
         assert "cura_management_enabled" in {
             column["name"] for column in inspector.get_columns("workstation_agents")
         }
@@ -76,6 +81,13 @@ def test_previous_schema_automatically_upgrades_to_metadata_head(
         assert "filament_colors" in inspector.get_table_names()
         assert "last_info_sync_at" in {column["name"] for column in inspector.get_columns("printers")}
         assert "product_name" in {column["name"] for column in inspector.get_columns("build_plates")}
+        command.check(alembic_config)
+        command.downgrade(alembic_config, "a7b8c9d0e123")
+        downgraded = inspect(engine)
+        assert "print_jobs" not in downgraded.get_table_names()
+        assert "notifications" not in downgraded.get_table_names()
+        assert "must_change_password" not in {column["name"] for column in downgraded.get_columns("users")}
+        command.upgrade(alembic_config, "head")
         command.check(alembic_config)
         engine.dispose()
         get_settings.cache_clear()

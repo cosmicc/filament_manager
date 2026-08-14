@@ -41,6 +41,11 @@ async def schedule_periodic_jobs(session: AsyncSession) -> int:
             "moonraker.printer_info.reconcile",
             settings.sync.moonraker_info_interval_seconds,
         ),
+        (
+            "moonraker.print_history.reconcile",
+            settings.sync.moonraker_print_interval_seconds,
+        ),
+        ("notifications.evaluate", 60),
     ]
     if settings.google.enabled:
         schedules.append(("google.publish.pending", settings.google.publish_interval_seconds))

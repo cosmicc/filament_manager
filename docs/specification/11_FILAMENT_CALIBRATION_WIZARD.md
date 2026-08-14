@@ -67,19 +67,27 @@ Record:
 
 ## Step 5 - Size and Hole Calibration
 
-Purpose: compensate product-specific outside and hole dimensions after retraction is stable.
+Purpose: separate product-specific material compensation from possible printer-geometry correction after retraction is stable.
 
 Record:
 
-- recorded design X and Y dimensions
-- actual measured X and Y dimensions
+- recorded design X, Y, and Z dimensions
+- actual measured X, Y, and Z dimensions
 - recorded design hole diameter
 - actual measured hole diameter
+- recorded design shaft diameter
+- actual measured shaft diameter
+- recorded design wall thickness
+- actual measured wall thickness
 - calculated X and Y expansion observations
 - calculated Cura Horizontal Expansion (`xy_offset`)
 - calculated Cura Hole Horizontal Expansion (`hole_xy_offset`)
+- calculated shaft expansion reference and divergence warning
+- calculated material-specific flow from the completed flow baseline and wall measurements
+- calculated X/Y/Z material shrinkage percentages
+- non-applying X/Y/Z printer scale recommendations
 
-Each axis correction is `(design - measured) / 2`. Horizontal Expansion is the mean of the X and Y corrections. Hole Horizontal Expansion is `(design hole - measured hole) / 2`. When the independent X and Y corrections differ by more than 0.05 mm, warn the operator to check mechanics or calibrate axes before relying on their average.
+Each horizontal feature correction is `(design - measured) / 2`. Horizontal Expansion is the mean of the X and Y corrections. Hole Horizontal Expansion and shaft reference use their own two-sided differences. Recommended flow is `baseline flow × design wall / measured wall`. Printer scale recommendations are `design / measured × 100`; material shrinkage is `(design - measured) / design × 100`. When X/Y corrections or the shaft reference differ by more than 0.05 mm, classify the result for printer-geometry review. Filament Manager never applies Klipper axis or rotation-distance changes automatically.
 
 ## Step 6 - Overhang Test
 

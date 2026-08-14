@@ -91,3 +91,47 @@ class CuraDeploymentStatus(StrEnum):
     SUCCEEDED = "succeeded"
     FAILED = "failed"
     CANCELLED = "cancelled"
+
+
+class PrintJobStatus(StrEnum):
+    """Canonical lifecycle copied from current and historical Moonraker jobs."""
+
+    IN_PROGRESS = "in_progress"
+    COMPLETED = "completed"
+    CANCELLED = "cancelled"
+    FAILED = "failed"
+    LEGACY_UNKNOWN = "legacy_unknown"
+
+
+class GcodeInspectionStatus(StrEnum):
+    """Outcome of comparing one G-code file with its captured material state."""
+
+    PENDING = "pending"
+    PASSED = "passed"
+    WARNING = "warning"
+    BLOCKED = "blocked"
+    UNAVAILABLE = "unavailable"
+
+
+class PrintQualityRating(StrEnum):
+    """Small ordered operator assessment retained separately from printer status."""
+
+    FAILED = "failed"
+    ACCEPTABLE = "acceptable"
+    SUCCESSFUL = "successful"
+    EXCELLENT = "excellent"
+
+
+class PlateMaintenanceType(StrEnum):
+    """Immutable build-plate maintenance event kinds."""
+
+    CLEANED = "cleaned"
+    MESH_CALIBRATED = "mesh_calibrated"
+
+
+class NotificationSeverity(StrEnum):
+    """Operator-facing notification importance."""
+
+    INFO = "info"
+    WARNING = "warning"
+    ERROR = "error"

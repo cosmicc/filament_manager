@@ -60,6 +60,17 @@ Filament Manager provides one trusted inventory for physical filament spools, me
 
 Store and export versioned profiles containing the approved Cura Material Settings catalog, including temperatures, flow, speeds, retraction, cooling, offsets, support angle, Cura Klipper Settings pressure advance/smooth time, density, and preferred build-plate side. Profiles are scoped by printer and nozzle diameter. Paired agents may report sanitized existing materials for explicit import into either a product-owned draft profile or a source-tracked draft template. A selected template import must be reviewed and published before authoritative takeover can proceed.
 
+Compare two to four profile or template revisions visually using one baseline, difference-only settings, explicit cross-printer/nozzle warnings, and exact-profile outcome statistics. Template revisions have no print outcome statistics.
+
+### Print inspection, history, and outcomes
+
+- Inspect bounded Cura-generated G-code before print release using supported Moonraker file metadata/download APIs and retain the complete-file hash plus bounded evidence.
+- Default inspection to warnings. Allow an Administrator to enable blocking for missing exact profile state, unavailable inspection, or supported mismatches.
+- Import supported Moonraker live/history state and preserve immutable printer, physical spool, product, exact profile, plate, sliced metadata, actual usage, and M600 segment snapshots.
+- Mark earlier history unresolved when exact material state cannot be reconstructed instead of guessing.
+- Append outcome and quality-score revisions without rewriting prior assessments, and expose exact-profile success statistics.
+- Keep persistent operational notifications with per-user read state for printer, spool, plate, job, and Cura deployment conditions.
+
 ### Build plates
 
 - Seed physical `P1` through `P5` plates and discover later exact `P<number>` Side A or `P<number>b` Side B meshes.
@@ -67,12 +78,13 @@ Store and export versioned profiles containing the approved Cura Material Settin
 - Preserve plate metadata and records when a saved mesh is temporarily absent.
 - Align the active canonical physical plate and side to the loaded Moonraker mesh during synchronization.
 - Record physical description/dimensions/condition/cleaning plus per-side surface material, smooth/textured finish, mesh calibration, and notes.
+- Append cleaning and mesh events and calculate due state from configurable day and print-count thresholds.
 - Associate a preferred plate side with each material profile.
 - Preserve the existing mesh-selection prompt workflow.
 
 ### Calibration wizard
 
-Guide a new filament through temperature, flow, pressure advance, retraction, overhang, and optional ironing tests. Record selected results and publish a new immutable profile version.
+Guide a new filament through temperature, flow, pressure advance, retraction, dimensional size/hole calibration, overhang, and optional ironing tests. Dimensional calibration records X/Y/Z, hole, shaft, and wall measurements; applies only material-profile results and presents printer-geometry corrections for review without changing Klipper. Record selected results and publish a new immutable profile version.
 
 ### Future scale and NFC
 
@@ -106,6 +118,8 @@ Guide a new filament through temperature, flow, pressure advance, retraction, ov
 8. `P1` through `P5` appear initially; synchronizing `P6` creates physical P6 Side A, and `P6b` adds Side B without changing existing metadata.
 9. A calibration session completes the seven-step workflow, calculates horizontal and hole expansion from recorded design/actual measurements, and produces a material-only Cura export containing the approved settings.
 10. A Cura print with the matching spool already loaded reaches the existing `START_PRINT` unchanged; a mismatch pauses for exact-spool selection, unload, insertion confirmation, load, and truthful Spoolman transitions.
+11. Print History preserves exact start-state evidence, M600 segments, inspection results, actual usage, and append-only outcome revisions; legacy records with unknowable state remain unresolved.
+12. G-code inspection warns by default and pauses before physical spool selection when an Administrator enables blocking and inspection cannot prove a supported match.
 
 ## Authoritative implementation references
 

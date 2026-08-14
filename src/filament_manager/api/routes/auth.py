@@ -3,9 +3,10 @@
 import time
 from collections import defaultdict, deque
 from datetime import UTC, datetime, timedelta
+from uuid import UUID
 
 from fastapi import APIRouter, Request, Response, status
-from sqlalchemy import select
+from sqlalchemy import delete, func, select
 
 from filament_manager.config import get_settings
 from filament_manager.models.auth import User, UserSession
@@ -26,7 +27,15 @@ from ..dependencies import (
     DatabaseSession,
 )
 from ..errors import ApiError
-from ..schemas import LoginRequest, LoginResponse, UserCreate, UserResponse
+from ..schemas import (
+    LoginRequest,
+    LoginResponse,
+    PasswordChange,
+    UserCreate,
+    UserPasswordReset,
+    UserResponse,
+    UserUpdate,
+)
 
 router = APIRouter(prefix="/auth", tags=["authentication"])
 
@@ -181,6 +190,26 @@ async def me(user: CurrentUser) -> UserResponse:
     return UserResponse.model_validate(user)
 
 
+async def _ensure_another_active_administrator(session: DatabaseSession, *, changing_user: User) -> None:
+    """Prevent role or activation changes from removing the final administrator."""
+
+    if changing_user.role.value != "administrator" or not changing_user.is_active:
+        return
+    count = await session.scalar(
+        select(func.count(User.id)).where(
+            User.role == changing_user.role,
+            User.is_active.is_(True),
+            User.id != changing_user.id,
+        )
+    )
+    if not count:
+        raise ApiError(
+            status.HTTP_409_CONFLICT,
+            "last_administrator",
+            "At least one other active administrator is required",
+        )
+
+
 @router.get("/users", response_model=list[UserResponse])
 async def list_users(_: Administrator, session: DatabaseSession) -> list[UserResponse]:
     """List local accounts for administrator management."""
@@ -208,6 +237,7 @@ async def create_user(
         display_name=payload.display_name.strip(),
         password_hash=hash_password(payload.password),
         role=payload.role,
+        must_change_password=True,
     )
     session.add(user)
     await session.flush()
@@ -224,3 +254,146 @@ async def create_user(
     )
     await session.commit()
     return UserResponse.model_validate(user)
+
+
+@router.patch("/users/{user_id}", response_model=UserResponse)
+async def update_user(
+    user_id: UUID,
+    payload: UserUpdate,
+    request: Request,
+    administrator: Administrator,
+    session: DatabaseSession,
+) -> UserResponse:
+    """Edit a local account while preserving a usable administrator boundary."""
+
+    user = await session.scalar(select(User).where(User.id == user_id).with_for_update())
+    if user is None:
+        raise ApiError(status.HTTP_404_NOT_FOUND, "unknown_user", "Account not found")
+    if user.record_version != payload.expected_version:
+        raise ApiError(status.HTTP_409_CONFLICT, "record_version_conflict", "Account changed; reload")
+    deactivating = payload.is_active is False and user.is_active
+    removing_admin = payload.role is not None and payload.role != user.role
+    if user.id == administrator.id and deactivating:
+        raise ApiError(
+            status.HTTP_409_CONFLICT,
+            "cannot_deactivate_self",
+            "An administrator cannot deactivate their current account",
+        )
+    if removing_admin or deactivating:
+        await _ensure_another_active_administrator(session, changing_user=user)
+    before: dict[str, object] = {
+        "display_name": user.display_name,
+        "role": user.role.value,
+        "is_active": user.is_active,
+    }
+    if payload.display_name is not None:
+        user.display_name = payload.display_name.strip()
+    if payload.role is not None:
+        user.role = payload.role
+    if payload.is_active is not None:
+        user.is_active = payload.is_active
+    user.record_version += 1
+    if deactivating:
+        await session.execute(delete(UserSession).where(UserSession.user_id == user.id))
+    add_audit_event(
+        session,
+        actor_id=administrator.id,
+        source="web",
+        action="user.update",
+        object_type="user",
+        object_id=user.id,
+        before=before,
+        after={
+            "display_name": user.display_name,
+            "role": user.role.value,
+            "is_active": user.is_active,
+        },
+        correlation_id=request.state.correlation_id,
+    )
+    await session.commit()
+    return UserResponse.model_validate(user)
+
+
+@router.post("/users/{user_id}/reset-password", response_model=UserResponse)
+async def reset_user_password(
+    user_id: UUID,
+    payload: UserPasswordReset,
+    request: Request,
+    administrator: Administrator,
+    session: DatabaseSession,
+) -> UserResponse:
+    """Set a temporary password, revoke sessions, and require replacement."""
+
+    if user_id == administrator.id:
+        raise ApiError(
+            status.HTTP_409_CONFLICT,
+            "use_password_change",
+            "Use Change Password for your own account",
+        )
+    user = await session.scalar(select(User).where(User.id == user_id).with_for_update())
+    if user is None:
+        raise ApiError(status.HTTP_404_NOT_FOUND, "unknown_user", "Account not found")
+    if user.record_version != payload.expected_version:
+        raise ApiError(status.HTTP_409_CONFLICT, "record_version_conflict", "Account changed; reload")
+    user.password_hash = hash_password(payload.temporary_password)
+    user.must_change_password = True
+    user.failed_login_attempts = 0
+    user.locked_until = None
+    user.record_version += 1
+    await session.execute(delete(UserSession).where(UserSession.user_id == user.id))
+    add_audit_event(
+        session,
+        actor_id=administrator.id,
+        source="web",
+        action="user.password.reset",
+        object_type="user",
+        object_id=user.id,
+        before=None,
+        after={"must_change_password": True, "sessions_revoked": True},
+        correlation_id=request.state.correlation_id,
+    )
+    await session.commit()
+    return UserResponse.model_validate(user)
+
+
+@router.post("/change-password", response_model=UserResponse)
+async def change_password(
+    payload: PasswordChange,
+    request: Request,
+    user: CurrentUser,
+    session: DatabaseSession,
+) -> UserResponse:
+    """Replace the current password and retain only the requesting session."""
+
+    locked_user = await session.scalar(select(User).where(User.id == user.id).with_for_update())
+    assert locked_user is not None
+    if not verify_password(locked_user.password_hash, payload.current_password):
+        raise ApiError(
+            status.HTTP_422_UNPROCESSABLE_ENTITY,
+            "current_password_invalid",
+            "Current password is incorrect",
+        )
+    locked_user.password_hash = hash_password(payload.new_password)
+    locked_user.must_change_password = False
+    locked_user.record_version += 1
+    current_token = request.cookies.get(SESSION_COOKIE)
+    current_hash = hash_token(current_token) if current_token else ""
+    await session.execute(
+        delete(UserSession).where(
+            UserSession.user_id == locked_user.id,
+            UserSession.token_hash != current_hash,
+        )
+    )
+    add_audit_event(
+        session,
+        actor_id=locked_user.id,
+        source="web",
+        action="user.password.change",
+        object_type="user",
+        object_id=locked_user.id,
+        before=None,
+        after={"must_change_password": False, "other_sessions_revoked": True},
+        correlation_id=request.state.correlation_id,
+    )
+    await session.commit()
+    return UserResponse.model_validate(locked_user)

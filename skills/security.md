@@ -8,6 +8,7 @@
 - Derive production allowed hosts from `FILAMENT_MANAGER_BASE_URL` unless the deployer supplies the exact comma-separated `FILAMENT_MANAGER_ALLOWED_HOSTS`; never introduce wildcard host or CORS variables.
 - Browser authentication uses random server-side sessions in HttpOnly cookies. State-changing requests require a matching CSRF header.
 - Session cookies are `Secure` in production, `SameSite=Strict`, path `/`, and have bounded absolute and idle expiration.
+- Administrator-created and reset passwords are temporary. Set `must_change_password`, revoke prior sessions on reset/deactivation, and permit a forced account only to read itself, change its password, or log out. Keep last-active-Administrator and current-account deactivation safeguards.
 - Administrator: user management, settings, overrides, retries, and all operator actions.
 - Operator: inventory, measurement, labels, confirmed physical spool-load/plate workflows, profiles, and calibration workflows.
 - Viewer: authenticated read-only access.
@@ -27,4 +28,6 @@
 - Managed Cura edit intake accepts only exact known deterministic GUIDs, approved bounded material-setting keys, and idempotent content checksums from a scoped agent. It creates drafts only; unknown GUIDs, metadata changes, and new Cura materials must not enter canonical state.
 - Treat the persisted Klipper physical-spool macro state as authoritative after initialization in every workflow phase. A requested ID is never active early: clear only after completed unload motion and set only after completed load motion. The worker repairs direct Fluidd/Moonraker active-ID drift to the last completed boundary before canonical synchronization.
 - Bound material GUIDs, catalog spool counts, per-material choices, prompt labels, numeric IDs, and temperatures before sending G-code. Prompt labels use an ASCII command-safe allowlist; do not embed vendor/product text directly in a command.
+- Treat G-code, Moonraker metadata/history, filenames, and Cura `SETTING_3` payloads as untrusted. Reject traversal/control characters, cap history/file/sample sizes, stream rather than buffer complete G-code, parse JSON/INI without interpolation or evaluation, sanitize retained values, and never expose an external body on errors.
+- A blocking inspection fails closed on missing exact profile state, unavailable inspection, or a supported mismatch. Warning mode may continue but must retain the same evidence. Do not compare Cura definition IDs to an operator-facing printer name as if they were the same identifier.
 - The underscore-prefixed physical commit helper is internal operational machinery, not a user action or authorization boundary. Anyone with unrestricted printer/Moonraker access can bypass macros, so keep those surfaces on the trusted network and rely on drift repair for accidental direct selection, not hostile access.

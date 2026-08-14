@@ -21,6 +21,7 @@
 - `POST /spools/{id}/measurements`
 - `POST /spools/{id}/labels`
 - `POST /spools/{id}/set-active`
+- `POST /printer-context/active-spool/clear`
 
 `PATCH /spools/{id}` accepts a bounded free-text `location` plus `expected_version`. Supplying a value or `null` establishes Filament Manager ownership and queues the Spoolman projection atomically.
 
@@ -52,7 +53,12 @@
 - `PATCH /build-plates/{id}`
 - `PATCH /build-plates/{id}/surfaces/{surface_id}`
 - `POST /build-plates/{id}/select` (requires `surface_id`)
-- `POST /build-plates/{id}/maintenance`
+- `GET /build-plates/maintenance/status`
+- `GET /build-plates/maintenance/events`
+- `POST /build-plates/{id}/maintenance-events`
+- `POST /build-plates/active/clear`
+
+Maintenance events are append-only. Clearing the active plate first clears the loaded Moonraker mesh and then lets state reconciliation clear canonical context.
 
 ### Material profiles
 
@@ -69,6 +75,35 @@
 - `POST /calibrations/{id}/steps/{step}/start`
 - `POST /calibrations/{id}/steps/{step}/result`
 - `POST /calibrations/{id}/publish-profile`
+
+### Print history and inspection
+
+- `GET /prints`
+- `GET /prints/{id}`
+- `GET /prints/profile-statistics`
+- `POST /prints/{id}/assessments`
+
+Print responses preserve exact start-state snapshots, bounded G-code inspection evidence, material-change segments, actual usage, explicit unresolved legacy state, and append-only quality revisions. Profile statistics use the latest assessment for each print.
+
+### Notifications and operational policy
+
+- `GET /notifications`
+- `POST /notifications/{id}/read`
+- `POST /notifications/actions/read-all`
+- `GET /settings/operational`
+- `PATCH /settings/operational` (Administrator only)
+
+The settings update requires optimistic concurrency and supports `warn` or `block` G-code inspection policy. Notifications are persistent conditions with per-user read state.
+
+### Accounts
+
+- `GET /auth/users` (Administrator only)
+- `POST /auth/users` (Administrator only)
+- `PATCH /auth/users/{id}` (Administrator only)
+- `POST /auth/users/{id}/reset-password` (Administrator only)
+- `POST /auth/change-password`
+
+New and reset accounts must replace their temporary password before using other application routes. Deactivation and reset revoke prior sessions; last-Administrator and self-deactivation safeguards apply.
 
 ### Integrations
 
@@ -122,6 +157,8 @@ Return stable machine codes such as:
 - `unknown_spool`
 - `profile_incomplete`
 - `spool_change_not_ready`
+- `gcode_inspection_blocked`
+- `password_change_required`
 - `plate_mesh_unavailable`
 - `spoolman_unavailable`
 - `google_publish_failed`

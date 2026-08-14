@@ -2,7 +2,7 @@ import { expect, test } from '@playwright/test'
 
 const user = {
   id: 'administrator-id', username: 'admin', display_name: 'Administrator',
-  role: 'administrator', is_active: true, record_version: 1,
+  role: 'administrator', is_active: true, must_change_password: false, record_version: 1,
 }
 
 const printer = {
@@ -81,6 +81,7 @@ test.beforeEach(async ({ page }) => {
   await page.route('**/api/v1/auth/me', (route) => route.fulfill({ json: user }))
   await page.route('**/api/v1/printers', (route) => route.fulfill({ json: [printer] }))
   await page.route('**/api/v1/build-plates', (route) => route.fulfill({ json: [] }))
+  await page.route('**/api/v1/notifications**', (route) => route.fulfill({ json: [] }))
   await page.route('**/api/v1/filament-colors', (route) => route.fulfill({ json: [
     { id: 'blue-id', name: 'Blue', normalized_name: 'blue', color_hex: '2F80A5', record_version: 1 },
   ] }))
@@ -117,6 +118,10 @@ test('comparison shows only differences and warns across profile scopes', async 
     { key: 'retraction_enable', label: 'Enable Retraction', value_type: 'boolean', unit: null, editable: true },
     { key: 'klipper_smooth_time_enable', label: 'Enable Klipper Smooth Time', value_type: 'boolean', unit: null, editable: true },
   ] }))
+  await page.route('**/api/v1/prints/profile-statistics**', (route) => route.fulfill({ json: {
+    [comparisonProfile.id]: { rated_prints: 12, ratings: { successful: 10, failed: 2 }, success_rate_percent: '83.3', low_sample: false },
+    [differentScopeProfile.id]: { rated_prints: 3, ratings: { successful: 3 }, success_rate_percent: '100.0', low_sample: true },
+  } }))
 
   await page.goto('/templates')
   await page.getByRole('button', { name: 'Compare settings' }).click()
@@ -126,12 +131,12 @@ test('comparison shows only differences and warns across profile scopes', async 
   await expect(dialog.getByText('Printing temperature', { exact: true })).toBeVisible()
   await expect(dialog.getByText('Enable Retraction', { exact: true })).toBeVisible()
   await expect(dialog.getByText('Flow', { exact: true })).toHaveCount(0)
-  await expect(dialog.getByRole('status')).toContainText('printer and nozzle scope match')
+  await expect(dialog.getByText('All selected printer and nozzle scopes match.')).toBeVisible()
+  await expect(dialog.getByText('83.3%')).toBeVisible()
 
-  await dialog.getByLabel('Compare with').selectOption(`profile:${differentScopeProfile.id}`)
-  await expect(dialog.getByRole('alert')).toContainText('Scope mismatch: nozzle diameter differs')
+  await dialog.getByRole('checkbox', { name: /profile v2/ }).check()
+  await expect(dialog.getByRole('alert')).toContainText('nozzle diameter differ')
   await page.setViewportSize({ width: 390, height: 844 })
-  await expect(dialog.getByLabel('Compare with')).toHaveValue(`profile:${differentScopeProfile.id}`)
   await dialog.getByText('220 °C', { exact: true }).scrollIntoViewIfNeeded()
   await expect(dialog.getByText('220 °C', { exact: true })).toBeVisible()
   await expect(dialog.getByRole('button', { name: 'Close comparison' })).toBeVisible()

@@ -8,6 +8,7 @@ interface AuthContextValue {
   user: User | null
   loading: boolean
   login: (username: string, password: string) => Promise<void>
+  changePassword: (currentPassword: string, newPassword: string) => Promise<void>
   logout: () => Promise<void>
 }
 
@@ -37,7 +38,18 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setUser(null)
   }, [])
 
-  const value = useMemo(() => ({ user, loading, login, logout }), [user, loading, login, logout])
+  const changePassword = useCallback(async (currentPassword: string, newPassword: string) => {
+    const updated = await apiFetch<User>('/auth/change-password', {
+      method: 'POST',
+      body: JSON.stringify({ current_password: currentPassword, new_password: newPassword }),
+    })
+    setUser(updated)
+  }, [])
+
+  const value = useMemo(
+    () => ({ user, loading, login, changePassword, logout }),
+    [user, loading, login, changePassword, logout],
+  )
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>
 }
 

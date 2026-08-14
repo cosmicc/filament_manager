@@ -16,8 +16,13 @@ from filament_manager.models.enums import (
     CalibrationStatus,
     CalibrationStepStatus,
     CuraDeploymentStatus,
+    GcodeInspectionStatus,
     MeasurementSource,
+    NotificationSeverity,
+    PlateMaintenanceType,
     PlateSurfaceTexture,
+    PrintJobStatus,
+    PrintQualityRating,
     ProfileStatus,
     UserRole,
 )
@@ -46,6 +51,7 @@ class UserResponse(ApiModel):
     display_name: str
     role: UserRole
     is_active: bool
+    must_change_password: bool
     record_version: int
 
 
@@ -58,6 +64,27 @@ class UserCreate(ApiModel):
     display_name: str = Field(min_length=1, max_length=120)
     password: str = Field(min_length=10, max_length=256)
     role: UserRole
+
+
+class UserUpdate(ApiModel):
+    """Administrator-managed account identity, role, and activation state."""
+
+    expected_version: int = Field(ge=1)
+    display_name: str | None = Field(default=None, min_length=1, max_length=120)
+    role: UserRole | None = None
+    is_active: bool | None = None
+
+
+class UserPasswordReset(ApiModel):
+    """Administrator-set temporary password requiring replacement at sign-in."""
+
+    expected_version: int = Field(ge=1)
+    temporary_password: str = Field(min_length=10, max_length=256)
+
+
+class PasswordChange(ApiModel):
+    current_password: str = Field(min_length=1, max_length=256)
+    new_password: str = Field(min_length=10, max_length=256)
 
 
 class VendorCreate(ApiModel):
@@ -261,6 +288,10 @@ class BuildPlateResponse(ApiModel):
     preferred_materials: list[str]
     max_bed_temp_c: Decimal | None
     last_cleaned_at: datetime | None
+    cleaning_due_after_prints: int
+    cleaning_due_after_days: int
+    mesh_due_after_prints: int
+    mesh_due_after_days: int
     notes: str | None
     record_version: int
     surfaces: list[BuildPlateSurfaceResponse]
@@ -280,6 +311,10 @@ class BuildPlateUpdate(ApiModel):
     status: str | None = None
     preferred_materials: list[str] | None = Field(default=None, max_length=50)
     max_bed_temp_c: Decimal | None = Field(default=None, ge=0, le=500)
+    cleaning_due_after_prints: int | None = Field(default=None, ge=1, le=10_000)
+    cleaning_due_after_days: int | None = Field(default=None, ge=1, le=3650)
+    mesh_due_after_prints: int | None = Field(default=None, ge=1, le=10_000)
+    mesh_due_after_days: int | None = Field(default=None, ge=1, le=3650)
     notes: str | None = Field(default=None, max_length=4000)
 
 
@@ -317,6 +352,31 @@ class BuildPlateSyncResponse(ApiModel):
     active_plate_changed: bool
     active_surface_changed: bool
     synchronized_at: datetime
+
+
+class BuildPlateMaintenanceCreate(ApiModel):
+    maintenance_type: PlateMaintenanceType
+    surface_id: UUID | None = None
+    notes: str | None = Field(default=None, max_length=2000)
+
+
+class BuildPlateMaintenanceEventResponse(ApiModel):
+    id: UUID
+    build_plate_id: UUID
+    build_plate_surface_id: UUID | None
+    maintenance_type: PlateMaintenanceType
+    performed_by: UUID | None
+    source: str
+    notes: str | None
+    occurred_at: datetime
+
+
+class BuildPlateMaintenanceStatus(ApiModel):
+    build_plate_id: UUID
+    cleaning_due: bool
+    cleaning_prints_since: int
+    cleaning_due_at: datetime | None
+    surfaces: list[dict[str, Any]]
 
 
 class CalibrationCreate(ApiModel):
@@ -842,3 +902,144 @@ class CuraDeploymentCompletion(ApiModel):
     error_class: str | None = Field(default=None, max_length=160)
     error_message: str | None = Field(default=None, max_length=500)
     retry_after_seconds: int = Field(default=60, ge=15, le=3600)
+
+
+PRINT_DEFECT_TAGS = {
+    "stringing",
+    "blobs_zits",
+    "underextrusion",
+    "overextrusion",
+    "poor_bridging",
+    "poor_overhangs",
+    "warping",
+    "elephant_foot",
+    "weak_layer_adhesion",
+    "poor_top_surface",
+    "dimensional_error",
+    "supports_difficult_to_remove",
+    "supports_fused",
+    "seam_artifacts",
+}
+
+
+class PrintAssessmentCreate(ApiModel):
+    """Create a new append-only assessment revision for a finished print."""
+
+    rating: PrintQualityRating
+    defect_tags: list[str] = Field(default_factory=list, max_length=len(PRINT_DEFECT_TAGS))
+    notes: str | None = Field(default=None, max_length=4000)
+
+    @field_validator("defect_tags")
+    @classmethod
+    def validate_defect_tags(cls, value: list[str]) -> list[str]:
+        if len(value) != len(set(value)) or any(tag not in PRINT_DEFECT_TAGS for tag in value):
+            raise ValueError("defect tags must be unique supported values")
+        return value
+
+
+class PrintAssessmentResponse(ApiModel):
+    id: UUID
+    revision: int
+    rating: PrintQualityRating
+    defect_tags: list[str]
+    notes: str | None
+    assessed_by: UUID
+    supersedes_id: UUID | None
+    created_at: datetime
+
+
+class PrintMaterialSegmentResponse(ApiModel):
+    id: UUID
+    segment_number: int
+    spool_id: UUID | None
+    filament_product_id: UUID | None
+    material_profile_id: UUID | None
+    material_profile_version: int | None
+    source: str
+    state_snapshot: dict[str, Any]
+    started_at: datetime
+    ended_at: datetime | None
+    actual_filament_length_mm: Decimal | None
+    actual_filament_weight_g: Decimal | None
+
+
+class PrintJobResponse(ApiModel):
+    id: UUID
+    printer_id: UUID
+    moonraker_job_id: str | None
+    moonraker_file_uuid: str | None
+    filename: str
+    gcode_sha256: str | None
+    source: str
+    status: PrintJobStatus
+    spool_id: UUID | None
+    filament_product_id: UUID | None
+    material_profile_id: UUID | None
+    material_profile_version: int | None
+    build_plate_id: UUID | None
+    build_plate_surface_id: UUID | None
+    nozzle_diameter_mm: Decimal | None
+    material_guid: str | None
+    material_name: str | None
+    material_type: str | None
+    state_snapshot: dict[str, Any]
+    profile_snapshot: dict[str, Any]
+    inspection_status: GcodeInspectionStatus
+    inspection_policy: str
+    inspection: dict[str, Any]
+    inspected_at: datetime | None
+    slicer: str | None
+    slicer_version: str | None
+    cura_quality_profile: str | None
+    layer_height_mm: Decimal | None
+    line_width_mm: Decimal | None
+    extruder_temp_c: Decimal | None
+    bed_temp_c: Decimal | None
+    chamber_temp_c: Decimal | None
+    print_speed_mm_s: Decimal | None
+    pressure_advance: Decimal | None
+    retraction_distance_mm: Decimal | None
+    retraction_speed_mm_s: Decimal | None
+    flow_percent: Decimal | None
+    predicted_filament_length_mm: Decimal | None
+    predicted_filament_weight_g: Decimal | None
+    actual_filament_length_mm: Decimal | None
+    actual_filament_weight_g: Decimal | None
+    estimated_duration_seconds: Decimal | None
+    print_duration_seconds: Decimal | None
+    total_duration_seconds: Decimal | None
+    support_configuration: dict[str, Any]
+    machine_name: str | None
+    timelapse_url: str | None
+    started_at: datetime | None
+    ended_at: datetime | None
+    record_version: int
+    segments: list[PrintMaterialSegmentResponse]
+    assessments: list[PrintAssessmentResponse]
+
+
+class OperationalSettingsResponse(ApiModel):
+    gcode_inspection_policy: str
+    record_version: int
+
+
+class OperationalSettingsUpdate(ApiModel):
+    expected_version: int = Field(ge=1)
+    gcode_inspection_policy: str = Field(pattern=r"^(warn|block)$")
+
+
+class NotificationResponse(ApiModel):
+    id: UUID
+    category: str
+    severity: NotificationSeverity
+    title: str
+    message: str
+    action_path: str | None
+    object_type: str | None
+    object_id: UUID | None
+    active: bool
+    occurrence_count: int
+    created_at: datetime
+    last_seen_at: datetime
+    resolved_at: datetime | None
+    read: bool

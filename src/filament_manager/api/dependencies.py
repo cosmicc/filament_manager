@@ -48,6 +48,16 @@ async def current_user(
         raise ApiError(status.HTTP_401_UNAUTHORIZED, "session_expired", "Session expired")
     if not browser_session.user.is_active:
         raise ApiError(status.HTTP_403_FORBIDDEN, "account_disabled", "Account is disabled")
+    if browser_session.user.must_change_password and request.url.path not in {
+        "/api/v1/auth/me",
+        "/api/v1/auth/change-password",
+        "/api/v1/auth/logout",
+    }:
+        raise ApiError(
+            status.HTTP_403_FORBIDDEN,
+            "password_change_required",
+            "Choose a new password before continuing",
+        )
 
     if request.method not in {"GET", "HEAD", "OPTIONS"}:
         if not csrf_cookie or not csrf_header or not secrets_equal(csrf_cookie, csrf_header):

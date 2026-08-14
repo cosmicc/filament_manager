@@ -5,6 +5,9 @@
 - Use UUID primary keys, `TIMESTAMPTZ`, `NUMERIC`, `JSONB`, explicit foreign keys, and indexes that match query paths.
 - Mutable canonical rows carry an integer `record_version`; HTTP updates require an expected version.
 - Measurement, usage, audit, and accepted calibration results are append-only.
+- `print_jobs` retains one exact immutable start-state/profile snapshot plus supported sliced/actual metadata. `print_material_segments` is append-only per spool interval, including M600; `print_assessments` appends revisions and never overwrites an earlier score. Pre-0.2.1 history remains explicitly unresolved when exact state cannot be reconstructed.
+- `build_plate_maintenance_events` is the append-only source for cleaning and side-specific mesh events. Plate rows hold versioned day/print reminder thresholds. `notifications` deduplicates shared conditions while `user_notification_states` owns per-account read timestamps; clear read states when a resolved condition recurs.
+- `application_settings` stores versioned operational policy. G-code inspection currently accepts only `warn` or `block`, defaults to `warn`, and queues printer state synchronization in the same audited update.
 - Schema changes require an Alembic migration plus upgrade validation against disposable PostgreSQL.
 - Physical build-plate identifiers use exact uppercase `P<number>` values, with `P1` through `P5` retained as initial seeds. Printable Side A uses the unsuffixed code and Side B uses lowercase `b`; `P4` and `P4b` belong to one physical P4 plate. Moonraker synchronization preserves physical and side metadata, tracks mesh availability per side, and never deletes a plate or side merely because its mesh is absent.
 - Typed material-profile columns hold frequently used Cura values. Only keys in the approved Cura Material Settings catalog may enter `cura_extensions`; brand/type are derived metadata and published versions remain immutable.
@@ -16,5 +19,6 @@
 - The one-minute Spoolman safety sweep imports remote usage before projecting all canonical vendors, filament products, and spools. A migration requeues Spoolman jobs left running, failed, or dead by the earlier incompatible custom-field contract.
 - Docker web and worker startup automatically runs `alembic upgrade head` while holding the stable application migration advisory lock. Keep the lock timeout bounded, never log the database URL, and fail closed on upgrade errors.
 - Existing calibration sessions receive the dimensional step through migration. Historical published/cancelled sessions keep it as a non-required skipped record; active and ready sessions must complete it before publication.
+- Dimensional results retain all raw X/Y/Z, hole, shaft, and wall measurements. Only material profile outputs such as expansion and flow are published; printer correction percentages remain review evidence and never mutate Klipper.
 - Database `filament_user` must never receive access to the `spoolman` database, and Spoolman credentials must never enter this application.
 - The current remote-database contract explicitly disables PostgreSQL TLS for both applications because the database runs on a dedicated isolated network. Preserve SCRAM authentication, narrow `pg_hba.conf` rules, firewall isolation, and separate roles; never use this connection mode across an untrusted or shared network.

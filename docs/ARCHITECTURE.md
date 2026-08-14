@@ -13,8 +13,9 @@ Browser -> FastAPI -> filament_manager PostgreSQL
 Cura workstation agent -> outbound HTTPS polling -> FastAPI -> leased desired library
                      `-> local backup -> atomic material/plugin replacement
 
-Cura -> Klipper physical-spool preflight -> Moonraker/Spoolman -> supported-API reconciliation
+Cura -> bounded G-code inspection -> Klipper physical-spool preflight -> Moonraker/Spoolman
 Fluidd -> exact spool and insertion confirmations ---^
+Moonraker live/history and file APIs -> exact canonical print snapshots
 ```
 
 The default production deployment operates Spoolman and Filament Manager as separate services in one Swarm stack. The stack creates a private `filament-services` overlay, while Moonraker uses Spoolman's stable published LAN address. Separate application stack files remain available when independent deployment lifecycles are required. Both layouts use remote PostgreSQL with isolated databases and roles.
@@ -28,6 +29,8 @@ Docker services build their validated runtime configuration directly from stack 
 - immutable Spool Usage Events imported from supported Spoolman state
 - Printers, physical Build Plates, and printable sides; `P4` is Side A and `P4b` is Side B of physical plate P4
 - versioned Material Profiles and resumable seven-step Calibration Sessions
+- immutable Print Jobs, Material Segments, and append-only Outcome Assessments
+- append-only Build Plate Maintenance Events, operational Settings, and persistent per-user Notifications
 - append-only Audit Events, transactional Outbox Jobs, and Projection State
 - revisioned Material Templates, directly linked sparse product overrides with immutable resolved Material Profile snapshots, revocable Workstation Agents, single-use Pairing Codes, managed-edit receipts, and immutable desired-library Deployment snapshots
 - future authenticated Device adapters and identifier-only NFC mappings
@@ -43,6 +46,10 @@ Physical measurements have higher confidence than usage estimates. A measurement
 Spoolman reconciliation accepts only supported API data. Decreases create immutable usage events and update effective expected mass; identity-sensitive remote changes remain canonical in Filament Manager. A legacy spool whose location ownership has never been established may adopt one existing, bounded Spoolman location. After import or any local edit, Filament Manager owns that free-text bucket value and reconciliation repairs remote drift. Projection updates read and merge Spoolman `extra` fields so another integration's keys are preserved.
 
 The persisted Klipper spool macro records the last completed physical unload/load boundary. Cura supplies its managed material GUID to the preflight wrapper; a bounded catalog selects exact eligible Spoolman IDs and published nozzle temperatures. The worker publishes that catalog, seeds physical state once, repairs direct active-spool drift to the persisted physical ID, and only then aligns canonical active state. Requested targets never become active before the physical load completes.
+
+The five-second print observer reads only supported Moonraker live/history and file APIs. Before spool selection it streams bounded G-code, hashes the complete accepted file, parses bounded Cura metadata without evaluation, and records mismatches. Warning mode retains evidence and continues; Administrator-enabled blocking pauses on missing profile state, unavailable inspection, or supported mismatches. Exact printer, spool, product, profile, plate, and profile-setting state is captured only after preflight completes. Historical state is immutable, M600 changes append segments, and legacy records remain unresolved when evidence is unavailable.
+
+Notification detection runs server-side and deduplicates persistent operational conditions while maintaining per-user read state. Recurring conditions become unread again. Account creation and password reset establish temporary credentials, revoke affected sessions when required, and restrict the account to password replacement until complete.
 
 Administrator-triggered build-plate synchronization reads Moonraker's supported `bed_mesh` printer object before opening its short canonical transaction. Exact bounded `P<number>` and `P<number>b` profiles create physical plates and sides, missing meshes update side availability without deleting metadata, and a loaded matching mesh updates the printer's active physical plate and side. All other profile names are ignored.
 
@@ -60,6 +67,7 @@ Administrator-triggered printer information synchronization reads documented ser
 - Spoolman has no built-in authentication; keep its LAN endpoint firewalled and put remote browser access behind an authenticated proxy.
 - Workstation agents have no listener. Pairing codes expire after ten minutes and are consumed once; long-lived agent credentials are stored as hashes and authorize only agent heartbeat, claim, and completion routes.
 - Cura writes occur only while Cura is closed, under verified discovered data roots, with symlink/root-escape rejection, automatic backups, full-library checksums, atomic desired-state material/plugin replacement, and rollback. Existing-material discovery and managed-edit intake use hardened XML parsing, approved keys, bounded payloads, deterministic known GUIDs, and no local paths. Authoritative takeover is automatic only for a clean user material directory and otherwise requires Administrator confirmation. Managed edits create drafts only; unknown GUIDs and new Cura-created materials cannot enter canonical state.
+- G-code filenames, metadata, history, and Cura payloads are untrusted and bounded. File content is streamed, never executed, and external response bodies are not returned or logged.
 - Docker web and worker startup coordinate Alembic upgrades with one bounded PostgreSQL session advisory lock before either long-running process starts.
 
 ## Repository map
