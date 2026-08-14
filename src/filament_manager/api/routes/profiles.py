@@ -217,6 +217,8 @@ async def _profile_response(
         latest_template_revision_id=latest_revision.id if latest_revision else base_revision.id,
         latest_template_version=latest_revision.version if latest_revision else base_revision.version,
         template_update_changes=changes,
+        source_workstation_agent_id=profile.source_workstation_agent_id,
+        source_cura_material_id=profile.source_cura_material_id,
     )
 
 
@@ -261,7 +263,7 @@ async def create_material_template(
         )
     existing = await session.scalar(
         select(MaterialTemplate.id).where(
-            MaterialTemplate.source_cura_material_id.is_(None),
+            MaterialTemplate.active.is_(True),
             func.lower(MaterialTemplate.material_type) == payload.material_type.strip().casefold(),
             MaterialTemplate.printer_id == payload.printer_id,
             MaterialTemplate.nozzle_diameter_mm == payload.nozzle_diameter_mm,
@@ -336,17 +338,38 @@ async def import_cura_material_template(
             "unknown_build_plate_surface",
             "Build plate side not found",
         )
-    imported = await session.scalar(
+    imported_template = await session.scalar(
         select(MaterialTemplate.id).where(
             MaterialTemplate.source_workstation_agent_id == agent.id,
             MaterialTemplate.source_cura_material_id == payload.source_id,
         )
     )
-    if imported is not None:
+    imported_profile = await session.scalar(
+        select(MaterialProfile.id).where(
+            MaterialProfile.source_workstation_agent_id == agent.id,
+            MaterialProfile.source_cura_material_id == payload.source_id,
+        )
+    )
+    if imported_template is not None or imported_profile is not None:
         raise ApiError(
             status.HTTP_409_CONFLICT,
             "cura_material_already_imported",
-            "This Cura material has already been imported as a template",
+            "This Cura material has already been imported",
+        )
+    existing_scope = await session.scalar(
+        select(MaterialTemplate.id).where(
+            MaterialTemplate.active.is_(True),
+            func.lower(MaterialTemplate.material_type) == payload.material_type.strip().casefold(),
+            MaterialTemplate.printer_id == payload.printer_id,
+            MaterialTemplate.nozzle_diameter_mm == payload.nozzle_diameter_mm,
+        )
+    )
+    if existing_scope is not None:
+        raise ApiError(
+            status.HTTP_409_CONFLICT,
+            "material_template_scope_exists",
+            "A template already exists for this material, printer, and nozzle; "
+            "import this source as a filament profile",
         )
     try:
         imported_settings = MaterialSettingsInput.model_validate(
@@ -426,12 +449,16 @@ async def update_material_template(
         raise ApiError(status.HTTP_404_NOT_FOUND, "unknown_template", "Template not found")
     if template.record_version != payload.expected_version:
         raise ApiError(status.HTTP_409_CONFLICT, "version_conflict", "Template was changed elsewhere")
-    if payload.material_type is not None and template.source_cura_material_id is None:
+    target_material_type = (
+        payload.material_type.strip() if payload.material_type is not None else template.material_type
+    )
+    target_active = payload.active if payload.active is not None else template.active
+    if target_active:
         conflicting_template = await session.scalar(
             select(MaterialTemplate.id).where(
                 MaterialTemplate.id != template.id,
-                MaterialTemplate.source_cura_material_id.is_(None),
-                func.lower(MaterialTemplate.material_type) == payload.material_type.strip().casefold(),
+                MaterialTemplate.active.is_(True),
+                func.lower(MaterialTemplate.material_type) == target_material_type.casefold(),
                 MaterialTemplate.printer_id == template.printer_id,
                 MaterialTemplate.nozzle_diameter_mm == template.nozzle_diameter_mm,
             )
@@ -887,6 +914,24 @@ async def import_cura_material(
         agent_id=payload.agent_id,
         source_id=payload.source_id,
     )
+    imported_template = await session.scalar(
+        select(MaterialTemplate.id).where(
+            MaterialTemplate.source_workstation_agent_id == agent.id,
+            MaterialTemplate.source_cura_material_id == payload.source_id,
+        )
+    )
+    imported_profile = await session.scalar(
+        select(MaterialProfile.id).where(
+            MaterialProfile.source_workstation_agent_id == agent.id,
+            MaterialProfile.source_cura_material_id == payload.source_id,
+        )
+    )
+    if imported_template is not None or imported_profile is not None:
+        raise ApiError(
+            status.HTTP_409_CONFLICT,
+            "cura_material_already_imported",
+            "This Cura material has already been imported",
+        )
     product = await session.get(FilamentProduct, payload.filament_product_id)
     if product is None:
         raise ApiError(status.HTTP_422_UNPROCESSABLE_ENTITY, "unknown_filament", "Filament not found")
@@ -946,6 +991,8 @@ async def import_cura_material(
         status=ProfileStatus.DRAFT,
         base_template_revision_id=base_revision.id,
         setting_overrides=sparse_profile_overrides(base_revision.settings, desired_settings),
+        source_workstation_agent_id=agent.id,
+        source_cura_material_id=payload.source_id,
     )
     session.add(profile)
     await session.flush()

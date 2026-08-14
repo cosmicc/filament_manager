@@ -59,6 +59,7 @@ class PrintJob(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     build_plate_surface_id: Mapped[UUID | None] = mapped_column(
         ForeignKey("build_plate_surfaces.id", ondelete="SET NULL")
     )
+    nozzle_id: Mapped[UUID | None] = mapped_column(ForeignKey("nozzles.id", ondelete="SET NULL"), index=True)
     nozzle_diameter_mm: Mapped[Decimal | None] = mapped_column(PRINT_MEASUREMENT)
     material_guid: Mapped[str | None] = mapped_column(String(96))
     material_name: Mapped[str | None] = mapped_column(String(255))

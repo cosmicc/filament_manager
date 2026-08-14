@@ -769,9 +769,50 @@ async def _reconcile_moonraker_state(session: AsyncSession, job: OutboxJob) -> N
                 )
             elif preflight_result.initialized and preflight_result.loaded_spool_id != active_result:
                 # The persisted macro state advances only after a completed
-                # physical unload/load routine. Keep canonical state aligned
-                # with that physical boundary even if the repair call fails.
+                # physical unload/load routine. A direct non-null Spoolman
+                # selection can become a guarded Fluidd target, but it never
+                # becomes active canonical state before physical confirmation.
                 effective_active_spool_id = preflight_result.loaded_spool_id
+                if active_result is not None and preflight_result.phase in {
+                    "idle",
+                    "load_select",
+                    "manual_select",
+                }:
+                    selected_spool = await session.scalar(
+                        select(Spool).where(Spool.spoolman_id == active_result)
+                    )
+                    if selected_spool is None:
+                        logger.warning(
+                            "moonraker_spoolman_target_unrecognized",
+                            printer_code=printer.printer_code,
+                            reported_spoolman_id=active_result,
+                        )
+                    else:
+                        try:
+                            target = await spool_change_target(
+                                session,
+                                spool=selected_spool,
+                                printer=printer,
+                            )
+                            await client.request_spoolman_target(
+                                spoolman_id=target.spoolman_id,
+                                temperature_c=target.temperature_c,
+                                prompt_label=target.prompt_label,
+                            )
+                            logger.warning(
+                                "moonraker_spoolman_target_prompted",
+                                printer_code=printer.printer_code,
+                                phase=preflight_result.phase,
+                                target_spoolman_id=active_result,
+                            )
+                        except Exception as exc:
+                            logger.warning(
+                                "moonraker_spoolman_target_rejected",
+                                printer_code=printer.printer_code,
+                                reported_spoolman_id=active_result,
+                                error_class=type(exc).__name__,
+                                error=str(exc),
+                            )
                 try:
                     await client.set_active_spool(preflight_result.loaded_spool_id)
                     logger.warning(

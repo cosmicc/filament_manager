@@ -6,9 +6,16 @@ param(
 $ErrorActionPreference = 'Stop'
 $SourceRoot = Split-Path -Parent $PSScriptRoot
 $AgentRoot = Join-Path $env:LOCALAPPDATA 'FilamentManagerAgent'
-New-Item -ItemType Directory -Path $AgentRoot -Force | Out-Null
 $TaskName = 'Filament Manager Cura Agent'
 $ExistingTask = Get-ScheduledTask -TaskName $TaskName -ErrorAction SilentlyContinue
+$ExistingInstallation = $ExistingTask -or (Test-Path -LiteralPath $AgentRoot)
+if ($ExistingInstallation) {
+    Write-Host 'Filament Manager Agent upgrade started. Existing pairing, state, and backups will be preserved.'
+}
+else {
+    Write-Host 'Filament Manager Agent fresh installation started.'
+}
+New-Item -ItemType Directory -Path $AgentRoot -Force | Out-Null
 $TaskWasRunning = $ExistingTask -and $ExistingTask.State -eq 'Running'
 $StagedPath = $null
 $BackupPath = $null
@@ -98,12 +105,15 @@ finally {
     }
 }
 
-if ($TaskWasRunning) {
+if ($ExistingInstallation -and $TaskWasRunning) {
     Write-Host 'Agent upgraded and the existing per-user task was restarted. Pairing and private configuration were preserved.'
 }
+elseif ($ExistingInstallation) {
+    Write-Host 'Filament Manager Agent upgrade complete. The task was not running before the upgrade, so it remains stopped.'
+}
 else {
-    Write-Host 'Agent installed or upgraded as a per-user logon task. Existing pairing and private configuration, if present, were preserved.'
-    Write-Host 'Pair it if this is the first installation:'
+    Write-Host 'Filament Manager Agent fresh installation complete as a per-user logon task.'
+    Write-Host 'Pair this new installation:'
     Write-Host ('  & "{0}" pair --server https://YOUR-SERVER --name "Windows Cura"' -f $Agent)
     Write-Host ('Then run: Start-ScheduledTask -TaskName "{0}"' -f $TaskName)
 }

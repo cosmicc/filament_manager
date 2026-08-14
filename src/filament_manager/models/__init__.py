@@ -11,6 +11,7 @@ from .inventory import (
     MaterialProfile,
     MaterialTemplate,
     MaterialTemplateRevision,
+    Nozzle,
     Printer,
     Spool,
     SpoolMeasurement,
@@ -22,12 +23,15 @@ from .operations import (
     AuditEvent,
     BuildPlateMaintenanceEvent,
     Device,
+    DiagnosticRun,
     ImportRun,
     NfcTag,
     Notification,
+    NozzleLifecycleEvent,
     OutboxJob,
     ProjectionState,
     UserNotificationState,
+    WorkerHeartbeat,
 )
 from .printing import PrintAssessment, PrintJob, PrintMaterialSegment
 from .workstations import (
@@ -49,6 +53,7 @@ __all__ = [
     "CuraDeployment",
     "CuraManagedEditReceipt",
     "Device",
+    "DiagnosticRun",
     "FilamentColor",
     "FilamentProduct",
     "ImportRun",
@@ -57,6 +62,8 @@ __all__ = [
     "MaterialTemplateRevision",
     "NfcTag",
     "Notification",
+    "Nozzle",
+    "NozzleLifecycleEvent",
     "OutboxJob",
     "PrintAssessment",
     "PrintJob",
@@ -70,6 +77,7 @@ __all__ = [
     "UserNotificationState",
     "UserSession",
     "Vendor",
+    "WorkerHeartbeat",
     "WorkstationAgent",
     "WorkstationPairingCode",
 ]

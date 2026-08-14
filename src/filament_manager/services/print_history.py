@@ -28,6 +28,7 @@ from filament_manager.models.inventory import (
     BuildPlateSurface,
     FilamentProduct,
     MaterialProfile,
+    Nozzle,
     Printer,
     Spool,
 )
@@ -161,6 +162,7 @@ async def _state_snapshot(
         if printer.active_plate_surface_id
         else None
     )
+    nozzle = await session.get(Nozzle, printer.active_nozzle_id) if printer.active_nozzle_id else None
     return {
         "printer": {
             "id": str(printer.id),
@@ -169,6 +171,17 @@ async def _state_snapshot(
             "nozzle_diameter_mm": format(printer.nozzle_diameter_mm, "f"),
             "nozzle_material": printer.nozzle_material,
         },
+        "nozzle": (
+            {
+                "id": str(nozzle.id),
+                "code": nozzle.nozzle_code,
+                "diameter_mm": format(nozzle.diameter_mm, "f"),
+                "material": nozzle.material,
+                "coating": nozzle.coating,
+            }
+            if nozzle
+            else None
+        ),
         "spool": (
             {
                 "id": str(spool.id),
@@ -362,6 +375,7 @@ async def synchronize_live_print(
             material_profile_version=profile.version if profile else None,
             build_plate_id=printer.active_plate_id,
             build_plate_surface_id=printer.active_plate_surface_id,
+            nozzle_id=printer.active_nozzle_id,
             nozzle_diameter_mm=printer.nozzle_diameter_mm,
             material_guid=material_guid or None,
             material_name=requested_product.product_name if requested_product else None,
@@ -474,6 +488,7 @@ async def synchronize_live_print(
             )
             job.build_plate_id = printer.active_plate_id
             job.build_plate_surface_id = printer.active_plate_surface_id
+            job.nozzle_id = printer.active_nozzle_id
             job.state_snapshot = started_snapshot
             first_segment = PrintMaterialSegment(
                 print_job_id=job.id,

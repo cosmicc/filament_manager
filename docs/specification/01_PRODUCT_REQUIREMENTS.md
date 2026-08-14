@@ -19,6 +19,8 @@ Filament Manager provides one trusted inventory for physical filament spools, me
 - Maintain vendors, filament products, physical spools, purchase data, costs, labels, tare weights, current mass, and notes.
 - Preserve existing human `Spool ID` values.
 - Record every inventory mutation in an audit log.
+- Maintain physical nozzle records with diameter, construction material, lifecycle state, one-printer installation, append-only install/remove history, completed-print count, and total filament use.
+- Show completed-print counts for each build-plate side and every distinct spool used by a completed print, including M600 changes.
 
 ### Source of truth
 
@@ -46,6 +48,7 @@ Filament Manager provides one trusted inventory for physical filament spools, me
 - Warn when the selected spool is insufficient or materially incompatible where metadata permits.
 - Pass the Cura managed material GUID into a Klipper preflight that bypasses changing only when the matching physical spool is already loaded.
 - Unload at the removed filament's published nozzle temperature, clear active Spoolman state after physical unload, preheat/load at the selected filament's temperature, and activate the exact new ID only after physical load.
+- Present one live eligible-spool chooser for idle loads and M600 without requiring a separately configured Fluidd macro variable. Treat a direct non-null Spoolman selection as a guarded target that requires explicit already-loaded confirmation or the physical unload/load workflow before canonical activation.
 - Interact through the Spoolman API; direct Spoolman database access is prohibited.
 
 ### Manual first-release workflow
@@ -58,7 +61,7 @@ Filament Manager provides one trusted inventory for physical filament spools, me
 
 ### Cura material profiles
 
-Store and export versioned profiles containing the approved Cura Material Settings catalog, including temperatures, flow, speeds, retraction, cooling, offsets, support angle, Cura Klipper Settings pressure advance/smooth time, density, and preferred build-plate side. Profiles are scoped by printer and nozzle diameter. Paired agents may report sanitized existing materials for explicit import into either a product-owned draft profile or a source-tracked draft template. A selected template import must be reviewed and published before authoritative takeover can proceed.
+Store and export versioned profiles containing the approved Cura Material Settings catalog, including temperatures, flow, speeds, retraction, cooling, offsets, support angle, Cura Klipper Settings pressure advance/smooth time, density, and preferred build-plate side. Profiles are scoped by printer and nozzle diameter. Paired agents may report sanitized existing materials for explicit pre-takeover selection. One source per material family and printer/nozzle scope becomes the source-tracked draft template; other selected sources become product-owned draft profiles. Every selected import must be reviewed and published before authoritative takeover can proceed.
 
 Compare two to four profile or template revisions visually using one baseline, difference-only settings, explicit cross-printer/nozzle warnings, and exact-profile outcome statistics. Template revisions have no print outcome statistics.
 
@@ -74,6 +77,7 @@ Compare two to four profile or template revisions visually using one baseline, d
 ### Build plates
 
 - Seed physical `P1` through `P5` plates and discover later exact `P<number>` Side A or `P<number>b` Side B meshes.
+- Allow an Operator to add the one canonical Side B record manually; keep it unavailable until Moonraker discovers its exact same-named mesh.
 - Group A/B sides under the shared physical P-number and map each side one-to-one to its same-named Klipper mesh.
 - Preserve plate metadata and records when a saved mesh is temporarily absent.
 - Align the active canonical physical plate and side to the loaded Moonraker mesh during synchronization.
@@ -103,6 +107,7 @@ Guide a new filament through temperature, flow, pressure advance, retraction, di
 - External operations are idempotent and retryable.
 - Support amd64 and arm64 images.
 - Provide health, readiness, and metrics endpoints.
+- Provide a dedicated Diagnostics page with sanitized connections, synchronization, worker, queue, recent-error, persisted read-only recovery-validation, and safe projection-rebuild status.
 - Use least-privilege credentials, scoped environment delivery for the current deployment phase, and masked application configuration.
 - Preserve measurement and calibration history.
 
@@ -120,6 +125,8 @@ Guide a new filament through temperature, flow, pressure advance, retraction, di
 10. A Cura print with the matching spool already loaded reaches the existing `START_PRINT` unchanged; a mismatch pauses for exact-spool selection, unload, insertion confirmation, load, and truthful Spoolman transitions.
 11. Print History preserves exact start-state evidence, M600 segments, inspection results, actual usage, and append-only outcome revisions; legacy records with unknowable state remain unresolved.
 12. G-code inspection warns by default and pauses before physical spool selection when an Administrator enables blocking and inspection cannot prove a supported match.
+13. A completed print increments its captured nozzle and plate side once and increments each distinct start/M600 spool once.
+14. Recovery validation checks canonical integrity and derived projection readiness without changing business records; projection rebuild queues only idempotent derived work.
 
 ## Authoritative implementation references
 

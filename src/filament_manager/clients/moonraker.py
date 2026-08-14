@@ -87,6 +87,8 @@ SPOOL_PREFLIGHT_PHASES = {
     "ready",
     "manual_select",
     "manual_ready",
+    "load_select",
+    "spoolman_select",
     "error",
     "inspecting",
 }
@@ -492,6 +494,23 @@ class MoonrakerClient:
             raise ValueError("prompt_label contains unsupported characters")
         script = (
             f"FILAMENT_MANAGER_CHANGE_SPOOL ID={spoolman_id} "
+            f"TEMP={format(temperature_c, 'f')} LABEL={prompt_label}"
+        )
+        return await self._post("/printer/gcode/script", {"script": script})
+
+    async def request_spoolman_target(
+        self, *, spoolman_id: int, temperature_c: Decimal, prompt_label: str
+    ) -> dict[str, Any]:
+        """Turn a direct Spoolman selection into a guarded Fluidd confirmation."""
+
+        if spoolman_id <= 0:
+            raise ValueError("spoolman_id must be positive")
+        if temperature_c <= 0 or temperature_c > 500:
+            raise ValueError("temperature_c is outside the supported range")
+        if SPOOL_PROMPT_LABEL_PATTERN.fullmatch(prompt_label) is None:
+            raise ValueError("prompt_label contains unsupported characters")
+        script = (
+            f"FILAMENT_MANAGER_SPOOLMAN_TARGET ID={spoolman_id} "
             f"TEMP={format(temperature_c, 'f')} LABEL={prompt_label}"
         )
         return await self._post("/printer/gcode/script", {"script": script})

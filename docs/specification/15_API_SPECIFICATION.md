@@ -27,6 +27,8 @@
 
 `POST /spools/{id}/set-active` is retained as the compatibility route for the Inventory **Load spool** action. It validates that the spool is available, projected, and has a current published profile for the configured printer/nozzle, records an audited request, and queues `moonraker.spool_change.request`. It does not mutate canonical or Spoolman active state. The physical Klipper workflow performs those changes only at completed unload/load boundaries; periodic reconciliation observes the result.
 
+Spool responses include a derived completed-print count. Every completed job counts once for each distinct spool appearing as the starting spool or in an M600 segment.
+
 ### Filament products and profiles
 
 - `GET /filaments`
@@ -51,6 +53,7 @@
 - `GET /build-plates`
 - `POST /build-plates/synchronize` (Administrator only; imports exact P-number A/B side meshes)
 - `PATCH /build-plates/{id}`
+- `POST /build-plates/{id}/surfaces` (Operator; creates the sole canonical Side B)
 - `PATCH /build-plates/{id}/surfaces/{surface_id}`
 - `POST /build-plates/{id}/select` (requires `surface_id`)
 - `GET /build-plates/maintenance/status`
@@ -59,6 +62,8 @@
 - `POST /build-plates/active/clear`
 
 Maintenance events are append-only. Clearing the active plate first clears the loaded Moonraker mesh and then lets state reconciliation clear canonical context.
+
+The Side B route derives `P<number>b` from the parent plate, rejects duplicates, and returns a mesh-unavailable side until Moonraker discovers that exact profile. Side responses include a derived completed-print count.
 
 ### Material profiles
 
@@ -120,6 +125,17 @@ New and reset accounts must replace their temporary password before using other 
 
 Printer responses omit Moonraker addresses and credentials. Synchronization returns only bounded documented metadata persisted to the canonical printer record.
 
+### Physical nozzles
+
+- `GET /nozzles`
+- `POST /nozzles`
+- `PATCH /nozzles/{id}`
+- `POST /nozzles/{id}/install`
+- `POST /nozzles/{id}/remove`
+- `GET /nozzles/{id}/events`
+
+Only one physical nozzle may be installed on a printer. Responses derive completed-print and total-filament-use values from immutable print history; lifecycle events are append-only.
+
 ### Devices
 
 - `POST /device-events/scale`
@@ -137,6 +153,12 @@ Printer responses omit Moonraker addresses and credentials. Synchronization retu
 - `GET /jobs`
 - `POST /jobs/{id}/retry`
 - `GET /audit-events`
+- `GET /diagnostics`
+- `GET /diagnostics/validation-runs`
+- `POST /diagnostics/validation-runs` (Administrator only)
+- `POST /diagnostics/projection-rebuild` (Administrator only)
+
+Diagnostics responses contain only sanitized bounded checks, counts, timestamps, and messages. Validation is read-only and persisted. Rebuild queues idempotent derived work and never performs a database restore.
 
 ## WebSocket/SSE events
 

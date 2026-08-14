@@ -46,7 +46,8 @@ When using the standalone CI artifact, pass its binary path to avoid a local Pyt
 Run the same installer again to upgrade an existing agent. It stages a standalone binary before
 replacement, preserves the private pairing configuration and Cura backups, refreshes the user unit,
 and restarts the service only when it was already running. A failed replacement restores the previous
-standalone binary.
+standalone binary. Installer output explicitly identifies a fresh installation or an upgrade; an
+inactive existing service remains stopped.
 
 In Filament Manager, open **Cura workstations**, create a pairing code, and then run the command printed by the installer. The code is entered at a hidden prompt. Start the service after pairing:
 
@@ -75,7 +76,8 @@ When using the standalone Windows CI artifact, pass the executable to avoid a lo
 Run the same installer again to upgrade an existing agent. It stops a running per-user task before
 replacement, preserves the private pairing configuration and Cura backups, refreshes the task, and
 restarts it only when it was running before the upgrade. A failed standalone replacement restores the
-previous executable.
+previous executable. Installer output explicitly identifies a fresh installation or an upgrade; an
+inactive existing task remains stopped.
 
 Create a pairing code in **Cura workstations**, run the command printed by the installer, then start the per-user logon task:
 
@@ -100,4 +102,14 @@ Rollback restores the exact pre-synchronization user materials and managed plugi
 
 ## Security and removal
 
-Pairing codes expire after ten minutes and work once. The server stores hashes of pairing codes and agent credentials, not plaintext. Revoke an agent in the web interface before decommissioning a workstation, then remove its scheduled task or systemd user unit and its private configuration directory.
+Pairing codes expire after ten minutes and work once. The server stores hashes of pairing codes and agent credentials, not plaintext. Revoke an agent in the web interface before decommissioning a workstation, then run the matching uninstaller as the same non-privileged Cura desktop user:
+
+```bash
+./workstation-agent/installers/uninstall-arch.sh
+```
+
+```powershell
+.\workstation-agent\installers\uninstall-windows.ps1
+```
+
+The uninstaller stops and removes the per-user service/task, installed executable or virtual environment, pairing credential, local agent state, and rollback backups. These removals are not recoverable unless separately backed up. The currently deployed Cura material files and managed visibility plugin remain installed so removing the agent does not damage Cura's working material library; remove or replace those through Cura deliberately if they are no longer wanted.

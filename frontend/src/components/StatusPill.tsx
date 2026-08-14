@@ -10,6 +10,7 @@ export function StatusPill({ status, label }: { status: string; label?: string }
     'ready',
     'active',
     'validated',
+    'healthy',
   ].includes(normalized)
     ? 'success'
     : ['low', 'needs_weighing', 'needs_review', 'pending', 'claimed', 'in_progress'].includes(normalized)

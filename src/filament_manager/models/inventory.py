@@ -27,6 +27,7 @@ from .base import Base, TimestampMixin, UUIDPrimaryKeyMixin
 from .enums import (
     MeasurementSource,
     MeasurementStatus,
+    NozzleStatus,
     PlateCondition,
     PlateStatus,
     PlateSurfaceTexture,
@@ -230,8 +231,36 @@ class Printer(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     last_print_history_end_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     active_plate_id: Mapped[UUID | None] = mapped_column(ForeignKey("build_plates.id"))
     active_plate_surface_id: Mapped[UUID | None] = mapped_column(ForeignKey("build_plate_surfaces.id"))
+    active_nozzle_id: Mapped[UUID | None] = mapped_column(
+        ForeignKey("nozzles.id", ondelete="SET NULL"), unique=True
+    )
     status: Mapped[str] = mapped_column(String(32), nullable=False, default="unknown")
     last_seen_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    record_version: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
+
+
+class Nozzle(UUIDPrimaryKeyMixin, TimestampMixin, Base):
+    """A uniquely identified physical nozzle with immutable print attribution."""
+
+    __tablename__ = "nozzles"
+    __table_args__ = (
+        CheckConstraint("diameter_mm > 0", name="nozzle_diameter_positive"),
+        Index("ix_nozzles_status_code", "status", "nozzle_code"),
+    )
+
+    nozzle_code: Mapped[str] = mapped_column(String(64), nullable=False, unique=True)
+    diameter_mm: Mapped[Decimal] = mapped_column(MEASUREMENT, nullable=False)
+    material: Mapped[str] = mapped_column(String(96), nullable=False)
+    manufacturer: Mapped[str | None] = mapped_column(String(160))
+    product_name: Mapped[str | None] = mapped_column(String(160))
+    coating: Mapped[str | None] = mapped_column(String(96))
+    purchase_date: Mapped[date | None] = mapped_column(Date)
+    status: Mapped[NozzleStatus] = mapped_column(
+        Enum(NozzleStatus, name="nozzle_status"), nullable=False, default=NozzleStatus.AVAILABLE
+    )
+    installed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    retired_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    notes: Mapped[str | None] = mapped_column(Text)
     record_version: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
 
 
@@ -325,6 +354,11 @@ class MaterialProfile(UUIDPrimaryKeyMixin, TimestampMixin, Base):
             "version",
             name="uq_material_profile_version",
         ),
+        UniqueConstraint(
+            "source_workstation_agent_id",
+            "source_cura_material_id",
+            name="uq_material_profiles_cura_source",
+        ),
     )
 
     filament_product_id: Mapped[UUID] = mapped_column(ForeignKey("filament_products.id"), nullable=False)
@@ -368,6 +402,15 @@ class MaterialProfile(UUIDPrimaryKeyMixin, TimestampMixin, Base):
         index=True,
     )
     setting_overrides: Mapped[dict[str, object]] = mapped_column(JSONB, nullable=False, default=dict)
+    source_workstation_agent_id: Mapped[UUID | None] = mapped_column(
+        ForeignKey(
+            "workstation_agents.id",
+            name="fk_material_profiles_cura_source_agent",
+            ondelete="SET NULL",
+        ),
+        index=True,
+    )
+    source_cura_material_id: Mapped[str | None] = mapped_column(String(64))
     ironing_enabled: Mapped[bool | None] = mapped_column(Boolean)
     ironing_flow_percent: Mapped[Decimal | None] = mapped_column(MEASUREMENT)
     ironing_speed_mm_s: Mapped[Decimal | None] = mapped_column(MEASUREMENT)

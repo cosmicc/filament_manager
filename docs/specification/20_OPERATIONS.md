@@ -36,7 +36,9 @@ Check:
 - Google publication status
 - Moonraker reachability
 
-Canonical mutations normally begin Spoolman projection within one worker polling cycle. The default one-minute full sweep imports usage before repairing every canonical vendor, filament, and spool. The 15-second Moonraker state job treats the initialized macro's last completed physical boundary as authority in every phase, repairs direct active-ID drift, refreshes the bounded Cura spool catalog, and aligns plate state; the 5-minute printer-information job refreshes sanitized discovered fields. Confirm the Spoolman integration card reports both API and managed-field readiness, and confirm recent `spoolman.reconcile.full`, `moonraker.state.reconcile`, and `moonraker.printer_info.reconcile` jobs complete. Structured web and worker logs include safe request, scheduler, job, and synchronization diagnostics with correlation IDs but never credentials or external response bodies.
+Use the application **Diagnostics** page as the consolidated status surface for connections, synchronization freshness, worker heartbeats, projection queues, bounded recent errors, recovery validation, and safe projection rebuilding. Integrations remains a configuration/ownership guide rather than a duplicate live-status dashboard.
+
+Canonical mutations normally begin Spoolman projection within one worker polling cycle. The default one-minute full sweep imports usage before repairing every canonical vendor, filament, and spool. The 15-second Moonraker state job treats the initialized macro's last completed physical boundary as authority, turns valid direct non-null selections in safe selection phases into guarded Fluidd targets, restores the physical active ID until confirmation, refreshes the bounded Cura/manual-load spool catalog, and aligns plate state; the 5-minute printer-information job refreshes sanitized discovered fields. Confirm the Diagnostics Spoolman check reports both API and managed-field readiness, and confirm recent `spoolman.reconcile.full`, `moonraker.state.reconcile`, and `moonraker.printer_info.reconcile` jobs complete. Structured web and worker logs include safe request, scheduler, job, and synchronization diagnostics with correlation IDs but never credentials or external response bodies.
 
 ### Physical spool workflow
 
@@ -98,6 +100,20 @@ Treat each database independently during diagnosis. Do not broaden grants or reu
 - periodic isolated restore
 - configuration and private stack-variable inventory current
 - Google Sheet not counted as backup
+
+Run read-only application recovery validation from Diagnostics or with:
+
+```bash
+filament-manager-cli verify
+```
+
+After an isolated restore or external projection loss, queue complete reconstructable projection work from Diagnostics or with:
+
+```bash
+filament-manager-cli rebuild-projections --confirm
+```
+
+This command does not restore PostgreSQL and does not rewrite canonical business records.
 
 ## Authoritative implementation references
 

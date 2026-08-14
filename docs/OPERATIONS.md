@@ -5,17 +5,35 @@
 - `GET /health/live`: process liveness
 - `GET /health/ready`: PostgreSQL connectivity and current Alembic revision
 - `GET /metrics`: Prometheus request totals and latency
-- Integrations: Spoolman, Moonraker, and Google status without secret exposure
-- Projection jobs: pending depth, attempts, dead jobs, and explicit Administrator retry
+- Diagnostics: Spoolman, Moonraker, Google, Cura-agent, worker, and synchronization status without secret exposure
+- Diagnostics queues: pending depth, attempts, dead jobs, and explicit Administrator retry
 - Activity: append-only operational and security audit history
-- Cura workstations: last contact, detected Cura versions/machines, scoped credential state, deployment attempts, and warnings
+- Cura workstations: pairing, detected Cura versions/machines, pre-takeover source selection, and authoritative management controls
 - Build Plates: per-side Moonraker mesh checks, newly discovered physical plates/sides, unavailable mappings, and the active loaded side
 - Print History: current capture, supported Moonraker history progress, inspection status, unresolved legacy rows, M600 segments, and outcome revisions
 - Notifications: unread Moonraker, dead-job, low/empty spool, overdue plate, and failed Cura deployment conditions
 
-Canonical inventory changes create supported-API Spoolman jobs in the same transaction and dispatch normally begins within one worker polling cycle. Every minute by default, a safety sweep imports printer-recorded usage first and then converges every canonical vendor, filament product, and spool. Every 15 seconds the worker reads Moonraker's supported active Spoolman ID, persistent physical-spool macro state, and exact P-number mesh state; it repairs a direct active-ID mismatch back to the last completed physical boundary in every initialized phase and refreshes the bounded Cura-material/spool catalog. Every 5 seconds it captures current print state and incrementally reconciles Moonraker history; every 5 minutes it refreshes sanitized printer information. Notification conditions converge every minute. These jobs also seed the configured printer and initial plates on a fresh database. Google publication is scheduled when enabled. External outages create bounded retries and never roll back already committed canonical changes.
+Canonical inventory changes create supported-API Spoolman jobs in the same transaction and dispatch normally begins within one worker polling cycle. Every minute by default, a safety sweep imports printer-recorded usage first and then converges every canonical vendor, filament product, and spool. Every 15 seconds the worker reads Moonraker's supported active Spoolman ID, persistent physical-spool macro state, and exact P-number mesh state. A valid non-null direct selection in an idle/manual-selection phase opens a guarded Fluidd target, and the worker restores Spoolman to the last completed physical boundary until confirmation; other drift is repaired without target capture. The same pass refreshes the bounded Cura/manual-load spool catalog. Every 5 seconds it captures current print state and incrementally reconciles Moonraker history; every 5 minutes it refreshes sanitized printer information. Notification conditions converge every minute. These jobs also seed the configured printer and initial plates on a fresh database. Google publication is scheduled when enabled. External outages create bounded retries and never roll back already committed canonical changes.
 
 The web and worker emit structured console logs for request completion, stable API rejections, validation errors, scheduler and outbox activity, and Moonraker synchronization results. Browser API requests also log their method, path, status, and correlation ID. Error logs include safe messages and tracebacks but never credentials, connection URLs, request bodies, or external response bodies.
+
+## Recovery validation and projection rebuild
+
+Use the **Diagnostics** page for the routine read-only validation report. It checks the current Alembic revision, measurement integrity, stored credential hashes, Spoolman projection consistency, Google publication state, and managed Cura deployment state, then persists a sanitized result. This validates application recovery readiness; it does not create or restore a PostgreSQL backup.
+
+The same checks are available inside the application container:
+
+```bash
+filament-manager-cli verify
+```
+
+After restoring canonical PostgreSQL or repairing an external service, an Administrator may use **Rebuild projections** on Diagnostics or run:
+
+```bash
+filament-manager-cli rebuild-projections --confirm
+```
+
+The rebuild only queues idempotent derived Spoolman, Google, and managed Cura work. It does not alter canonical spool, measurement, profile, plate, nozzle, or print-history records. Continue performing actual database backup and isolated restore through the PostgreSQL platform.
 
 The worker provisions Filament Manager's text custom fields through Spoolman's field API and JSON-encodes each value as required by Spoolman 0.23.1. It paginates complete collections, preserves custom fields owned by other integrations, uses managed UUIDs to avoid duplicate creates, and reclaims jobs abandoned by a terminated worker after `SYNC_OUTBOX_LOCK_TIMEOUT_SECONDS`.
 
@@ -52,9 +70,9 @@ Use the current stack file and image together. The web health check must send th
 
 ### Jobs remain pending or fail
 
-Check that the worker service is running, then inspect worker logs, external DNS from the `filament-services` overlay, and the sanitized error class shown in Integrations. The Spoolman card now verifies both API health and managed projection fields. Repair the external service, then allow automatic retry or use Administrator retry for unrelated dead jobs. The 0.1.5 repair migration automatically requeues Spoolman work affected by the former field contract, and the next one-minute sweep projects all existing canonical inventory even when no usable job remains.
+Check that the worker service is running, then inspect worker logs, external DNS from the `filament-services` overlay, and the sanitized error class shown in Diagnostics. The Spoolman connection check verifies both API health and managed projection fields. Repair the external service, then allow automatic retry or use Administrator retry for unrelated dead jobs. The 0.1.5 repair migration automatically requeues Spoolman work affected by the former field contract, and the next one-minute sweep projects all existing canonical inventory even when no usable job remains.
 
-After redeployment, recent worker logs should show `spoolman.reconcile.full` completing. The Integrations job table should show new filament/spool upserts completing, and Spoolman should receive existing inventory no later than the next safety sweep when the internal API is reachable.
+After redeployment, recent worker logs should show `spoolman.reconcile.full` completing. The Diagnostics queue should show new filament/spool upserts completing, and Spoolman should receive existing inventory no later than the next safety sweep when the internal API is reachable.
 
 ### Spoolman is unavailable
 
@@ -68,9 +86,11 @@ Confirm `MOONRAKER_BASE_URL` is reachable from the Swarm node and container netw
 
 Run `FILAMENT_MANAGER_SPOOL_STATE` in Fluidd. Confirm the integration macro file is included last and the worker log shows `moonraker_spool_preflight_catalog_synchronized` and a one-time `moonraker_spool_preflight_state_initialized`. A missing catalog entry means Cura has a stale material revision, a `Template <material type>` entry was selected, no eligible projected spool remains, or the product lacks a current published profile for the configured printer/nozzle. Synchronize the Cura workstation and resend the sliced file after correcting inventory/profile readiness.
 
-Keep Fluidd's **Show spool selection dialog on print start** disabled. If someone uses Fluidd's global **Change Spool** control, the worker restores the persisted physical ID within the next 15-second state pass. Do not override that repair unless the macro was just installed and its one-time initial state was seeded incorrectly.
+If Klipper reports that `variable_catalog_revision` is not a valid literal during startup, replace the installed macro reference with the current `integrations/klipper/filament-manager-macros.cfg`. The current reference uses a non-empty initialization sentinel so config editors cannot collapse the value; the worker replaces it with the real catalog revision after startup.
 
-During a change, `unloading` retains the old active ID, `inserting` means no active spool, and `loading` still means no active spool. `ready` means the exact new ID has been committed. A ten-minute insertion timeout turns off the nozzle and retains the last completed boundary. Use the prompt's cancel action or `FILAMENT_MANAGER_ABORT` after a macro error; never invoke the internal `_FILAMENT_MANAGER_RECORD_LOADED` helper manually.
+Keep Fluidd's **Show spool selection dialog on print start** disabled. Run `LOAD_FILAMENT` or `FILAMENT_MANAGER_LOAD_TARGET` without parameters for the managed eligible-spool chooser. A non-null direct Spoolman selection made while idle or while M600 is waiting becomes a guarded Fluidd target within the next 15-second state pass; the worker still restores the persisted physical ID until the operator explicitly adopts an already-loaded spool or completes motion. A direct clear, invalid target, or selection during another phase is repaired without changing canonical state.
+
+During a change, `unloading` retains the old active ID, `inserting` means no active spool, and `loading` still means no active spool. `ready` means the exact new ID has been committed. `load_select` and `manual_select` are recoverable chooser phases: rerun `FILAMENT_MANAGER_LOAD_TARGET` to reopen the prompt. A ten-minute insertion timeout turns off the nozzle and retains the last completed boundary. Use the prompt's cancel action or `FILAMENT_MANAGER_ABORT` after a macro error; never invoke the internal `_FILAMENT_MANAGER_RECORD_LOADED` helper manually.
 
 For a **G-code Blocked** prompt, open the matching Print History row. A listed mismatch requires reslicing or publishing/synchronizing the intended profile. An unavailable result means Moonraker could not supply the file or its exact managed profile could not be resolved; do not bypass it by changing Spoolman manually. Administrators may return to the recommended warning policy during diagnosis, but the setting change is audited and synchronized to Klipper.
 
@@ -80,7 +100,9 @@ Inspect the `moonraker.print_history.reconcile` outbox job and `moonraker_print_
 
 ### A saved build-plate side mesh does not appear
 
-Confirm the mesh is saved in Klipper as exact `P<number>` for Side A or `P<number>b` for Side B, such as `P6` or `P6b`. `P0`, `P01`, uppercase `B`, lowercase plate names, and descriptive profiles are intentionally ignored. Wait for the next 15-second automatic state pass, then confirm Klippy is ready and that Moonraker returns the `bed_mesh` object from `/printer/objects/query`. Inspect the worker log and the `moonraker.state.reconcile` job when the page remains stale.
+Confirm the mesh is saved in Klipper as exact `P<number>` for Side A or `P<number>b` for Side B, such as `P6` or `P6b`. An Operator may use **Add Side B** before calibration, but it intentionally remains unavailable until Moonraker reports that exact lowercase-b mesh. `P0`, `P01`, uppercase `B`, lowercase plate names, and descriptive profiles are intentionally ignored. Wait for the next 15-second automatic state pass, then confirm Klippy is ready and that Moonraker returns the `bed_mesh` object from `/printer/objects/query`. Inspect the worker log and the `moonraker.state.reconcile` job when the page remains stale.
+
+Run `SELECT_BUILD_PLATE` without `PLATE=` to inspect the live Fluidd list from `printer.bed_mesh.profiles`. The chooser requires no static per-plate helper macros and filters out every invalid profile name.
 
 Synchronization never deletes canonical plates or sides or overwrites their descriptive and maintenance metadata. A previously known side is marked unavailable when its same-named mesh is missing. If Moonraker has a valid plate-side mesh loaded, that physical plate and side become active for the selected printer.
 

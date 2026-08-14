@@ -38,6 +38,7 @@ from filament_manager.models.inventory import (
     Vendor,
 )
 from filament_manager.services.events import add_audit_event, add_outbox_job
+from filament_manager.services.print_statistics import completed_spool_print_counts
 from filament_manager.services.spool_preflight import spool_change_target
 
 from ..dependencies import DatabaseSession, Operator, Viewer
@@ -174,7 +175,7 @@ async def _remember_color(
     return mapping
 
 
-def spool_response(spool: Spool) -> SpoolResponse:
+def spool_response(spool: Spool, *, completed_print_count: int = 0) -> SpoolResponse:
     """Create the flattened API view required by table and detail screens."""
 
     product = spool.filament_product
@@ -207,7 +208,15 @@ def spool_response(spool: Spool) -> SpoolResponse:
         notes=spool.notes,
         archived=spool.archived,
         record_version=spool.record_version,
+        completed_print_count=completed_print_count,
     )
+
+
+async def spool_response_with_statistics(session: DatabaseSession, spool: Spool) -> SpoolResponse:
+    """Return one flattened spool with its distinct completed-print count."""
+
+    counts = await completed_spool_print_counts(session, [spool.id])
+    return spool_response(spool, completed_print_count=counts.get(spool.id, 0))
 
 
 def filament_response(product: FilamentProduct) -> FilamentResponse:
@@ -592,8 +601,13 @@ async def list_spools(
         .limit(limit)
         .offset(offset)
     )
+    spools = list(result.unique().scalars())
+    print_counts = await completed_spool_print_counts(session, [spool.id for spool in spools])
     return Page(
-        items=[spool_response(spool).model_dump(mode="json") for spool in result.unique().scalars()],
+        items=[
+            spool_response(spool, completed_print_count=print_counts.get(spool.id, 0)).model_dump(mode="json")
+            for spool in spools
+        ],
         total=count or 0,
         limit=limit,
         offset=offset,
@@ -684,21 +698,21 @@ async def create_spool(
     )
     await session.commit()
     spool.filament_product = product
-    return spool_response(spool)
+    return await spool_response_with_statistics(session, spool)
 
 
 @router.get("/spools/{spool_id}", response_model=SpoolResponse)
 async def get_spool(spool_id: UUID, _: Viewer, session: DatabaseSession) -> SpoolResponse:
     """Return one physical spool by UUID."""
 
-    return spool_response(await _get_spool(session, spool_id))
+    return await spool_response_with_statistics(session, await _get_spool(session, spool_id))
 
 
 @router.get("/spools/by-code/{spool_code}", response_model=SpoolResponse)
 async def get_spool_by_code(spool_code: str, _: Viewer, session: DatabaseSession) -> SpoolResponse:
     """Resolve a scanned or typed immutable human spool code."""
 
-    return spool_response(await _get_spool(session, spool_code))
+    return await spool_response_with_statistics(session, await _get_spool(session, spool_code))
 
 
 @router.patch("/spools/{spool_id}", response_model=SpoolResponse)
@@ -746,7 +760,7 @@ async def update_spool(
         payload={"spool_id": str(spool.id)},
     )
     await session.commit()
-    return spool_response(spool)
+    return await spool_response_with_statistics(session, spool)
 
 
 @router.get("/spools/{spool_id}/measurements", response_model=list[MeasurementResponse])

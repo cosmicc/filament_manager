@@ -2,6 +2,8 @@
 
 from datetime import UTC, datetime
 from decimal import Decimal
+from types import SimpleNamespace
+from uuid import uuid4
 
 import pytest
 from sqlalchemy import func, select
@@ -9,6 +11,7 @@ from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 from testcontainers.community.postgres import PostgresContainer
 
 from filament_manager.clients.moonraker import (
+    MoonrakerBedMeshState,
     MoonrakerGcodeFile,
     MoonrakerPrintState,
     MoonrakerSpoolPreflightState,
@@ -31,6 +34,7 @@ from filament_manager.services import events
 from filament_manager.services.moonraker_sync import synchronize_active_spool
 from filament_manager.services.print_history import synchronize_live_print
 from filament_manager.services.spool_preflight import build_spool_preflight_catalog
+from filament_manager.workers import dispatcher
 
 
 def _settings(database_url: str) -> Settings:
@@ -174,6 +178,58 @@ async def test_active_spool_selection_and_clear_follow_moonraker(
             ]
             assert catalog.temperatures == {"10": "215", "20": "215"}
 
+            prompted_targets: list[tuple[int, Decimal, str]] = []
+            restored_spool_ids: list[int | None] = []
+
+            class DirectSelectionClient:
+                """Expose one direct Spoolman selection to the state reconciler."""
+
+                def __init__(self, _configured: object) -> None:
+                    pass
+
+                async def active_spool_id(self) -> int:
+                    return 20
+
+                async def bed_mesh_state(self) -> MoonrakerBedMeshState:
+                    return MoonrakerBedMeshState(profile_names=(), active_profile=None)
+
+                async def spool_preflight_state(self) -> MoonrakerSpoolPreflightState:
+                    return MoonrakerSpoolPreflightState(
+                        restored=True,
+                        initialized=True,
+                        phase="idle",
+                        loaded_spool_id=10,
+                        catalog_revision=catalog.revision,
+                        material_guid="",
+                        start_bed_temp=Decimal("0"),
+                        start_extruder_temp=Decimal("0"),
+                        start_chamber_temp=Decimal("0"),
+                        inspection_policy="warn",
+                        start_pending=False,
+                    )
+
+                async def request_spoolman_target(
+                    self, *, spoolman_id: int, temperature_c: Decimal, prompt_label: str
+                ) -> dict[str, object]:
+                    prompted_targets.append((spoolman_id, temperature_c, prompt_label))
+                    return {"result": "ok"}
+
+                async def set_active_spool(self, spoolman_id: int | None) -> dict[str, object]:
+                    restored_spool_ids.append(spoolman_id)
+                    return {"result": "ok"}
+
+            monkeypatch.setattr(dispatcher, "get_settings", lambda: settings)
+            monkeypatch.setattr(dispatcher, "MoonrakerClient", DirectSelectionClient)
+            await dispatcher._reconcile_moonraker_state(
+                session,
+                SimpleNamespace(id=uuid4()),  # type: ignore[arg-type]
+            )
+            assert prompted_targets == [(20, Decimal("215"), "SECOND-Filament-Manager-PLA-Blue")]
+            assert restored_spool_ids == [10]
+            assert (await session.get(Spool, first.id)).active_printer_id == printer.id  # type: ignore[union-attr]
+            assert (await session.get(Spool, second.id)).active_printer_id is None  # type: ignore[union-attr]
+            baseline_audit_count = await session.scalar(select(func.count(AuditEvent.id)))
+
             selected = await synchronize_active_spool(
                 session,
                 printer_id=printer.id,
@@ -185,8 +241,10 @@ async def test_active_spool_selection_and_clear_follow_moonraker(
             assert selected.active_spool_id == second.id
             assert (await session.get(Spool, first.id)).active_printer_id is None  # type: ignore[union-attr]
             assert (await session.get(Spool, second.id)).active_printer_id == printer.id  # type: ignore[union-attr]
-            assert await session.scalar(select(func.count(AuditEvent.id))) == 1
-            audit_event = await session.scalar(select(AuditEvent))
+            assert await session.scalar(select(func.count(AuditEvent.id))) == baseline_audit_count + 1
+            audit_event = await session.scalar(
+                select(AuditEvent).where(AuditEvent.action == "spool.active.synchronize")
+            )
             assert audit_event is not None and len(audit_event.correlation_id) == 64
 
             unchanged = await synchronize_active_spool(
@@ -197,7 +255,7 @@ async def test_active_spool_selection_and_clear_follow_moonraker(
                 correlation_id="automatic-active-2",
             )
             assert unchanged.changed is False
-            assert await session.scalar(select(func.count(AuditEvent.id))) == 1
+            assert await session.scalar(select(func.count(AuditEvent.id))) == baseline_audit_count + 1
 
             cleared = await synchronize_active_spool(
                 session,
@@ -209,7 +267,7 @@ async def test_active_spool_selection_and_clear_follow_moonraker(
             assert cleared.changed is True
             assert cleared.active_spool_id is None
             assert (await session.get(Spool, second.id)).active_printer_id is None  # type: ignore[union-attr]
-            assert await session.scalar(select(func.count(AuditEvent.id))) == 2
+            assert await session.scalar(select(func.count(AuditEvent.id))) == baseline_audit_count + 2
 
             class InspectionClient:
                 """Provide one bounded file without an external Moonraker dependency."""

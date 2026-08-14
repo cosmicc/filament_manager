@@ -31,7 +31,6 @@ from filament_manager.services.seed import seed_configured_system
 from ..dependencies import Administrator, DatabaseSession, Operator, Viewer
 from ..errors import ApiError
 from ..schemas import (
-    BuildPlateResponse,
     BuildPlateSurfaceResponse,
     DashboardResponse,
     IntegrationStatus,
@@ -40,7 +39,8 @@ from ..schemas import (
     PrinterResponse,
     PrinterUpdate,
 )
-from .inventory import spool_response
+from .inventory import spool_response_with_statistics
+from .plates import build_plate_response
 
 router = APIRouter(tags=["operations"])
 SYSTEM_AGGREGATE_ID = UUID("00000000-0000-0000-0000-000000000001")
@@ -232,17 +232,26 @@ async def dashboard(_: Viewer, session: DatabaseSession) -> DashboardResponse:
         if printer and printer.active_plate_surface_id
         else None
     )
+    rendered_plate = await build_plate_response(session, plate) if plate else None
+    rendered_surface = (
+        next(
+            (surface for surface in rendered_plate.surfaces if surface.id == printer.active_plate_surface_id),
+            None,
+        )
+        if rendered_plate and printer
+        else None
+    )
     return DashboardResponse(
         total_spools=total,
         needs_weighing=needs,
         low_spools=low,
         empty_spools=empty,
-        active_spool=spool_response(active_spool) if active_spool else None,
-        active_plate=BuildPlateResponse.model_validate(plate) if plate else None,
+        active_spool=(await spool_response_with_statistics(session, active_spool) if active_spool else None),
+        active_plate=rendered_plate,
         active_plate_surface=(
-            BuildPlateSurfaceResponse.model_validate(plate_surface) if plate_surface else None
+            rendered_surface
+            or (BuildPlateSurfaceResponse.model_validate(plate_surface) if plate_surface else None)
         ),
-        integrations=await _integration_statuses(),
     )
 
 
@@ -269,6 +278,14 @@ async def update_printer(
         raise ApiError(status.HTTP_404_NOT_FOUND, "unknown_printer", "Printer not found")
     if printer.record_version != payload.expected_version:
         raise ApiError(status.HTTP_409_CONFLICT, "record_version_conflict", "Printer changed; reload")
+    if printer.active_nozzle_id is not None and (
+        "nozzle_diameter_mm" in payload.model_fields_set or "nozzle_material" in payload.model_fields_set
+    ):
+        raise ApiError(
+            status.HTTP_409_CONFLICT,
+            "physical_nozzle_managed",
+            "Record nozzle changes through the physical nozzle inventory",
+        )
     before: dict[str, object] = {
         "name": printer.name,
         "manufacturer": printer.manufacturer,

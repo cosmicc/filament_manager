@@ -16,6 +16,7 @@ from filament_manager.models.operations import BuildPlateMaintenanceEvent
 from filament_manager.services.build_plate_sync import synchronize_build_plates
 from filament_manager.services.events import add_audit_event, add_outbox_job
 from filament_manager.services.notifications import build_plate_maintenance_status
+from filament_manager.services.print_statistics import completed_surface_print_counts
 
 from ..dependencies import Administrator, DatabaseSession, Operator, Viewer
 from ..errors import ApiError
@@ -24,6 +25,8 @@ from ..schemas import (
     BuildPlateMaintenanceEventResponse,
     BuildPlateMaintenanceStatus,
     BuildPlateResponse,
+    BuildPlateSurfaceCreate,
+    BuildPlateSurfaceResponse,
     BuildPlateSurfaceUpdate,
     BuildPlateSyncRequest,
     BuildPlateSyncResponse,
@@ -38,11 +41,37 @@ async def _get_plate(session: DatabaseSession, plate_id: UUID) -> BuildPlate:
     """Load one physical plate and all of its sides without implicit lazy I/O."""
 
     plate = await session.scalar(
-        select(BuildPlate).where(BuildPlate.id == plate_id).options(selectinload(BuildPlate.surfaces))
+        select(BuildPlate)
+        .where(BuildPlate.id == plate_id)
+        .options(selectinload(BuildPlate.surfaces))
+        .execution_options(populate_existing=True)
     )
     if plate is None:
         raise ApiError(status.HTTP_404_NOT_FOUND, "unknown_build_plate", "Build plate not found")
     return plate
+
+
+async def build_plate_response(
+    session: DatabaseSession,
+    plate: BuildPlate,
+    print_counts: dict[UUID, int] | None = None,
+) -> BuildPlateResponse:
+    """Render one physical plate with completed-print totals for each exact side."""
+
+    counts = print_counts
+    if counts is None:
+        counts = await completed_surface_print_counts(session, [surface.id for surface in plate.surfaces])
+    response = BuildPlateResponse.model_validate(plate)
+    return response.model_copy(
+        update={
+            "surfaces": [
+                BuildPlateSurfaceResponse.model_validate(surface).model_copy(
+                    update={"completed_print_count": counts.get(surface.id, 0)}
+                )
+                for surface in plate.surfaces
+            ]
+        }
+    )
 
 
 def _queue_google_plate(session: DatabaseSession, plate: BuildPlate) -> None:
@@ -65,7 +94,10 @@ async def list_build_plates(_: Viewer, session: DatabaseSession) -> list[BuildPl
 
     result = await session.execute(select(BuildPlate).options(selectinload(BuildPlate.surfaces)))
     plates = sorted(result.scalars(), key=lambda plate: build_plate_sort_key(plate.plate_code))
-    return [BuildPlateResponse.model_validate(plate) for plate in plates]
+    counts = await completed_surface_print_counts(
+        session, [surface.id for plate in plates for surface in plate.surfaces]
+    )
+    return [await build_plate_response(session, plate, counts) for plate in plates]
 
 
 @router.get("/maintenance/status", response_model=list[BuildPlateMaintenanceStatus])
@@ -199,7 +231,7 @@ async def get_build_plate(
 ) -> BuildPlateResponse:
     """Return one physical build plate and its sides."""
 
-    return BuildPlateResponse.model_validate(await _get_plate(session, plate_id))
+    return await build_plate_response(session, await _get_plate(session, plate_id))
 
 
 @router.patch("/{plate_id}", response_model=BuildPlateResponse)
@@ -324,7 +356,65 @@ async def update_build_plate(
     )
     _queue_google_plate(session, plate)
     await session.commit()
-    return BuildPlateResponse.model_validate(await _get_plate(session, plate.id))
+    return await build_plate_response(session, await _get_plate(session, plate.id))
+
+
+@router.post(
+    "/{plate_id}/surfaces",
+    response_model=BuildPlateResponse,
+    status_code=status.HTTP_201_CREATED,
+)
+async def add_build_plate_side_b(
+    plate_id: UUID,
+    payload: BuildPlateSurfaceCreate,
+    request: Request,
+    operator: Operator,
+    session: DatabaseSession,
+) -> BuildPlateResponse:
+    """Add the physical Side B while Moonraker remains authoritative for mesh availability."""
+
+    plate = await session.scalar(
+        select(BuildPlate)
+        .where(BuildPlate.id == plate_id)
+        .options(selectinload(BuildPlate.surfaces))
+        .with_for_update()
+    )
+    if plate is None:
+        raise ApiError(status.HTTP_404_NOT_FOUND, "unknown_build_plate", "Build plate not found")
+    if any(surface.side == "b" for surface in plate.surfaces):
+        raise ApiError(status.HTTP_409_CONFLICT, "side_b_exists", "Side B already exists")
+    surface_code = f"{plate.plate_code}b"
+    surface = BuildPlateSurface(
+        build_plate_id=plate.id,
+        side="b",
+        surface_code=surface_code,
+        klipper_mesh_profile=surface_code,
+        surface_material=payload.surface_material.strip() if payload.surface_material else None,
+        texture=payload.texture,
+        mesh_available=False,
+        notes=payload.notes.strip() if payload.notes else None,
+    )
+    session.add(surface)
+    plate.record_version += 1
+    await session.flush()
+    add_audit_event(
+        session,
+        actor_id=operator.id,
+        source="web",
+        action="build_plate.side_b.create",
+        object_type="build_plate_surface",
+        object_id=surface.id,
+        before=None,
+        after={
+            "plate_code": plate.plate_code,
+            "surface_code": surface.surface_code,
+            "mesh_available": False,
+        },
+        correlation_id=request.state.correlation_id,
+    )
+    _queue_google_plate(session, plate)
+    await session.commit()
+    return await build_plate_response(session, await _get_plate(session, plate.id))
 
 
 @router.patch("/{plate_id}/surfaces/{surface_id}", response_model=BuildPlateResponse)
@@ -389,7 +479,7 @@ async def update_build_plate_surface(
     )
     _queue_google_plate(session, plate)
     await session.commit()
-    return BuildPlateResponse.model_validate(await _get_plate(session, plate.id))
+    return await build_plate_response(session, await _get_plate(session, plate.id))
 
 
 @router.post("/{plate_id}/select", status_code=status.HTTP_202_ACCEPTED)
@@ -641,4 +731,4 @@ async def record_maintenance(
     )
     _queue_google_plate(session, plate)
     await session.commit()
-    return BuildPlateResponse.model_validate(await _get_plate(session, plate.id))
+    return await build_plate_response(session, await _get_plate(session, plate.id))

@@ -19,6 +19,7 @@ from filament_manager.models.enums import (
     GcodeInspectionStatus,
     MeasurementSource,
     NotificationSeverity,
+    NozzleStatus,
     PlateMaintenanceType,
     PlateSurfaceTexture,
     PrintJobStatus,
@@ -211,6 +212,7 @@ class SpoolResponse(ApiModel):
     notes: str | None
     archived: bool
     record_version: int
+    completed_print_count: int = 0
 
 
 class MeasurementCreate(ApiModel):
@@ -259,6 +261,15 @@ class BuildPlateSurfaceResponse(ApiModel):
     last_mesh_calibrated_at: datetime | None
     notes: str | None
     record_version: int
+    completed_print_count: int = 0
+
+
+class BuildPlateSurfaceCreate(ApiModel):
+    """Optional metadata used when an Operator adds the physical Side B."""
+
+    surface_material: str | None = Field(default=None, max_length=120)
+    texture: PlateSurfaceTexture | None = None
+    notes: str | None = Field(default=None, max_length=4000)
 
 
 class BuildPlateDimensions(ApiModel):
@@ -543,6 +554,8 @@ class ProfileResponse(ProfileCreate):
     latest_template_revision_id: UUID | None = None
     latest_template_version: int | None = None
     template_update_changes: list[dict[str, Any]] = Field(default_factory=list)
+    source_workstation_agent_id: UUID | None
+    source_cura_material_id: str | None
 
     @computed_field  # type: ignore[prop-decorator]
     @property
@@ -662,10 +675,73 @@ class PrinterResponse(ApiModel):
     notes: str | None
     active_plate_id: UUID | None
     active_plate_surface_id: UUID | None
+    active_nozzle_id: UUID | None
     status: str
     last_seen_at: datetime | None
     last_info_sync_at: datetime | None
     record_version: int
+
+
+class NozzleCreate(ApiModel):
+    """Create one uniquely labelled physical nozzle."""
+
+    nozzle_code: str = Field(min_length=1, max_length=64, pattern=r"^[A-Za-z0-9][A-Za-z0-9._-]*$")
+    diameter_mm: Decimal = Field(gt=0, le=10)
+    material: str = Field(min_length=1, max_length=96)
+    manufacturer: str | None = Field(default=None, max_length=160)
+    product_name: str | None = Field(default=None, max_length=160)
+    coating: str | None = Field(default=None, max_length=96)
+    purchase_date: date | None = None
+    notes: str | None = Field(default=None, max_length=4000)
+
+
+class NozzleUpdate(ApiModel):
+    """Edit physical nozzle metadata with optimistic concurrency."""
+
+    expected_version: int = Field(ge=1)
+    diameter_mm: Decimal | None = Field(default=None, gt=0, le=10)
+    material: str | None = Field(default=None, min_length=1, max_length=96)
+    manufacturer: str | None = Field(default=None, max_length=160)
+    product_name: str | None = Field(default=None, max_length=160)
+    coating: str | None = Field(default=None, max_length=96)
+    purchase_date: date | None = None
+    notes: str | None = Field(default=None, max_length=4000)
+    retired: bool | None = None
+
+
+class NozzleInstallRequest(ApiModel):
+    printer_id: UUID
+    notes: str | None = Field(default=None, max_length=2000)
+
+
+class NozzleResponse(ApiModel):
+    id: UUID
+    nozzle_code: str
+    diameter_mm: Decimal
+    material: str
+    manufacturer: str | None
+    product_name: str | None
+    coating: str | None
+    purchase_date: date | None
+    status: NozzleStatus
+    installed_printer_id: UUID | None = None
+    installed_at: datetime | None
+    retired_at: datetime | None
+    notes: str | None
+    record_version: int
+    completed_print_count: int = 0
+    completed_filament_weight_g: Decimal = Decimal("0")
+
+
+class NozzleLifecycleEventResponse(ApiModel):
+    id: UUID
+    nozzle_id: UUID
+    printer_id: UUID | None
+    event_type: str
+    performed_by: UUID | None
+    source: str
+    notes: str | None
+    occurred_at: datetime
 
 
 class PrinterUpdate(ApiModel):
@@ -719,7 +795,6 @@ class DashboardResponse(ApiModel):
     active_spool: SpoolResponse | None
     active_plate: BuildPlateResponse | None
     active_plate_surface: BuildPlateSurfaceResponse | None
-    integrations: list[IntegrationStatus]
 
 
 class Page(ApiModel):
@@ -978,6 +1053,7 @@ class PrintJobResponse(ApiModel):
     material_profile_version: int | None
     build_plate_id: UUID | None
     build_plate_surface_id: UUID | None
+    nozzle_id: UUID | None
     nozzle_diameter_mm: Decimal | None
     material_guid: str | None
     material_name: str | None
@@ -1026,6 +1102,52 @@ class OperationalSettingsResponse(ApiModel):
 class OperationalSettingsUpdate(ApiModel):
     expected_version: int = Field(ge=1)
     gcode_inspection_policy: str = Field(pattern=r"^(warn|block)$")
+
+
+class DiagnosticCheck(ApiModel):
+    """One sanitized operational or recovery-validation result."""
+
+    key: str
+    label: str
+    category: str
+    status: str
+    detail: str
+    checked_at: datetime
+
+
+class DiagnosticErrorEntry(ApiModel):
+    """A bounded error summary sourced from canonical operational records."""
+
+    source: str
+    severity: str
+    summary: str
+    detail: str | None
+    occurred_at: datetime
+    correlation_id: str | None = None
+
+
+class DiagnosticOverviewResponse(ApiModel):
+    checked_at: datetime
+    checks: list[DiagnosticCheck]
+    queue_counts: dict[str, int]
+    job_type_counts: dict[str, int]
+    error_log: list[DiagnosticErrorEntry]
+
+
+class DiagnosticRunResponse(ApiModel):
+    id: UUID
+    run_type: str
+    status: str
+    requested_by: UUID
+    results: dict[str, Any]
+    started_at: datetime
+    completed_at: datetime | None
+
+
+class ProjectionRebuildResponse(ApiModel):
+    status: str
+    queued_jobs: int
+    categories: dict[str, int]
 
 
 class NotificationResponse(ApiModel):

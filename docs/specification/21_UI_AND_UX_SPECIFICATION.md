@@ -11,8 +11,11 @@
 - Calibration Wizard
 - Build Plates
 - Printers
+- Nozzles
 - Labels
 - Integrations
+- Cura Workstations
+- Diagnostics
 - Activity/Audit
 - Settings
 
@@ -25,7 +28,7 @@ Show:
 - current print and usage status
 - low/empty inventory
 - calibration tasks
-- Spoolman/Moonraker/Google health
+- link to consolidated operational health on Diagnostics
 - last accepted measurement
 
 ## Spool detail
@@ -47,11 +50,19 @@ Use a persistent stepper with the exact seven steps. Each step has instructions,
 
 ## Build plate UX
 
-Full-width summaries begin with physical P1-P5 and naturally order later discovered plates. Each physical card shows its description, manufacturer/product, shape/dimensions, magnetic/flexible state, condition/status, preferred materials, temperature limit, cleaning state, configurable day/print reminder thresholds, and nested Side A/Side B panels with exact mesh, surface material, smooth/textured finish, mesh availability/check/calibration time, and notes. Cleaning and mesh actions append maintenance events. The active side is visually explicit and may be cleared only through the physical Moonraker workflow. State synchronizes automatically every 15 seconds; Operators may edit metadata and select available sides without directly creating integration-controlled records.
+Full-width summaries begin with physical P1-P5 and naturally order later discovered plates. Each physical card shows its description, manufacturer/product, shape/dimensions, magnetic/flexible state, condition/status, preferred materials, temperature limit, cleaning state, configurable day/print reminder thresholds, and nested Side A/Side B panels with exact mesh, surface material, smooth/textured finish, mesh availability/check/calibration time, notes, and completed-print count. Cleaning and mesh actions append maintenance events. The active side is visually explicit and may be cleared only through the physical Moonraker workflow. Operators may add the one Side B record; it remains unavailable until its exact mesh is discovered. State synchronizes automatically every 15 seconds.
 
-The Material Profiles page lists sanitized existing Cura material candidates reported by paired agents. Import requires explicit canonical filament, printer/nozzle, and optional preferred-side mapping and creates a draft without modifying the workstation file.
+Before authoritative takeover, Cura Workstations lists sanitized existing Cura material candidates reported by paired agents with multi-selection and a selected-source review. For each material family and printer/nozzle scope, one source becomes the `Template <material type>` draft and additional chosen sources require explicit canonical filament mapping and become product-owned drafts. The workflow never modifies workstation files before takeover.
 
-The Templates page creates complete material settings revisions named `Template <material type>` and publishes them per printer/nozzle. Material Profiles and Templates expose one shared read-only comparator: choose two to four profile or saved template revisions, with the first as the baseline. The result contains only settings whose canonical values differ, treats equivalent decimal representations as equal, displays all scopes, and shows exact-profile outcome rates; template statistics are N/A and samples below five are labeled low. Any printer or nozzle pairing is allowed, but a prominent warning identifies each mismatched scope dimension. The Filaments page requires a published template in its routine creation flow, explains that a directly linked product draft stores sparse overrides, renders real remembered color samples, and links each product to a complete detail/settings editor. Profile details show the exact base revision, inherited/customized count, template values beside each setting, and one per-filament confirmation flow for a newer published template. A color sample change states that it applies to all matching existing and future color names. The Spools page creates physical spools from canonical products, identifies the associated printer, lets Operators edit or clear free-text bucket locations, and offers a physical **Unload** action that clears Spoolman only after completed motion. Its **Load spool** action reports that Fluidd will request physical confirmation and keeps the current active spool visible until that load finishes. Cura Workstations shows unmanaged material count, groups every reported material under **Preserve before takeover**, imports selected materials as source-tracked draft templates, links drafts to review/publication, blocks takeover until selected imports are active and published, requires an explicit replacement warning before authoritative takeover of the remaining user library, and explains that edits to known managed entries return as drafts while new Cura-created materials are ignored.
+The Templates page creates complete material settings revisions named `Template <material type>` and publishes one per material family and printer/nozzle. Material Profiles and Templates expose one shared read-only comparator: choose two to four profile or saved template revisions, with the first as the baseline. The result contains only settings whose canonical values differ, treats equivalent decimal representations as equal, displays all scopes, and shows exact-profile outcome rates; template statistics are N/A and samples below five are labeled low. Any printer or nozzle pairing is allowed, but a prominent warning identifies each mismatched scope dimension. The Filaments page requires a published template in its routine creation flow, explains that a directly linked product draft stores sparse overrides, renders real remembered color samples, and links each product to a complete detail/settings editor. Profile details show the exact base revision, inherited/customized count, template values beside each setting, and one per-filament confirmation flow for a newer published template. A color sample change states that it applies to all matching existing and future color names. The Spools page shows completed prints, creates physical spools from canonical products, identifies the associated printer, lets Operators edit or clear free-text bucket locations, and offers a physical **Unload** action that clears Spoolman only after completed motion. Its **Load spool** action reports that Fluidd will request physical confirmation and keeps the current active spool visible until that load finishes. Cura Workstations links every selected draft to review/publication, blocks takeover until selected imports are active and published, requires an explicit replacement warning before authoritative takeover of the remaining user library, and explains that edits to known managed entries return as drafts while new Cura-created materials are ignored.
+
+Manual Fluidd load commands show the live eligible catalog without a separately staged target field. A direct non-null Spoolman selection becomes a guarded confirmation and remains non-canonical until already-loaded confirmation or physical load completion. `SELECT_BUILD_PLATE` without a parameter shows the current valid exact P-number meshes reported by Klipper.
+
+## Nozzles and diagnostics
+
+Nozzles shows physical identity, diameter, construction material, lifecycle state, installed printer, completed prints, total filament use, and append-only install/remove history. Installing a nozzle replaces no record silently and one printer has at most one installed nozzle.
+
+Diagnostics groups connection, synchronization, worker, and operational information; queue depth and job actions; bounded recent errors; persisted read-only validation results; and an Administrator-only safe projection rebuild. Dashboard, Printers, Integrations, and Cura Workstations link to this page instead of duplicating live operational status.
 
 ## Print history, notifications, and accounts
 

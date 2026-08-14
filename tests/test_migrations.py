@@ -48,7 +48,7 @@ def test_previous_schema_automatically_upgrades_to_metadata_head(
 
         upgrade_database(DatabaseConfig(url=database_url))
         with engine.connect() as connection:
-            assert connection.scalar(text("SELECT version_num FROM alembic_version")) == "b8c9d0e1f234"
+            assert connection.scalar(text("SELECT version_num FROM alembic_version")) == "c9d0e1f2a345"
             recovered = connection.execute(
                 text(
                     """
@@ -81,6 +81,13 @@ def test_previous_schema_automatically_upgrades_to_metadata_head(
         assert "filament_colors" in inspector.get_table_names()
         assert "last_info_sync_at" in {column["name"] for column in inspector.get_columns("printers")}
         assert "product_name" in {column["name"] for column in inspector.get_columns("build_plates")}
+        assert "nozzles" in inspector.get_table_names()
+        assert "nozzle_lifecycle_events" in inspector.get_table_names()
+        assert "diagnostic_runs" in inspector.get_table_names()
+        assert "worker_heartbeats" in inspector.get_table_names()
+        assert "active_nozzle_id" in {column["name"] for column in inspector.get_columns("printers")}
+        assert "nozzle_id" in {column["name"] for column in inspector.get_columns("print_jobs")}
+        assert {"source_workstation_agent_id", "source_cura_material_id"} <= set(profile_columns)
         command.check(alembic_config)
         command.downgrade(alembic_config, "a7b8c9d0e123")
         downgraded = inspect(engine)
