@@ -56,6 +56,10 @@ Physical plate record. Business IDs are exact uppercase `P<number>` values; `P1`
 
 One printable side of a physical plate. Side A uses the physical plate code (`P4`); Side B uses a lowercase `b` suffix (`P4b`). Fields include surface material, smooth/textured finish, same-named Klipper mesh, mesh availability/check time, last mesh calibration, and notes. Missing Moonraker meshes do not delete the physical plate, side, or metadata.
 
+### build_plate_maintenance_event
+
+Append-only cleaning or side-specific mesh-calibration evidence. Plate-level day and print-count thresholds calculate reminder state without rewriting the event history.
+
 ### material_profile
 
 Versioned settings scoped to:
@@ -81,7 +85,19 @@ Tracks a wizard run for one filament, printer, nozzle, and optional plate. Conta
 
 ### calibration_step
 
-One of temperature, flow, pressure advance, retraction, dimensional size/hole compensation, overhang, or ironing. Stores test parameters, raw measurements, calculated/selected result, status, and notes.
+One of temperature, flow, pressure advance, retraction, dimensional size/hole compensation, overhang, or ironing. Dimensional results retain X/Y/Z, hole, shaft, and wall design/measured values. Material outputs include Cura expansion, flow, and shrinkage; printer-geometry correction percentages remain non-applying review evidence. Each step stores test parameters, raw measurements, calculated/selected result, status, and notes.
+
+### print_job, print_material_segment, and print_assessment
+
+`print_job` merges supported Moonraker live/history records and retains one immutable start-state snapshot: printer, physical spool, product, exact material-profile revision, plate side, sliced metadata, actual usage, complete streamed-file hash, and bounded inspection evidence. Records imported without reconstructable state remain explicitly unresolved. `print_material_segment` records the ordered spool intervals created by M600 transitions and their usage. `print_assessment` appends quality revisions and never overwrites an earlier score.
+
+### application_setting
+
+Versioned Administrator policy, including the G-code inspection mode. Inspection defaults to `warn`; `block` pauses print release when exact profile state, inspection, or supported comparisons cannot be verified.
+
+### notification and user_notification_state
+
+Persistent, deduplicated operational conditions plus per-account read timestamps. When a resolved condition recurs, all read state is cleared so the notification is visible again.
 
 ### nfc_tag
 
@@ -110,10 +126,14 @@ vendor 1---n filament_product 1---n spool
 filament_product 1---n material_profile
 printer 1---n material_profile
 printer 1---n calibration_session
+printer 1---n print_job 1---n print_material_segment
+print_job 1---n print_assessment
 build_plate 1---n calibration_session
+build_plate 1---n build_plate_maintenance_event
 spool 1---n spool_measurement
 spool 1---n spool_usage_event
 spool 1---n nfc_tag
+user n---n notification (through user_notification_state)
 ```
 
 ## Weight state

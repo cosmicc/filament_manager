@@ -8,6 +8,11 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 from testcontainers.community.postgres import PostgresContainer
 
+from filament_manager.clients.moonraker import (
+    MoonrakerGcodeFile,
+    MoonrakerPrintState,
+    MoonrakerSpoolPreflightState,
+)
 from filament_manager.config import Settings
 from filament_manager.domain.spool_preflight import cura_material_guid
 from filament_manager.models import Base
@@ -21,8 +26,10 @@ from filament_manager.models.inventory import (
     Spool,
 )
 from filament_manager.models.operations import AuditEvent
+from filament_manager.models.printing import PrintJob, PrintMaterialSegment
 from filament_manager.services import events
 from filament_manager.services.moonraker_sync import synchronize_active_spool
+from filament_manager.services.print_history import synchronize_live_print
 from filament_manager.services.spool_preflight import build_spool_preflight_catalog
 
 
@@ -203,5 +210,155 @@ async def test_active_spool_selection_and_clear_follow_moonraker(
             assert cleared.active_spool_id is None
             assert (await session.get(Spool, second.id)).active_printer_id is None  # type: ignore[union-attr]
             assert await session.scalar(select(func.count(AuditEvent.id))) == 2
+
+            class InspectionClient:
+                """Provide one bounded file without an external Moonraker dependency."""
+
+                async def gcode_metadata(self, filename: str) -> dict[str, object]:
+                    assert filename in {"repeatable.gcode", "material-change.gcode"}
+                    return {"slicer": "Cura", "filament_total": 1000}
+
+                async def gcode_file(self, filename: str) -> MoonrakerGcodeFile:
+                    assert filename in {"repeatable.gcode", "material-change.gcode"}
+                    return MoonrakerGcodeFile(
+                        sha256="a" * 64,
+                        header=f";Generated with Cura_SteamEngine 5.10\nMATERIAL_GUID={material_guid}\n",
+                        tail="",
+                        size=96,
+                    )
+
+            preflight = MoonrakerSpoolPreflightState(
+                restored=True,
+                initialized=True,
+                phase="idle",
+                loaded_spool_id=20,
+                catalog_revision="b" * 64,
+                material_guid=material_guid,
+                start_bed_temp=Decimal("60"),
+                start_extruder_temp=Decimal("215"),
+                start_chamber_temp=Decimal("0"),
+                inspection_policy="warn",
+                start_pending=False,
+            )
+            printing = MoonrakerPrintState(
+                filename="repeatable.gcode",
+                state="printing",
+                message=None,
+                total_duration=Decimal("30"),
+                print_duration=Decimal("25"),
+                filament_used_mm=Decimal("100"),
+            )
+            completed = MoonrakerPrintState(
+                filename="repeatable.gcode",
+                state="complete",
+                message=None,
+                total_duration=Decimal("60"),
+                print_duration=Decimal("50"),
+                filament_used_mm=Decimal("200"),
+            )
+            client = InspectionClient()
+            await synchronize_live_print(
+                session,
+                printer=printer,
+                client=client,  # type: ignore[arg-type]
+                print_state=printing,
+                preflight_state=preflight,
+                correlation_id="terminal-poll-1",
+            )
+            await synchronize_live_print(
+                session,
+                printer=printer,
+                client=client,  # type: ignore[arg-type]
+                print_state=completed,
+                preflight_state=preflight,
+                correlation_id="terminal-poll-2",
+            )
+            await synchronize_live_print(
+                session,
+                printer=printer,
+                client=client,  # type: ignore[arg-type]
+                print_state=completed,
+                preflight_state=preflight,
+                correlation_id="terminal-poll-3",
+            )
+            assert await session.scalar(select(func.count(PrintJob.id))) == 1
+
+            material_change_start = MoonrakerPrintState(
+                filename="material-change.gcode",
+                state="printing",
+                message=None,
+                total_duration=Decimal("30"),
+                print_duration=Decimal("25"),
+                filament_used_mm=Decimal("100"),
+            )
+            changed_preflight = MoonrakerSpoolPreflightState(
+                restored=True,
+                initialized=True,
+                phase="idle",
+                loaded_spool_id=10,
+                catalog_revision="b" * 64,
+                material_guid=material_guid,
+                start_bed_temp=Decimal("60"),
+                start_extruder_temp=Decimal("215"),
+                start_chamber_temp=Decimal("0"),
+                inspection_policy="warn",
+                start_pending=False,
+            )
+            after_change = MoonrakerPrintState(
+                filename="material-change.gcode",
+                state="printing",
+                message=None,
+                total_duration=Decimal("60"),
+                print_duration=Decimal("50"),
+                filament_used_mm=Decimal("150"),
+            )
+            material_change_complete = MoonrakerPrintState(
+                filename="material-change.gcode",
+                state="complete",
+                message=None,
+                total_duration=Decimal("90"),
+                print_duration=Decimal("75"),
+                filament_used_mm=Decimal("200"),
+            )
+            await synchronize_live_print(
+                session,
+                printer=printer,
+                client=client,  # type: ignore[arg-type]
+                print_state=material_change_start,
+                preflight_state=preflight,
+                correlation_id="material-change-1",
+            )
+            await synchronize_live_print(
+                session,
+                printer=printer,
+                client=client,  # type: ignore[arg-type]
+                print_state=after_change,
+                preflight_state=changed_preflight,
+                correlation_id="material-change-2",
+            )
+            await synchronize_live_print(
+                session,
+                printer=printer,
+                client=client,  # type: ignore[arg-type]
+                print_state=material_change_complete,
+                preflight_state=changed_preflight,
+                correlation_id="material-change-3",
+            )
+            material_change_job_id = await session.scalar(
+                select(PrintJob.id).where(PrintJob.filename == "material-change.gcode")
+            )
+            segments = list(
+                await session.scalars(
+                    select(PrintMaterialSegment)
+                    .where(PrintMaterialSegment.print_job_id == material_change_job_id)
+                    .order_by(PrintMaterialSegment.segment_number)
+                )
+            )
+            assert [segment.spool_id for segment in segments] == [second.id, first.id]
+            assert [segment.actual_filament_length_mm for segment in segments] == [
+                Decimal("150"),
+                Decimal("50"),
+            ]
+            assert all(segment.ended_at is not None for segment in segments)
 
         await engine.dispose()

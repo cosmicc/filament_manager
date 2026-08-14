@@ -6,6 +6,7 @@ const user = {
   display_name: 'Administrator',
   role: 'administrator',
   is_active: true,
+  must_change_password: false,
   record_version: 1,
 }
 
@@ -30,6 +31,10 @@ const plate = {
   status: 'active',
   preferred_materials: [],
   last_cleaned_at: null,
+  cleaning_due_after_prints: 10,
+  cleaning_due_after_days: 7,
+  mesh_due_after_prints: 30,
+  mesh_due_after_days: 30,
   notes: null,
   record_version: 3,
   surfaces: [
@@ -67,6 +72,9 @@ const plate = {
 test.beforeEach(async ({ page }) => {
   await page.route('**/api/v1/auth/me', (route) => route.fulfill({ json: user }))
   await page.route('**/api/v1/build-plates', (route) => route.fulfill({ json: [plate] }))
+  await page.route('**/api/v1/build-plates/maintenance/status', (route) => route.fulfill({ json: [{ build_plate_id: plate.id, cleaning_due: false, cleaning_prints_since: 2, cleaning_due_at: null, surfaces: [] }] }))
+  await page.route('**/api/v1/build-plates/maintenance/events**', (route) => route.fulfill({ json: [] }))
+  await page.route('**/api/v1/notifications**', (route) => route.fulfill({ json: [] }))
   await page.route('**/api/v1/printers', (route) => route.fulfill({ json: [printer] }))
 })
 
@@ -77,7 +85,7 @@ test('groups both sides under one physical plate on desktop and mobile', async (
   await expect(page.getByRole('heading', { name: 'P4', exact: true })).toBeVisible()
   await expect(page.getByRole('heading', { name: 'P4b', exact: true })).toBeVisible()
   await expect(page.getByText('PEX', { exact: true })).toBeVisible()
-  await expect(page.getByRole('button', { name: 'Active side' })).toBeDisabled()
+  await expect(page.getByRole('button', { name: 'Active side', exact: true })).toBeDisabled()
   await expect(page.getByText('Automatic Moonraker synchronization is on.')).toBeVisible()
   await expect(page.getByRole('button', { name: 'Synchronize with Moonraker' })).toHaveCount(0)
 
@@ -87,6 +95,7 @@ test('groups both sides under one physical plate on desktop and mobile', async (
   await expect(editor.getByRole('heading', { name: 'Identity' })).toBeVisible()
   await expect(editor.getByRole('heading', { name: 'Geometry' })).toBeVisible()
   await expect(editor.getByRole('heading', { name: 'Condition and use' })).toBeVisible()
+  await expect(editor.getByRole('heading', { name: 'Maintenance reminders' })).toBeVisible()
   await page.keyboard.press('Escape')
   await expect(editor).toBeHidden()
 

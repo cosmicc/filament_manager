@@ -1,4 +1,4 @@
-- **Print history tied to exact material state**
+- ~~**Print history tied to exact material state**~~
 Finished Print info can be obtained from moonraker/klipper
 Create a canonical PrintJob record containing things like:
 printer
@@ -24,7 +24,7 @@ Moonraker job ID
 Timelapse video link
 
 
-- **Print outcome / quality scoring**
+- ~~**Print outcome / quality scoring**~~
 After a print finishes, offer a very small assessment (and/or pull from moonraker/klipper completed prints):
 Successful
 Failed
@@ -243,7 +243,7 @@ Print requires approximately 328 g.
 You might not actually stop prints by default, but provide configurable policies.
 
 
-- **G-code inspection**
+- ~~**G-code inspection**~~
 
 When Moonraker receives a file, Filament Manager could inspect the G-code header.
 Cura embeds a lot of useful metadata.
@@ -318,7 +318,7 @@ base profile
 Each only overrides a few parameters.
 
 
-- **Dimensional calibration**
+- ~~**Dimensional calibration**~~
 Given that you're already doing dimensional tuning on the printer, I would absolutely add this to the calibration system.
 
 Track:
@@ -490,7 +490,7 @@ Create profile v14
 No silent changes.
 
 
-- **Compare profiles visually**
+- ~~**Compare profiles visually**~~
 Build a side-by-side diff:
 
 Parameter	v10	v11	v12
@@ -722,17 +722,17 @@ After those, add G-code preflight, material environmental tracking, nozzle/compo
 
 GUI audit follow-ups
 
-- **Account lifecycle controls**
+- ~~**Account lifecycle controls**~~
   Add secure Administrator workflows to edit roles and display names, deactivate or reactivate accounts, and reset passwords without recreating users.
 
-- **Build-plate maintenance history**
+- ~~**Build-plate maintenance history**~~
   Add explicit Mark Cleaned and Mark Mesh Calibrated actions, immutable maintenance records, due-state reminders, and filterable plate history.
 
-- **Active-context controls**
+- ~~**Active-context controls**~~
   Add an intentional in-app Clear Active Spool action, identify the assigned printer by name, and provide the same explicit clear behavior for the selected build-plate side.
 
-- **Mobile data views**
+- ~~**Mobile data views**~~
   Replace horizontally scrolling inventory, profile, activity, integration-job, label, and deployment tables with compact mobile cards that keep their primary actions visible.
 
-- **Operator notifications**
+- ~~**Operator notifications**~~
   Add an in-app notification center for unavailable Moonraker connections, dead projection jobs, low or empty spools, overdue plate maintenance, and Cura deployment failures while retaining structured service logs.

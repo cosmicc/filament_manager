@@ -4,9 +4,11 @@ import {
   CheckCircle2,
   FileSpreadsheet,
   KeyRound,
+  Pencil,
   Plus,
   ShieldCheck,
   Smartphone,
+  SlidersHorizontal,
   Upload,
   Users,
 } from 'lucide-react'
@@ -14,6 +16,7 @@ import { type ChangeEvent, type FormEvent, useMemo, useState } from 'react'
 import { apiFetch } from '../api/client'
 import type {
   Device,
+  OperationalSettings,
   User,
   UserRole,
   WorkbookImportCounts,
@@ -85,6 +88,47 @@ function CreateUserModal({ onClose }: { onClose: () => void }) {
       </form>
     </Modal>
   )
+}
+
+function AccountEditorModal({ account, currentUserId, onClose }: { account: User; currentUserId: string; onClose: () => void }) {
+  const client = useQueryClient()
+  const [displayName, setDisplayName] = useState(account.display_name)
+  const [role, setRole] = useState<UserRole>(account.role)
+  const [active, setActive] = useState(account.is_active)
+  const [temporaryPassword, setTemporaryPassword] = useState('')
+  const [error, setError] = useState('')
+  const refresh = async () => { await client.invalidateQueries({ queryKey: ['users'] }) }
+  const update = useMutation({
+    mutationFn: () => apiFetch<User>(`/auth/users/${account.id}`, { method: 'PATCH', body: JSON.stringify({ expected_version: account.record_version, display_name: displayName, role, is_active: active }) }),
+    onSuccess: async () => { await refresh(); onClose() },
+    onError: (caught) => setError(caught instanceof Error ? caught.message : 'Account could not be updated'),
+  })
+  const reset = useMutation({
+    mutationFn: () => apiFetch<User>(`/auth/users/${account.id}/reset-password`, { method: 'POST', body: JSON.stringify({ expected_version: account.record_version, temporary_password: temporaryPassword }) }),
+    onSuccess: async () => { setTemporaryPassword(''); await refresh(); onClose() },
+    onError: (caught) => setError(caught instanceof Error ? caught.message : 'Password could not be reset'),
+  })
+  return <Modal title={`Manage ${account.display_name}`} description="Role, activation, and password operations are audited and revoke sessions when required." onClose={onClose} footer={<><button className="button" onClick={onClose}>Cancel</button><button className="button button--primary" onClick={() => update.mutate()} disabled={update.isPending}>Save account</button></>}>
+    <div className="form-stack">
+      <EditorSection title="Identity and access" description="Use the least-privileged role that still permits the person's work."><div className="form-grid"><label>Display name<input value={displayName} onChange={(event) => setDisplayName(event.target.value)} maxLength={120} /></label><label>Role<select value={role} onChange={(event) => setRole(event.target.value as UserRole)}><option value="administrator">Administrator</option><option value="operator">Operator</option><option value="viewer">Viewer</option></select></label></div><label className="check-row"><input type="checkbox" checked={active} disabled={account.id === currentUserId} onChange={(event) => setActive(event.target.checked)} /><span><strong>Account active</strong><small>Deactivation immediately revokes this account's sessions.</small></span></label></EditorSection>
+      {account.id !== currentUserId ? <EditorSection title="Temporary password" description="Resetting revokes every session and requires the person to choose a new password at next sign-in."><label>Temporary password<input type="password" minLength={10} maxLength={256} value={temporaryPassword} onChange={(event) => setTemporaryPassword(event.target.value)} autoComplete="new-password" /></label><button className="button" disabled={temporaryPassword.length < 10 || reset.isPending} onClick={() => reset.mutate()}><KeyRound size={17} /> Reset password</button></EditorSection> : null}
+      {account.must_change_password ? <p className="warning-note"><KeyRound size={17} /> Password replacement is required at next sign-in.</p> : null}
+      {error ? <p className="form-error" role="alert">{error}</p> : null}
+    </div>
+  </Modal>
+}
+
+function OperationalPolicyPanel({ administrator }: { administrator: boolean }) {
+  const client = useQueryClient()
+  const query = useQuery({ queryKey: ['operational-settings'], queryFn: () => apiFetch<OperationalSettings>('/settings/operational') })
+  const mutation = useMutation({
+    mutationFn: (policy: 'warn' | 'block') => {
+      if (!query.data) throw new Error('Settings are still loading')
+      return apiFetch<OperationalSettings>('/settings/operational', { method: 'PATCH', body: JSON.stringify({ expected_version: query.data.record_version, gcode_inspection_policy: policy }) })
+    },
+    onSuccess: async () => { await client.invalidateQueries({ queryKey: ['operational-settings'] }) },
+  })
+  return <article className="card settings-section settings-section--wide"><header className="card__header"><div><p className="eyebrow">Print safety</p><h2><SlidersHorizontal size={20} /> G-code inspection policy</h2></div></header><p>Every new print is inspected against its exact managed material profile before filament loading begins.</p>{query.data ? <div className="segmented-control" role="group" aria-label="G-code inspection policy"><button className={query.data.gcode_inspection_policy === 'warn' ? 'active' : ''} disabled={!administrator || mutation.isPending} onClick={() => mutation.mutate('warn')}>Warn and continue</button><button className={query.data.gcode_inspection_policy === 'block' ? 'active' : ''} disabled={!administrator || mutation.isPending} onClick={() => mutation.mutate('block')}>Block mismatches</button></div> : <LoadingState />}{query.data?.gcode_inspection_policy === 'block' ? <p className="warning-note"><AlertTriangle size={17} /> Missing profiles, unavailable inspection data, and detected mismatches pause the print in Fluidd.</p> : <p className="security-note"><ShieldCheck size={17} /> Mismatches remain visible and auditable while the print continues.</p>}{mutation.error ? <p className="form-error">{mutation.error.message}</p> : null}</article>
 }
 
 function WorkbookImportPanel({ administrator }: { administrator: boolean }) {
@@ -302,6 +346,7 @@ export default function SettingsPage() {
   })
   const devices = useQuery({ queryKey: ['devices'], queryFn: () => apiFetch<Device[]>('/devices') })
   const [creating, setCreating] = useState(false)
+  const [editingAccount, setEditingAccount] = useState<User | null>(null)
 
   return (
     <div>
@@ -318,6 +363,8 @@ export default function SettingsPage() {
 
       <section className="settings-grid">
         <WorkbookImportPanel administrator={administrator} />
+
+        <OperationalPolicyPanel administrator={administrator} />
 
         <article className="card settings-section settings-section--wide">
           <header className="card__header">
@@ -346,6 +393,7 @@ export default function SettingsPage() {
                     label={titleCase(account.role)}
                   />
                   {account.id === user?.id && <span className="you-label">You</span>}
+                  <button className="icon-button" onClick={() => setEditingAccount(account)} aria-label={`Manage ${account.display_name}`}><Pencil size={17} /></button>
                 </div>
               ))}
             </div>
@@ -431,6 +479,7 @@ export default function SettingsPage() {
       </section>
 
       {creating && <CreateUserModal onClose={() => setCreating(false)} />}
+      {editingAccount && user ? <AccountEditorModal account={editingAccount} currentUserId={user.id} onClose={() => setEditingAccount(null)} /> : null}
     </div>
   )
 }

@@ -6,6 +6,7 @@ export interface User {
   display_name: string
   role: UserRole
   is_active: boolean
+  must_change_password: boolean
   record_version: number
 }
 
@@ -87,6 +88,10 @@ export interface BuildPlate {
   preferred_materials: string[]
   max_bed_temp_c: string | null
   last_cleaned_at: string | null
+  cleaning_due_after_prints: number
+  cleaning_due_after_days: number
+  mesh_due_after_prints: number
+  mesh_due_after_days: number
   notes: string | null
   record_version: number
   surfaces: BuildPlateSurface[]
@@ -454,4 +459,147 @@ export interface CuraDeployment {
 export interface WorkstationPairingCode {
   pairing_code: string
   expires_at: string
+}
+
+export type PrintQualityRating = 'successful' | 'excellent' | 'acceptable' | 'failed'
+
+export interface PrintAssessment {
+  id: string
+  revision: number
+  rating: PrintQualityRating
+  defect_tags: string[]
+  notes: string | null
+  assessed_by: string
+  supersedes_id: string | null
+  created_at: string
+}
+
+export interface PrintMaterialSegment {
+  id: string
+  segment_number: number
+  spool_id: string | null
+  filament_product_id: string | null
+  material_profile_id: string | null
+  material_profile_version: number | null
+  source: string
+  state_snapshot: Record<string, unknown>
+  started_at: string
+  ended_at: string | null
+  actual_filament_length_mm: string | null
+  actual_filament_weight_g: string | null
+}
+
+export interface PrintJob {
+  id: string
+  printer_id: string
+  moonraker_job_id: string | null
+  filename: string
+  gcode_sha256: string | null
+  source: string
+  status: 'in_progress' | 'completed' | 'cancelled' | 'failed' | 'legacy_unknown'
+  spool_id: string | null
+  filament_product_id: string | null
+  material_profile_id: string | null
+  material_profile_version: number | null
+  build_plate_id: string | null
+  build_plate_surface_id: string | null
+  nozzle_diameter_mm: string | null
+  material_name: string | null
+  material_type: string | null
+  state_snapshot: Record<string, unknown>
+  profile_snapshot: Record<string, unknown>
+  inspection_status: 'pending' | 'passed' | 'warning' | 'blocked' | 'unavailable'
+  inspection_policy: 'warn' | 'block'
+  inspection: {
+    extracted?: Record<string, unknown>
+    mismatches?: Array<{
+      field: string
+      label: string
+      gcode_value: string
+      profile_value: string
+    }>
+    warnings?: string[]
+  }
+  slicer: string | null
+  slicer_version: string | null
+  cura_quality_profile: string | null
+  layer_height_mm: string | null
+  line_width_mm: string | null
+  extruder_temp_c: string | null
+  bed_temp_c: string | null
+  chamber_temp_c: string | null
+  print_speed_mm_s: string | null
+  pressure_advance: string | null
+  retraction_distance_mm: string | null
+  retraction_speed_mm_s: string | null
+  flow_percent: string | null
+  predicted_filament_length_mm: string | null
+  predicted_filament_weight_g: string | null
+  actual_filament_length_mm: string | null
+  actual_filament_weight_g: string | null
+  estimated_duration_seconds: string | null
+  print_duration_seconds: string | null
+  total_duration_seconds: string | null
+  support_configuration: Record<string, unknown>
+  machine_name: string | null
+  timelapse_url: string | null
+  started_at: string | null
+  ended_at: string | null
+  record_version: number
+  segments: PrintMaterialSegment[]
+  assessments: PrintAssessment[]
+}
+
+export interface ProfileStatistics {
+  rated_prints: number
+  ratings: Partial<Record<PrintQualityRating, number>>
+  success_rate_percent: string | null
+  low_sample: boolean
+}
+
+export interface OperationalSettings {
+  gcode_inspection_policy: 'warn' | 'block'
+  record_version: number
+}
+
+export interface OperatorNotification {
+  id: string
+  category: string
+  severity: 'info' | 'warning' | 'error'
+  title: string
+  message: string
+  action_path: string | null
+  object_type: string | null
+  object_id: string | null
+  active: boolean
+  occurrence_count: number
+  created_at: string
+  last_seen_at: string
+  resolved_at: string | null
+  read: boolean
+}
+
+export interface BuildPlateMaintenanceStatus {
+  build_plate_id: string
+  cleaning_due: boolean
+  cleaning_prints_since: number
+  cleaning_due_at: string | null
+  surfaces: Array<{
+    surface_id: string
+    surface_code: string
+    mesh_due: boolean
+    prints_since: number
+    due_at: string | null
+  }>
+}
+
+export interface BuildPlateMaintenanceEvent {
+  id: string
+  build_plate_id: string
+  build_plate_surface_id: string | null
+  maintenance_type: 'cleaned' | 'mesh_calibrated'
+  performed_by: string | null
+  source: string
+  notes: string | null
+  occurred_at: string
 }

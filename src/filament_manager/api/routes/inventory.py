@@ -60,6 +60,45 @@ from ..schemas import (
 router = APIRouter(tags=["inventory"])
 
 
+@router.post("/printer-context/active-spool/clear", status_code=status.HTTP_202_ACCEPTED)
+async def request_active_spool_unload(
+    request: Request,
+    operator: Operator,
+    session: DatabaseSession,
+) -> dict[str, str]:
+    """Queue a physical unload; canonical/Spoolman state clears only after motion."""
+
+    configured_code = get_settings().moonraker.printers[0].id
+    printer = await session.scalar(select(Printer).where(Printer.printer_code == configured_code))
+    if printer is None:
+        raise ApiError(status.HTTP_409_CONFLICT, "printer_not_configured", "Printer is not ready")
+    spool = await session.scalar(select(Spool).where(Spool.active_printer_id == printer.id))
+    if spool is None:
+        raise ApiError(status.HTTP_409_CONFLICT, "no_active_spool", "No spool is physically loaded")
+    add_outbox_job(
+        session,
+        job_type="moonraker.spool_unload.request",
+        idempotency_key=f"spool-unload:{printer.id}:{request.state.correlation_id}",
+        aggregate_type="printer",
+        aggregate_id=printer.id,
+        aggregate_version=printer.record_version,
+        payload={"printer_id": str(printer.id)},
+    )
+    add_audit_event(
+        session,
+        actor_id=operator.id,
+        source="web",
+        action="spool.unload.request",
+        object_type="printer",
+        object_id=printer.id,
+        before={"active_spool_id": str(spool.id), "spoolman_id": spool.spoolman_id},
+        after={"physical_unload_queued": True},
+        correlation_id=request.state.correlation_id,
+    )
+    await session.commit()
+    return {"status": "unload_queued", "printer_name": printer.name}
+
+
 async def _remember_color(
     session: DatabaseSession,
     *,

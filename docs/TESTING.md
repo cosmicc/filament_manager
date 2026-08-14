@@ -50,7 +50,7 @@ FILAMENT_MANAGER_E2E_PASSWORD='isolated-test-password' \
 npm run test:e2e --prefix frontend
 ```
 
-The test exercises login, dashboard, inventory navigation, themes, and the mobile unknown-tare weighing sheet. Rendered references are written to `docs/design/validation/`.
+The browser suite exercises login, dashboard and inventory navigation, themes, mobile unknown-tare weighing, multi-version material comparison, build-plate maintenance, notifications, exact print details, and append-only outcome scoring. Rendered references are written to `docs/design/validation/`.
 
 ## Failure isolation
 
@@ -62,6 +62,10 @@ Before production, separately verify:
 - duplicate measurement idempotency keys
 - suspicious increases and above-nominal Administrator overrides
 - re-running an earlier calibration step invalidates downstream completed results
+- G-code warning and blocking modes with a match, mismatch, missing profile, unavailable file, and decimal-equivalent setting
+- print start-state capture after preflight, live/history deduplication, completed-status spelling variants, M600 segments, legacy unresolved state, and latest-assessment statistics
+- temporary-password route gating, password-reset and deactivation session revocation, last-Administrator protection, and notification recurrence becoming unread
+- cleaning/mesh maintenance thresholds and Moonraker mesh clearing before canonical active-plate clearing
 - exact plate-side discovery accepts P1, P4b, P6, and P10b while rejecting malformed names and G-code input
 - Moonraker synchronization groups A/B sides under physical plates, preserves metadata, marks missing side meshes unavailable without deletion, and aligns the active plate and side
 - pairing-code replay and disabled or cross-agent credentials

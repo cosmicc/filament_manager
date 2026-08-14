@@ -174,7 +174,9 @@ async def test_moonraker_reads_persistent_physical_spool_state() -> None:
     assert state.catalog_revision == "a" * 64
     assert route.calls.last.request.read() == (
         b'{"objects":{"gcode_macro FILAMENT_MANAGER_SPOOL_STATE":'
-        b'["restored","initialized","phase","loaded_spool_id","catalog_revision"]}}'
+        b'["restored","initialized","phase","loaded_spool_id","catalog_revision",'
+        b'"material_guid","start_bed_temp","start_extruder_temp","start_chamber_temp",'
+        b'"inspection_policy","start_pending"]}}'
     )
 
 

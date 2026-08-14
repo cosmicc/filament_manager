@@ -39,6 +39,10 @@ Cura calls `FILAMENT_MANAGER_START_PRINT` with `{material_guid}` and the existin
 
 If the persisted loaded ID is one of the candidates, the wrapper immediately hands the original values to the unchanged `START_PRINT`. Otherwise it pauses virtual-SD execution, prompts in Fluidd for the exact matching spool, unloads the old spool at its stored profile temperature, clears Spoolman, preheats to the new profile temperature, waits for insertion confirmation, calls the existing load routine, activates the selected ID, and then hands off to `START_PRINT`. No candidates is a fail-closed print block. Generic templates do not identify a physical product and are not eligible print materials.
 
+The application setting `gcode_inspection` defaults to `warn`. In `block` mode the same wrapper pauses before spool selection and waits for `FILAMENT_MANAGER_GCODE_INSPECTION`. Missing exact profile state, an unavailable bounded file inspection, or any supported profile mismatch remains blocked. In `warn` mode the evidence is stored without delaying the spool workflow. The worker reads `/server/files/metadata`, streams `/server/files/gcodes/{filename}` once for its SHA-256 plus bounded header/tail samples, and never evaluates Cura content.
+
+Every five seconds by default, the worker reads documented `print_stats`, imports `/server/history/list`, and converges one canonical PrintJob. Exact state capture waits until a pending preflight/load finishes so the previously loaded spool is never treated as the new print's starting spool. M600 creates immutable material segments. Historical jobs with insufficient canonical context are retained as explicitly unresolved instead of guessed.
+
 ## Fluidd
 
 Fluidd remains the prompt and operational display for:

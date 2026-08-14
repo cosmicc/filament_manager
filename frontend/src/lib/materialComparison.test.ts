@@ -49,6 +49,10 @@ const plates = [{
   preferred_materials: [],
   max_bed_temp_c: null,
   last_cleaned_at: null,
+  cleaning_due_after_prints: 10,
+  cleaning_due_after_days: 7,
+  mesh_due_after_prints: 30,
+  mesh_due_after_days: 30,
   notes: null,
   record_version: 1,
   surfaces: [{

@@ -10,8 +10,10 @@
 - Activity: append-only operational and security audit history
 - Cura workstations: last contact, detected Cura versions/machines, scoped credential state, deployment attempts, and warnings
 - Build Plates: per-side Moonraker mesh checks, newly discovered physical plates/sides, unavailable mappings, and the active loaded side
+- Print History: current capture, supported Moonraker history progress, inspection status, unresolved legacy rows, M600 segments, and outcome revisions
+- Notifications: unread Moonraker, dead-job, low/empty spool, overdue plate, and failed Cura deployment conditions
 
-Canonical inventory changes create supported-API Spoolman jobs in the same transaction and dispatch normally begins within one worker polling cycle. Every minute by default, a safety sweep imports printer-recorded usage first and then converges every canonical vendor, filament product, and spool. Every 15 seconds the worker reads Moonraker's supported active Spoolman ID, persistent physical-spool macro state, and exact P-number mesh state; it repairs a direct active-ID mismatch back to the last completed physical boundary in every initialized phase and refreshes the bounded Cura-material/spool catalog. Every 5 minutes it refreshes sanitized printer information. These jobs also seed the configured printer and initial plates on a fresh database. Google publication is scheduled when enabled. External outages create bounded retries and never roll back already committed canonical changes.
+Canonical inventory changes create supported-API Spoolman jobs in the same transaction and dispatch normally begins within one worker polling cycle. Every minute by default, a safety sweep imports printer-recorded usage first and then converges every canonical vendor, filament product, and spool. Every 15 seconds the worker reads Moonraker's supported active Spoolman ID, persistent physical-spool macro state, and exact P-number mesh state; it repairs a direct active-ID mismatch back to the last completed physical boundary in every initialized phase and refreshes the bounded Cura-material/spool catalog. Every 5 seconds it captures current print state and incrementally reconciles Moonraker history; every 5 minutes it refreshes sanitized printer information. Notification conditions converge every minute. These jobs also seed the configured printer and initial plates on a fresh database. Google publication is scheduled when enabled. External outages create bounded retries and never roll back already committed canonical changes.
 
 The web and worker emit structured console logs for request completion, stable API rejections, validation errors, scheduler and outbox activity, and Moonraker synchronization results. Browser API requests also log their method, path, status, and correlation ID. Error logs include safe messages and tracebacks but never credentials, connection URLs, request bodies, or external response bodies.
 
@@ -69,6 +71,12 @@ Run `FILAMENT_MANAGER_SPOOL_STATE` in Fluidd. Confirm the integration macro file
 Keep Fluidd's **Show spool selection dialog on print start** disabled. If someone uses Fluidd's global **Change Spool** control, the worker restores the persisted physical ID within the next 15-second state pass. Do not override that repair unless the macro was just installed and its one-time initial state was seeded incorrectly.
 
 During a change, `unloading` retains the old active ID, `inserting` means no active spool, and `loading` still means no active spool. `ready` means the exact new ID has been committed. A ten-minute insertion timeout turns off the nozzle and retains the last completed boundary. Use the prompt's cancel action or `FILAMENT_MANAGER_ABORT` after a macro error; never invoke the internal `_FILAMENT_MANAGER_RECORD_LOADED` helper manually.
+
+For a **G-code Blocked** prompt, open the matching Print History row. A listed mismatch requires reslicing or publishing/synchronizing the intended profile. An unavailable result means Moonraker could not supply the file or its exact managed profile could not be resolved; do not bypass it by changing Spoolman manually. Administrators may return to the recommended warning policy during diagnosis, but the setting change is audited and synchronized to Klipper.
+
+### Print history is missing or duplicated
+
+Inspect the `moonraker.print_history.reconcile` outbox job and `moonraker_print_history_*` worker log events. The configured default is `MOONRAKER_PRINT_INTERVAL_SECONDS=5`. Filament Manager uses Moonraker's supported current `print_stats`, history list, file metadata, and G-code download surfaces; connection or authorization errors retry without inventing exact state. Pre-0.2.1 jobs intentionally show as legacy/unresolved when spool/profile context is unavailable.
 
 ### A saved build-plate side mesh does not appear
 

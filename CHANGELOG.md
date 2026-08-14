@@ -1,5 +1,31 @@
 # Changelog
 
+## 0.2.1 - 08.13.2026
+
+### Added
+
+- Added canonical print history synchronized from Moonraker, including exact printer, spool, material-profile revision, build-plate side, G-code hash, slicer metadata, predicted/actual use, immutable M600 material segments, and explicitly unresolved legacy records.
+- Added bounded G-code inspection of Moonraker metadata and Cura headers, with profile mismatch evidence and an Administrator setting that changes the default warn-and-continue behavior to fail-closed blocking in Fluidd.
+- Added append-only print assessments with Excellent, Successful, Acceptable, and Failed ratings, optional defect tags, notes, and profile-version success statistics.
+- Added full dimensional calibration for X, Y, Z, holes, shafts, and wall thickness, including Cura expansion/flow results, material shrinkage, and non-applying printer-geometry recommendations.
+- Added two-to-four-column profile/template revision comparison with difference-only rows, cross-scope warnings, success rates, low-sample labels, and template N/A states.
+- Added account editing, activation controls, temporary-password reset, forced password replacement, build-plate maintenance ledgers/reminders, explicit active spool/plate clearing, responsive mobile data cards, and a persistent per-user notification center.
+
+### Changed
+
+- Changed new local accounts to require replacement of their Administrator-supplied temporary password before any other application route is available.
+- Changed Moonraker print-state polling to every five seconds by default and added complete supported-history import plus incremental reconciliation.
+- Changed the supplied Klipper macro reference to gate optional blocking inspection before exact-spool selection while preserving the existing `START_PRINT`, `END_PRINT`, motion, cancellation, and purge implementations.
+- Changed build plates to use configurable cleaning and mesh-calibration thresholds based on both elapsed days and completed-print counts.
+- Changed all server, frontend, and workstation-agent version surfaces to 0.2.1.
+
+### Fixed
+
+- Fixed a preflight-paused print being able to record the previously loaded spool as its starting material before the requested spool was physically loaded.
+- Fixed a completed live print being duplicated when Moonraker repeated its terminal state or the same job later appeared in history.
+- Fixed M600 print-history segments lacking their own derived length and weight totals.
+- Fixed a reactivated operator notification remaining read after the underlying condition recurred.
+
 ## 0.2.0 - 08.13.2026
 
 ### Added

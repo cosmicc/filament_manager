@@ -14,6 +14,8 @@ const IntegrationsPage = lazy(() => import('./pages/IntegrationsPage'))
 const LabelsPage = lazy(() => import('./pages/LabelsPage'))
 const LoginPage = lazy(() => import('./pages/LoginPage'))
 const PrintersPage = lazy(() => import('./pages/PrintersPage'))
+const PrintHistoryPage = lazy(() => import('./pages/PrintHistoryPage'))
+const PasswordChangePage = lazy(() => import('./pages/PasswordChangePage'))
 const ProfilesPage = lazy(() => import('./pages/ProfilesPage'))
 const TemplatesPage = lazy(() => import('./pages/TemplatesPage'))
 const SettingsPage = lazy(() => import('./pages/SettingsPage'))
@@ -25,6 +27,7 @@ const pages: Record<string, LazyExoticComponent<ComponentType>> = {
   '/spools': SpoolsPage,
   '/filaments': FilamentsPage,
   '/profiles': ProfilesPage,
+  '/prints': PrintHistoryPage,
   '/templates': TemplatesPage,
   '/calibration': CalibrationPage,
   '/plates': BuildPlatesPage,
@@ -50,6 +53,10 @@ export function App() {
   }, [isFilamentDetail, loading, navigate, path, user])
 
   if (loading) return <div className="app-loading"><LoadingState label="Opening Filament Manager" /></div>
-  const content = user ? (() => { const Page = isFilamentDetail ? FilamentDetailPage : pages[path] ?? DashboardPage; return <AppShell><Page /></AppShell> })() : <LoginPage />
+  const content = user
+    ? user.must_change_password
+      ? <PasswordChangePage />
+      : (() => { const Page = isFilamentDetail ? FilamentDetailPage : pages[path] ?? DashboardPage; return <AppShell><Page /></AppShell> })()
+    : <LoginPage />
   return <Suspense fallback={<div className="app-loading"><LoadingState /></div>}>{content}</Suspense>
 }

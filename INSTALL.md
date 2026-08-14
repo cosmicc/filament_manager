@@ -294,7 +294,7 @@ The separate `docker/spoolman-stack.yml` and `docker/filament-manager-stack.yml`
 
 - Add `integrations/moonraker/moonraker-spoolman.conf` to Moonraker after replacing the LAN hostname.
 - Copy `integrations/klipper/filament-manager-macros.cfg` to the Klipper configuration directory and include it **last**, after the files that define the existing `START_PRINT`, `END_PRINT`, `CANCEL_PRINT`, `M600`, `LOAD_FILAMENT`, `UNLOAD_FILAMENT`, and `PURGE_FILAMENT` macros. The integration wraps those existing routines; it does not replace their physical movement or completed-print behavior.
-- Confirm `[respond]`, `[save_variables]`, `[pause_resume]`, and `[virtual_sdcard]` are configured. The supplied macro reference persists physical spool identity and the bounded material catalog through `[save_variables]`.
+- Confirm `[respond]`, `[save_variables]`, `[pause_resume]`, and `[virtual_sdcard]` are configured. The supplied complete macro reference persists physical spool identity, the bounded material catalog, and the G-code inspection policy through `[save_variables]`.
 - Before restarting, run `grep -Rns --include='*.cfg' 'variable_active_plate' ~/printer_data/config` on the Klipper host and confirm every included definition is exactly `variable_active_plate: "UNSET"`.
 - Ensure Klipper already has P1, P2, P3, P4, and P5 Side A mesh profiles and a configured `[save_variables]` section before using `SELECT_BUILD_PLATE`.
 - Restart Moonraker and Klipper. Wait for the worker to initialize `FILAMENT_MANAGER_SPOOL_STATE`, then run that macro in the Fluidd console and confirm it reports the spool that is physically loaded, or no spool. Correct the existing Spoolman active ID before this first initialization if necessary.
@@ -309,6 +309,7 @@ FILAMENT_MANAGER_START_PRINT BED_TEMP={material_bed_temperature_layer_0} EXTRUDE
 - Publish a product material profile and allow the workstation agent to synchronize Cura before printing. `Template <material type>` entries have no exact physical inventory mapping and are intentionally blocked by preflight.
 - With the printer idle, verify `SELECT_BUILD_PLATE PLATE=P1`. Then request **Load spool** from Inventory and confirm Fluidd preheats and asks for the exact Spoolman ID. After the existing unload motion completes, Spoolman must show no active spool; only after insertion confirmation and the existing load motion completes may the new ID become active.
 - Send a Cura test file with the already loaded matching product material and confirm it reaches the unchanged `START_PRINT` path without a load prompt. Repeat with another material and confirm Fluidd asks which exact matching spool to insert when more than one is available.
+- Keep **Settings → G-code inspection policy** at the recommended **Warn and continue** default for initial testing. Confirm Print History records matching metadata and any intentional test mismatch. Then, if desired, enable **Block mismatches** and verify Fluidd pauses at **Inspecting G-code**, releases a matching file, and retains a mismatched or unavailable file without running `START_PRINT`.
 - Sign in, open **Build Plates**, and select the printer. Within 15 seconds, exact `P<number>` meshes become Side A, exact `P<number>b` meshes become Side B of the same physical plate, and the loaded matching mesh becomes the active side.
 - To add a physical plate later, save Side A as the next name, such as `P6`. If it is double-sided, save its other mesh as `P6b`. The next automatic state pass adds it; existing physical and side details are preserved, and missing meshes are shown as unavailable rather than deleted.
 
@@ -322,3 +323,4 @@ FILAMENT_MANAGER_START_PRINT BED_TEMP={material_bed_temperature_layer_0} EXTRUDE
 6. Verify `/health/ready`, `/metrics`, job state, reconciliation, Moonraker, Cura synchronization, and Google publication.
 
 See [Operations](docs/OPERATIONS.md) for backup, restore, and troubleshooting procedures.
+See [Printing Workflow](docs/PRINTING_WORKFLOW.md) for the exact preflight, abort-state, history, assessment, and complete macro contract.

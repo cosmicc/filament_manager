@@ -253,8 +253,12 @@ async def update_step_result(
     step.inputs = payload.inputs
     result = payload.result
     if step.step_key == "dimensional" and payload.complete:
+        flow_step = next((item for item in calibration.steps if item.step_key == "flow"), None)
+        baseline_flow = flow_step.result.get("flow_percent") if flow_step else None
+        calculation_inputs = dict(payload.inputs)
+        calculation_inputs["baseline_flow_percent"] = baseline_flow
         try:
-            dimensional = calculate_dimensional_compensation(payload.inputs)
+            dimensional = calculate_dimensional_compensation(calculation_inputs)
         except DimensionalCalibrationError as exc:
             raise ApiError(
                 status.HTTP_422_UNPROCESSABLE_ENTITY,
@@ -268,6 +272,19 @@ async def update_step_result(
             "y_horizontal_expansion_mm": format(dimensional.y_horizontal_expansion, "f"),
             "axis_difference_mm": format(dimensional.axis_difference, "f"),
             "axis_warning": dimensional.axis_warning,
+            "shaft_horizontal_expansion_mm": format(dimensional.shaft_horizontal_expansion, "f"),
+            "shaft_difference_mm": format(dimensional.shaft_difference, "f"),
+            "shaft_warning": dimensional.shaft_warning,
+            "flow_percent": format(dimensional.recommended_flow_percent, "f"),
+            "baseline_flow_percent": str(baseline_flow),
+            "printer_x_correction_percent": format(dimensional.printer_x_correction_percent, "f"),
+            "printer_y_correction_percent": format(dimensional.printer_y_correction_percent, "f"),
+            "printer_z_correction_percent": format(dimensional.printer_z_correction_percent, "f"),
+            "material_shrinkage_x_percent": format(dimensional.material_shrinkage_x_percent, "f"),
+            "material_shrinkage_y_percent": format(dimensional.material_shrinkage_y_percent, "f"),
+            "material_shrinkage_z_percent": format(dimensional.material_shrinkage_z_percent, "f"),
+            "correction_classification": dimensional.correction_classification,
+            "klipper_configuration_changed": False,
         }
     step.result = result
     step.artifact = payload.artifact

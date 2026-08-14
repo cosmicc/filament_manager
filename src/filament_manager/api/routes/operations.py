@@ -21,7 +21,7 @@ from filament_manager.models.inventory import (
     Printer,
     Spool,
 )
-from filament_manager.models.operations import AuditEvent, Device, OutboxJob
+from filament_manager.models.operations import ApplicationSetting, AuditEvent, Device, OutboxJob
 from filament_manager.services.events import add_audit_event, add_outbox_job
 from filament_manager.services.moonraker_sync import (
     synchronize_printer_information as apply_printer_information,
@@ -35,6 +35,8 @@ from ..schemas import (
     BuildPlateSurfaceResponse,
     DashboardResponse,
     IntegrationStatus,
+    OperationalSettingsResponse,
+    OperationalSettingsUpdate,
     PrinterResponse,
     PrinterUpdate,
 )
@@ -42,6 +44,73 @@ from .inventory import spool_response
 
 router = APIRouter(tags=["operations"])
 SYSTEM_AGGREGATE_ID = UUID("00000000-0000-0000-0000-000000000001")
+
+
+@router.get("/settings/operational", response_model=OperationalSettingsResponse)
+async def operational_settings(_: Viewer, session: DatabaseSession) -> OperationalSettingsResponse:
+    """Return the persisted G-code inspection enforcement policy."""
+
+    setting = await session.scalar(
+        select(ApplicationSetting).where(ApplicationSetting.key == "gcode_inspection")
+    )
+    if setting is None:
+        return OperationalSettingsResponse(gcode_inspection_policy="warn", record_version=1)
+    policy = setting.value.get("policy")
+    return OperationalSettingsResponse(
+        gcode_inspection_policy=str(policy) if policy in {"warn", "block"} else "warn",
+        record_version=setting.record_version,
+    )
+
+
+@router.patch("/settings/operational", response_model=OperationalSettingsResponse)
+async def update_operational_settings(
+    payload: OperationalSettingsUpdate,
+    request: Request,
+    administrator: Administrator,
+    session: DatabaseSession,
+) -> OperationalSettingsResponse:
+    """Change warning versus blocking behavior and queue immediate macro synchronization."""
+
+    setting = await session.scalar(
+        select(ApplicationSetting).where(ApplicationSetting.key == "gcode_inspection").with_for_update()
+    )
+    if setting is None:
+        if payload.expected_version != 1:
+            raise ApiError(status.HTTP_409_CONFLICT, "record_version_conflict", "Settings changed; reload")
+        setting = ApplicationSetting(key="gcode_inspection", value={"policy": "warn"})
+        session.add(setting)
+        await session.flush()
+    if setting.record_version != payload.expected_version:
+        raise ApiError(status.HTTP_409_CONFLICT, "record_version_conflict", "Settings changed; reload")
+    previous = setting.value.get("policy", "warn")
+    setting.value = {"policy": payload.gcode_inspection_policy}
+    setting.updated_by = administrator.id
+    setting.record_version += 1
+    add_outbox_job(
+        session,
+        job_type="moonraker.state.reconcile",
+        idempotency_key=f"gcode-inspection-policy:v{setting.record_version}",
+        aggregate_type="application_setting",
+        aggregate_id=setting.id,
+        aggregate_version=setting.record_version,
+        payload={},
+    )
+    add_audit_event(
+        session,
+        actor_id=administrator.id,
+        source="web",
+        action="settings.gcode_inspection.update",
+        object_type="application_setting",
+        object_id=setting.id,
+        before={"policy": previous},
+        after={"policy": payload.gcode_inspection_policy},
+        correlation_id=request.state.correlation_id,
+    )
+    await session.commit()
+    return OperationalSettingsResponse(
+        gcode_inspection_policy=payload.gcode_inspection_policy,
+        record_version=setting.record_version,
+    )
 
 
 async def _integration_statuses() -> list[IntegrationStatus]:

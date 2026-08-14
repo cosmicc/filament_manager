@@ -1,5 +1,27 @@
 # User Changelog
 
+## 0.2.1 - 08.13.2026
+
+### Added
+
+- Added **Print history** with exact spool, material profile, build-plate side, G-code inspection evidence, filament changes, and print outcome scoring.
+- Added optional blocking for G-code/profile mismatches under **Settings**; warning and continuing remains the recommended default.
+- Added complete dimensional calibration measurements and recommendations without automatically changing Klipper configuration.
+- Added visual comparison of two to four profile/template versions with recorded success rates.
+- Added account lifecycle controls, plate-maintenance history and reminders, explicit unload/clear actions, mobile-friendly data cards, and a notification center for workshop conditions that need attention.
+
+### Changed
+
+- New and reset accounts now use a temporary password that must be changed before opening the rest of the app.
+- Build-plate cleaning and mesh reminder intervals can be adjusted for each physical plate.
+- Print and material state refreshes from Moonraker every five seconds by default.
+
+### Fixed
+
+- Fixed a print paused for preflight being able to retain the old spool in its exact starting record.
+- Fixed completed live prints being duplicated by repeated Moonraker completion updates or history synchronization.
+- Fixed mid-print spool-change segments not receiving their own usage totals.
+
 ## 0.2.0 - 08.13.2026
 
 ### Added

@@ -17,7 +17,19 @@ from .inventory import (
     SpoolUsageEvent,
     Vendor,
 )
-from .operations import AuditEvent, Device, ImportRun, NfcTag, OutboxJob, ProjectionState
+from .operations import (
+    ApplicationSetting,
+    AuditEvent,
+    BuildPlateMaintenanceEvent,
+    Device,
+    ImportRun,
+    NfcTag,
+    Notification,
+    OutboxJob,
+    ProjectionState,
+    UserNotificationState,
+)
+from .printing import PrintAssessment, PrintJob, PrintMaterialSegment
 from .workstations import (
     CuraDeployment,
     CuraManagedEditReceipt,
@@ -26,9 +38,11 @@ from .workstations import (
 )
 
 __all__ = [
+    "ApplicationSetting",
     "AuditEvent",
     "Base",
     "BuildPlate",
+    "BuildPlateMaintenanceEvent",
     "BuildPlateSurface",
     "CalibrationSession",
     "CalibrationStep",
@@ -42,13 +56,18 @@ __all__ = [
     "MaterialTemplate",
     "MaterialTemplateRevision",
     "NfcTag",
+    "Notification",
     "OutboxJob",
+    "PrintAssessment",
+    "PrintJob",
+    "PrintMaterialSegment",
     "Printer",
     "ProjectionState",
     "Spool",
     "SpoolMeasurement",
     "SpoolUsageEvent",
     "User",
+    "UserNotificationState",
     "UserSession",
     "Vendor",
     "WorkstationAgent",

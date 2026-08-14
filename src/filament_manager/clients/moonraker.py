@@ -1,9 +1,11 @@
 """Supported Moonraker HTTP client for spool, plate, and bed-mesh operations."""
 
+import hashlib
 import re
 from dataclasses import dataclass
 from decimal import Decimal
 from typing import Any
+from urllib.parse import quote
 
 import httpx
 
@@ -45,6 +47,34 @@ class MoonrakerSpoolPreflightState:
     phase: str
     loaded_spool_id: int | None
     catalog_revision: str
+    material_guid: str
+    start_bed_temp: Decimal
+    start_extruder_temp: Decimal
+    start_chamber_temp: Decimal
+    inspection_policy: str
+    start_pending: bool
+
+
+@dataclass(frozen=True, slots=True)
+class MoonrakerPrintState:
+    """Current documented print_stats state needed for live history capture."""
+
+    filename: str
+    state: str
+    message: str | None
+    total_duration: Decimal
+    print_duration: Decimal
+    filament_used_mm: Decimal
+
+
+@dataclass(frozen=True, slots=True)
+class MoonrakerGcodeFile:
+    """Streaming G-code digest plus bounded header and tail samples."""
+
+    sha256: str
+    header: str
+    tail: str
+    size: int
 
 
 SPOOL_PROMPT_LABEL_PATTERN = re.compile(r"[A-Za-z0-9._#-]{1,96}")
@@ -58,6 +88,7 @@ SPOOL_PREFLIGHT_PHASES = {
     "manual_select",
     "manual_ready",
     "error",
+    "inspecting",
 }
 
 
@@ -72,12 +103,17 @@ class MoonrakerClient:
     def _headers(self) -> dict[str, str]:
         return {"X-Api-Key": self.api_key} if self.api_key else {}
 
-    async def _get(self, path: str) -> dict[str, Any]:
+    async def _get(
+        self,
+        path: str,
+        *,
+        params: dict[str, str | int | float | bool | None] | None = None,
+    ) -> dict[str, Any]:
         """Perform one authenticated GET and reject malformed API envelopes."""
 
         try:
             async with httpx.AsyncClient(timeout=self.timeout, headers=self._headers()) as client:
-                response = await client.get(f"{self.base_url}{path}")
+                response = await client.get(f"{self.base_url}{path}", params=params)
                 response.raise_for_status()
                 data = response.json()
         except (httpx.HTTPError, ValueError) as exc:
@@ -167,6 +203,12 @@ class MoonrakerClient:
                         "phase",
                         "loaded_spool_id",
                         "catalog_revision",
+                        "material_guid",
+                        "start_bed_temp",
+                        "start_extruder_temp",
+                        "start_chamber_temp",
+                        "inspection_policy",
+                        "start_pending",
                     ]
                 }
             },
@@ -185,6 +227,12 @@ class MoonrakerClient:
         phase = macro_state.get("phase")
         loaded_spool_id = macro_state.get("loaded_spool_id")
         revision = macro_state.get("catalog_revision")
+        material_guid = macro_state.get("material_guid", "")
+        start_bed_temp = macro_state.get("start_bed_temp", 0)
+        start_extruder_temp = macro_state.get("start_extruder_temp", 0)
+        start_chamber_temp = macro_state.get("start_chamber_temp", 0)
+        inspection_policy = macro_state.get("inspection_policy", "warn")
+        start_pending = macro_state.get("start_pending", 0)
         if restored not in (0, 1, False, True):
             raise MoonrakerError("Moonraker returned an invalid spool-preflight restored flag")
         if initialized not in (0, 1, False, True):
@@ -197,6 +245,20 @@ class MoonrakerClient:
             raise MoonrakerError("Moonraker returned an invalid physically loaded spool ID")
         if not isinstance(revision, str):
             raise MoonrakerError("Moonraker returned an invalid spool catalog revision")
+        if not isinstance(material_guid, str) or len(material_guid) > 96:
+            raise MoonrakerError("Moonraker returned an invalid managed material GUID")
+        try:
+            temperatures = tuple(
+                Decimal(str(value)) for value in (start_bed_temp, start_extruder_temp, start_chamber_temp)
+            )
+        except Exception as exc:
+            raise MoonrakerError("Moonraker returned invalid print-start temperatures") from exc
+        if any(not value.is_finite() or value < 0 or value > 500 for value in temperatures):
+            raise MoonrakerError("Moonraker returned invalid print-start temperatures")
+        if inspection_policy not in {"warn", "block"}:
+            raise MoonrakerError("Moonraker returned an invalid G-code inspection policy")
+        if not isinstance(start_pending, (bool, int)) or int(start_pending) not in {0, 1}:
+            raise MoonrakerError("Moonraker returned an invalid print-start pending state")
         if revision:
             try:
                 validate_catalog_revision(revision)
@@ -208,11 +270,177 @@ class MoonrakerClient:
             phase=phase,
             loaded_spool_id=loaded_spool_id if loaded_spool_id > 0 else None,
             catalog_revision=revision,
+            material_guid=material_guid,
+            start_bed_temp=temperatures[0],
+            start_extruder_temp=temperatures[1],
+            start_chamber_temp=temperatures[2],
+            inspection_policy=inspection_policy,
+            start_pending=bool(start_pending),
         )
 
-    async def synchronize_spool_preflight_catalog(self, catalog: SpoolPreflightCatalog) -> dict[str, Any]:
+    async def print_state(self) -> MoonrakerPrintState:
+        """Read the current documented print_stats fields."""
+
+        payload = await self._post(
+            "/printer/objects/query",
+            {
+                "objects": {
+                    "print_stats": [
+                        "filename",
+                        "state",
+                        "message",
+                        "total_duration",
+                        "print_duration",
+                        "filament_used",
+                    ]
+                }
+            },
+        )
+        result = payload.get("result")
+        status = result.get("status") if isinstance(result, dict) else None
+        stats = status.get("print_stats") if isinstance(status, dict) else None
+        if not isinstance(stats, dict):
+            raise MoonrakerError("Moonraker did not return print_stats")
+        filename = stats.get("filename")
+        state = stats.get("state")
+        message = stats.get("message")
+        if not isinstance(filename, str) or len(filename) > 512:
+            raise MoonrakerError("Moonraker returned an invalid print filename")
+        if state not in {"standby", "printing", "paused", "error", "complete", "cancelled"}:
+            raise MoonrakerError("Moonraker returned an invalid print state")
+        if message is not None and not isinstance(message, str):
+            raise MoonrakerError("Moonraker returned an invalid print message")
+        try:
+            durations = tuple(
+                Decimal(str(stats.get(key, 0)))
+                for key in ("total_duration", "print_duration", "filament_used")
+            )
+        except Exception as exc:
+            raise MoonrakerError("Moonraker returned invalid print counters") from exc
+        if any(not value.is_finite() or value < 0 for value in durations):
+            raise MoonrakerError("Moonraker returned invalid print counters")
+        return MoonrakerPrintState(
+            filename=filename,
+            state=state,
+            message=message[:500] if message else None,
+            total_duration=durations[0],
+            print_duration=durations[1],
+            filament_used_mm=durations[2],
+        )
+
+    async def history_jobs(
+        self, *, start: int = 0, limit: int = 100, since: float | None = None
+    ) -> tuple[dict[str, Any], ...]:
+        """Return one bounded page from Moonraker's supported history component."""
+
+        if start < 0 or limit < 1 or limit > 200:
+            raise ValueError("invalid Moonraker history page")
+        params: dict[str, str | int | float | bool | None] = {
+            "start": start,
+            "limit": limit,
+            "order": "asc",
+        }
+        if since is not None:
+            params["since"] = since
+        payload = await self._get("/server/history/list", params=params)
+        result = payload.get("result")
+        if not isinstance(result, dict):
+            raise MoonrakerError("Moonraker returned an invalid history result")
+        jobs = result.get("jobs")
+        if not isinstance(jobs, list) or len(jobs) > limit or not all(isinstance(job, dict) for job in jobs):
+            raise MoonrakerError("Moonraker returned invalid history jobs")
+        return tuple(jobs)
+
+    @staticmethod
+    def _validated_gcode_filename(filename: str) -> str:
+        """Reject control characters, absolute paths, and traversal before a download."""
+
+        if not filename or len(filename) > 512 or filename.startswith(("/", "\\")):
+            raise ValueError("invalid G-code filename")
+        if any(ord(character) < 32 for character in filename):
+            raise ValueError("invalid G-code filename")
+        parts = filename.replace("\\", "/").split("/")
+        if any(part in {"", ".", ".."} for part in parts):
+            raise ValueError("invalid G-code filename")
+        return "/".join(parts)
+
+    async def gcode_metadata(self, filename: str) -> dict[str, Any]:
+        """Read Moonraker's supported per-file metadata envelope."""
+
+        validated = self._validated_gcode_filename(filename)
+        payload = await self._get("/server/files/metadata", params={"filename": validated})
+        result = payload.get("result")
+        if not isinstance(result, dict):
+            raise MoonrakerError("Moonraker returned invalid G-code metadata")
+        return result
+
+    async def gcode_file(
+        self,
+        filename: str,
+        *,
+        sample_bytes: int = 524_288,
+        max_bytes: int = 1_000_000_000,
+    ) -> MoonrakerGcodeFile:
+        """Stream one G-code file once while hashing and retaining bounded samples."""
+
+        validated = self._validated_gcode_filename(filename)
+        if sample_bytes < 1 or sample_bytes > 1_100_000 or max_bytes < sample_bytes:
+            raise ValueError("invalid G-code download bounds")
+        encoded = quote(validated, safe="/")
+        digest = hashlib.sha256()
+        header = bytearray()
+        tail = bytearray()
+        size = 0
+        try:
+            async with httpx.AsyncClient(timeout=max(self.timeout, 60), headers=self._headers()) as client:
+                async with client.stream("GET", f"{self.base_url}/server/files/gcodes/{encoded}") as response:
+                    response.raise_for_status()
+                    async for chunk in response.aiter_bytes():
+                        size += len(chunk)
+                        if size > max_bytes:
+                            raise MoonrakerError("G-code file exceeds the inspection size limit")
+                        digest.update(chunk)
+                        if len(header) < sample_bytes:
+                            header.extend(chunk[: sample_bytes - len(header)])
+                        tail.extend(chunk)
+                        if len(tail) > sample_bytes:
+                            del tail[: len(tail) - sample_bytes]
+        except MoonrakerError:
+            raise
+        except httpx.HTTPError as exc:
+            raise MoonrakerError("Moonraker G-code download failed") from exc
+        return MoonrakerGcodeFile(
+            sha256=digest.hexdigest(),
+            header=header.decode("utf-8", errors="replace"),
+            tail=tail.decode("utf-8", errors="replace"),
+            size=size,
+        )
+
+    async def submit_gcode_inspection(self, *, passed: bool) -> dict[str, Any]:
+        """Release or retain a print paused by the managed blocking gate."""
+
+        return await self._post(
+            "/printer/gcode/script",
+            {"script": f"FILAMENT_MANAGER_GCODE_INSPECTION PASS={1 if passed else 0}"},
+        )
+
+    async def request_spool_unload(self) -> dict[str, Any]:
+        """Start the guarded physical unload workflow without selecting a replacement."""
+
+        return await self._post("/printer/gcode/script", {"script": "FILAMENT_MANAGER_UNLOAD_SPOOL"})
+
+    async def clear_build_plate(self) -> dict[str, Any]:
+        """Clear the loaded mesh so state reconciliation can clear active plate context."""
+
+        return await self._post("/printer/gcode/script", {"script": "FILAMENT_MANAGER_CLEAR_BUILD_PLATE"})
+
+    async def synchronize_spool_preflight_catalog(
+        self, catalog: SpoolPreflightCatalog, *, inspection_policy: str = "warn"
+    ) -> dict[str, Any]:
         """Persist a bounded catalog for offline-safe Fluidd macro prompts."""
 
+        if inspection_policy not in {"warn", "block"}:
+            raise ValueError("unsupported G-code inspection policy")
         revision = validate_catalog_revision(catalog.revision)
         materials = catalog.materials_literal()
         temperatures = catalog.temperatures_literal()
@@ -226,6 +454,10 @@ class MoonrakerClient:
                 f"SAVE_VARIABLE VARIABLE=filament_manager_spool_catalog VALUE='{materials}'",
                 f"SAVE_VARIABLE VARIABLE=filament_manager_spool_temperatures VALUE='{temperatures}'",
                 f"SAVE_VARIABLE VARIABLE=filament_manager_spool_catalog_revision VALUE='\"{revision}\"'",
+                "SET_GCODE_VARIABLE MACRO=FILAMENT_MANAGER_SPOOL_STATE "
+                f"VARIABLE=inspection_policy VALUE='\"{inspection_policy}\"'",
+                "SAVE_VARIABLE VARIABLE=filament_manager_gcode_inspection_policy "
+                f"VALUE='\"{inspection_policy}\"'",
             )
         )
         return await self._post("/printer/gcode/script", {"script": script})

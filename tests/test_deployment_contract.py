@@ -78,6 +78,7 @@ def test_example_environment_matches_the_database_contract() -> None:
     assert values["SPOOLMAN_RECONCILE_INTERVAL_MINUTES"] == "1"
     assert values["SYNC_OUTBOX_LOCK_TIMEOUT_SECONDS"] == "300"
     assert values["MOONRAKER_STATE_INTERVAL_SECONDS"] == "15"
+    assert values["MOONRAKER_PRINT_INTERVAL_SECONDS"] == "5"
     assert values["MOONRAKER_INFO_INTERVAL_SECONDS"] == "300"
 
     for relative_path in (
@@ -89,6 +90,7 @@ def test_example_environment_matches_the_database_contract() -> None:
         assert "${SPOOLMAN_RECONCILE_INTERVAL_MINUTES:-1}" in content
         assert "${SYNC_OUTBOX_LOCK_TIMEOUT_SECONDS:-300}" in content
         assert "${MOONRAKER_STATE_INTERVAL_SECONDS:-15}" in content
+        assert "${MOONRAKER_PRINT_INTERVAL_SECONDS:-5}" in content
         assert "${MOONRAKER_INFO_INTERVAL_SECONDS:-300}" in content
 
 

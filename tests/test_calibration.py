@@ -56,14 +56,24 @@ def test_dimensional_calibration_calculates_both_cura_expansions() -> None:
             "measured_x_mm": "19.8",
             "design_y_mm": "20",
             "measured_y_mm": "19.9",
+            "design_z_mm": "20",
+            "measured_z_mm": "19.95",
             "design_hole_mm": "10",
             "measured_hole_mm": "9.6",
+            "design_shaft_mm": "10",
+            "measured_shaft_mm": "9.85",
+            "design_wall_thickness_mm": "0.8",
+            "measured_wall_thickness_mm": "0.84",
+            "baseline_flow_percent": "100",
         }
     )
 
     assert result.xy_offset == Decimal("0.075")
     assert result.hole_xy_offset == Decimal("0.2")
+    assert result.shaft_horizontal_expansion == Decimal("0.075")
+    assert result.recommended_flow_percent == Decimal("95.23809523809523809523809524")
     assert result.axis_warning is False
+    assert result.correction_classification == "material_compensation"
 
 
 def test_dimensional_calibration_warns_when_axis_corrections_diverge() -> None:
@@ -73,10 +83,18 @@ def test_dimensional_calibration_warns_when_axis_corrections_diverge() -> None:
             "measured_x_mm": "19.6",
             "design_y_mm": "20",
             "measured_y_mm": "20",
+            "design_z_mm": "20",
+            "measured_z_mm": "20",
             "design_hole_mm": "10",
             "measured_hole_mm": "10",
+            "design_shaft_mm": "10",
+            "measured_shaft_mm": "10",
+            "design_wall_thickness_mm": "0.8",
+            "measured_wall_thickness_mm": "0.8",
+            "baseline_flow_percent": "100",
         }
     )
 
     assert result.axis_difference == Decimal("0.2")
     assert result.axis_warning is True
+    assert result.correction_classification == "printer_geometry_review"

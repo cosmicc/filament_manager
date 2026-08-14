@@ -32,7 +32,7 @@ CALIBRATION_STEPS: tuple[StepDefinition, ...] = (
         "dimensional",
         "Size and Hole Calibration",
         True,
-        ("xy_offset", "hole_xy_offset"),
+        ("xy_offset", "hole_xy_offset", "flow_percent"),
     ),
     StepDefinition(
         6,

@@ -35,6 +35,7 @@ def test_docker_configuration_comes_from_environment_without_exposing_credential
     monkeypatch.setenv("FILAMENT_MANAGER_MOONRAKER_API_KEY", moonraker_key)
     monkeypatch.setenv("FILAMENT_MANAGER_MOONRAKER_NOZZLE_DIAMETER_MM", "0.6")
     monkeypatch.setenv("FILAMENT_MANAGER_MOONRAKER_STATE_INTERVAL_SECONDS", "12")
+    monkeypatch.setenv("FILAMENT_MANAGER_MOONRAKER_PRINT_INTERVAL_SECONDS", "6")
     monkeypatch.setenv("FILAMENT_MANAGER_MOONRAKER_INFO_INTERVAL_SECONDS", "240")
     monkeypatch.setenv("FILAMENT_MANAGER_GOOGLE_ENABLED", "true")
     monkeypatch.setenv("FILAMENT_MANAGER_GOOGLE_SPREADSHEET_ID", "sheet-id")
@@ -57,6 +58,7 @@ def test_docker_configuration_comes_from_environment_without_exposing_credential
     assert settings.spoolman.full_reconcile_interval_minutes == 1
     assert settings.sync.outbox_lock_timeout_seconds == 300
     assert settings.sync.moonraker_state_interval_seconds == 12
+    assert settings.sync.moonraker_print_interval_seconds == 6
     assert settings.sync.moonraker_info_interval_seconds == 240
     assert settings.moonraker.printers[0].api_key_file is None
     assert settings.moonraker.printers[0].resolved_api_key() == moonraker_key
