@@ -1134,6 +1134,16 @@ class DiagnosticOverviewResponse(ApiModel):
     error_log: list[DiagnosticErrorEntry]
 
 
+class VersionStatusResponse(ApiModel):
+    """Running application version and sanitized GitHub release comparison."""
+
+    running_version: str
+    latest_version: str | None
+    status: str
+    release_url: str | None
+    detail: str
+
+
 class DiagnosticRunResponse(ApiModel):
     id: UUID
     run_type: str

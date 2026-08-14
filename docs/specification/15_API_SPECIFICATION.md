@@ -25,7 +25,7 @@
 
 `PATCH /spools/{id}` accepts a bounded free-text `location` plus `expected_version`. Supplying a value or `null` establishes Filament Manager ownership and queues the Spoolman projection atomically.
 
-`POST /spools/{id}/set-active` is retained as the compatibility route for the Inventory **Load spool** action. It validates that the spool is available, projected, and has a current published profile for the configured printer/nozzle, records an audited request, and queues `moonraker.spool_change.request`. It does not mutate canonical or Spoolman active state. The physical Klipper workflow performs those changes only at completed unload/load boundaries; periodic reconciliation observes the result.
+`POST /spools/{id}/set-active` is retained as the compatibility route for the Inventory **Load spool** action. It validates that the spool is available and projected and has a safe temperature from the newest non-archived exact profile or linked in-scope template, records an audited request, and queues `moonraker.spool_change.request`. It does not require publication, mutate canonical or Spoolman active state, or weaken the separate published-profile Cura print gate. The physical Klipper workflow performs state changes only at completed unload/load boundaries; periodic reconciliation observes the result.
 
 Spool responses include a derived completed-print count. Every completed job counts once for each distinct spool appearing as the starting spool or in an M600 segment.
 
@@ -154,11 +154,12 @@ Only one physical nozzle may be installed on a printer. Responses derive complet
 - `POST /jobs/{id}/retry`
 - `GET /audit-events`
 - `GET /diagnostics`
+- `GET /diagnostics/version`
 - `GET /diagnostics/validation-runs`
 - `POST /diagnostics/validation-runs` (Administrator only)
 - `POST /diagnostics/projection-rebuild` (Administrator only)
 
-Diagnostics responses contain only sanitized bounded checks, counts, timestamps, and messages. Validation is read-only and persisted. Rebuild queues idempotent derived work and never performs a database restore.
+Diagnostics responses contain only sanitized bounded checks, counts, timestamps, versions, and messages. The version route compares the running version with the highest non-draft semantic release from the fixed public GitHub repository endpoint, includes testing prereleases, caches the result, and never returns the upstream body. Validation is read-only and persisted. Rebuild queues idempotent derived work and never performs a database restore.
 
 ## WebSocket/SSE events
 

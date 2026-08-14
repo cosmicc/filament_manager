@@ -1,7 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { Activity, Database, RefreshCw, RotateCcw, ShieldCheck, TriangleAlert } from 'lucide-react'
+import { Activity, Database, ExternalLink, RefreshCw, RotateCcw, ShieldCheck, TriangleAlert } from 'lucide-react'
 import { apiFetch } from '../api/client'
-import type { DiagnosticCheck, DiagnosticOverview, DiagnosticRun, OutboxJob, ProjectionRebuildResult } from '../api/types'
+import type { DiagnosticCheck, DiagnosticOverview, DiagnosticRun, OutboxJob, ProjectionRebuildResult, VersionStatus } from '../api/types'
 import { EmptyState } from '../components/EmptyState'
 import { LoadingState } from '../components/LoadingState'
 import { PageHeader } from '../components/PageHeader'
@@ -27,9 +27,10 @@ export default function DiagnosticsPage() {
   const { user } = useAuth()
   const client = useQueryClient()
   const overview = useQuery({ queryKey: ['diagnostics'], queryFn: () => apiFetch<DiagnosticOverview>('/diagnostics'), refetchInterval: 30_000 })
+  const version = useQuery({ queryKey: ['diagnostics-version'], queryFn: () => apiFetch<VersionStatus>('/diagnostics/version'), staleTime: 15 * 60_000 })
   const runs = useQuery({ queryKey: ['diagnostic-runs'], queryFn: () => apiFetch<DiagnosticRun[]>('/diagnostics/validation-runs') })
   const jobs = useQuery({ queryKey: ['jobs'], queryFn: () => apiFetch<OutboxJob[]>('/jobs?limit=100'), refetchInterval: 10_000 })
-  const refresh = async () => { await Promise.all([client.invalidateQueries({ queryKey: ['diagnostics'] }), client.invalidateQueries({ queryKey: ['diagnostic-runs'] }), client.invalidateQueries({ queryKey: ['jobs'] })]) }
+  const refresh = async () => { await Promise.all([client.invalidateQueries({ queryKey: ['diagnostics'] }), client.invalidateQueries({ queryKey: ['diagnostics-version'] }), client.invalidateQueries({ queryKey: ['diagnostic-runs'] }), client.invalidateQueries({ queryKey: ['jobs'] })]) }
   const validation = useMutation({ mutationFn: () => apiFetch<DiagnosticRun>('/diagnostics/validation-runs', { method: 'POST' }), onSuccess: refresh })
   const rebuild = useMutation({
     mutationFn: () => apiFetch<ProjectionRebuildResult>('/diagnostics/projection-rebuild', { method: 'POST' }),
@@ -43,7 +44,11 @@ export default function DiagnosticsPage() {
   const error = validation.error ?? rebuild.error ?? action.error ?? retry.error
 
   return <div>
-    <PageHeader eyebrow="Operations and recovery" title="Diagnostics" description="Connection, synchronization, worker, queue, validation, and bounded error information in one place." actions={<button className="button" onClick={() => void refresh()} disabled={overview.isFetching}><RefreshCw size={16} /> Check now</button>} />
+    <PageHeader eyebrow="Operations and recovery" title="Diagnostics" description="Connection, synchronization, worker, queue, validation, and bounded error information in one place." actions={<button className="button" onClick={() => void refresh()} disabled={overview.isFetching || version.isFetching}><RefreshCw size={16} /> Check now</button>} />
+    <section className="card diagnostic-version">
+      <div><p className="eyebrow">Application version</p><h2>Filament Manager {version.data?.running_version ? `v${version.data.running_version}` : ''}</h2><p>{version.data?.detail ?? (version.isLoading ? 'Checking the latest published GitHub release…' : 'Version information is unavailable.')}</p></div>
+      {version.data ? <div className="diagnostic-version__status"><StatusPill status={version.data.status === 'current' ? 'healthy' : version.data.status === 'update_available' ? 'warning' : version.data.status} label={titleCase(version.data.status)} /><span>Latest: {version.data.latest_version ? `v${version.data.latest_version}` : 'Unavailable'}</span>{version.data.release_url ? <a className="button" href={version.data.release_url} target="_blank" rel="noreferrer">View release <ExternalLink size={15} /></a> : null}</div> : null}
+    </section>
     <section className="diagnostic-actions card">
       <div><p className="eyebrow">Recovery readiness</p><h2><ShieldCheck size={20} /> Backup and restore validation</h2><p>Runs read-only schema, immutable-history, credential-hash, projection, Cura deployment, connection, and worker checks. It does not restore or overwrite the live database.</p></div>
       <div className="detail-actions">

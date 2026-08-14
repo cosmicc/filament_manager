@@ -623,6 +623,14 @@ export interface DiagnosticOverview {
   error_log: DiagnosticErrorEntry[]
 }
 
+export interface VersionStatus {
+  running_version: string
+  latest_version: string | null
+  status: 'current' | 'update_available' | 'ahead' | 'unavailable' | string
+  release_url: string | null
+  detail: string
+}
+
 export interface DiagnosticRun {
   id: string
   run_type: string

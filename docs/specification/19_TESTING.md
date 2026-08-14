@@ -10,7 +10,7 @@
 - Google output escaping
 - idempotency-key generation
 - Spoolman extra-field merge
-- deterministic Cura material GUIDs, bounded prompt labels/catalogs, Klipper macro syntax, and physical unload/load commit ordering
+- deterministic Cura material GUIDs, separate bounded strict-print/manual-load catalogs, draft/template load-temperature fallback, Klipper macro syntax, and physical unload/load commit ordering
 - derived completed-print counts for one plate side, captured physical nozzle, and each distinct start/M600 spool
 - manual Side B creation, duplicate rejection, and mesh-unavailable initial state
 
@@ -32,7 +32,8 @@ Use a real disposable PostgreSQL instance for:
 Mock or containerize:
 
 - Spoolman REST and WebSocket
-- Moonraker status, physical-spool macro state, bounded catalog, guarded change calls, direct Spoolman target capture/restoration, and live manual-load prompts
+- Moonraker status, physical-spool macro state, bounded catalogs, guarded change calls, direct Spoolman target capture/restoration, and live manual-load prompts
+- running/latest-version comparison, testing-release inclusion, fixed GitHub endpoint behavior, caching, unavailable-state sanitization, and desktop/mobile presentation
 - Google Sheets batch updates and quota failures
 
 ## End-to-end scenarios

@@ -8,6 +8,7 @@
 - Added completed-print counts to each spool and build-plate side. A completed print counts once for every distinct spool used, including distinct M600 material segments.
 - Added manual Side B creation for an existing physical P-number plate; the new `P<number>b` side remains unavailable until Moonraker discovers its exact same-named mesh.
 - Added a dedicated Diagnostics page for connection, synchronization, worker, queue, and operational status; bounded recent errors; persisted recovery-validation results; safe projection rebuilds; and job retry/reconciliation controls.
+- Added the running Filament Manager version to the application shell and Diagnostics, plus a cached Diagnostics comparison with the newest non-draft GitHub release, including testing prereleases.
 - Added `filament-manager-cli verify` for read-only recovery validation and `filament-manager-cli rebuild-projections --confirm` for safe full projection requeueing.
 - Added an explicit pre-takeover Cura source-selection workflow that imports one material-family source as the printer/nozzle template and other selected sources as filament-specific draft profiles.
 - Added Arch Linux and Windows workstation-agent uninstallers that remove the per-user service/task, executable, pairing credential, local state, and agent backups while leaving Cura's current managed library in place.
@@ -18,8 +19,9 @@
 - Changed Cura source imports to retain provenance on both draft templates and draft product profiles, reject duplicate source use, require publication before takeover, and enforce one active template per material family and printer/nozzle scope.
 - Changed printer nozzle editing to use installed physical nozzle records; installation and removal are recorded as append-only lifecycle events.
 - Changed all server, frontend, and workstation-agent version surfaces to 0.2.2.
-- Changed `LOAD_FILAMENT`, `FILAMENT_MANAGER_LOAD_TARGET`, and M600 replacement selection to use one live eligible-spool Fluidd prompt without a hidden macro-variable prerequisite.
+- Changed `LOAD_FILAMENT`, `FILAMENT_MANAGER_LOAD_TARGET`, and M600 replacement selection to use a dedicated live manual-load catalog without a hidden macro-variable prerequisite. Non-empty projected spools may use their latest exact draft profile or linked template temperature, while Cura print preflight still requires a published exact profile.
 - Changed direct non-null Spoolman selections into guarded Fluidd target confirmations: the worker restores the last physical ID until the operator confirms an existing load or completes the unload/load routine.
+- Changed the application shell to show only an icon-labelled Logout action and directional sidebar chevrons, and moved the persistent light/dark theme control to Settings.
 - Changed `SELECT_BUILD_PLATE` without parameters to build its chooser live from Klipper's saved exact P-number meshes.
 - Changed workstation installers to state clearly whether they are performing a fresh installation or an upgrade while retaining conditional restart and rollback behavior.
 
@@ -29,6 +31,7 @@
 - Fixed operational status being fragmented across unrelated pages instead of providing one reviewable diagnostics surface.
 - Fixed pre-takeover Cura preservation presenting every reported source as a template even when same-family sources should become filament-specific profiles.
 - Fixed manual filament loading dead-ending with “Select a Target Spool” even after `FILAMENT_MANAGER_LOAD_TARGET` was run.
+- Fixed valid non-empty Spoolman spools being hidden from manual loading solely because their exact printer/nozzle profile had not been published.
 - Fixed rerunning M600 during an unfinished selection reporting only that a workflow was active instead of reopening the exact-spool chooser.
 - Fixed direct Spoolman selections disappearing without a safe way to use them as the requested physical target.
 - Fixed the build-plate selector requiring static per-mesh macros whenever another valid mesh was saved.

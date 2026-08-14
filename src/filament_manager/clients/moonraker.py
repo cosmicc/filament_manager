@@ -445,15 +445,24 @@ class MoonrakerClient:
             raise ValueError("unsupported G-code inspection policy")
         revision = validate_catalog_revision(catalog.revision)
         materials = catalog.materials_literal()
+        manual_spools = catalog.manual_spools_literal()
+        print_temperatures = catalog.print_temperatures_literal()
         temperatures = catalog.temperatures_literal()
         script = "\n".join(
             (
                 f"SET_GCODE_VARIABLE MACRO=FILAMENT_MANAGER_SPOOL_STATE VARIABLE=catalog VALUE='{materials}'",
                 "SET_GCODE_VARIABLE MACRO=FILAMENT_MANAGER_SPOOL_STATE "
+                f"VARIABLE=manual_spools VALUE='{manual_spools}'",
+                "SET_GCODE_VARIABLE MACRO=FILAMENT_MANAGER_SPOOL_STATE "
+                f"VARIABLE=print_temperatures VALUE='{print_temperatures}'",
+                "SET_GCODE_VARIABLE MACRO=FILAMENT_MANAGER_SPOOL_STATE "
                 f"VARIABLE=temperatures VALUE='{temperatures}'",
                 "SET_GCODE_VARIABLE MACRO=FILAMENT_MANAGER_SPOOL_STATE "
                 f"VARIABLE=catalog_revision VALUE='\"{revision}\"'",
                 f"SAVE_VARIABLE VARIABLE=filament_manager_spool_catalog VALUE='{materials}'",
+                f"SAVE_VARIABLE VARIABLE=filament_manager_manual_spools VALUE='{manual_spools}'",
+                "SAVE_VARIABLE VARIABLE=filament_manager_spool_print_temperatures "
+                f"VALUE='{print_temperatures}'",
                 f"SAVE_VARIABLE VARIABLE=filament_manager_spool_temperatures VALUE='{temperatures}'",
                 f"SAVE_VARIABLE VARIABLE=filament_manager_spool_catalog_revision VALUE='\"{revision}\"'",
                 "SET_GCODE_VARIABLE MACRO=FILAMENT_MANAGER_SPOOL_STATE "

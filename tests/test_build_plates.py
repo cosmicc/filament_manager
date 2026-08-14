@@ -192,6 +192,8 @@ async def test_moonraker_sends_bounded_catalog_and_physical_change_macro() -> No
     temperatures = {"17": "215.0"}
     catalog = SpoolPreflightCatalog(
         materials=materials,
+        manual_spools=[[17, "FM-001-PLA-Blue"]],
+        print_temperatures={"17": "215.0"},
         temperatures=temperatures,
         revision="a" * 64,
     )
@@ -200,6 +202,8 @@ async def test_moonraker_sends_bounded_catalog_and_physical_change_macro() -> No
     await client.synchronize_spool_preflight_catalog(catalog)
     catalog_script = json.loads(route.calls.last.request.content)["script"]
     assert 'VARIABLE=catalog VALUE=\'{"11111111-2222-3333-4444-555555555555"' in catalog_script
+    assert "filament_manager_manual_spools" in catalog_script
+    assert "filament_manager_spool_print_temperatures" in catalog_script
     assert "filament_manager_spool_temperatures" in catalog_script
     await client.request_spool_change(
         spoolman_id=17,

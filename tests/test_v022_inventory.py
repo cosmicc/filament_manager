@@ -24,6 +24,7 @@ from filament_manager.models.inventory import (
 from filament_manager.models.printing import PrintJob, PrintMaterialSegment
 from filament_manager.security import hash_password
 from filament_manager.services import events
+from filament_manager.services.version_status import VersionStatus
 
 
 def _settings(database_url: str) -> Settings:
@@ -167,10 +168,22 @@ async def test_physical_nozzle_side_b_and_distinct_completed_print_counts(
                 "completed_at": checked_at,
             }
 
+        async def version_check() -> VersionStatus:
+            """Return deterministic release evidence without GitHub access."""
+
+            return VersionStatus(
+                running_version="0.2.2",
+                latest_version="0.2.2",
+                status="current",
+                release_url="https://github.com/cosmicc/filament_manager/releases/tag/v0.2.2",
+                detail="This installation matches the newest published GitHub release.",
+            )
+
         monkeypatch.setattr(config_module, "get_settings", lambda: settings)
         monkeypatch.setattr(main, "get_settings", lambda: settings)
         monkeypatch.setattr(events, "get_settings", lambda: settings)
         monkeypatch.setattr(diagnostic_routes, "run_recovery_validation", recovery_validation)
+        monkeypatch.setattr(diagnostic_routes, "version_status", version_check)
         application = main.create_app()
         application.dependency_overrides[dependencies.session_dependency] = session_override
         application.dependency_overrides[dependencies.current_user] = user_override
@@ -203,6 +216,10 @@ async def test_physical_nozzle_side_b_and_distinct_completed_print_counts(
             assert side_b_payload["mesh_available"] is False
             duplicate_side_b = await client.post(f"/api/v1/build-plates/{plate_id}/surfaces", json={})
             assert duplicate_side_b.status_code == 409
+            version_response = await client.get("/api/v1/diagnostics/version")
+            assert version_response.status_code == 200, version_response.text
+            assert version_response.json()["running_version"] == "0.2.2"
+            assert version_response.json()["status"] == "current"
             validation = await client.post("/api/v1/diagnostics/validation-runs")
             assert validation.status_code == 201, validation.text
             assert validation.json()["status"] == "completed"

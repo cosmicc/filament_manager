@@ -131,6 +131,17 @@ async def test_active_spool_selection_and_clear_follow_moonraker(
             session.add(template_revision)
             await session.flush()
             product.source_template_revision_id = template_revision.id
+            draft_product = FilamentProduct(
+                material_type="PLA",
+                color_name="Orange",
+                product_name="Draft profile filament",
+                diameter_mm=Decimal("1.75"),
+                density_g_cm3=Decimal("1.24"),
+                nominal_net_mass_g=Decimal("1000"),
+                source_template_revision_id=template_revision.id,
+            )
+            session.add(draft_product)
+            await session.flush()
             first = Spool(
                 spool_code="FIRST",
                 filament_product_id=product.id,
@@ -152,6 +163,16 @@ async def test_active_spool_selection_and_clear_follow_moonraker(
                 status=SpoolStatus.IN_STOCK,
                 spoolman_id=20,
             )
+            third = Spool(
+                spool_code="THIRD",
+                filament_product_id=draft_product.id,
+                nominal_net_mass_g=Decimal("1000"),
+                tare_mass_g=Decimal("200"),
+                remaining_mass_expected_g=Decimal("700"),
+                remaining_mass_effective_g=Decimal("700"),
+                status=SpoolStatus.IN_STOCK,
+                spoolman_id=30,
+            )
             profile = MaterialProfile(
                 filament_product_id=product.id,
                 printer_id=printer.id,
@@ -167,7 +188,37 @@ async def test_active_spool_selection_and_clear_follow_moonraker(
                 base_template_revision_id=template_revision.id,
                 setting_overrides={},
             )
-            session.add_all([first, second, profile])
+            newer_draft_profile = MaterialProfile(
+                filament_product_id=product.id,
+                printer_id=printer.id,
+                nozzle_diameter_mm=Decimal("0.4"),
+                version=2,
+                status=ProfileStatus.DRAFT,
+                extruder_temp_c=Decimal("218"),
+                bed_temp_c=Decimal("60"),
+                flow_percent=Decimal("100"),
+                cooling_min_percent=Decimal("20"),
+                cooling_max_percent=Decimal("100"),
+                filament_density_g_cm3=Decimal("1.24"),
+                base_template_revision_id=template_revision.id,
+                setting_overrides={"extruder_temp_c": "218"},
+            )
+            draft_profile = MaterialProfile(
+                filament_product_id=draft_product.id,
+                printer_id=printer.id,
+                nozzle_diameter_mm=Decimal("0.4"),
+                version=1,
+                status=ProfileStatus.DRAFT,
+                extruder_temp_c=Decimal("220"),
+                bed_temp_c=Decimal("60"),
+                flow_percent=Decimal("100"),
+                cooling_min_percent=Decimal("20"),
+                cooling_max_percent=Decimal("100"),
+                filament_density_g_cm3=Decimal("1.24"),
+                base_template_revision_id=template_revision.id,
+                setting_overrides={"extruder_temp_c": "220"},
+            )
+            session.add_all([first, second, third, profile, newer_draft_profile, draft_profile])
             await session.commit()
 
             catalog = await build_spool_preflight_catalog(session, printer=printer)
@@ -176,7 +227,13 @@ async def test_active_spool_selection_and_clear_follow_moonraker(
                 [10, "FIRST-Filament-Manager-PLA-Blue"],
                 [20, "SECOND-Filament-Manager-PLA-Blue"],
             ]
-            assert catalog.temperatures == {"10": "215", "20": "215"}
+            assert catalog.manual_spools == [
+                [10, "FIRST-Filament-Manager-PLA-Blue"],
+                [20, "SECOND-Filament-Manager-PLA-Blue"],
+                [30, "THIRD-Filament-Manager-Draft-profile-filament-Orange"],
+            ]
+            assert catalog.print_temperatures == {"10": "215", "20": "215"}
+            assert catalog.temperatures == {"10": "218", "20": "218", "30": "220"}
 
             prompted_targets: list[tuple[int, Decimal, str]] = []
             restored_spool_ids: list[int | None] = []
@@ -224,7 +281,7 @@ async def test_active_spool_selection_and_clear_follow_moonraker(
                 session,
                 SimpleNamespace(id=uuid4()),  # type: ignore[arg-type]
             )
-            assert prompted_targets == [(20, Decimal("215"), "SECOND-Filament-Manager-PLA-Blue")]
+            assert prompted_targets == [(20, Decimal("218"), "SECOND-Filament-Manager-PLA-Blue")]
             assert restored_spool_ids == [10]
             assert (await session.get(Spool, first.id)).active_printer_id == printer.id  # type: ignore[union-attr]
             assert (await session.get(Spool, second.id)).active_printer_id is None  # type: ignore[union-attr]

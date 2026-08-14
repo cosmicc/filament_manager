@@ -45,22 +45,33 @@ def test_catalog_literals_survive_klipper_extended_parameter_parsing() -> None:
     """Compact catalog JSON remains an AST literal after Klipper's shlex pass."""
 
     materials = {"11111111-2222-3333-4444-555555555555": [[17, "FM-001-PLA-Blue"]]}
+    manual_spools = [[17, "FM-001-PLA-Blue"]]
+    print_temperatures = {"17": "210.0"}
     temperatures = {"17": "215.0"}
     catalog = SpoolPreflightCatalog(
         materials=materials,
+        manual_spools=manual_spools,
+        print_temperatures=print_temperatures,
         temperatures=temperatures,
-        revision=build_catalog_revision(materials, temperatures),
+        revision=build_catalog_revision(materials, manual_spools, print_temperatures, temperatures),
     )
 
     for variable, literal in (
         ("catalog", catalog.materials_literal()),
+        ("manual_spools", catalog.manual_spools_literal()),
+        ("print_temperatures", catalog.print_temperatures_literal()),
         ("temperatures", catalog.temperatures_literal()),
     ):
         command = (
             f"SET_GCODE_VARIABLE MACRO=FILAMENT_MANAGER_SPOOL_STATE VARIABLE={variable} VALUE='{literal}'"
         )
         parameters = dict(token.split("=", 1) for token in shlex.split(command)[1:])
-        assert ast.literal_eval(parameters["VALUE"]) in (materials, temperatures)
+        assert ast.literal_eval(parameters["VALUE"]) in (
+            materials,
+            manual_spools,
+            print_temperatures,
+            temperatures,
+        )
 
 
 def test_macro_reference_compiles_and_preserves_existing_motion_macros() -> None:
@@ -80,6 +91,8 @@ def test_macro_reference_compiles_and_preserves_existing_motion_macros() -> None
 
     spool_state_section = "gcode_macro FILAMENT_MANAGER_SPOOL_STATE"
     assert parser.get(spool_state_section, "variable_catalog_revision") == '"' + ("0" * 64) + '"'
+    assert ast.literal_eval(parser.get(spool_state_section, "variable_manual_spools")) == []
+    assert ast.literal_eval(parser.get(spool_state_section, "variable_print_temperatures")) == {}
     assert parser.get(spool_state_section, "variable_material_guid") == '"UNSET"'
     restore_state = parser.get("delayed_gcode _FILAMENT_MANAGER_RESTORE_STATE", "gcode")
     assert 'default("' + ("0" * 64) + '", true)' in restore_state
@@ -95,6 +108,11 @@ def test_macro_reference_compiles_and_preserves_existing_motion_macros() -> None
     assert "Select a Target Spool for FILAMENT_MANAGER_LOAD_TARGET" not in load_target
     assert not parser.has_section("gcode_macro _FILAMENT_MANAGER_USE_STAGED_TARGET")
     assert "FILAMENT_MANAGER_LOAD_TARGET" in parser.get("gcode_macro LOAD_FILAMENT", "gcode")
+    manual_prompt = parser.get("gcode_macro _FILAMENT_MANAGER_PROMPT_ALL_SPOOLS", "gcode")
+    assert "state.manual_spools" in manual_prompt
+    assert "published profile" not in manual_prompt
+    print_selector = parser.get("gcode_macro _FILAMENT_MANAGER_SELECT_PRINT_SPOOL", "gcode")
+    assert "state.print_temperatures" in print_selector
     spoolman_target = parser.get("gcode_macro FILAMENT_MANAGER_SPOOLMAN_TARGET", "gcode")
     assert "It will not become active in Filament Manager until" in spoolman_target
 

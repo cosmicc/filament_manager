@@ -5,7 +5,7 @@
 - `GET /health/live`: process liveness
 - `GET /health/ready`: PostgreSQL connectivity and current Alembic revision
 - `GET /metrics`: Prometheus request totals and latency
-- Diagnostics: Spoolman, Moonraker, Google, Cura-agent, worker, and synchronization status without secret exposure
+- Diagnostics: running/latest Filament Manager version plus Spoolman, Moonraker, Google, Cura-agent, worker, and synchronization status without secret exposure
 - Diagnostics queues: pending depth, attempts, dead jobs, and explicit Administrator retry
 - Activity: append-only operational and security audit history
 - Cura workstations: pairing, detected Cura versions/machines, pre-takeover source selection, and authoritative management controls
@@ -84,11 +84,13 @@ Confirm `MOONRAKER_BASE_URL` is reachable from the Swarm node and container netw
 
 ### Spool workflow does not open or print preflight is blocked
 
-Run `FILAMENT_MANAGER_SPOOL_STATE` in Fluidd. Confirm the integration macro file is included last and the worker log shows `moonraker_spool_preflight_catalog_synchronized` and a one-time `moonraker_spool_preflight_state_initialized`. A missing catalog entry means Cura has a stale material revision, a `Template <material type>` entry was selected, no eligible projected spool remains, or the product lacks a current published profile for the configured printer/nozzle. Synchronize the Cura workstation and resend the sliced file after correcting inventory/profile readiness.
+Run `FILAMENT_MANAGER_SPOOL_STATE` in Fluidd. Confirm the integration macro file is included last and the worker log shows `moonraker_spool_preflight_catalog_synchronized` and a one-time `moonraker_spool_preflight_state_initialized`. A missing Cura print candidate means Cura has a stale material revision, a `Template <material type>` entry was selected, no eligible projected spool remains, or the product lacks a current published profile for the configured printer/nozzle. Synchronize the Cura workstation and resend the sliced file after correcting inventory/profile readiness.
 
 If Klipper reports that `variable_catalog_revision` is not a valid literal during startup, replace the installed macro reference with the current `integrations/klipper/filament-manager-macros.cfg`. The current reference uses a non-empty initialization sentinel so config editors cannot collapse the value; the worker replaces it with the real catalog revision after startup.
 
-Keep Fluidd's **Show spool selection dialog on print start** disabled. Run `LOAD_FILAMENT` or `FILAMENT_MANAGER_LOAD_TARGET` without parameters for the managed eligible-spool chooser. A non-null direct Spoolman selection made while idle or while M600 is waiting becomes a guarded Fluidd target within the next 15-second state pass; the worker still restores the persisted physical ID until the operator explicitly adopts an already-loaded spool or completes motion. A direct clear, invalid target, or selection during another phase is repaired without changing canonical state.
+Keep Fluidd's **Show spool selection dialog on print start** disabled. Run `LOAD_FILAMENT` or `FILAMENT_MANAGER_LOAD_TARGET` without parameters for the managed manual-load chooser. It accepts a projected non-empty spool with a safe temperature from its latest exact non-archived profile, including a draft, or its linked in-scope template; it does not weaken Cura's published-profile requirement. If this chooser is empty, confirm the spool has reached Spoolman, has remaining mass, and has one of those temperature sources. A non-null direct Spoolman selection made while idle or while M600 is waiting becomes a guarded Fluidd target within the next 15-second state pass; the worker still restores the persisted physical ID until the operator explicitly adopts an already-loaded spool or completes motion. A direct clear, invalid target, or selection during another phase is repaired without changing canonical state.
+
+Diagnostics shows the running version and compares it with the highest non-draft semantic GitHub release, including testing prereleases. The fixed public lookup is cached for 15 minutes. An unavailable result is informational about the check itself; it does not indicate that the application or database is unhealthy.
 
 During a change, `unloading` retains the old active ID, `inserting` means no active spool, and `loading` still means no active spool. `ready` means the exact new ID has been committed. `load_select` and `manual_select` are recoverable chooser phases: rerun `FILAMENT_MANAGER_LOAD_TARGET` to reopen the prompt. A ten-minute insertion timeout turns off the nozzle and retains the last completed boundary. Use the prompt's cancel action or `FILAMENT_MANAGER_ABORT` after a macro error; never invoke the internal `_FILAMENT_MANAGER_RECORD_LOADED` helper manually.
 

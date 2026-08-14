@@ -36,7 +36,7 @@ Check:
 - Google publication status
 - Moonraker reachability
 
-Use the application **Diagnostics** page as the consolidated status surface for connections, synchronization freshness, worker heartbeats, projection queues, bounded recent errors, recovery validation, and safe projection rebuilding. Integrations remains a configuration/ownership guide rather than a duplicate live-status dashboard.
+Use the application **Diagnostics** page as the consolidated status surface for running/latest version, connections, synchronization freshness, worker heartbeats, projection queues, bounded recent errors, recovery validation, and safe projection rebuilding. The version lookup uses the fixed public GitHub releases API, includes non-draft testing releases, is cached for 15 minutes, and never returns an upstream response body. Integrations remains a configuration/ownership guide rather than a duplicate live-status dashboard.
 
 Canonical mutations normally begin Spoolman projection within one worker polling cycle. The default one-minute full sweep imports usage before repairing every canonical vendor, filament, and spool. The 15-second Moonraker state job treats the initialized macro's last completed physical boundary as authority, turns valid direct non-null selections in safe selection phases into guarded Fluidd targets, restores the physical active ID until confirmation, refreshes the bounded Cura/manual-load spool catalog, and aligns plate state; the 5-minute printer-information job refreshes sanitized discovered fields. Confirm the Diagnostics Spoolman check reports both API and managed-field readiness, and confirm recent `spoolman.reconcile.full`, `moonraker.state.reconcile`, and `moonraker.printer_info.reconcile` jobs complete. Structured web and worker logs include safe request, scheduler, job, and synchronization diagnostics with correlation IDs but never credentials or external response bodies.
 
@@ -46,7 +46,7 @@ Canonical mutations normally begin Spoolman projection within one worker polling
 - `FILAMENT_MANAGER_SPOOL_STATE` must report the physically loaded ID or no spool. Do not manually invoke internal underscore-prefixed commit helpers.
 - `unloading` retains the old ID; after physical unload the state becomes no spool. `inserting` and `loading` retain no spool; only a completed load sets the new ID.
 - A ten-minute insertion timeout turns off the nozzle and preserves the last completed physical boundary. Use `FILAMENT_MANAGER_ABORT` to reset a workflow after a macro error without changing loaded-spool identity.
-- Missing candidates require a current product material in Cura, an eligible projected spool, and a published exact printer/nozzle profile.
+- Missing Cura print candidates require a current product material, an eligible projected spool, and a published exact printer/nozzle profile. A missing manual-load choice instead requires a projected non-empty spool and a safe temperature from its newest non-archived exact profile or linked in-scope template; manual loading does not require publication.
 
 ## Upgrade Spoolman
 

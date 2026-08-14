@@ -22,9 +22,11 @@ class SpoolPreflightError(RuntimeError):
 
 @dataclass(frozen=True, slots=True)
 class SpoolPreflightCatalog:
-    """Bounded material-to-spool choices and safe load temperatures."""
+    """Bounded print choices, manual choices, and safe load temperatures."""
 
     materials: dict[str, list[list[int | str]]]
+    manual_spools: list[list[int | str]]
+    print_temperatures: dict[str, str]
     temperatures: dict[str, str]
     revision: str
 
@@ -37,6 +39,16 @@ class SpoolPreflightCatalog:
         """Return a compact Python-compatible literal for Klipper."""
 
         return _compact_literal(self.temperatures)
+
+    def print_temperatures_literal(self) -> str:
+        """Return published Cura-profile load temperatures for Klipper."""
+
+        return _compact_literal(self.print_temperatures)
+
+    def manual_spools_literal(self) -> str:
+        """Return the bounded manual-load choices as a Klipper literal."""
+
+        return _compact_literal(self.manual_spools)
 
 
 def cura_material_guid(source_kind: str, source_id: UUID | str) -> str:
@@ -63,10 +75,20 @@ def spool_prompt_label(*parts: object) -> str:
     return label
 
 
-def build_catalog_revision(materials: dict[str, list[list[int | str]]], temperatures: dict[str, str]) -> str:
+def build_catalog_revision(
+    materials: dict[str, list[list[int | str]]],
+    manual_spools: list[list[int | str]],
+    print_temperatures: dict[str, str],
+    temperatures: dict[str, str],
+) -> str:
     """Hash the complete printer catalog for drift detection."""
 
-    payload = {"materials": materials, "temperatures": temperatures}
+    payload = {
+        "manual_spools": manual_spools,
+        "materials": materials,
+        "print_temperatures": print_temperatures,
+        "temperatures": temperatures,
+    }
     return hashlib.sha256(_compact_literal(payload).encode("ascii")).hexdigest()
 
 
