@@ -55,7 +55,7 @@ jobs:
             org.opencontainers.image.description=Self-hosted filament inventory, calibration, and printer integration
             org.opencontainers.image.source=https://github.com/${{ github.repository }}
 
-      - uses: docker/build-push-action@v6
+      - uses: docker/build-push-action@v7
         with:
           context: .
           platforms: linux/amd64,linux/arm64
