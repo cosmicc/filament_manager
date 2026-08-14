@@ -17,6 +17,11 @@ test.beforeEach(async ({ page }) => {
 })
 
 test('diagnostics consolidates operational status and recovery controls', async ({ page }) => {
+  await page.route('**/api/v1/diagnostics/version', (route) => route.fulfill({ json: {
+    running_version: '0.2.2', latest_version: '0.2.2', status: 'current',
+    release_url: 'https://github.com/cosmicc/filament_manager/releases/tag/v0.2.2',
+    detail: 'This installation matches the newest published GitHub release.',
+  } }))
   await page.route('**/api/v1/diagnostics', (route) => route.fulfill({ json: {
     checked_at: checkedAt,
     checks: [
@@ -35,12 +40,45 @@ test('diagnostics consolidates operational status and recovery controls', async 
   await page.goto('/diagnostics')
 
   await expect(page.getByRole('heading', { name: 'Diagnostics' })).toBeVisible()
+  await expect(page.getByRole('heading', { name: 'Filament Manager v0.2.2' })).toBeVisible()
+  await expect(page.getByText('Latest: v0.2.2')).toBeVisible()
+  await expect(page.getByText('v0.2.2', { exact: true }).first()).toBeVisible()
+  await expect(page.getByRole('button', { name: 'Logout' })).toBeVisible()
+  await expect(page.getByRole('button', { name: 'Collapse navigation' })).toBeVisible()
   await expect(page.getByRole('heading', { name: 'Connections' })).toBeVisible()
   await expect(page.getByRole('heading', { name: 'Synchronizations' })).toBeVisible()
   await expect(page.getByRole('heading', { name: 'Workers and queues' })).toBeVisible()
   await expect(page.getByRole('heading', { name: 'Recent errors' })).toBeVisible()
   await expect(page.getByRole('button', { name: 'Run validation' })).toBeVisible()
   await expect(page.getByRole('button', { name: /Rebuild projections/ })).toBeVisible()
+  await page.screenshot({ path: '../docs/design/validation/diagnostics-v022.png', fullPage: true })
+  await page.getByRole('button', { name: 'Collapse navigation' }).click()
+  await expect(page.getByRole('button', { name: 'Expand navigation' }).locator('.lucide-chevron-right')).toBeVisible()
+})
+
+test('theme control lives in Settings instead of the navigation', async ({ page }) => {
+  await page.route('**/api/v1/settings/operational', (route) => route.fulfill({ json: {
+    gcode_inspection_policy: 'warn', record_version: 1,
+  } }))
+  await page.route('**/api/v1/auth/users', (route) => route.fulfill({ json: [user] }))
+  await page.route('**/api/v1/devices', (route) => route.fulfill({ json: [] }))
+  await page.route('**/api/v1/imports/workbook?limit=10', (route) => route.fulfill({ json: [] }))
+
+  await page.goto('/settings')
+
+  await expect(page.getByRole('heading', { name: 'Color theme' })).toBeVisible()
+  await expect(page.getByRole('button', { name: 'Light theme' })).toBeVisible()
+  await expect(page.getByRole('button', { name: 'Dark theme' })).toBeVisible()
+  await expect(page.locator('.sidebar').getByRole('button', { name: /theme/i })).toHaveCount(0)
+  await page.setViewportSize({ width: 390, height: 844 })
+  await page.getByRole('button', { name: 'Open navigation' }).click()
+  await expect(page.locator('.app-shell')).not.toHaveClass(/app-shell--collapsed/)
+  await expect.poll(() => page.locator('.sidebar').evaluate((element) => getComputedStyle(element).width)).toBe('310px')
+  await expect(page.locator('.sidebar').getByText('v0.2.2', { exact: true })).toBeVisible()
+  await expect(page.locator('.sidebar').getByRole('button', { name: 'Logout' })).toBeVisible()
+  await expect(page.locator('.sidebar').getByRole('button', { name: /navigation/ })).toHaveCount(1)
+  await page.waitForTimeout(250)
+  await page.screenshot({ path: '../docs/design/validation/mobile-navigation-v022.png' })
 })
 
 test('physical nozzle page shows exact historical use', async ({ page }) => {

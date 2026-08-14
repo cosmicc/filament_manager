@@ -50,7 +50,7 @@ FILAMENT_MANAGER_E2E_PASSWORD='isolated-test-password' \
 npm run test:e2e --prefix frontend
 ```
 
-The browser suite exercises login, dashboard and inventory navigation, themes, mobile unknown-tare weighing, multi-version material comparison, build-plate maintenance, notifications, exact print details, and append-only outcome scoring. Rendered references are written to `docs/design/validation/`.
+The browser suite exercises login, dashboard and inventory navigation, Settings-only themes, shell and Diagnostics version presentation, simplified logout/collapse controls, mobile unknown-tare weighing, multi-version material comparison, build-plate maintenance, notifications, exact print details, and append-only outcome scoring. Rendered references are written to `docs/design/validation/`.
 
 ## Failure isolation
 

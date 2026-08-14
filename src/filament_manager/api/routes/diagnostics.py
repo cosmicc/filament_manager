@@ -13,12 +13,14 @@ from filament_manager.services.diagnostics import (
     queue_projection_rebuild,
     run_recovery_validation,
 )
+from filament_manager.services.version_status import version_status
 
 from ..dependencies import Administrator, DatabaseSession, Viewer
 from ..schemas import (
     DiagnosticOverviewResponse,
     DiagnosticRunResponse,
     ProjectionRebuildResponse,
+    VersionStatusResponse,
 )
 
 router = APIRouter(prefix="/diagnostics", tags=["diagnostics"])
@@ -33,6 +35,13 @@ async def diagnostics_overview(
     """Return current sanitized connections, workers, syncs, queues, and errors."""
 
     return DiagnosticOverviewResponse.model_validate(await operational_overview(session))
+
+
+@router.get("/version", response_model=VersionStatusResponse)
+async def application_version_status(_: Viewer) -> VersionStatusResponse:
+    """Return the running version and cached latest published GitHub release."""
+
+    return VersionStatusResponse.model_validate(await version_status())
 
 
 @router.get("/validation-runs", response_model=list[DiagnosticRunResponse])

@@ -4,11 +4,13 @@ import {
   CheckCircle2,
   FileSpreadsheet,
   KeyRound,
+  Moon,
   Pencil,
   Plus,
   ShieldCheck,
   Smartphone,
   SlidersHorizontal,
+  Sun,
   Upload,
   Users,
 } from 'lucide-react'
@@ -29,6 +31,7 @@ import { Modal } from '../components/Modal'
 import { PageHeader } from '../components/PageHeader'
 import { StatusPill } from '../components/StatusPill'
 import { useAuth } from '../context/AuthContext'
+import { useTheme } from '../context/ThemeContext'
 import { dateTime, titleCase } from '../lib/format'
 
 function CreateUserModal({ onClose }: { onClose: () => void }) {
@@ -129,6 +132,16 @@ function OperationalPolicyPanel({ administrator }: { administrator: boolean }) {
     onSuccess: async () => { await client.invalidateQueries({ queryKey: ['operational-settings'] }) },
   })
   return <article className="card settings-section settings-section--wide"><header className="card__header"><div><p className="eyebrow">Print safety</p><h2><SlidersHorizontal size={20} /> G-code inspection policy</h2></div></header><p>Every new print is inspected against its exact managed material profile before filament loading begins.</p>{query.data ? <div className="segmented-control" role="group" aria-label="G-code inspection policy"><button className={query.data.gcode_inspection_policy === 'warn' ? 'active' : ''} disabled={!administrator || mutation.isPending} onClick={() => mutation.mutate('warn')}>Warn and continue</button><button className={query.data.gcode_inspection_policy === 'block' ? 'active' : ''} disabled={!administrator || mutation.isPending} onClick={() => mutation.mutate('block')}>Block mismatches</button></div> : <LoadingState />}{query.data?.gcode_inspection_policy === 'block' ? <p className="warning-note"><AlertTriangle size={17} /> Missing profiles, unavailable inspection data, and detected mismatches pause the print in Fluidd.</p> : <p className="security-note"><ShieldCheck size={17} /> Mismatches remain visible and auditable while the print continues.</p>}{mutation.error ? <p className="form-error">{mutation.error.message}</p> : null}</article>
+}
+
+function AppearancePanel() {
+  const { theme, toggleTheme } = useTheme()
+
+  function chooseTheme(nextTheme: 'light' | 'dark') {
+    if (nextTheme !== theme) toggleTheme()
+  }
+
+  return <article className="card settings-section settings-section--wide"><header className="card__header"><div><p className="eyebrow">Appearance</p><h2>{theme === 'light' ? <Sun size={20} /> : <Moon size={20} />} Color theme</h2></div></header><p>Choose the appearance used by this browser.</p><div className="segmented-control" role="group" aria-label="Color theme"><button className={theme === 'light' ? 'active' : ''} aria-pressed={theme === 'light'} onClick={() => chooseTheme('light')}><Sun size={17} /> Light theme</button><button className={theme === 'dark' ? 'active' : ''} aria-pressed={theme === 'dark'} onClick={() => chooseTheme('dark')}><Moon size={17} /> Dark theme</button></div></article>
 }
 
 function WorkbookImportPanel({ administrator }: { administrator: boolean }) {
@@ -353,7 +366,7 @@ export default function SettingsPage() {
       <PageHeader
         eyebrow="Local administration"
         title="Settings"
-        description="Accounts, future workshop adapters, and the security posture of this installation."
+        description="Appearance, accounts, workshop adapters, and the security posture of this installation."
         actions={administrator ? (
           <button className="button button--primary" onClick={() => setCreating(true)}>
             <Plus size={17} /> Add account
@@ -362,6 +375,8 @@ export default function SettingsPage() {
       />
 
       <section className="settings-grid">
+        <AppearancePanel />
+
         <WorkbookImportPanel administrator={administrator} />
 
         <OperationalPolicyPanel administrator={administrator} />

@@ -28,7 +28,9 @@ test('approved light, dark, and mobile weighing surfaces render', async ({ page 
   await expect(page.getByRole('heading', { name: 'Dashboard' })).toBeVisible()
   await page.screenshot({ path: '../docs/design/validation/dashboard-light.png', fullPage: true })
 
+  await page.getByRole('link', { name: 'Settings' }).click()
   await page.getByRole('button', { name: 'Dark theme' }).click()
+  await page.goto('/')
   await page.screenshot({ path: '../docs/design/validation/dashboard-dark.png', fullPage: true })
 
   await page.setViewportSize({ width: 390, height: 844 })

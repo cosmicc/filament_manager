@@ -1,8 +1,8 @@
 import {
   Activity, Bell, Boxes, ChevronLeft, ChevronRight, CircleGauge, FlaskConical,
   HeartPulse,
-  Layers3, Library, LogOut, Menu, Moon, PackageOpen, PanelLeftClose, Printer,
-  MonitorCog, QrCode, Settings, SlidersHorizontal, Sun, Unplug, Wrench, X, History,
+  Layers3, Library, LogOut, Menu, PackageOpen, Printer,
+  MonitorCog, QrCode, Settings, SlidersHorizontal, Unplug, Wrench, X, History,
 } from 'lucide-react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { type ReactNode, useState } from 'react'
@@ -10,7 +10,7 @@ import { apiFetch } from '../api/client'
 import type { OperatorNotification } from '../api/types'
 import { NavLink, useRouter } from '../context/RouterContext'
 import { useAuth } from '../context/AuthContext'
-import { useTheme } from '../context/ThemeContext'
+import { APP_VERSION } from '../lib/version'
 
 const primaryNavigation = [
   { to: '/', label: 'Dashboard', icon: CircleGauge },
@@ -57,8 +57,7 @@ const secondaryNavigation = [
 ]
 
 export function AppShell({ children }: { children: ReactNode }) {
-  const { user, logout } = useAuth()
-  const { theme, toggleTheme } = useTheme()
+  const { logout } = useAuth()
   const [collapsed, setCollapsed] = useState(false)
   const [mobileOpen, setMobileOpen] = useState(false)
 
@@ -77,17 +76,14 @@ export function AppShell({ children }: { children: ReactNode }) {
           <div><NavigationItems items={secondaryNavigation} collapsed={collapsed} close={() => setMobileOpen(false)} /></div>
         </nav>
         <div className="sidebar__footer">
-          <button className="nav-item" onClick={toggleTheme} title={collapsed ? `Use ${theme === 'light' ? 'dark' : 'light'} theme` : undefined}>
-            {theme === 'light' ? <Moon size={19} /> : <Sun size={19} />}
-            <span>{theme === 'light' ? 'Dark theme' : 'Light theme'}</span>
-          </button>
-          <div className="account">
-            <span className="account__avatar">{user?.display_name.slice(0, 1).toUpperCase()}</span>
-            <span className="account__copy"><strong>{user?.display_name}</strong><small>{user?.role}</small></span>
-            <button className="icon-button" onClick={() => void logout()} aria-label="Sign out"><LogOut size={18} /></button>
+          <div className="sidebar__version" title={`Filament Manager ${APP_VERSION}`}>
+            <span>Version</span><strong>v{APP_VERSION}</strong>
           </div>
+          <button className="nav-item sidebar__logout" onClick={() => void logout()} title={collapsed ? 'Logout' : undefined}>
+            <LogOut size={19} /><span>Logout</span>
+          </button>
           <button className="sidebar__collapse" onClick={() => setCollapsed((value) => !value)} aria-label={collapsed ? 'Expand navigation' : 'Collapse navigation'}>
-            {collapsed ? <ChevronRight size={18} /> : <><PanelLeftClose size={18} /><span>Collapse</span><ChevronLeft size={16} /></>}
+            {collapsed ? <ChevronRight size={18} /> : <ChevronLeft size={18} />}
           </button>
         </div>
       </aside>
@@ -95,7 +91,7 @@ export function AppShell({ children }: { children: ReactNode }) {
         <header className="mobile-topbar">
           <button className="icon-button" onClick={() => setMobileOpen(true)} aria-label="Open navigation"><Menu size={22} /></button>
           <span><strong>Filament</strong> Manager</span>
-          <div className="mobile-topbar__actions"><NotificationCenter /><button className="icon-button" onClick={toggleTheme} aria-label="Toggle color theme">{theme === 'light' ? <Moon size={20} /> : <Sun size={20} />}</button></div>
+          <div className="mobile-topbar__actions"><NotificationCenter /></div>
         </header>
         <header className="desktop-topbar"><NotificationCenter /></header>
         <main className="main-content">{children}</main>
