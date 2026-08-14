@@ -209,6 +209,14 @@ async def test_moonraker_sends_bounded_catalog_and_physical_change_macro() -> No
     assert json.loads(route.calls.last.request.content) == {
         "script": "FILAMENT_MANAGER_CHANGE_SPOOL ID=17 TEMP=215 LABEL=FM-001-PLA-Blue"
     }
+    await client.request_spoolman_target(
+        spoolman_id=17,
+        temperature_c=Decimal("215"),
+        prompt_label="FM-001-PLA-Blue",
+    )
+    assert json.loads(route.calls.last.request.content) == {
+        "script": "FILAMENT_MANAGER_SPOOLMAN_TARGET ID=17 TEMP=215 LABEL=FM-001-PLA-Blue"
+    }
     with pytest.raises(ValueError, match="unsupported"):
         await client.request_spool_change(
             spoolman_id=17,

@@ -1,7 +1,8 @@
 import {
   Activity, Bell, Boxes, ChevronLeft, ChevronRight, CircleGauge, FlaskConical,
+  HeartPulse,
   Layers3, Library, LogOut, Menu, Moon, PackageOpen, PanelLeftClose, Printer,
-  MonitorCog, QrCode, Settings, SlidersHorizontal, Sun, Unplug, X, History,
+  MonitorCog, QrCode, Settings, SlidersHorizontal, Sun, Unplug, Wrench, X, History,
 } from 'lucide-react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { type ReactNode, useState } from 'react'
@@ -20,6 +21,7 @@ const primaryNavigation = [
   { to: '/templates', label: 'Templates', icon: Library },
   { to: '/calibration', label: 'Calibration', icon: FlaskConical },
   { to: '/plates', label: 'Build plates', icon: Layers3 },
+  { to: '/nozzles', label: 'Nozzles', icon: Wrench },
   { to: '/printers', label: 'Printers', icon: Printer },
   { to: '/labels', label: 'Labels', icon: QrCode },
 ]
@@ -47,6 +49,7 @@ function NotificationCenter() {
 }
 
 const secondaryNavigation = [
+  { to: '/diagnostics', label: 'Diagnostics', icon: HeartPulse },
   { to: '/integrations', label: 'Integrations', icon: Unplug },
   { to: '/workstations', label: 'Cura workstations', icon: MonitorCog },
   { to: '/activity', label: 'Activity', icon: Activity },

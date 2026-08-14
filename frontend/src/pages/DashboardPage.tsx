@@ -1,5 +1,5 @@
 import { useQuery } from '@tanstack/react-query'
-import { AlertTriangle, ArrowRight, Boxes, FlaskConical, Layers3, Scale, Unplug } from 'lucide-react'
+import { Activity, AlertTriangle, ArrowRight, Boxes, FlaskConical, Layers3, Scale } from 'lucide-react'
 import { apiFetch } from '../api/client'
 import type { DashboardData } from '../api/types'
 import { EmptyState } from '../components/EmptyState'
@@ -29,16 +29,13 @@ export default function DashboardPage() {
   if (query.isLoading) return <LoadingState label="Loading workshop status" />
   if (!query.data) return <EmptyState icon={AlertTriangle} title="Dashboard unavailable" description="The operational overview could not be loaded. Check the application service and try again." action={<button className="button" onClick={() => void query.refetch()}>Try again</button>} />
   const data = query.data
-  const connected = data.integrations.filter((item) => item.status === 'connected').length
-
   return (
     <div>
-      <PageHeader eyebrow="Workshop overview" title="Dashboard" description="Inventory confidence, printer context, and integration health at a glance." actions={<Link to="/spools" className="button button--primary"><Scale size={17} /> Record a weight</Link>} />
+      <PageHeader eyebrow="Workshop overview" title="Dashboard" description="Inventory confidence and current physical printer context at a glance." actions={<Link to="/spools" className="button button--primary"><Scale size={17} /> Record a weight</Link>} />
       <section className="metric-grid" aria-label="Inventory summary">
         <MetricCard icon={Boxes} label="Total spools" value={data.total_spools} detail="Active inventory" />
         <MetricCard icon={Scale} label="Needs weighing" value={data.needs_weighing} detail="Manual check required" tone={data.needs_weighing ? 'metric-card--warning' : ''} />
         <MetricCard icon={AlertTriangle} label="Low or empty" value={data.low_spools + data.empty_spools} detail={`${data.empty_spools} empty`} tone={data.low_spools + data.empty_spools ? 'metric-card--warning' : ''} />
-        <MetricCard icon={Unplug} label="Integrations" value={connected} detail={`of ${data.integrations.length} connected`} />
       </section>
 
       <section className="dashboard-grid">
@@ -60,8 +57,9 @@ export default function DashboardPage() {
         </article>
 
         <article className="card integrations-card">
-          <header className="card__header"><div><p className="eyebrow">Connected systems</p><h2>Integration health</h2></div><Link to="/integrations" className="text-link">Manage <ArrowRight size={15} /></Link></header>
-          <div className="integration-list">{data.integrations.map((integration) => <div key={integration.service} className="integration-row"><span className={`health-dot health-dot--${integration.status}`} /><div><strong>{integration.service}</strong><small>{integration.detail}</small></div><StatusPill status={integration.status} /></div>)}</div>
+          <header className="card__header"><div><p className="eyebrow">Workshop operations</p><h2>Diagnostics</h2></div><Activity size={21} /></header>
+          <p>Review connections, synchronization freshness, workers, projection queues, recovery validation, and bounded recent errors on the dedicated Diagnostics page.</p>
+          <Link to="/diagnostics" className="text-link">Open diagnostics <ArrowRight size={15} /></Link>
         </article>
 
         <article className="card quick-card">

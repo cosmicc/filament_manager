@@ -44,6 +44,8 @@ jobs:
             workstation-agent/dist/${{ matrix.executable }}
             workstation-agent/installers/install-arch.sh
             workstation-agent/installers/install-windows.ps1
+            workstation-agent/installers/uninstall-arch.sh
+            workstation-agent/installers/uninstall-windows.ps1
             workstation-agent/installers/filament-manager-agent.service.in
           if-no-files-found: error
           retention-days: 14

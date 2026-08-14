@@ -85,11 +85,11 @@ def _public_pairing_transport_is_safe() -> bool:
     return parsed.scheme == "https" or parsed.hostname in {"localhost", "127.0.0.1", "::1"}
 
 
-async def _has_unpublished_cura_template_imports(
+async def _has_unpublished_cura_imports(
     session: DatabaseSession,
     agent_id: UUID,
 ) -> bool:
-    """Return whether imported Cura material content is not yet in the desired library."""
+    """Return whether selected pre-takeover Cura content is not publishable yet."""
 
     template_id = await session.scalar(
         select(MaterialTemplate.id).where(
@@ -105,7 +105,13 @@ async def _has_unpublished_cura_template_imports(
             ),
         )
     )
-    return template_id is not None
+    profile_id = await session.scalar(
+        select(MaterialProfile.id).where(
+            MaterialProfile.source_workstation_agent_id == agent_id,
+            MaterialProfile.status != ProfileStatus.PUBLISHED,
+        )
+    )
+    return template_id is not None or profile_id is not None
 
 
 @router.post(
@@ -250,7 +256,7 @@ async def workstation_heartbeat(
         not agent.cura_management_enabled
         and payload.cura_installations
         and payload.capabilities.get("unmanaged_material_count") == 0
-        and not await _has_unpublished_cura_template_imports(session, agent.id)
+        and not await _has_unpublished_cura_imports(session, agent.id)
     ):
         agent.cura_management_enabled = True
     agent.record_version += 1
@@ -323,11 +329,12 @@ async def update_workstation_agent(
         agent.enabled = payload.enabled
     if payload.cura_management_enabled is not None:
         if payload.cura_management_enabled:
-            if await _has_unpublished_cura_template_imports(session, agent.id):
+            if await _has_unpublished_cura_imports(session, agent.id):
                 raise ApiError(
                     status.HTTP_409_CONFLICT,
                     "cura_template_imports_unpublished",
-                    "Review and publish every imported Cura template before managing this workstation",
+                    "Review and publish every imported Cura template and profile "
+                    "before managing this workstation",
                 )
         agent.cura_management_enabled = payload.cura_management_enabled
         if payload.cura_management_enabled:

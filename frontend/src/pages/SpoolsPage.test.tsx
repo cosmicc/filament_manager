@@ -21,6 +21,7 @@ vi.mock('../context/AuthContext', () => ({
       role: 'operator',
       is_active: true,
       record_version: 1,
+      completed_print_count: 0,
     },
   }),
 }))
@@ -51,6 +52,7 @@ const spool = {
   notes: null,
   archived: false,
   record_version: 1,
+  completed_print_count: 0,
 }
 
 describe('SpoolsPage', () => {

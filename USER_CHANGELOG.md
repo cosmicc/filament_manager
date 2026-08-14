@@ -1,5 +1,34 @@
 # User Changelog
 
+## 0.2.2 - 08.14.2026
+
+### Added
+
+- Added **Nozzles** for physical nozzle records, installation history, completed prints, and total filament printed.
+- Added completed-print totals for every build-plate side and spool. Each distinct spool used during a completed print receives one count.
+- Added **Add Side B** to each physical build plate. The side remains unavailable for selection until its exact `P#b` Klipper mesh is discovered.
+- Added **Diagnostics** with all connection, synchronization, worker, and queue health; a small recent-error view; recovery validation; safe projection rebuild; and existing retry/reconciliation actions.
+- Added a guided one-time Cura import where one selected source becomes the material-family template and other selected sources become filament-specific profiles before takeover.
+- Added workstation-agent uninstallers for Arch Linux and Windows.
+
+### Changed
+
+- Operational status now lives on Diagnostics instead of being split across Dashboard, Printers, Integrations, and Cura Workstations.
+- Printer nozzle details now come from installable physical nozzle records rather than editable printer text fields.
+- Cura takeover remains blocked until every selected template or filament-profile import is reviewed and published.
+- **Load Filament** now opens a live list of eligible spools directly in Fluidd. A spool selected in Spoolman opens a safe confirmation instead of being silently discarded.
+- Running **Select Build Plate** without a plate now lists the current valid P-number meshes saved in Klipper.
+- Workstation installers now say explicitly whether they are performing a fresh installation or an upgrade.
+
+### Fixed
+
+- Fixed there being no way to add the second side of an existing physical build plate.
+- Fixed existing Cura source selection being difficult to find before authoritative synchronization.
+- Fixed multiple same-material Cura sources being treated as competing templates instead of one template plus filament-specific profiles.
+- Fixed the Target Spool error that prevented manual loading and the stale M600 selection state that reported a workflow was already active.
+- Fixed new build-plate meshes requiring hand-written selector buttons.
+- Fixed a Klipper startup error caused by an empty Filament Manager catalog-revision value.
+
 ## 0.2.1 - 08.13.2026
 
 ### Added

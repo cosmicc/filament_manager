@@ -2,7 +2,7 @@
 
 ## Recommended policy
 
-Use **Warn and continue** under **Settings → G-code inspection policy** while testing 0.2.1. Filament Manager still records every mismatch in Print History. Change the setting to **Block mismatches** after the Cura material library, printer macros, and first exact-state records have been verified.
+Use **Warn and continue** under **Settings → G-code inspection policy** while testing 0.2.2. Filament Manager still records every mismatch in Print History. Change the setting to **Block mismatches** after the Cura material library, printer macros, and first exact-state records have been verified.
 
 Blocking pauses virtual-SD execution in Fluidd until Filament Manager can resolve the managed material profile, safely inspect the G-code, and confirm that supported values match. Missing inspection data and an unresolved exact profile also block. The setting is synchronized into Klipper automatically.
 
@@ -17,6 +17,16 @@ Blocking pauses virtual-SD execution in Fluidd until Filament Manager can resolv
 7. Remove purge waste and choose **Start Print**. The unchanged printer `START_PRINT` continues.
 
 Filament Manager delays the print's starting spool snapshot until the preflight/load prompt is complete. Aborting before unload keeps the old active spool. Aborting after unload keeps Spoolman empty. Aborting after load keeps the newly loaded spool active. No future target is recorded as loaded early.
+
+## Manual load and Spoolman selection
+
+Run `LOAD_FILAMENT` or `FILAMENT_MANAGER_LOAD_TARGET` with no parameters in Fluidd to open the current eligible-spool list. The list is generated from Filament Manager's bounded catalog; there is no separate Target Spool field to configure. During a print, M600 unloads the tracked filament, clears Spoolman after motion completes, and opens the same replacement chooser. Running M600 or `FILAMENT_MANAGER_LOAD_TARGET` again while that selection is pending reopens the chooser.
+
+A non-null spool selected directly in Spoolman is treated as a requested target, not proof of a physical load. Within the next 15-second state pass, Fluidd opens the guarded confirmation and the worker restores Spoolman's active ID to the last completed physical boundary. If no spool is tracked, choose either **It Is Already Physically Loaded** to adopt the selected spool explicitly or **Insert and Load It** to run the load routine. If another spool is tracked, confirm the unload/load workflow. Filament Manager changes its active-spool record only after that confirmation or completed load. A direct Spoolman clear never claims that a physical unload occurred.
+
+If a prompt was closed, run `FILAMENT_MANAGER_LOAD_TARGET` to reopen a pending selection. Run `FILAMENT_MANAGER_SPOOL_STATE` to see the current phase, and use `FILAMENT_MANAGER_ABORT` only when the pending workflow should be cancelled. The last completed physical boundary remains authoritative after cancellation.
+
+Run `SELECT_BUILD_PLATE` without parameters to open a chooser generated live from Klipper's saved meshes. Only exact `P<number>` Side A and `P<number>b` Side B names are shown; selecting one loads that same-named mesh and persists the plate side.
 
 ## Print history and assessment
 
@@ -33,6 +43,7 @@ After a print ends, an Operator or Administrator can append an Excellent, Succes
 The application additionally uses:
 
 - `FILAMENT_MANAGER_GCODE_INSPECTION` for the worker's blocking inspection result;
+- `FILAMENT_MANAGER_SPOOLMAN_TARGET` for worker-mediated confirmation of a direct Spoolman selection;
 - `FILAMENT_MANAGER_UNLOAD_SPOOL` for the in-app physical unload/clear request; and
 - `FILAMENT_MANAGER_CLEAR_BUILD_PLATE` for the in-app active plate-side and mesh clear request.
 

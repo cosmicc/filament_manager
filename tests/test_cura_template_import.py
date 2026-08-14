@@ -109,7 +109,21 @@ async def test_cura_material_import_blocks_takeover_until_template_is_published(
                             "cool_fan_speed": "60",
                             "klipper_pressure_advance_factor": "0.035",
                         },
-                    }
+                    },
+                    {
+                        "source_id": "c" * 64,
+                        "installation_id": "cura-test",
+                        "name": "Overture PETG - Tuned",
+                        "brand": "Overture",
+                        "material_type": "PETG",
+                        "color_name": "Blue",
+                        "settings": {
+                            "default_material_print_temperature": "230",
+                            "default_material_bed_temperature": "75",
+                            "material_flow": "99",
+                            "cool_fan_speed": "50",
+                        },
+                    },
                 ],
                 created_by=administrator.id,
             )
@@ -140,26 +154,6 @@ async def test_cura_material_import_blocks_takeover_until_template_is_published(
 
         transport = httpx.ASGITransport(app=application)
         async with httpx.AsyncClient(transport=transport, base_url="http://testserver") as client:
-            generic = await client.post(
-                "/api/v1/profiles/templates",
-                json={
-                    "name": "Generic PETG",
-                    "material_type": "PETG",
-                    "printer_id": str(printer_id),
-                    "nozzle_diameter_mm": "0.4",
-                    "filament_diameter_mm": "1.75",
-                    "settings": {
-                        "extruder_temp_c": "230",
-                        "bed_temp_c": "75",
-                        "flow_percent": "100",
-                        "cooling_min_percent": "30",
-                        "cooling_max_percent": "80",
-                        "filament_density_g_cm3": "1.27",
-                    },
-                },
-            )
-            assert generic.status_code == 201, generic.text
-
             imported = await client.post(
                 "/api/v1/profiles/templates/import-cura-material",
                 json={
@@ -181,6 +175,20 @@ async def test_cura_material_import_blocks_takeover_until_template_is_published(
             assert template["revisions"][0]["settings"]["extruder_temp_c"] == "225"
             assert template["revisions"][0]["settings"]["flow_percent"] == "98.5"
             assert template["revisions"][0]["settings"]["filament_density_g_cm3"] == "1.27"
+
+            conflicting_app_template = await client.post(
+                "/api/v1/profiles/templates",
+                json={
+                    "name": "Another PETG template",
+                    "material_type": "petg",
+                    "printer_id": str(printer_id),
+                    "nozzle_diameter_mm": "0.4",
+                    "filament_diameter_mm": "1.75",
+                    "settings": template["revisions"][0]["settings"],
+                },
+            )
+            assert conflicting_app_template.status_code == 409
+            assert conflicting_app_template.json()["code"] == "material_template_scope_exists"
 
             duplicate = await client.post(
                 "/api/v1/profiles/templates/import-cura-material",
@@ -209,6 +217,60 @@ async def test_cura_material_import_blocks_takeover_until_template_is_published(
                 f"{template['revisions'][0]['id']}/publish"
             )
             assert published.status_code == 200, published.text
+
+            product = await client.post(
+                "/api/v1/filaments",
+                json={
+                    "material_type": "PETG",
+                    "color_name": "Blue",
+                    "product_name": "Overture PETG",
+                    "diameter_mm": "1.75",
+                    "density_g_cm3": "1.27",
+                    "nominal_net_mass_g": "1000",
+                    "material_template_revision_id": template["revisions"][0]["id"],
+                },
+            )
+            assert product.status_code == 201, product.text
+            imported_profile = await client.post(
+                "/api/v1/profiles/import-cura-material",
+                json={
+                    "agent_id": str(agent_id),
+                    "source_id": "c" * 64,
+                    "filament_product_id": product.json()["id"],
+                    "printer_id": str(printer_id),
+                    "nozzle_diameter_mm": "0.4",
+                },
+            )
+            assert imported_profile.status_code == 201, imported_profile.text
+            profile = imported_profile.json()
+            assert profile["status"] == "draft"
+            assert profile["source_workstation_agent_id"] == str(agent_id)
+            assert profile["source_cura_material_id"] == "c" * 64
+
+            blocked_by_profile = await client.patch(
+                f"/api/v1/workstation-agents/{agent_id}",
+                json={"expected_version": 1, "cura_management_enabled": True},
+            )
+            assert blocked_by_profile.status_code == 409
+            assert blocked_by_profile.json()["code"] == "cura_template_imports_unpublished"
+
+            cross_type_duplicate = await client.post(
+                "/api/v1/profiles/templates/import-cura-material",
+                json={
+                    "agent_id": str(agent_id),
+                    "source_id": "c" * 64,
+                    "name": "Duplicate profile source",
+                    "material_type": "PETG",
+                    "printer_id": str(printer_id),
+                    "nozzle_diameter_mm": "0.4",
+                    "filament_density_g_cm3": "1.27",
+                },
+            )
+            assert cross_type_duplicate.status_code == 409
+            assert cross_type_duplicate.json()["code"] == "cura_material_already_imported"
+
+            published_profile = await client.post(f"/api/v1/profiles/{profile['id']}/publish")
+            assert published_profile.status_code == 200, published_profile.text
             enabled = await client.patch(
                 f"/api/v1/workstation-agents/{agent_id}",
                 json={"expected_version": 1, "cura_management_enabled": True},

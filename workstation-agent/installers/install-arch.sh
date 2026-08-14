@@ -15,6 +15,14 @@ binary_path=${1:-}
 service_was_active=false
 staged_path=""
 backup_path=""
+existing_installation=false
+
+if [[ -e ${unit_path} || -e ${agent_root}/filament-manager-agent || -d ${agent_root}/venv ]]; then
+  existing_installation=true
+  echo "Filament Manager Agent upgrade started. Existing pairing, state, and backups will be preserved."
+else
+  echo "Filament Manager Agent fresh installation started."
+fi
 
 cleanup() {
   local exit_status=$?
@@ -87,12 +95,14 @@ if [[ -n ${backup_path} && -e ${backup_path} ]]; then
   rm -rf -- "${backup_path}"
   backup_path=""
 fi
-if [[ ${service_was_active} == true ]]; then
+if [[ ${existing_installation} == true && ${service_was_active} == true ]]; then
   systemctl --user start filament-manager-agent.service
-  echo "Agent upgraded and the existing user service was restarted. Pairing and private configuration were preserved."
+  echo "Filament Manager Agent upgrade complete. The existing user service was restarted."
+elif [[ ${existing_installation} == true ]]; then
+  echo "Filament Manager Agent upgrade complete. The service was not running before the upgrade, so it remains stopped."
 else
-  echo "Agent installed or upgraded. Existing pairing and private configuration, if present, were preserved."
-  echo "Pair it if this is the first installation:"
+  echo "Filament Manager Agent fresh installation complete."
+  echo "Pair this new installation:"
   echo "  ${agent_executable} pair --server https://YOUR-SERVER --name \"Arch Cura\""
   echo "Then run: systemctl --user start filament-manager-agent.service"
 fi

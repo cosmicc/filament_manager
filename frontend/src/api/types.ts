@@ -43,6 +43,7 @@ export interface Spool {
   notes: string | null
   archived: boolean
   record_version: number
+  completed_print_count: number
 }
 
 export interface Page<T> {
@@ -65,6 +66,7 @@ export interface BuildPlateSurface {
   last_mesh_calibrated_at: string | null
   notes: string | null
   record_version: number
+  completed_print_count: number
 }
 
 export interface BuildPlate {
@@ -119,7 +121,6 @@ export interface DashboardData {
   active_spool: Spool | null
   active_plate: BuildPlate | null
   active_plate_surface: BuildPlateSurface | null
-  integrations: IntegrationStatus[]
 }
 
 export interface Filament {
@@ -242,10 +243,41 @@ export interface Printer {
   notes: string | null
   active_plate_id: string | null
   active_plate_surface_id: string | null
+  active_nozzle_id: string | null
   status: string
   last_seen_at: string | null
   last_info_sync_at: string | null
   record_version: number
+}
+
+export interface Nozzle {
+  id: string
+  nozzle_code: string
+  diameter_mm: string
+  material: string
+  manufacturer: string | null
+  product_name: string | null
+  coating: string | null
+  purchase_date: string | null
+  status: 'available' | 'installed' | 'retired'
+  installed_printer_id: string | null
+  installed_at: string | null
+  retired_at: string | null
+  notes: string | null
+  record_version: number
+  completed_print_count: number
+  completed_filament_weight_g: string
+}
+
+export interface NozzleLifecycleEvent {
+  id: string
+  nozzle_id: string
+  printer_id: string | null
+  event_type: 'installed' | 'removed' | 'retired' | 'reactivated'
+  performed_by: string | null
+  source: string
+  notes: string | null
+  occurred_at: string
 }
 
 export interface SeedSystemResult {
@@ -281,6 +313,8 @@ export interface MaterialProfile extends MaterialSettings {
     proposed_value: unknown
     overridden: boolean
   }>
+  source_workstation_agent_id: string | null
+  source_cura_material_id: string | null
 }
 
 export interface CalibrationStep {
@@ -503,6 +537,7 @@ export interface PrintJob {
   material_profile_version: number | null
   build_plate_id: string | null
   build_plate_surface_id: string | null
+  nozzle_id: string | null
   nozzle_diameter_mm: string | null
   material_name: string | null
   material_type: string | null
@@ -560,6 +595,52 @@ export interface ProfileStatistics {
 export interface OperationalSettings {
   gcode_inspection_policy: 'warn' | 'block'
   record_version: number
+}
+
+export interface DiagnosticCheck {
+  key: string
+  label: string
+  category: 'connection' | 'synchronization' | 'worker' | 'operational' | 'recovery' | string
+  status: 'healthy' | 'warning' | 'error' | 'disabled' | string
+  detail: string
+  checked_at: string
+}
+
+export interface DiagnosticErrorEntry {
+  source: string
+  severity: 'warning' | 'error' | string
+  summary: string
+  detail: string | null
+  occurred_at: string
+  correlation_id: string | null
+}
+
+export interface DiagnosticOverview {
+  checked_at: string
+  checks: DiagnosticCheck[]
+  queue_counts: Record<string, number>
+  job_type_counts: Record<string, number>
+  error_log: DiagnosticErrorEntry[]
+}
+
+export interface DiagnosticRun {
+  id: string
+  run_type: string
+  status: 'running' | 'completed' | 'failed' | string
+  requested_by: string
+  results: {
+    summary?: Record<string, number>
+    checks?: DiagnosticCheck[]
+    error?: string
+  }
+  started_at: string
+  completed_at: string | null
+}
+
+export interface ProjectionRebuildResult {
+  status: string
+  queued_jobs: number
+  categories: Record<string, number>
 }
 
 export interface OperatorNotification {

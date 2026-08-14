@@ -706,6 +706,7 @@ export default function SpoolsPage() {
                   <th>Material</th>
                   <th>Remaining</th>
                   <th>Status</th>
+                  <th>Prints</th>
                   <th>Location</th>
                   <th>Last weighed</th>
                 </tr>
@@ -773,6 +774,7 @@ export default function SpoolsPage() {
                         <StatusPill status={spool.status} />
                       </div>
                     </td>
+                    <td>{spool.completed_print_count.toLocaleString()}</td>
                     <td>{spool.location ?? "—"}</td>
                     <td>{dateTime(spool.last_measurement_at)}</td>
                   </tr>
@@ -802,7 +804,7 @@ export default function SpoolsPage() {
                 <small>
                   {spool.active_printer_id
                     ? `Loaded in ${printerNames.get(spool.active_printer_id) ?? "assigned printer"}`
-                    : (spool.location ?? "No location")}
+                    : (spool.location ?? "No location")} · {spool.completed_print_count} completed prints
                 </small>
               </button>
             ))}
@@ -881,6 +883,10 @@ export default function SpoolsPage() {
                     <div>
                       <dt>Location</dt>
                       <dd>{selected.location || "Not set"}</dd>
+                    </div>
+                    <div>
+                      <dt>Completed prints</dt>
+                      <dd>{selected.completed_print_count.toLocaleString()}</dd>
                     </div>
                   </dl>
                   <div className="detail-actions">

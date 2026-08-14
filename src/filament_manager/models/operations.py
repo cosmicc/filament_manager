@@ -3,7 +3,18 @@
 from datetime import datetime
 from uuid import UUID
 
-from sqlalchemy import Boolean, DateTime, Enum, ForeignKey, Index, Integer, String, Text, UniqueConstraint
+from sqlalchemy import (
+    Boolean,
+    CheckConstraint,
+    DateTime,
+    Enum,
+    ForeignKey,
+    Index,
+    Integer,
+    String,
+    Text,
+    UniqueConstraint,
+)
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -150,6 +161,60 @@ class BuildPlateMaintenanceEvent(UUIDPrimaryKeyMixin, Base):
     notes: Mapped[str | None] = mapped_column(Text)
     occurred_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+
+
+class NozzleLifecycleEvent(UUIDPrimaryKeyMixin, Base):
+    """Append-only installation, removal, and retirement history for a physical nozzle."""
+
+    __tablename__ = "nozzle_lifecycle_events"
+    __table_args__ = (
+        CheckConstraint(
+            "event_type IN ('installed', 'removed', 'retired', 'reactivated')",
+            name="event_type",
+        ),
+        Index("ix_nozzle_lifecycle_time", "nozzle_id", "occurred_at"),
+    )
+
+    nozzle_id: Mapped[UUID] = mapped_column(ForeignKey("nozzles.id", ondelete="RESTRICT"), nullable=False)
+    printer_id: Mapped[UUID | None] = mapped_column(ForeignKey("printers.id", ondelete="SET NULL"))
+    event_type: Mapped[str] = mapped_column(String(32), nullable=False)
+    performed_by: Mapped[UUID | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"))
+    source: Mapped[str] = mapped_column(String(32), nullable=False, default="web")
+    notes: Mapped[str | None] = mapped_column(Text)
+    occurred_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+
+
+class DiagnosticRun(UUIDPrimaryKeyMixin, Base):
+    """Immutable result from an Administrator-triggered recovery validation."""
+
+    __tablename__ = "diagnostic_runs"
+    __table_args__ = (Index("ix_diagnostic_runs_started", "started_at"),)
+
+    run_type: Mapped[str] = mapped_column(String(48), nullable=False)
+    status: Mapped[str] = mapped_column(String(32), nullable=False)
+    requested_by: Mapped[UUID] = mapped_column(ForeignKey("users.id", ondelete="RESTRICT"))
+    results: Mapped[dict[str, object]] = mapped_column(JSONB, nullable=False, default=dict)
+    started_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+
+class WorkerHeartbeat(UUIDPrimaryKeyMixin, Base):
+    """Ephemeral, secret-free liveness record for one scheduler or dispatcher."""
+
+    __tablename__ = "worker_heartbeats"
+    __table_args__ = (Index("ix_worker_heartbeats_seen", "last_seen_at"),)
+
+    worker_id: Mapped[str] = mapped_column(String(160), nullable=False, unique=True)
+    worker_type: Mapped[str] = mapped_column(String(32), nullable=False)
+    hostname: Mapped[str] = mapped_column(String(255), nullable=False)
+    status: Mapped[str] = mapped_column(String(32), nullable=False)
+    current_job_id: Mapped[UUID | None]
+    current_job_type: Mapped[str | None] = mapped_column(String(96))
+    last_error_class: Mapped[str | None] = mapped_column(String(160))
+    last_error_message: Mapped[str | None] = mapped_column(String(500))
+    started_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    last_seen_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
 
 
 class Notification(UUIDPrimaryKeyMixin, Base):

@@ -59,7 +59,7 @@ const plates = [{
     id: 'surface-a', build_plate_id: 'plate-id', side: 'a', surface_code: 'P1',
     klipper_mesh_profile: 'P1', surface_material: 'PEI', texture: 'smooth',
     mesh_available: true, last_mesh_checked_at: null, last_mesh_calibrated_at: null,
-    notes: null, record_version: 1,
+    notes: null, record_version: 1, completed_print_count: 0,
   }],
 }] satisfies BuildPlate[]
 

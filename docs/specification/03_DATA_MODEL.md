@@ -46,7 +46,11 @@ Consumption or adjustment event with source, printer, print job, mass delta, eve
 
 ### printer
 
-Printer identity, server-only Moonraker endpoint, nozzle diameter/material, manufacturer/model, extruder type, kinematics, build volume, sanitized host/version information, active plate, notes, and integration state. Documented Moonraker/Klipper fields may refresh discovered values while user-maintained hardware descriptions remain manual.
+Printer identity, server-only Moonraker endpoint, installed physical-nozzle reference, manufacturer/model, extruder type, kinematics, build volume, sanitized host/version information, active plate, notes, and integration state. Documented Moonraker/Klipper fields may refresh discovered values while user-maintained hardware descriptions remain manual.
+
+### nozzle and nozzle_lifecycle_event
+
+A physical nozzle has an immutable human code, diameter, construction material, manufacturer/product, optional purchase and installation metadata, lifecycle status, notes, and optimistic version. A printer has at most one installed nozzle. Append-only lifecycle events retain installation and removal boundaries. Completed-print count and total filament use derive from immutable print history captured while the nozzle was installed.
 
 ### build_plate
 
@@ -54,7 +58,7 @@ Physical plate record. Business IDs are exact uppercase `P<number>` values; `P1`
 
 ### build_plate_surface
 
-One printable side of a physical plate. Side A uses the physical plate code (`P4`); Side B uses a lowercase `b` suffix (`P4b`). Fields include surface material, smooth/textured finish, same-named Klipper mesh, mesh availability/check time, last mesh calibration, and notes. Missing Moonraker meshes do not delete the physical plate, side, or metadata.
+One printable side of a physical plate. Side A uses the physical plate code (`P4`); Side B uses a lowercase `b` suffix (`P4b`). Fields include surface material, smooth/textured finish, same-named Klipper mesh, mesh availability/check time, last mesh calibration, and notes. The sole Side B may be created manually but starts unavailable. Missing Moonraker meshes do not delete the physical plate, side, or metadata.
 
 ### build_plate_maintenance_event
 
@@ -69,11 +73,11 @@ Versioned settings scoped to:
 - nozzle diameter
 - optional layer-height range
 
-Every revision directly references one published `material_template_revision`, stores only semantically different `setting_overrides`, and caches the complete resolved values in the typed columns plus `cura_extensions`. The resolved snapshot includes Cura Klipper Settings pressure advance and smooth time and may reference a preferred plate side. Publishing makes both the base identity, overrides, and resolved output immutable.
+Every revision directly references one published `material_template_revision`, stores only semantically different `setting_overrides`, and caches the complete resolved values in the typed columns plus `cura_extensions`. The resolved snapshot includes Cura Klipper Settings pressure advance and smooth time and may reference a preferred plate side. A pre-takeover source import stores its workstation and sanitized Cura material identifier. Publishing makes both the base identity, overrides, and resolved output immutable.
 
 ### material_template and material_template_revision
 
-The template is a mutable identity for one material type, printer, nozzle, and filament diameter. Its canonical Cura identity is `Template <material type>` under the `Template` brand. Revisions store complete validated settings snapshots and become immutable when published. A selected pre-takeover Cura import records its source workstation and sanitized stable identifier. Creating a filament product links Material Profile version 1 to the selected published revision, records only product-specific differences such as density, and computes the resolved snapshot. Publishing a newer template revision does not rewrite linked profiles; each filament must explicitly confirm its own base update, which creates a draft and preserves its overrides.
+The template is a mutable identity for one material type, printer, nozzle, and filament diameter. Its canonical Cura identity is `Template <material type>` under the `Template` brand. Only one active template exists per normalized material family and printer/nozzle scope. Revisions store complete validated settings snapshots and become immutable when published. A selected pre-takeover Cura import records its source workstation and sanitized stable identifier; the source pair is unique across both templates and product profiles. Creating a filament product links Material Profile version 1 to the selected published revision, records only product-specific differences such as density, and computes the resolved snapshot. Publishing a newer template revision does not rewrite linked profiles; each filament must explicitly confirm its own base update, which creates a draft and preserves its overrides.
 
 ### cura_managed_edit_receipt
 
@@ -89,7 +93,11 @@ One of temperature, flow, pressure advance, retraction, dimensional size/hole co
 
 ### print_job, print_material_segment, and print_assessment
 
-`print_job` merges supported Moonraker live/history records and retains one immutable start-state snapshot: printer, physical spool, product, exact material-profile revision, plate side, sliced metadata, actual usage, complete streamed-file hash, and bounded inspection evidence. Records imported without reconstructable state remain explicitly unresolved. `print_material_segment` records the ordered spool intervals created by M600 transitions and their usage. `print_assessment` appends quality revisions and never overwrites an earlier score.
+`print_job` merges supported Moonraker live/history records and retains one immutable start-state snapshot: printer, physical nozzle, physical spool, product, exact material-profile revision, plate side, sliced metadata, actual usage, complete streamed-file hash, and bounded inspection evidence. Records imported without reconstructable state remain explicitly unresolved. `print_material_segment` records the ordered spool intervals created by M600 transitions and their usage. `print_assessment` appends quality revisions and never overwrites an earlier score. Completed statistics count the captured nozzle and side once and each distinct start/segment spool once per completed job.
+
+### diagnostic_run and worker_heartbeat
+
+`diagnostic_run` persists one bounded sanitized recovery-validation result without mutating canonical business records. `worker_heartbeat` records current worker liveness and a safe state summary. Projection rebuilds are represented by ordinary idempotent outbox jobs.
 
 ### application_setting
 

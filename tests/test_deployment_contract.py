@@ -144,4 +144,5 @@ def test_klipper_macro_variables_are_valid_python_literals() -> None:
     assert 'variable_active_plate: "UNSET"' in variable_lines
     for line in variable_lines:
         _name, literal = line.split(":", 1)
-        ast.literal_eval(literal.strip())
+        parsed_literal = ast.literal_eval(literal.strip())
+        assert parsed_literal != "", "empty string macro defaults can be collapsed by config editors"

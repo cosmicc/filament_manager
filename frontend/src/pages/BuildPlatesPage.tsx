@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { Check, Eraser, History, Layers3, Pencil, RefreshCw, Save, Sparkles } from 'lucide-react'
+import { Check, Eraser, History, Layers3, Pencil, Plus, Save, Sparkles } from 'lucide-react'
 import { useState } from 'react'
 import { apiFetch } from '../api/client'
 import type { BuildPlate, BuildPlateMaintenanceEvent, BuildPlateMaintenanceStatus, BuildPlateSurface, Printer } from '../api/types'
@@ -209,6 +209,7 @@ function SurfaceCard({
         <div><dt>Moonraker mesh</dt><dd>{surface.klipper_mesh_profile}</dd></div>
         <div><dt>Surface material</dt><dd>{surface.surface_material ?? 'Not specified'}</dd></div>
         <div><dt>Finish</dt><dd>{surface.texture ?? 'Not specified'}</dd></div>
+        <div><dt>Completed prints</dt><dd>{surface.completed_print_count.toLocaleString()}</dd></div>
         <div><dt>Last checked</dt><dd>{dateTime(surface.last_mesh_checked_at)}</dd></div>
         <div><dt>Last calibrated</dt><dd>{dateTime(surface.last_mesh_calibrated_at)}</dd></div>
       </dl>
@@ -231,6 +232,7 @@ export default function BuildPlatesPage() {
   const [editingPlate, setEditingPlate] = useState<BuildPlate | null>(null)
   const [editingSurface, setEditingSurface] = useState<{ plate: BuildPlate; surface: BuildPlateSurface } | null>(null)
   const [historyType, setHistoryType] = useState('')
+  const [message, setMessage] = useState('')
   const plates = useQuery({ queryKey: ['plates'], queryFn: () => apiFetch<BuildPlate[]>('/build-plates'), refetchInterval: 15_000 })
   const printers = useQuery({ queryKey: ['printers'], queryFn: () => apiFetch<Printer[]>('/printers'), refetchInterval: 15_000 })
   const maintenance = useQuery({ queryKey: ['plate-maintenance-status'], queryFn: () => apiFetch<BuildPlateMaintenanceStatus[]>('/build-plates/maintenance/status'), refetchInterval: 15_000 })
@@ -258,14 +260,21 @@ export default function BuildPlatesPage() {
     mutationFn: ({ plate, surface, values }: { plate: BuildPlate; surface: BuildPlateSurface; values: { surface_material: string | null; texture: string | null; notes: string | null } }) => apiFetch(`/build-plates/${plate.id}/surfaces/${surface.id}`, { method: 'PATCH', body: JSON.stringify({ expected_version: surface.record_version, ...values }) }),
     onSuccess: async () => { setEditingSurface(null); await refreshCanonicalState() },
   })
+  const addSideB = useMutation({
+    mutationFn: (plate: BuildPlate) => apiFetch<BuildPlate>(`/build-plates/${plate.id}/surfaces`, { method: 'POST', body: JSON.stringify({}) }),
+    onSuccess: async (plate) => {
+      setMessage(`${plate.plate_code} Side B was added. Its mesh remains unavailable until ${plate.plate_code}b exists in Moonraker.`)
+      await refreshCanonicalState()
+      const sideB = plate.surfaces.find((surface) => surface.side === 'b')
+      if (sideB) setEditingSurface({ plate, surface: sideB })
+    },
+  })
   const recordMaintenance = useMutation({
     mutationFn: ({ plateId, maintenanceType, surfaceId }: { plateId: string; maintenanceType: 'cleaned' | 'mesh_calibrated'; surfaceId?: string }) => apiFetch(`/build-plates/${plateId}/maintenance-events`, { method: 'POST', body: JSON.stringify({ maintenance_type: maintenanceType, surface_id: surfaceId ?? null, notes: null }) }),
     onSuccess: refreshCanonicalState,
   })
   const clearActive = useMutation({ mutationFn: () => apiFetch<{ printer_name: string }>('/build-plates/active/clear', { method: 'POST' }), onSuccess: refreshCanonicalState })
-  const mutationError = selectSurface.error ?? updatePlate.error ?? updateSurface.error ?? recordMaintenance.error ?? clearActive.error
-  const lastMeshCheck = (plates.data ?? []).flatMap((plate) => plate.surfaces).map((surface) => surface.last_mesh_checked_at).filter(Boolean).sort().at(-1) ?? null
-
+  const mutationError = selectSurface.error ?? updatePlate.error ?? updateSurface.error ?? addSideB.error ?? recordMaintenance.error ?? clearActive.error
   return (
     <div>
       <PageHeader
@@ -276,7 +285,7 @@ export default function BuildPlatesPage() {
           <><label className="inline-field">Printer<select value={selectedPrinterId} onChange={(event) => setPrinterId(event.target.value)}>{printers.data.map((printer) => <option key={printer.id} value={printer.id}>{printer.name}</option>)}</select></label>{user?.role !== 'viewer' && selectedPrinter?.active_plate_surface_id ? <button className="button" disabled={clearActive.isPending} onClick={() => clearActive.mutate()}><Eraser size={17} /> Clear active side</button> : null}</>
         ) : undefined}
       />
-      <p className="automatic-sync-note" role="status"><RefreshCw size={17} /><span><strong>Automatic Moonraker synchronization is on.</strong> Active plate and mesh state refresh every 15 seconds{lastMeshCheck ? ` · last checked ${dateTime(lastMeshCheck)}` : ''}.</span></p>
+      {message ? <div className="deployment-note" role="status">{message}</div> : null}
       {mutationError ? <p className="form-error plate-sync-note">{mutationError.message}</p> : null}
       {plates.error ? <p className="form-error">{plates.error.message}</p> : null}
       {printers.error ? <p className="form-error">{printers.error.message}</p> : null}
@@ -322,6 +331,7 @@ export default function BuildPlatesPage() {
                     />
                   ))}
                 </div>
+                {user?.role !== 'viewer' && !plate.surfaces.some((surface) => surface.side === 'b') ? <div className="plate-maintenance-actions"><button className="button" disabled={addSideB.isPending} onClick={() => addSideB.mutate(plate)}><Plus size={16} /> Add Side B</button><span className="muted">Creates {plate.plate_code}b now; Moonraker mesh availability updates automatically.</span></div> : null}
                 {user?.role !== 'viewer' ? <div className="plate-maintenance-actions">{plate.surfaces.map((surface) => { const state = due?.surfaces.find((item) => item.surface_id === surface.id); return <button className="button" key={surface.id} disabled={recordMaintenance.isPending} onClick={() => recordMaintenance.mutate({ plateId: plate.id, maintenanceType: 'mesh_calibrated', surfaceId: surface.id })}><Sparkles size={16} /> Mark {surface.surface_code} mesh calibrated{state?.mesh_due ? ' · due' : ''}</button> })}</div> : null}
               </article>
             )

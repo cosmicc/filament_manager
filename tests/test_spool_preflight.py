@@ -76,13 +76,31 @@ def test_macro_reference_compiles_and_preserves_existing_motion_macros() -> None
             assert gcode.count("{% for ") == gcode.count("{% endfor %}")
         for option, value in parser.items(section):
             if option.startswith("variable_"):
-                ast.literal_eval(value)
+                assert ast.literal_eval(value) != ""
+
+    spool_state_section = "gcode_macro FILAMENT_MANAGER_SPOOL_STATE"
+    assert parser.get(spool_state_section, "variable_catalog_revision") == '"' + ("0" * 64) + '"'
+    assert parser.get(spool_state_section, "variable_material_guid") == '"UNSET"'
+    restore_state = parser.get("delayed_gcode _FILAMENT_MANAGER_RESTORE_STATE", "gcode")
+    assert 'default("' + ("0" * 64) + '", true)' in restore_state
 
     assert not parser.has_section("gcode_macro START_PRINT")
     assert not parser.has_section("gcode_macro END_PRINT")
     assert parser.get("gcode_macro M600", "rename_existing") == "M600.1"
     assert parser.get("gcode_macro LOAD_FILAMENT", "rename_existing") == "_FILAMENT_MANAGER_HARDWARE_LOAD"
     assert parser.get("gcode_macro UNLOAD_FILAMENT", "rename_existing") == "_FILAMENT_MANAGER_HARDWARE_UNLOAD"
+
+    load_target = parser.get("gcode_macro FILAMENT_MANAGER_LOAD_TARGET", "gcode")
+    assert "_FILAMENT_MANAGER_PROMPT_ALL_SPOOLS" in load_target
+    assert "Select a Target Spool for FILAMENT_MANAGER_LOAD_TARGET" not in load_target
+    assert not parser.has_section("gcode_macro _FILAMENT_MANAGER_USE_STAGED_TARGET")
+    assert "FILAMENT_MANAGER_LOAD_TARGET" in parser.get("gcode_macro LOAD_FILAMENT", "gcode")
+    spoolman_target = parser.get("gcode_macro FILAMENT_MANAGER_SPOOLMAN_TARGET", "gcode")
+    assert "It will not become active in Filament Manager until" in spoolman_target
+
+    plate_selector = parser.get("gcode_macro SELECT_BUILD_PLATE", "gcode")
+    assert "printer.bed_mesh.profiles" in plate_selector
+    assert "SELECT_BUILD_PLATE PLATE={profile}" in plate_selector
 
     begin_change = parser.get("gcode_macro _FILAMENT_MANAGER_BEGIN_CHANGE", "gcode")
     assert begin_change.index("_FILAMENT_MANAGER_HARDWARE_UNLOAD") < begin_change.index(

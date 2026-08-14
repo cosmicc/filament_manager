@@ -1,16 +1,15 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { Clock3, Pencil, Printer as PrinterIcon, RefreshCw, Save, Wifi } from 'lucide-react'
+import { Pencil, Printer as PrinterIcon, RefreshCw, Save, Wrench } from 'lucide-react'
 import { useState } from 'react'
 import { apiFetch } from '../api/client'
-import type { BuildPlate, Printer, SeedSystemResult } from '../api/types'
+import type { BuildPlate, Nozzle, Printer, SeedSystemResult } from '../api/types'
 import { EditorSection } from '../components/EditorSection'
 import { EmptyState } from '../components/EmptyState'
 import { LoadingState } from '../components/LoadingState'
 import { Modal } from '../components/Modal'
 import { PageHeader } from '../components/PageHeader'
-import { StatusPill } from '../components/StatusPill'
 import { useAuth } from '../context/AuthContext'
-import { dateTime } from '../lib/format'
+import { Link } from '../context/RouterContext'
 
 function optional(data: FormData, key: string) {
   return String(data.get(key) ?? '').trim() || null
@@ -51,13 +50,12 @@ function PrinterEditorModal({
             <label className="form-grid__wide">Notes<textarea name="notes" defaultValue={printer.notes ?? ''} maxLength={4000} rows={3} /></label>
           </div>
         </EditorSection>
-        <EditorSection title="Hardware" description="Record the nozzle and extrusion hardware used to scope material profiles.">
+        <EditorSection title="Hardware" description="Record printer hardware that is not owned by the physical nozzle inventory.">
           <div className="form-grid">
             <label>Kinematics<input name="kinematics" defaultValue={printer.kinematics ?? ''} maxLength={48} placeholder="delta, cartesian, corexy…" /></label>
             <label>Extruder type<input name="extruder_type" defaultValue={printer.extruder_type ?? ''} maxLength={96} placeholder="Direct drive, Bowden…" /></label>
-            <label>Nozzle diameter (mm)<input name="nozzle_diameter_mm" type="number" min="0.1" max="10" step="any" defaultValue={printer.nozzle_diameter_mm} required /></label>
-            <label>Nozzle material<input name="nozzle_material" defaultValue={printer.nozzle_material ?? ''} maxLength={96} placeholder="Hardened steel, brass…" /></label>
           </div>
+          <p className="security-note"><Wrench size={16} /> Nozzle size and material are updated by recording the exact physical nozzle installation on the Nozzles page.</p>
         </EditorSection>
         <EditorSection title="Build volume" description="Use X, Y, and Z for rectangular machines or diameter and Z for round beds.">
           <div className="form-grid">
@@ -81,6 +79,7 @@ export default function PrintersPage() {
   const [message, setMessage] = useState('')
   const printers = useQuery({ queryKey: ['printers'], queryFn: () => apiFetch<Printer[]>('/printers'), refetchInterval: 15_000 })
   const plates = useQuery({ queryKey: ['plates'], queryFn: () => apiFetch<BuildPlate[]>('/build-plates'), refetchInterval: 15_000 })
+  const nozzles = useQuery({ queryKey: ['nozzles'], queryFn: () => apiFetch<Nozzle[]>('/nozzles?include_retired=true'), refetchInterval: 15_000 })
   const seedSystem = useMutation({
     mutationFn: () => apiFetch<SeedSystemResult>('/system/seed', { method: 'POST' }),
     onSuccess: async () => {
@@ -108,8 +107,6 @@ export default function PrintersPage() {
           manufacturer: optional(data, 'manufacturer'),
           model: optional(data, 'model'),
           kinematics: optional(data, 'kinematics'),
-          nozzle_diameter_mm: String(data.get('nozzle_diameter_mm')),
-          nozzle_material: optional(data, 'nozzle_material'),
           extruder_type: optional(data, 'extruder_type'),
           build_volume: {
             shape: optional(data, 'shape'),
@@ -132,8 +129,7 @@ export default function PrintersPage() {
 
   return (
     <div>
-      <PageHeader eyebrow="Moonraker context" title="Printers" description="Canonical printer state without exposing internal service addresses to the browser." />
-      <p className="automatic-sync-note" role="status"><RefreshCw size={17} /><span><strong>Automatic Moonraker synchronization is on.</strong> Active state refreshes every 15 seconds and printer details refresh every 5 minutes.</span></p>
+      <PageHeader eyebrow="Physical printer context" title="Printers" description="Canonical machine identity, workspace, active plate, and exact installed nozzle." actions={<Link className="button" to="/diagnostics">Open diagnostics</Link>} />
       {message ? <div className="deployment-note" role="status">{message}</div> : null}
       {printers.error ? <p className="form-error">{printers.error.message}</p> : null}
       {printers.isLoading ? <LoadingState /> : !printers.data?.length ? (
@@ -150,33 +146,25 @@ export default function PrintersPage() {
         <section className="printer-list">
           {printers.data.map((printer) => {
             const plate = plates.data?.find((item) => item.id === printer.active_plate_id)
+            const nozzle = nozzles.data?.find((item) => item.id === printer.active_nozzle_id)
             return (
               <article className="printer-card card" key={printer.id}>
                 <div className="printer-card__heading">
                   <span className="printer-card__icon"><PrinterIcon size={28} /></span>
-                  <div><p className="eyebrow">{printer.printer_code}</p><h2>{printer.name}</h2><p className="muted">{[printer.manufacturer, printer.model].filter(Boolean).join(' ') || 'Manufacturer and model not specified'} · {printer.nozzle_diameter_mm} mm {printer.nozzle_material ? `${printer.nozzle_material} ` : ''}nozzle</p></div>
-                  <StatusPill status={printer.status} />
+                  <div><p className="eyebrow">{printer.printer_code}</p><h2>{printer.name}</h2><p className="muted">{[printer.manufacturer, printer.model].filter(Boolean).join(' ') || 'Manufacturer and model not specified'}</p></div>
                 </div>
-                <div className="printer-card__details">
+                <div className="printer-card__details printer-card__details--single">
                   <EditorSection title="Hardware and workspace">
                     <dl className="definition-list">
                       <div><dt>Printer type</dt><dd>{printer.kinematics ? `${printer.kinematics} kinematics` : 'Not reported'}{printer.extruder_type ? ` · ${printer.extruder_type}` : ''}</dd></div>
                       <div><dt>Build volume</dt><dd>{printer.build_volume.shape === 'round' ? `Ø ${printer.build_volume.diameter_mm ?? printer.build_volume.x_mm ?? '—'} × ${printer.build_volume.z_mm ?? '—'} mm` : printer.build_volume.x_mm ? `${printer.build_volume.x_mm} × ${printer.build_volume.y_mm ?? '—'} × ${printer.build_volume.z_mm ?? '—'} mm` : 'Not reported'}</dd></div>
                       <div><dt>Active plate</dt><dd>{plate ? `${plate.plate_code} - ${plate.display_name}` : 'Not selected'}</dd></div>
-                    </dl>
-                  </EditorSection>
-                  <EditorSection title="Moonraker status">
-                    <dl className="definition-list">
-                      <div><dt>Klipper</dt><dd>{printer.klipper_version ?? 'Not reported'}</dd></div>
-                      <div><dt>Moonraker</dt><dd>{printer.moonraker_version ?? 'Not reported'}</dd></div>
-                      <div><dt>Printer host</dt><dd>{printer.host_name ?? 'Not reported'}</dd></div>
-                      <div><dt><Clock3 size={14} /> Last seen</dt><dd>{dateTime(printer.last_seen_at)}</dd></div>
-                      <div><dt>Information synchronized</dt><dd>{dateTime(printer.last_info_sync_at)}</dd></div>
+                      <div><dt>Installed nozzle</dt><dd>{nozzle ? `${nozzle.nozzle_code} · ${nozzle.diameter_mm} mm ${nozzle.material}` : 'No physical nozzle assigned'}</dd></div>
                     </dl>
                   </EditorSection>
                 </div>
                 <div className="printer-card__footer">
-                  <p className="security-note"><Wifi size={16} /> Connection details remain server-side.</p>
+                  <p className="security-note"><Wrench size={16} /> Manage physical installation and usage on <Link to="/nozzles">Nozzles</Link>.</p>
                   {canEdit ? <button className="button" onClick={() => { setEditing(printer); setMessage('') }}><Pencil size={16} /> Edit printer</button> : null}
                 </div>
               </article>

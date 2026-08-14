@@ -371,8 +371,8 @@ For example:
 Show me materials I own that are suitable for outdoor use and can handle 70°C.
 
 
-- **Nozzle tracking**
-I'd strongly recommend turning nozzles into inventory objects.
+- ~~**Physical nozzle inventory and exact print-use tracking**~~
+Nozzles are canonical inventory objects with printer assignment, diameter, nozzle material, lifecycle status, installed/removed history, completed-print count, and total filament use.
 
 Something like:
 Nozzle N3
@@ -381,6 +381,11 @@ Diameter: 0.6 mm
 Material: hardened steel
 Installed: 2026-07-21
 Filament printed: 4.83 kg
+
+- **Nozzle wear tracking**
+Extend the completed physical-nozzle inventory with abrasive-filament totals and a material-weighted wear index.
+
+For example:
 Abrasive filament: 1.71 kg
 
 Then alert based on usage.
@@ -625,10 +630,10 @@ device.offline
 Then Home Assistant, Node-RED, Discord, MQTT bridges, etc. become trivial.
 
 
-- **Backup/restore validation**
-Since PostgreSQL is deliberately canonical and projections are rebuildable, add an application-level command like:
+- ~~**Backup/restore validation**~~
+PostgreSQL remains canonical. The Diagnostics page and application CLI now run read-only recovery validation for migrations, measurement integrity, device credentials, Spoolman projection consistency, Google publication state, and Cura deployment state. Administrators can safely queue complete projection rebuilds without changing canonical records.
 
-filament-manager verify
+filament-manager-cli verify
 
 that checks:
 database migrations
@@ -640,7 +645,7 @@ device credentials
 measurement integrity
 
 Then:
-filament-manager rebuild-projections
+filament-manager-cli rebuild-projections --confirm
 
 
 - **Observability**

@@ -37,6 +37,7 @@ const plate = {
   mesh_due_after_days: 30,
   notes: null,
   record_version: 3,
+  completed_print_count: 4,
   surfaces: [
     {
       id: 'surface-a-id',
@@ -51,6 +52,7 @@ const plate = {
       last_mesh_calibrated_at: null,
       notes: null,
       record_version: 1,
+      completed_print_count: 3,
     },
     {
       id: 'surface-b-id',
@@ -65,6 +67,7 @@ const plate = {
       last_mesh_calibrated_at: null,
       notes: null,
       record_version: 1,
+      completed_print_count: 1,
     },
   ],
 }
@@ -86,8 +89,9 @@ test('groups both sides under one physical plate on desktop and mobile', async (
   await expect(page.getByRole('heading', { name: 'P4b', exact: true })).toBeVisible()
   await expect(page.getByText('PEX', { exact: true })).toBeVisible()
   await expect(page.getByRole('button', { name: 'Active side', exact: true })).toBeDisabled()
-  await expect(page.getByText('Automatic Moonraker synchronization is on.')).toBeVisible()
+  await expect(page.getByText('Automatic Moonraker synchronization is on.')).toHaveCount(0)
   await expect(page.getByRole('button', { name: 'Synchronize with Moonraker' })).toHaveCount(0)
+  await expect(page.getByText('Completed prints').first()).toBeVisible()
 
   await page.getByRole('button', { name: 'Edit physical plate' }).click()
   const editor = page.getByRole('dialog', { name: 'Edit P4' })

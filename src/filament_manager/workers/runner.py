@@ -2,31 +2,93 @@
 
 import asyncio
 import socket
-from uuid import uuid4
+import time
+from datetime import UTC, datetime
+from uuid import UUID, uuid4
 
 import structlog
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from filament_manager.config import get_settings
 from filament_manager.database import get_session_factory
 from filament_manager.logging import configure_logging
 
 from .dispatcher import claim_jobs, complete_job, dispatch_job, fail_job
+from .heartbeat import record_worker_heartbeat
 from .scheduler import schedule_periodic_jobs
 
 logger = structlog.get_logger()
+
+
+async def _report_heartbeat(
+    session_factory: async_sessionmaker[AsyncSession],
+    *,
+    worker_id: str,
+    worker_type: str,
+    hostname: str,
+    started_at: datetime,
+    status: str,
+    current_job_id: UUID | None = None,
+    current_job_type: str | None = None,
+    error: Exception | None = None,
+) -> None:
+    """Persist liveness without allowing diagnostics failure to stop useful work."""
+
+    try:
+        async with session_factory() as session:
+            await record_worker_heartbeat(
+                session,
+                worker_id=worker_id,
+                worker_type=worker_type,
+                hostname=hostname,
+                started_at=started_at,
+                status=status,
+                current_job_id=current_job_id,
+                current_job_type=current_job_type,
+                error=error,
+            )
+    except Exception as heartbeat_error:
+        logger.warning(
+            "worker_heartbeat_failed",
+            worker_type=worker_type,
+            error_class=type(heartbeat_error).__name__,
+        )
 
 
 async def scheduler_loop() -> None:
     """Continuously schedule singleton reconciliation and publication work."""
 
     session_factory = get_session_factory()
+    hostname = socket.gethostname()
+    worker_id = f"{hostname}-scheduler-{uuid4()}"
+    started_at = datetime.now(UTC)
+    last_heartbeat = 0.0
     while True:
         try:
             async with session_factory() as session:
                 scheduled = await schedule_periodic_jobs(session)
                 if scheduled:
                     logger.info("periodic_jobs_scheduled", count=scheduled)
+            if time.monotonic() - last_heartbeat >= 10:
+                await _report_heartbeat(
+                    session_factory,
+                    worker_id=worker_id,
+                    worker_type="scheduler",
+                    hostname=hostname,
+                    started_at=started_at,
+                    status="idle",
+                )
+                last_heartbeat = time.monotonic()
         except Exception as exc:
+            await _report_heartbeat(
+                session_factory,
+                worker_id=worker_id,
+                worker_type="scheduler",
+                hostname=hostname,
+                started_at=started_at,
+                status="error",
+                error=exc,
+            )
             logger.exception(
                 "periodic_job_scheduling_failed",
                 error_class=type(exc).__name__,
@@ -38,13 +100,35 @@ async def scheduler_loop() -> None:
 async def dispatcher_loop(worker_number: int) -> None:
     """Continuously claim and dispatch one job at a time for fair concurrency."""
 
-    worker_id = f"{socket.gethostname()}-{worker_number}-{uuid4()}"
+    hostname = socket.gethostname()
+    worker_id = f"{hostname}-dispatcher-{worker_number}-{uuid4()}"
+    started_at = datetime.now(UTC)
+    last_heartbeat = 0.0
     session_factory = get_session_factory()
     while True:
         try:
             async with session_factory() as session:
                 jobs = await claim_jobs(session, worker_id, limit=1)
+            if not jobs and time.monotonic() - last_heartbeat >= 10:
+                await _report_heartbeat(
+                    session_factory,
+                    worker_id=worker_id,
+                    worker_type="dispatcher",
+                    hostname=hostname,
+                    started_at=started_at,
+                    status="idle",
+                )
+                last_heartbeat = time.monotonic()
         except Exception as exc:
+            await _report_heartbeat(
+                session_factory,
+                worker_id=worker_id,
+                worker_type="dispatcher",
+                hostname=hostname,
+                started_at=started_at,
+                status="error",
+                error=exc,
+            )
             logger.exception(
                 "outbox_job_claim_failed",
                 worker_number=worker_number,
@@ -57,6 +141,16 @@ async def dispatcher_loop(worker_number: int) -> None:
             await asyncio.sleep(1)
             continue
         claimed = jobs[0]
+        await _report_heartbeat(
+            session_factory,
+            worker_id=worker_id,
+            worker_type="dispatcher",
+            hostname=hostname,
+            started_at=started_at,
+            status="running",
+            current_job_id=claimed.id,
+            current_job_type=claimed.job_type,
+        )
         logger.info(
             "outbox_job_started",
             job_id=str(claimed.id),
@@ -67,10 +161,29 @@ async def dispatcher_loop(worker_number: int) -> None:
             try:
                 await dispatch_job(session, claimed)
                 await complete_job(session, claimed)
+                await _report_heartbeat(
+                    session_factory,
+                    worker_id=worker_id,
+                    worker_type="dispatcher",
+                    hostname=hostname,
+                    started_at=started_at,
+                    status="idle",
+                )
                 logger.info("outbox_job_completed", job_id=str(claimed.id), job_type=claimed.job_type)
             except Exception as exc:
                 await session.rollback()
                 await fail_job(session, claimed, exc)
+                await _report_heartbeat(
+                    session_factory,
+                    worker_id=worker_id,
+                    worker_type="dispatcher",
+                    hostname=hostname,
+                    started_at=started_at,
+                    status="error",
+                    current_job_id=claimed.id,
+                    current_job_type=claimed.job_type,
+                    error=exc,
+                )
                 logger.exception(
                     "outbox_job_failed",
                     job_id=str(claimed.id),

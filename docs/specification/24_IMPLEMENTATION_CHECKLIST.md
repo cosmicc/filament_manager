@@ -52,7 +52,7 @@
 - [x] unknown `extra` fields preserved with managed JSON encoding
 - [x] inbound usage reconciliation before metadata convergence
 - [x] restart, stale-lock, and backlog recovery
-- [x] persistent physical-spool state, bounded Cura material catalog, and direct active-ID drift repair
+- [x] persistent physical-spool state, bounded live print/manual-load catalog, guarded direct Spoolman target capture, and physical active-ID restoration
 - [ ] stack/network outage tests
 
 ## Google publication
@@ -74,7 +74,18 @@
 - [x] deterministic Cura material GUID and exact-spool Klipper/Fluidd print preflight
 - [x] P1-P5 physical plates seeded
 - [x] dynamic P-number A/B side discovery and one-to-one side mesh mapping tested
+- [x] manual Side B creation with unavailable-until-mesh state
+- [x] live valid P-number Fluidd mesh chooser without static per-plate helper macros
+- [x] physical nozzle inventory, lifecycle history, and exact completed-use statistics
+- [x] pre-takeover Cura selection into one scoped family template plus product profiles
 - [ ] preferred side warnings at print start
+
+## Diagnostics and recovery validation
+
+- [x] consolidated sanitized connection, synchronization, worker, queue, and recent-error page
+- [x] persisted read-only recovery validation from the web and CLI
+- [x] Administrator-only idempotent projection rebuild from the web and CLI
+- [x] completed-print counts for plate sides, physical nozzles, and distinct spools
 
 ## Calibration wizard
 

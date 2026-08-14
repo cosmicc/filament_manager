@@ -74,7 +74,7 @@ const spool = {
   remaining_mass_measured_g: '800', remaining_mass_effective_g: '800',
   remaining_percent: '80', weight_confidence: 'measured', status: 'in_stock',
   location: 'Bucket 3', spoolman_id: 7, active_printer_id: null, last_measurement_at: '2026-08-11T14:00:00Z',
-  notes: null, archived: false, record_version: 3,
+  notes: null, archived: false, record_version: 3, completed_print_count: 6,
 }
 
 test.beforeEach(async ({ page }) => {
@@ -359,13 +359,14 @@ test('reported Cura material can be preserved as a draft before takeover', async
   let importedTemplates: Record<string, unknown>[] = []
   await page.route('**/api/v1/workstation-agents', (route) => route.fulfill({ json: [agent] }))
   await page.route('**/api/v1/cura-deployments', (route) => route.fulfill({ json: [] }))
+  await page.route('**/api/v1/profiles', (route) => route.fulfill({ json: [] }))
   await page.route('**/api/v1/profiles/templates**', async (route) => {
     if (route.request().method() === 'POST') {
       submitted = route.request().postDataJSON() as Record<string, unknown>
       importedTemplates = [{
         ...template,
         id: 'imported-template-id',
-        name: 'Polymaker PETG · PolyLite',
+        name: 'Template PETG',
         material_type: 'PETG',
         source_workstation_agent_id: agent.id,
         source_cura_material_id: material.source_id,
@@ -376,11 +377,13 @@ test('reported Cura material can be preserved as a draft before takeover', async
   })
 
   await page.goto('/workstations')
-  await expect(page.getByRole('heading', { name: 'Preserve before takeover' })).toBeVisible()
-  await page.getByRole('button', { name: 'Import as draft' }).click()
-  await expect(page.getByRole('dialog', { name: 'Import Cura material as template' })).toBeVisible()
+  await expect(page.getByRole('heading', { name: 'Preserve selected Cura materials before synchronization' })).toBeVisible()
+  await page.getByRole('checkbox', { name: /Polymaker PETG · PolyLite/ }).check()
+  await page.getByRole('button', { name: 'Review selected imports (1)' }).click()
+  await expect(page.getByRole('dialog', { name: 'Preserve selected Cura material' })).toBeVisible()
+  await expect(page.getByRole('button', { name: 'Family template' })).toHaveClass(/active/)
   await page.getByLabel('Filament density').fill('1.27')
-  await page.getByRole('button', { name: 'Import draft template' }).click()
+  await page.getByRole('button', { name: 'Import draft' }).click()
 
   await expect.poll(() => submitted?.source_id).toBe(material.source_id)
   await expect.poll(() => submitted?.filament_density_g_cm3).toBe('1.27')

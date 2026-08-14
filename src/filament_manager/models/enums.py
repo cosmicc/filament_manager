@@ -17,6 +17,14 @@ class SpoolStatus(StrEnum):
     ARCHIVED = "archived"
 
 
+class NozzleStatus(StrEnum):
+    """Lifecycle state for one physical nozzle."""
+
+    AVAILABLE = "available"
+    INSTALLED = "installed"
+    RETIRED = "retired"
+
+
 class MeasurementSource(StrEnum):
     MANUAL = "manual"
     SCALE = "scale"

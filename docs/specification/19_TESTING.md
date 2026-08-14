@@ -11,6 +11,8 @@
 - idempotency-key generation
 - Spoolman extra-field merge
 - deterministic Cura material GUIDs, bounded prompt labels/catalogs, Klipper macro syntax, and physical unload/load commit ordering
+- derived completed-print counts for one plate side, captured physical nozzle, and each distinct start/M600 spool
+- manual Side B creation, duplicate rejection, and mesh-unavailable initial state
 
 ## PostgreSQL integration tests
 
@@ -23,13 +25,14 @@ Use a real disposable PostgreSQL instance for:
 - worker claiming with `SKIP LOCKED`
 - outbox atomicity
 - optimistic concurrency
+- nozzle lifecycle events, one-installed-nozzle enforcement, worker heartbeats, and persisted diagnostic runs
 
 ## Connector tests
 
 Mock or containerize:
 
 - Spoolman REST and WebSocket
-- Moonraker status, physical-spool macro state, bounded catalog, and guarded change calls
+- Moonraker status, physical-spool macro state, bounded catalog, guarded change calls, direct Spoolman target capture/restoration, and live manual-load prompts
 - Google Sheets batch updates and quota failures
 
 ## End-to-end scenarios
@@ -47,6 +50,10 @@ Mock or containerize:
 11. NFC unknown tag and confirmed activation.
 12. Matching Cura material bypasses the change workflow without altering the existing `START_PRINT` behavior.
 13. Mismatched Cura material clears Spoolman only after unload and sets the selected ID only after load; cancellation at either prompt retains the last completed physical state.
+14. `LOAD_FILAMENT`, `FILAMENT_MANAGER_LOAD_TARGET`, and a repeated M600 selection open the eligible catalog without a staged variable; a direct Spoolman selection is restored until confirmed; and `SELECT_BUILD_PLATE` enumerates only live valid P-number meshes.
+15. One Cura source per material family becomes the scoped template, selected sibling sources become product profiles, and takeover stays blocked until every selection is published.
+16. Read-only recovery validation persists sanitized results without changing canonical records, and projection rebuild queues complete derived work.
+17. A completed print with repeated M600 segments counts each distinct spool once and its captured nozzle and plate side once.
 
 ## Swarm tests
 

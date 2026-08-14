@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import BuildPlatesPage from './BuildPlatesPage'
 
@@ -44,28 +44,33 @@ const plate = {
   last_cleaned_at: null,
   notes: null,
   record_version: 1,
-  surfaces: [{
-    id: 'surface-id',
-    build_plate_id: 'plate-id',
-    side: 'a',
-    surface_code: 'P1',
-    klipper_mesh_profile: 'P1',
-    surface_material: null,
-    texture: null,
-    mesh_available: true,
-    last_mesh_checked_at: '2026-08-11T14:00:00Z',
-    last_mesh_calibrated_at: null,
-    notes: null,
-    record_version: 1,
-  }],
+  completed_print_count: 0,
+  surfaces: [
+    {
+      id: 'surface-id',
+      build_plate_id: 'plate-id',
+      side: 'a',
+      surface_code: 'P1',
+      klipper_mesh_profile: 'P1',
+      surface_material: null,
+      texture: null,
+      mesh_available: true,
+      last_mesh_checked_at: '2026-08-11T14:00:00Z',
+      last_mesh_calibrated_at: null,
+      notes: null,
+      record_version: 1,
+      completed_print_count: 0,
+    },
+  ],
 }
 
 describe('BuildPlatesPage', () => {
   afterEach(() => {
+    cleanup()
     apiFetchMock.mockReset()
   })
 
-  it('reports automatic Moonraker synchronization without requiring a manual control', async () => {
+  it('leaves detailed Moonraker synchronization status on Diagnostics', async () => {
     apiFetchMock.mockImplementation((path: string) => {
       if (path === '/build-plates') return Promise.resolve([plate])
       if (path === '/printers') return Promise.resolve([printer])
@@ -81,9 +86,38 @@ describe('BuildPlatesPage', () => {
       </QueryClientProvider>,
     )
 
-    expect(await screen.findByText('Automatic Moonraker synchronization is on.')).toBeTruthy()
+    expect(await screen.findByRole('heading', { name: 'Build Plate P1' })).toBeTruthy()
+    expect(screen.queryByText('Automatic Moonraker synchronization is on.')).toBeNull()
     expect(screen.queryByRole('button', { name: 'Synchronize with Moonraker' })).toBeNull()
     expect(apiFetchMock).not.toHaveBeenCalledWith('/build-plates/synchronize', expect.anything())
+  })
+
+  it('adds the canonical Side B through the plate API', async () => {
+    apiFetchMock.mockImplementation((path: string) => {
+      if (path === '/build-plates') return Promise.resolve([plate])
+      if (path === '/printers') return Promise.resolve([printer])
+      if (path === '/build-plates/plate-id/surfaces') return Promise.resolve(plate)
+      return Promise.reject(new Error(`Unexpected API path: ${path}`))
+    })
+    const queryClient = new QueryClient({
+      defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
+    })
+
+    render(
+      <QueryClientProvider client={queryClient}>
+        <BuildPlatesPage />
+      </QueryClientProvider>,
+    )
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Add Side B' }))
+
+    await waitFor(() => {
+      expect(apiFetchMock).toHaveBeenCalledWith('/build-plates/plate-id/surfaces', {
+        method: 'POST',
+        body: JSON.stringify({}),
+      })
+    })
+    expect(await screen.findByText('P1 Side B was added. Its mesh remains unavailable until P1b exists in Moonraker.')).toBeTruthy()
   })
 
   it('opens physical plate options in visible grouped sections', async () => {

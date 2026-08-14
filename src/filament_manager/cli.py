@@ -3,6 +3,7 @@
 import asyncio
 import json
 import os
+import time
 from pathlib import Path
 from typing import Annotated
 from uuid import UUID
@@ -15,6 +16,7 @@ from filament_manager.database import get_session_factory
 from filament_manager.models.auth import User
 from filament_manager.models.enums import UserRole
 from filament_manager.security import hash_password, normalize_username
+from filament_manager.services.diagnostics import queue_projection_rebuild, run_recovery_validation
 from filament_manager.services.seed import seed_configured_system
 from filament_manager.services.workbook_import import commit_approved_run, save_dry_run
 
@@ -78,6 +80,45 @@ def seed_system() -> None:
             await seed_configured_system(session, settings)
             await session.commit()
             typer.echo("Seeded configured printers and P1-P5")
+
+    asyncio.run(command())
+
+
+@app.command("verify")
+def verify_recovery_readiness() -> None:
+    """Run non-destructive database, integration, projection, and recovery checks."""
+
+    async def command() -> None:
+        async with get_session_factory()() as session:
+            results = await run_recovery_validation(session)
+            typer.echo(json.dumps(results, indent=2, default=str))
+            summary = results.get("summary", {})
+            if isinstance(summary, dict) and int(summary.get("error", 0)):
+                raise typer.Exit(code=1)
+
+    asyncio.run(command())
+
+
+@app.command("rebuild-projections")
+def rebuild_projections(
+    confirm: Annotated[
+        bool,
+        typer.Option("--confirm", help="Confirm that all supported external projections may be queued"),
+    ] = False,
+) -> None:
+    """Queue a complete Spoolman, Google, and managed-Cura projection rebuild."""
+
+    if not confirm:
+        raise typer.BadParameter("pass --confirm to queue the projection rebuild")
+
+    async def command() -> None:
+        async with get_session_factory()() as session:
+            result = await queue_projection_rebuild(
+                session,
+                actor_id=None,
+                correlation_id=f"cli-rebuild-{int(time.time())}",
+            )
+            typer.echo(json.dumps(result, indent=2, default=str))
 
     asyncio.run(command())
 
