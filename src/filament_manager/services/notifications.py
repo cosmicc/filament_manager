@@ -279,7 +279,7 @@ async def evaluate_operator_notifications(session: AsyncSession) -> int:
             deduplication_key=key,
             category="cura_deployment_failed",
             severity=NotificationSeverity.ERROR,
-            title=f"Cura deployment failed on {agent.display_name}",
+            title=f"Cura synchronization failed on {agent.display_name}",
             message="Open Cura Workstations to review the sanitized failure and retry.",
             action_path="/workstations",
             object_type="cura_deployment",

@@ -451,6 +451,10 @@ export interface CuraMaterialReport {
   material_type: string
   color_name: string
   settings: Record<string, string | boolean>
+  source_kind?: 'material' | 'print_profile'
+  machine_name?: string | null
+  quality_type?: string | null
+  omitted_setting_count?: number
 }
 
 export interface WorkstationAgent {

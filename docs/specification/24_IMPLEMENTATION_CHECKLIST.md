@@ -69,7 +69,7 @@
 - [x] approved versioned extension settings
 - [x] material-only Cura export renderer
 - [x] sanitized existing-material import
-- [x] versioned `Template <material type>` bases and directly linked sparse product draft profiles
+- [x] directly saved `Template <material type>` bases and linked sparse product customizations with hidden immutable snapshots
 - [x] full desired-state Cura library, explicit takeover, bundled-material hiding, drift repair, and rollback
 - [x] deterministic Cura material GUID and exact-spool Klipper/Fluidd print preflight
 - [x] P1-P5 physical plates seeded
@@ -77,7 +77,7 @@
 - [x] manual Side B creation with unavailable-until-mesh state
 - [x] live valid P-number Fluidd mesh chooser without static per-plate helper macros
 - [x] physical nozzle inventory, lifecycle history, and exact completed-use statistics
-- [x] pre-takeover Cura selection into one scoped family template plus product profiles
+- [x] atomic pre-takeover Cura source-to-existing-template mapping with optional ignored sources
 - [ ] preferred side warnings at print start
 
 ## Diagnostics and recovery validation

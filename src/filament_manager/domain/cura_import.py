@@ -9,6 +9,31 @@ from uuid import UUID
 from filament_manager.domain.cura_material_settings import CURA_EXTENSION_SETTING_KEYS
 
 
+def merge_cura_settings(
+    base_settings: Mapping[str, object],
+    source_settings: Mapping[str, object],
+) -> dict[str, object]:
+    """Overlay explicit Cura values without leaving synonymous keys in conflict."""
+
+    merged = dict(base_settings)
+    synonymous_groups = (
+        {"material_print_temperature", "default_material_print_temperature"},
+        {"material_bed_temperature", "default_material_bed_temperature"},
+        {"cool_fan_speed_max", "cool_fan_speed"},
+        {"speed_print_layer_0", "speed_layer_0"},
+    )
+    for keys in synonymous_groups:
+        if keys.intersection(source_settings):
+            for key in keys:
+                merged.pop(key, None)
+    if {"cool_fan_speed_max", "cool_fan_speed"}.intersection(source_settings) and (
+        "cool_fan_speed_min" not in source_settings
+    ):
+        merged.pop("cool_fan_speed_min", None)
+    merged.update(source_settings)
+    return merged
+
+
 def _decimal(
     settings: Mapping[str, object],
     *keys: str,

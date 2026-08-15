@@ -282,7 +282,7 @@ function WorkbookImportPanel({ administrator }: { administrator: boolean }) {
                 <p className="success-note">
                   <CheckCircle2 size={18} />
                   Imported {commitResult.spools} spools, {commitResult.products} products, and{' '}
-                  {commitResult.profiles} draft profiles.
+                  {commitResult.profiles} current profiles.
                 </p>
               )}
 

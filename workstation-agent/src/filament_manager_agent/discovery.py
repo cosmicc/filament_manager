@@ -7,6 +7,7 @@ import os
 import re
 import sys
 import uuid
+from dataclasses import dataclass
 from pathlib import Path
 from xml.etree.ElementTree import Element
 
@@ -84,6 +85,24 @@ STANDARD_MATERIAL_KEYS = {
     "retraction speed": "retraction_speed",
     "standby temperature": "material_standby_temperature",
 }
+QUALITY_PROFILE_FILE_LIMIT = 200
+QUALITY_PROFILE_MAX_BYTES = 512 * 1024
+QUALITY_EXTRUDER_STEM = re.compile(
+    r"^(?P<machine>.+)_extruder_(?P<position>\d+)_(?:%23|#)\d+_(?P<profile>.+)$",
+    re.IGNORECASE,
+)
+
+
+@dataclass(frozen=True, slots=True)
+class _QualityProfilePart:
+    """One bounded global or extruder-specific Cura quality-change layer."""
+
+    identity: str
+    name: str
+    quality_type: str | None
+    position: int | None
+    settings: dict[str, str | bool]
+    omitted_keys: frozenset[str]
 
 
 def platform_key() -> str:
@@ -287,7 +306,7 @@ def _material_from_file(path: Path, installation_id: str) -> CuraMaterial | None
     """Parse one bounded Cura XML material without retaining its local path."""
 
     try:
-        if path.stat().st_size > 512 * 1024:
+        if path.is_symlink() or path.stat().st_size > 512 * 1024:
             return None
         data = path.read_bytes()
         root = ET.fromstring(data)
@@ -357,6 +376,166 @@ def discover_materials(installations: list[CuraInstallation]) -> list[CuraMateri
             seen.add((material.installation_id, material.source_id))
             materials.append(material)
     return materials[:500]
+
+
+def _quality_profile_identity(path: Path, position: int | None) -> str | None:
+    """Return the matching global-profile stem for one Cura quality-change file."""
+
+    stem = path.name.removesuffix(".inst.cfg")
+    if position is None:
+        return stem
+    match = QUALITY_EXTRUDER_STEM.fullmatch(stem)
+    if match is None or int(match.group("position")) != position:
+        return None
+    return f"{match.group('machine')}_{match.group('profile')}"
+
+
+def _quality_profile_part(path: Path) -> _QualityProfilePart | None:
+    """Parse one bounded quality-change layer without evaluating Cura expressions."""
+
+    try:
+        if path.is_symlink() or path.stat().st_size > QUALITY_PROFILE_MAX_BYTES:
+            return None
+    except OSError:
+        return None
+    parser = _read_cfg(path)
+    if (
+        parser is None
+        or not parser.has_section("general")
+        or not parser.has_section("metadata")
+        or not parser.has_section("values")
+        or parser["metadata"].get("type") != "quality_changes"
+    ):
+        return None
+    raw_position = str(parser["metadata"].get("position") or "").strip()
+    if raw_position:
+        try:
+            position = int(raw_position)
+        except ValueError:
+            return None
+        # Filament Manager currently supports one printer/nozzle extrusion path.
+        if position != 0:
+            return None
+    else:
+        position = None
+    identity = _quality_profile_identity(path, position)
+    name = str(parser["general"].get("name") or "").strip()[:255]
+    if identity is None or not name:
+        return None
+    settings: dict[str, str | bool] = {}
+    omitted_keys: set[str] = set()
+    for key, raw_value in parser["values"].items():
+        if key not in MATERIAL_SETTING_KEYS:
+            continue
+        value = str(raw_value).strip()
+        if not value or len(value) > 500 or "\n" in value or "\r" in value:
+            continue
+        # Cura expressions require its runtime context. Importing or evaluating them
+        # server-side would be unsafe and could produce a misleading resolved value.
+        if value.startswith("="):
+            omitted_keys.add(key)
+            continue
+        settings[key] = value == "True" if value in {"True", "False"} else value
+    return _QualityProfilePart(
+        identity=identity,
+        name=name,
+        quality_type=str(parser["metadata"].get("quality_type") or "").strip()[:96] or None,
+        position=position,
+        settings=settings,
+        omitted_keys=frozenset(omitted_keys),
+    )
+
+
+def _profile_machine(installation: CuraInstallation, identity: str) -> CuraMachine | None:
+    """Match a quality-profile filename prefix to one discovered Cura machine."""
+
+    normalized_identity = re.sub(r"[^a-z0-9]", "", identity.casefold())
+    ranked: list[tuple[int, CuraMachine]] = []
+    for machine in installation.machines:
+        matches = [
+            re.sub(r"[^a-z0-9]", "", value.casefold())
+            for value in (machine.definition_id, machine.machine_id, machine.display_name)
+            if value
+        ]
+        score = max(
+            (len(value) for value in matches if value and normalized_identity.startswith(value)),
+            default=0,
+        )
+        if score:
+            ranked.append((score, machine))
+    if ranked:
+        ranked.sort(key=lambda item: item[0], reverse=True)
+        if len(ranked) == 1 or ranked[0][0] > ranked[1][0]:
+            return ranked[0][1]
+    return installation.machines[0] if len(installation.machines) == 1 else None
+
+
+def discover_print_profiles(installations: list[CuraInstallation]) -> list[CuraMaterial]:
+    """Discover saved Cura print profiles as bounded, approved import sources."""
+
+    profiles: list[CuraMaterial] = []
+    seen: set[tuple[str, str]] = set()
+    for installation in installations:
+        global_parts: dict[str, _QualityProfilePart] = {}
+        extruder_parts: dict[str, _QualityProfilePart] = {}
+        quality_paths = sorted((installation.data_path / "quality_changes").glob("*.cfg"))[
+            :QUALITY_PROFILE_FILE_LIMIT
+        ]
+        for path in quality_paths:
+            part = _quality_profile_part(path)
+            if part is None:
+                continue
+            target = global_parts if part.position is None else extruder_parts
+            target.setdefault(part.identity, part)
+        for identity in sorted(set(global_parts) | set(extruder_parts)):
+            global_part = global_parts.get(identity)
+            extruder_part = extruder_parts.get(identity)
+            settings = dict(global_part.settings if global_part else {})
+            omitted_keys = set(global_part.omitted_keys if global_part else ())
+            if extruder_part is not None:
+                for key in extruder_part.omitted_keys:
+                    settings.pop(key, None)
+                    omitted_keys.add(key)
+                for key, value in extruder_part.settings.items():
+                    settings[key] = value
+                    omitted_keys.discard(key)
+            if not settings:
+                continue
+            source_part = extruder_part or global_part
+            assert source_part is not None
+            source_payload = json.dumps(
+                {
+                    "source_kind": "print_profile",
+                    "installation_id": installation.installation_id,
+                    "identity": identity,
+                    "name": source_part.name,
+                    "quality_type": source_part.quality_type,
+                    "settings": settings,
+                },
+                sort_keys=True,
+                separators=(",", ":"),
+            ).encode("utf-8")
+            source_id = hashlib.sha256(source_payload).hexdigest()
+            if (installation.installation_id, source_id) in seen:
+                continue
+            seen.add((installation.installation_id, source_id))
+            machine = _profile_machine(installation, identity)
+            profiles.append(
+                CuraMaterial(
+                    source_id=source_id,
+                    installation_id=installation.installation_id,
+                    source_kind="print_profile",
+                    name=source_part.name,
+                    brand="Cura print profile",
+                    material_type="Not assigned",
+                    color_name="Not applicable",
+                    settings=settings,
+                    machine_name=machine.display_name if machine else None,
+                    quality_type=source_part.quality_type,
+                    omitted_setting_count=len(omitted_keys),
+                )
+            )
+    return profiles[:500]
 
 
 def discover_managed_materials(installations: list[CuraInstallation]) -> list[CuraMaterial]:

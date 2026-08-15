@@ -46,7 +46,7 @@ Canonical mutations normally begin Spoolman projection within one worker polling
 - `FILAMENT_MANAGER_SPOOL_STATE` must report the physically loaded ID or no spool. Do not manually invoke internal underscore-prefixed commit helpers.
 - `unloading` retains the old ID; after physical unload the state becomes no spool. `inserting` and `loading` retain no spool; only a completed load sets the new ID.
 - A ten-minute insertion timeout turns off the nozzle and preserves the last completed physical boundary. Use `FILAMENT_MANAGER_ABORT` to reset a workflow after a macro error without changing loaded-spool identity.
-- Missing Cura print candidates require a current product material, an eligible projected spool, and a published exact printer/nozzle profile. A missing manual-load choice instead requires a projected non-empty spool and a safe temperature from its newest non-archived exact profile or linked in-scope template; manual loading does not require publication.
+- Missing Cura print candidates require a current product material, an eligible projected spool, and a current exact printer/nozzle profile. A missing manual-load choice instead requires a projected non-empty spool and a safe temperature from its newest non-archived exact profile or linked in-scope template; manual loading does not require an exact print profile.
 
 ## Upgrade Spoolman
 

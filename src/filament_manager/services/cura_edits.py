@@ -1,4 +1,4 @@
-"""Import edits to known managed Cura materials as reviewable draft revisions."""
+"""Directly save edits to known managed Cura materials."""
 
 from __future__ import annotations
 
@@ -7,26 +7,27 @@ import json
 from datetime import UTC, datetime
 from uuid import UUID
 
-from sqlalchemy import func, select, text
+from sqlalchemy import select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from filament_manager.api.schemas import CuraManagedMaterialReport, MaterialSettingsInput
 from filament_manager.domain.cura_import import cura_setting_maps_equal, material_settings_from_cura
 from filament_manager.domain.cura_material_settings import cura_settings_for_profile
-from filament_manager.domain.profile_inheritance import (
-    profile_columns_from_settings,
-    sparse_profile_overrides,
-)
 from filament_manager.domain.spool_preflight import cura_material_guid
 from filament_manager.models.enums import ProfileStatus
 from filament_manager.models.inventory import (
     FilamentProduct,
     MaterialProfile,
+    MaterialTemplate,
     MaterialTemplateRevision,
 )
 from filament_manager.models.workstations import CuraManagedEditReceipt, WorkstationAgent
 from filament_manager.services.cura_library import settings_from_template
 from filament_manager.services.events import add_audit_event
+from filament_manager.services.material_settings import (
+    create_published_profile_snapshot,
+    save_template_settings,
+)
 
 MAX_GUID_LOOKUP_REVISIONS = 10_000
 
@@ -101,7 +102,7 @@ async def import_managed_cura_edits(
     reports: list[CuraManagedMaterialReport],
     correlation_id: str,
 ) -> int:
-    """Create one idempotent draft for each semantically changed known material."""
+    """Directly save each idempotent semantic change to a known material."""
 
     imported = 0
     for report in reports:
@@ -146,41 +147,28 @@ async def import_managed_cura_edits(
                     preferred_build_plate_surface_id=source_revision.preferred_build_plate_surface_id,
                 )
             ).model_dump(mode="json")
-            latest = await session.scalar(
-                select(func.max(MaterialProfile.version)).where(
-                    MaterialProfile.filament_product_id == source_revision.filament_product_id,
-                    MaterialProfile.printer_id == source_revision.printer_id,
-                    MaterialProfile.nozzle_diameter_mm == source_revision.nozzle_diameter_mm,
-                )
-            )
-            profile = MaterialProfile(
-                **profile_columns_from_settings(product_settings),
+            profile = await create_published_profile_snapshot(
+                session,
                 filament_product_id=source_revision.filament_product_id,
                 printer_id=source_revision.printer_id,
                 nozzle_diameter_mm=source_revision.nozzle_diameter_mm,
-                version=(latest or 0) + 1,
-                status=ProfileStatus.DRAFT,
-                base_template_revision_id=base_revision.id,
-                setting_overrides=sparse_profile_overrides(
-                    base_revision.settings,
-                    product_settings,
-                ),
+                base_revision=base_revision,
+                settings=product_settings,
             )
-            session.add(profile)
-            await session.flush()
             created_profile_id = profile.id
             add_audit_event(
                 session,
                 actor_id=None,
                 source="workstation_agent",
-                action="profile.revision.import_cura_edit",
+                action="profile.settings.import_cura_edit",
                 object_type="material_profile",
                 object_id=profile.id,
                 before={"source_profile_id": str(source_revision.id)},
                 after={
-                    "status": "draft",
+                    "status": "published",
                     "version": profile.version,
                     "workstation_agent_id": str(agent.id),
+                    "direct_save": True,
                 },
                 correlation_id=correlation_id,
             )
@@ -197,32 +185,32 @@ async def import_managed_cura_edits(
                     preferred_build_plate_surface_id=source_settings.preferred_build_plate_surface_id,
                 )
             )
-            latest = await session.scalar(
-                select(func.max(MaterialTemplateRevision.version)).where(
-                    MaterialTemplateRevision.material_template_id == source_revision.material_template_id
-                )
+            template = await session.get(
+                MaterialTemplate,
+                source_revision.material_template_id,
             )
-            revision = MaterialTemplateRevision(
-                material_template_id=source_revision.material_template_id,
-                version=(latest or 0) + 1,
-                status=ProfileStatus.DRAFT,
+            if template is None:
+                continue
+            revision, inherited_profiles = await save_template_settings(
+                session,
+                template=template,
                 settings=template_settings.model_dump(mode="json"),
             )
-            session.add(revision)
-            await session.flush()
             created_template_id = revision.id
             add_audit_event(
                 session,
                 actor_id=None,
                 source="workstation_agent",
-                action="material_template.revision.import_cura_edit",
+                action="material_template.settings.import_cura_edit",
                 object_type="material_template_revision",
                 object_id=revision.id,
                 before={"source_revision_id": str(source_revision.id)},
                 after={
-                    "status": "draft",
+                    "status": "published",
                     "version": revision.version,
                     "workstation_agent_id": str(agent.id),
+                    "linked_profiles_updated": len(inherited_profiles),
+                    "direct_save": True,
                 },
                 correlation_id=correlation_id,
             )

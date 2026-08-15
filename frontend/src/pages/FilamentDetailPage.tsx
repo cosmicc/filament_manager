@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { ArrowLeft, CopyPlus, GitCompareArrows, Pencil, Save, Upload } from 'lucide-react'
+import { ArrowLeft, Pencil, Save } from 'lucide-react'
 import { type CSSProperties, useEffect, useMemo, useState } from 'react'
 import { apiFetch } from '../api/client'
 import type {
@@ -16,7 +16,6 @@ import { LoadingState } from '../components/LoadingState'
 import { MaterialSettingsEditor, settingsFromForm } from '../components/MaterialSettingsEditor'
 import { Modal } from '../components/Modal'
 import { PageHeader } from '../components/PageHeader'
-import { StatusPill } from '../components/StatusPill'
 import { useAuth } from '../context/AuthContext'
 import { Link, useRouter } from '../context/RouterContext'
 
@@ -45,7 +44,6 @@ export default function FilamentDetailPage() {
   const [colorHex, setColorHex] = useState('#808080')
   const [editingProduct, setEditingProduct] = useState(false)
   const [editingSettings, setEditingSettings] = useState(false)
-  const [reviewingTemplateUpdate, setReviewingTemplateUpdate] = useState(false)
   const [message, setMessage] = useState('')
 
   useEffect(() => {
@@ -101,8 +99,8 @@ export default function FilamentDetailPage() {
   const saveProfile = useMutation({
     mutationFn: (form: HTMLFormElement) => {
       if (!latestProfile) throw new Error('This filament does not have a starting profile')
-      return apiFetch<MaterialProfile>(`/profiles/${latestProfile.id}/revisions`, {
-        method: 'POST',
+      return apiFetch<MaterialProfile>(`/profiles/${latestProfile.id}/settings`, {
+        method: 'PUT',
         body: JSON.stringify({
           expected_profile_version: latestProfile.record_version,
           settings: settingsFromForm(form, catalog.data ?? []),
@@ -110,34 +108,8 @@ export default function FilamentDetailPage() {
       })
     },
     onSuccess: async () => {
-      setMessage('Settings saved as a new template-linked draft with only customized values stored.')
+      setMessage('Profile settings saved. Customized values remain independent; all other values continue to inherit from the linked template. Cura synchronization was queued automatically.')
       setEditingSettings(false)
-      await client.invalidateQueries({ queryKey: ['profiles'] })
-    },
-    onError: (error: Error) => setMessage(error.message),
-  })
-  const publish = useMutation({
-    mutationFn: (profileId: string) => apiFetch(`/profiles/${profileId}/publish`, { method: 'POST' }),
-    onSuccess: async () => {
-      setMessage('Profile published and ready for Cura synchronization.')
-      await client.invalidateQueries({ queryKey: ['profiles'] })
-    },
-    onError: (error: Error) => setMessage(error.message),
-  })
-  const updateTemplateBase = useMutation({
-    mutationFn: () => {
-      if (!latestProfile?.latest_template_revision_id) throw new Error('No template update is available')
-      return apiFetch<MaterialProfile>(`/profiles/${latestProfile.id}/template-base`, {
-        method: 'POST',
-        body: JSON.stringify({
-          expected_profile_version: latestProfile.record_version,
-          target_template_revision_id: latestProfile.latest_template_revision_id,
-        }),
-      })
-    },
-    onSuccess: async () => {
-      setMessage('Template update confirmed for this filament and saved as a reviewable draft profile.')
-      setReviewingTemplateUpdate(false)
       await client.invalidateQueries({ queryKey: ['profiles'] })
     },
     onError: (error: Error) => setMessage(error.message),
@@ -180,12 +152,8 @@ export default function FilamentDetailPage() {
         </dl>
       </section>
       <section className="card">
-        <header className="card__header"><div><p className="eyebrow">Versioned Cura settings</p><h2>Material profile</h2></div>{canEdit && latestProfile && <button className="button" onClick={() => setEditingSettings(true)}><CopyPlus size={16} /> Edit as new version</button>}</header>
-        {!latestProfile ? <p className="form-error">No profile exists. Create this filament from a published material template.</p> : <>
-          <dl className="definition-list definition-list--compact"><div><dt>Latest version</dt><dd>v{latestProfile.version}</dd></div><div><dt>Status</dt><dd><StatusPill status={latestProfile.status} /></dd></div><div><dt>Linked template</dt><dd>{latestProfile.base_template_name ?? 'Missing template'} · v{latestProfile.base_template_version ?? '—'}</dd></div><div><dt>Settings ownership</dt><dd>{latestProfile.override_count ? `${latestProfile.override_count} customized` : 'Fully inherited'}</dd></div><div><dt>Printer</dt><dd>{printers.data?.find((printer) => printer.id === latestProfile.printer_id)?.name ?? 'Unknown'} · {latestProfile.nozzle_diameter_mm} mm</dd></div><div><dt>Resolved Cura settings</dt><dd>{Object.keys(latestProfile.cura_settings).length}</dd></div></dl>
-          {latestProfile.latest_template_revision_id !== latestProfile.base_template_revision_id ? <div className="publish-banner"><div><strong>{latestProfile.base_template_name} v{latestProfile.latest_template_version} is available</strong><p>Review and confirm this template change for this filament only. Existing overrides are preserved.</p></div>{canEdit ? <button className="button" onClick={() => setReviewingTemplateUpdate(true)}><GitCompareArrows size={16} /> Review template update</button> : null}</div> : null}
-          <div className="profile-version-list">{productProfiles.map((profile) => <div key={profile.id}><span>v{profile.version} · {profile.base_template_name ?? 'Template'} v{profile.base_template_version ?? '—'} · {profile.override_count ? `${profile.override_count} overrides` : 'inherited'}</span><div><StatusPill status={profile.status} />{canEdit && profile.status !== 'published' && <button className="icon-button" title="Publish profile" onClick={() => publish.mutate(profile.id)} disabled={publish.isPending}><Upload size={16} /></button>}</div></div>)}</div>
-        </>}
+        <header className="card__header"><div><p className="eyebrow">Cura settings</p><h2>Material profile</h2></div>{canEdit && latestProfile && <button className="button" onClick={() => setEditingSettings(true)}><Pencil size={16} /> Edit settings</button>}</header>
+        {!latestProfile ? <p className="form-error">No profile exists. Create this filament from a material template.</p> : <dl className="definition-list definition-list--compact"><div><dt>Linked template</dt><dd>{latestProfile.base_template_name ?? 'Missing template'}</dd></div><div><dt>Settings ownership</dt><dd>{latestProfile.override_count ? `${latestProfile.override_count} customized` : 'Fully inherited'}</dd></div><div><dt>Template changes</dt><dd>Inherited automatically</dd></div><div><dt>Printer</dt><dd>{printers.data?.find((printer) => printer.id === latestProfile.printer_id)?.name ?? 'Unknown'} · {latestProfile.nozzle_diameter_mm} mm</dd></div><div><dt>Resolved Cura settings</dt><dd>{Object.keys(latestProfile.cura_settings).length}</dd></div></dl>}
       </section>
     </div>
     {editingProduct ? <Modal title="Edit filament product" description="Update the canonical product identity and physical specifications." onClose={closeProductEditor} size="wide" footer={<><button className="button" type="button" onClick={closeProductEditor}>Cancel</button><button className="button button--primary" form="edit-filament-product" disabled={update.isPending}><Save size={17} />{update.isPending ? 'Saving…' : 'Save filament'}</button></>}>
@@ -213,20 +181,11 @@ export default function FilamentDetailPage() {
         {update.error ? <p className="form-error" role="alert">{update.error.message}</p> : null}
       </form>
     </Modal> : null}
-    {editingSettings && latestProfile ? <Modal title={`Edit material profile v${latestProfile.version + 1}`} description={`Edit resolved values inherited from ${latestProfile.base_template_name ?? 'the linked template'}. Only differences are stored as filament overrides.`} onClose={() => setEditingSettings(false)} size="wide" footer={<><button className="button" type="button" onClick={() => setEditingSettings(false)}>Cancel</button><button className="button button--primary" form="edit-material-profile" disabled={saveProfile.isPending}><CopyPlus size={16} />{saveProfile.isPending ? 'Saving…' : 'Save new draft version'}</button></>}>
+    {editingSettings && latestProfile ? <Modal title="Edit material profile" description={`Edit resolved values inherited from ${latestProfile.base_template_name ?? 'the linked template'}. Only explicit differences are stored as filament customizations.`} onClose={() => setEditingSettings(false)} size="wide" footer={<><button className="button" type="button" onClick={() => setEditingSettings(false)}>Cancel</button><button className="button button--primary" form="edit-material-profile" disabled={saveProfile.isPending}><Save size={16} />{saveProfile.isPending ? 'Saving…' : 'Save settings'}</button></>}>
       <form id="edit-material-profile" className="editor-form" onSubmit={(event) => { event.preventDefault(); saveProfile.mutate(event.currentTarget) }} key={latestProfile.id}>
         <MaterialSettingsEditor settings={latestProfile} baseSettings={latestProfile.base_template_settings} overrideKeys={latestProfile.override_keys} catalog={catalog.data ?? []} plates={plates.data ?? []} />
         {saveProfile.error ? <p className="form-error" role="alert">{saveProfile.error.message}</p> : null}
       </form>
-    </Modal> : null}
-    {reviewingTemplateUpdate && latestProfile ? <Modal title={`Update ${latestProfile.base_template_name} base`} description={`This confirmation applies only to ${item.product_name ?? `${item.material_type} ${item.color_name}`}. It creates a draft profile; nothing is published automatically.`} onClose={() => setReviewingTemplateUpdate(false)} size="wide" footer={<><button className="button" type="button" onClick={() => setReviewingTemplateUpdate(false)}>Keep v{latestProfile.base_template_version}</button><button className="button button--primary" type="button" disabled={updateTemplateBase.isPending} onClick={() => updateTemplateBase.mutate()}><GitCompareArrows size={16} />{updateTemplateBase.isPending ? 'Creating draft…' : `Confirm v${latestProfile.latest_template_version}`}</button></>}>
-      <EditorSection title="Effective setting changes" description="Customized values remain unchanged. Listed inherited values will change when this draft is published.">
-        {latestProfile.template_update_changes.length ? <div className="comparison-table"><div className="comparison-row comparison-row--header"><div>Setting</div><div>Current</div><div>Proposed</div></div>{latestProfile.template_update_changes.map((change) => {
-          const label = catalog.data?.find((entry) => entry.key === change.key)?.label ?? change.key.replaceAll('_', ' ')
-          return <div className="comparison-row" key={change.key}><div className="comparison-setting"><strong>{label}</strong><small>{change.overridden ? 'Customized value preserved' : 'Inherited from template'}</small></div><div className="comparison-value">{String(change.current_value ?? 'Not set')}</div><div className="comparison-value">{String(change.proposed_value ?? 'Not set')}</div></div>
-        })}</div> : <p className="success-note">Your overrides produce no effective setting changes, but you may still confirm the newer template base.</p>}
-      </EditorSection>
-      {updateTemplateBase.error ? <p className="form-error" role="alert">{updateTemplateBase.error.message}</p> : null}
     </Modal> : null}
   </div>
 }

@@ -47,7 +47,7 @@ Filament Manager provides one trusted inventory for physical filament spools, me
 - Receive consumption through Moonraker and Spoolman.
 - Warn when the selected spool is insufficient or materially incompatible where metadata permits.
 - Pass the Cura managed material GUID into a Klipper preflight that bypasses changing only when the matching physical spool is already loaded.
-- Unload at the removed filament's published nozzle temperature, clear active Spoolman state after physical unload, preheat/load at the selected filament's temperature, and activate the exact new ID only after physical load.
+- Unload at the removed filament's current safe nozzle temperature, clear active Spoolman state after physical unload, preheat/load at the selected filament's temperature, and activate the exact new ID only after physical load.
 - Present one live eligible-spool chooser for idle loads and M600 without requiring a separately configured Fluidd macro variable. Treat a direct non-null Spoolman selection as a guarded target that requires explicit already-loaded confirmation or the physical unload/load workflow before canonical activation.
 - Interact through the Spoolman API; direct Spoolman database access is prohibited.
 
@@ -61,9 +61,9 @@ Filament Manager provides one trusted inventory for physical filament spools, me
 
 ### Cura material profiles
 
-Store and export versioned profiles containing the approved Cura Material Settings catalog, including temperatures, flow, speeds, retraction, cooling, offsets, support angle, Cura Klipper Settings pressure advance/smooth time, density, and preferred build-plate side. Profiles are scoped by printer and nozzle diameter. Paired agents may report sanitized existing materials for explicit pre-takeover selection. One source per material family and printer/nozzle scope becomes the source-tracked draft template; other selected sources become product-owned draft profiles. Every selected import must be reviewed and published before authoritative takeover can proceed.
+Store and export directly saved profiles containing the approved Cura Material Settings catalog, including temperatures, flow, speeds, retraction, cooling, offsets, support angle, Cura Klipper Settings pressure advance/smooth time, density, and preferred build-plate side. Profiles are scoped by printer and nozzle diameter. Paired agents may report sanitized existing material files and saved print profiles for explicit pre-takeover selection. Saved print profiles merge global and first-extruder layers, omit expressions, and expose only tracked literal settings. Each source may be mapped to one existing template or left unmapped, each template may be selected once, and one confirmed atomic takeover applies all mappings before authoritative synchronization starts.
 
-Compare two to four profile or template revisions visually using one baseline, difference-only settings, explicit cross-printer/nozzle warnings, and exact-profile outcome statistics. Template revisions have no print outcome statistics.
+Compare two to four current profiles or templates visually using one baseline, difference-only settings, explicit cross-printer/nozzle warnings, and exact-profile outcome statistics. Templates have no print outcome statistics.
 
 ### Print inspection, history, and outcomes
 
@@ -72,7 +72,7 @@ Compare two to four profile or template revisions visually using one baseline, d
 - Import supported Moonraker live/history state and preserve immutable printer, physical spool, product, exact profile, plate, sliced metadata, actual usage, and M600 segment snapshots.
 - Mark earlier history unresolved when exact material state cannot be reconstructed instead of guessing.
 - Append outcome and quality-score revisions without rewriting prior assessments, and expose exact-profile success statistics.
-- Keep persistent operational notifications with per-user read state for printer, spool, plate, job, and Cura deployment conditions.
+- Keep persistent operational notifications with per-user read state for printer, spool, plate, job, and Cura synchronization conditions.
 
 ### Build plates
 
@@ -88,7 +88,7 @@ Compare two to four profile or template revisions visually using one baseline, d
 
 ### Calibration wizard
 
-Guide a new filament through temperature, flow, pressure advance, retraction, dimensional size/hole calibration, overhang, and optional ironing tests. Dimensional calibration records X/Y/Z, hole, shaft, and wall measurements; applies only material-profile results and presents printer-geometry corrections for review without changing Klipper. Record selected results and publish a new immutable profile version.
+Guide a new filament through temperature, flow, pressure advance, retraction, dimensional size/hole calibration, overhang, and optional ironing tests. Dimensional calibration records X/Y/Z, hole, shaft, and wall measurements; applies only material-profile results and presents printer-geometry corrections for review without changing Klipper. Applying selected results directly saves the current material profile and queues synchronization while retaining immutable internal history.
 
 ### Future scale and NFC
 

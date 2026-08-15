@@ -24,7 +24,7 @@ const integrations = [
   {
     name: 'Cura workstation agent',
     role: 'Outbound-only managed material library',
-    detail: 'The paired local agent backs up and atomically deploys approved templates and profiles after Cura closes.',
+    detail: 'The paired local agent backs up and atomically synchronizes current templates and profiles after Cura closes.',
     icon: MonitorCog,
   },
 ]

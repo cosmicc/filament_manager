@@ -15,6 +15,7 @@ from .discovery import (
     discover_installations,
     discover_managed_materials,
     discover_materials,
+    discover_print_profiles,
     unmanaged_material_count,
 )
 from .render import render_deployment
@@ -33,6 +34,10 @@ def heartbeat_payload(
         report = installation.report()
         report["managed_library_checksum"] = managed_library_checksum(installation.data_path)
         installation_reports.append(report)
+    materials = discover_materials(installations)
+    print_profiles = discover_print_profiles(installations)
+    import_sources = [*materials[:100], *print_profiles[:100]]
+    material_count = unmanaged_material_count(installations)
     return {
         "agent_version": __version__,
         "capabilities": {
@@ -45,10 +50,13 @@ def heartbeat_payload(
             "klipper_settings_plugin": True,
             "authoritative_material_library": True,
             "hide_bundled_materials": True,
-            "unmanaged_material_count": unmanaged_material_count(installations),
+            "unmanaged_material_count": material_count,
+            "cura_print_profile_import": True,
+            "unmanaged_print_profile_count": len(print_profiles),
+            "unmanaged_import_source_count": material_count + len(print_profiles),
         },
         "cura_installations": installation_reports,
-        "cura_materials": [material.report() for material in discover_materials(installations)],
+        "cura_materials": [source.report() for source in import_sources],
         "cura_managed_materials": [
             material.report() for material in discover_managed_materials(installations)
         ],

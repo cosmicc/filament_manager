@@ -20,7 +20,7 @@ Filament Manager delays the print's starting spool snapshot until the preflight/
 
 ## Manual load and Spoolman selection
 
-Run `LOAD_FILAMENT` or `FILAMENT_MANAGER_LOAD_TARGET` with no parameters in Fluidd to open the current manual-load list. It contains each projected, non-empty spool that has a safe nozzle temperature from its newest non-archived exact printer/nozzle profile or linked in-scope template. That profile may still be a draft; publication remains a separate requirement for Cura print preflight. There is no Target Spool field to configure. During a print, M600 unloads the tracked filament, clears Spoolman after motion completes, and opens the same replacement chooser. Running M600 or `FILAMENT_MANAGER_LOAD_TARGET` again while that selection is pending reopens the chooser.
+Run `LOAD_FILAMENT` or `FILAMENT_MANAGER_LOAD_TARGET` with no parameters in Fluidd to open the current manual-load list. It contains each projected, non-empty spool that has a safe nozzle temperature from its newest non-archived exact printer/nozzle profile or linked in-scope template. Manual loading does not require a current exact print profile, while Cura preflight does. There is no Target Spool field to configure. During a print, M600 unloads the tracked filament, clears Spoolman after motion completes, and opens the same replacement chooser. Running M600 or `FILAMENT_MANAGER_LOAD_TARGET` again while that selection is pending reopens the chooser.
 
 A non-null spool selected directly in Spoolman is treated as the requested target, not proof of a physical load. Within the next 15-second state pass, Fluidd opens the guarded confirmation and the worker restores Spoolman's active ID to the last completed physical boundary. If no spool is tracked, choose either **It Is Already Physically Loaded** to adopt the selected spool explicitly or **Insert and Load It** to run the load routine. If another spool is tracked, confirm the unload/load workflow. Filament Manager changes its active-spool record only after that confirmation or completed load. A direct Spoolman clear never claims that a physical unload occurred.
 
@@ -30,11 +30,11 @@ Run `SELECT_BUILD_PLATE` without parameters to open a chooser generated live fro
 
 ## Print history and assessment
 
-The worker checks current print state every five seconds and incrementally imports the supported Moonraker history. New records retain the exact printer, physical spool, material/profile revision, plate side, nozzle, G-code SHA-256, supported Cura/Moonraker metadata, predicted/actual use, timestamps, and result. An `M600` closes the current immutable material segment and opens a new exact segment after the replacement is loaded.
+The worker checks current print state every five seconds and incrementally imports the supported Moonraker history. New records retain the exact printer, physical spool, material/profile snapshot, plate side, nozzle, G-code SHA-256, supported Cura/Moonraker metadata, predicted/actual use, timestamps, and result. An `M600` closes the current immutable material segment and opens a new exact segment after the replacement is loaded.
 
 History from before 0.2.1 is imported but marked legacy/unresolved when its exact canonical material state cannot be reconstructed. The app does not guess missing spool or profile history.
 
-After a print ends, an Operator or Administrator can append an Excellent, Successful, Acceptable, or Failed assessment with supported defect tags and notes. Revising an assessment appends another revision. Profile comparisons calculate success statistics from the latest assessment for each print and clearly mark low sample sizes.
+After a print ends, an Operator or Administrator can directly save an Excellent, Successful, Acceptable, or Failed assessment with supported defect tags and notes. Updating the outcome retains the earlier assessment in immutable history. Profile comparisons calculate success statistics from the latest assessment for each print and clearly mark low sample sizes.
 
 ## Macro reference
 

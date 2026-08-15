@@ -101,7 +101,7 @@ test.beforeEach(async ({ page }) => {
 test('exact print state, inspection, scoring, notifications, and mobile cards render', async ({ page }) => {
   await page.goto('/prints')
   await expect(page.getByRole('heading', { name: 'Print history' })).toBeVisible()
-  await expect(page.getByText('Profile v12', { exact: true })).toBeVisible()
+  await expect(page.getByText('Exact saved profile', { exact: true })).toBeVisible()
   await page.getByText('dimensional-cube.gcode', { exact: true }).first().click()
   const dialog = page.getByRole('dialog', { name: 'dimensional-cube.gcode' })
   await expect(dialog.getByText('G-code 240; profile 235')).toBeVisible()

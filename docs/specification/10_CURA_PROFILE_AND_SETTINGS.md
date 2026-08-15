@@ -2,13 +2,13 @@
 
 ## Scope
 
-Filament Manager stores versioned material templates plus template-linked sparse product overrides and complete immutable resolved snapshots. A workstation deployment is the complete latest published library for every matching template and product profile. It does not create quality-change profiles and does not patch machine start G-code.
+Filament Manager presents directly saved material templates plus template-linked sparse product overrides. Internally it keeps complete immutable resolved snapshots for audit, exact print history, synchronization, and recovery. A workstation synchronization contains the current library for every matching template and product profile. It does not create quality-change profiles and does not patch machine start G-code.
 
 Install and enable the Cura **Material Settings** plugin to expose the stored material values and the Cura **Klipper Settings** plugin to consume pressure advance and smooth time.
 
 ## Profile scope
 
-A profile is scoped by filament product, printer, nozzle diameter, optional layer-height range, and version. It directly references one published template revision, stores only semantic differences from that base, and retains the resolved snapshot used by Cura. It may reference a preferred build-plate side such as `P4` or `P4b`.
+A profile is scoped by filament product, printer, nozzle diameter, and optional layer-height range. It directly references the current template snapshot, stores only semantic differences from that base, and retains the resolved snapshot used by Cura. It may reference a preferred build-plate side such as `P4` or `P4b`.
 
 ## Approved Cura material catalog
 
@@ -25,21 +25,23 @@ The ordered implementation catalog is `CURA_MATERIAL_SETTINGS` in `src/filament_
 
 Frequently used settings have typed PostgreSQL columns. Remaining approved settings use versioned `cura_extensions` JSONB. Arbitrary or machine-level Cura keys are rejected.
 
-## Existing-material import
+## Existing-source import
 
-Each paired workstation scans bounded Cura material files with a hardened XML parser. It reports only the approved keys and semantic material labels; it never reports absolute paths. Before takeover, Cura Workstations provides one guided source-selection review. For each material family and printer/nozzle scope, one selected source becomes the source-tracked template and explicitly selected additional sources map to canonical filaments as product-owned draft profiles. Import never modifies the local Cura material. Printing and bed temperatures must be present. When Cura omitted inherited flow or fan values from the material XML, import stores 100% flow, 100% maximum fan, and the maximum fan value as the minimum in the draft.
+Each paired workstation scans bounded Cura material files with a hardened XML parser and saved `quality_changes` print-profile files with a non-interpolating INI parser. A saved profile's global and position-zero extruder layers are merged, with explicit extruder values winning. Only literal values from the approved tracked catalog are reported; expressions, unsupported keys, machine settings, additional extruders, and absolute paths are omitted. Discovery never modifies the local material or print profile.
 
-Import desired existing user materials before authoritative takeover. Every selected template or product-profile import records the source workstation and sanitized material identifier, rejects reuse of the source across either destination type, and must remain active with a published revision before takeover is allowed. The application enforces one active template per normalized material family and printer/nozzle scope. A clean user-material directory may enable management automatically. Otherwise, an Administrator must confirm that all user material files will be backed up and replaced.
+Before takeover, Cura Workstations lists every discovered source beside a selector containing the existing active Filament Manager templates plus **Do not import**. An Administrator may map any subset, and each source and template may be used at most once in the batch. The review shows every selected source-to-template mapping and the number of ignored sources. One **Complete takeover** confirmation applies all mapped literal settings to those templates, cascades normal inheritance to their linked filament profiles, records provenance, enables management, and queues synchronization in one transaction.
 
-After takeover, the workstation agent separately reports approved settings from Filament Manager-prefixed files with known deterministic GUIDs. A semantic change to a known template or product material creates one idempotent draft revision in the application for review and publication. The canonical published library remains authoritative and is redeployed after capture. Unknown GUIDs, copied/new Cura materials, metadata edits, and machine settings never create application records; new templates and products can be added only in Filament Manager.
+Unmapped sources do not create templates or filament profiles and are removed from the managed Cura library only after the workstation backup is complete. The entire takeover is atomic: a stale agent report, unavailable template, duplicate source/template choice, or any failed save leaves management disabled and saves none of the mappings. A clean installation follows the same review and may complete with zero mappings.
+
+After takeover, the workstation agent separately reports approved settings from Filament Manager-prefixed files with known deterministic GUIDs. A semantic change to a known template or product material saves directly and idempotently as the current state, then queues a full-library synchronization. Unknown GUIDs, copied/new Cura materials, metadata edits, and machine settings never create application records; new templates and products can be added only in Filament Manager.
 
 ## Template and product lifecycle
 
-Templates are scoped to one printer and nozzle and synchronize to Cura with the exact name `Template <material type>` and brand `Template`. Publishing a template revision makes it available to create products and adds it to the desired Cura library. A new filament product receives a linked draft containing only differences from that published base. A newer template appears as an available update on every linked filament, including a comparison of effective values; each filament requires its own confirmation before a rebased draft is created, and its overrides remain untouched. Publishing any template or product revision queues a new complete-library checksum for every managed workstation.
+Templates are scoped to one printer and nozzle and synchronize to Cura with the exact name `Template <material type>` and brand `Template`. Creating or editing a template saves it immediately and queues a new complete-library checksum for every managed workstation. A new filament product receives a current linked profile containing only differences from its template. Saving a template immediately creates a new current resolved snapshot for every linked filament. Explicitly customized keys remain owned by that filament—even when their value temporarily equals the updated template—while all other keys inherit the new value.
 
-Selecting a filament opens its canonical detail, exact template base/version, inherited/customized count, and complete resolved Cura settings editor. Each field identifies its template value; **Reset to Template** removes that override when the next draft is saved. Saving always creates the next draft profile version. Calibration publication starts from the session's baseline and records calibrated differences without duplicating unrelated inherited values.
+Selecting a filament opens its canonical detail, linked template, inherited/customized count, and complete resolved Cura settings editor. Each field identifies its template value; **Reset to Template** removes that explicit customization on save. Saving takes effect immediately and automatically queues Cura synchronization. Applying calibration results starts from the session baseline and records calibrated differences without duplicating unrelated inherited values.
 
-## Profile lifecycle
+## Internal snapshot lifecycle
 
 - draft
 - calibration in progress
@@ -48,9 +50,9 @@ Selecting a filament opens its canonical detail, exact template base/version, in
 - superseded
 - archived
 
-Published versions are immutable. A revision creates a new draft/version.
+These status values remain an internal compatibility and history mechanism. Current template/profile snapshots are immutable once created, but the web interface exposes only direct saves and the current state. It never asks an operator to create a revision, publish a draft, or manually deploy Cura settings.
 
-## Deployment and export
+## Synchronization and export
 
 The JSON export includes the semantic profile, complete computed Cura setting map, checksum, version, and deterministic managed material GUID. The workstation agent writes that GUID into Cura XML so `{material_guid}` identifies the exact current product profile during Klipper print preflight. It matches printer/nozzle entries, waits for Cura to close, backs up the union of existing and desired user material/plugin targets, atomically applies the exact desired state, removes stale user materials, and retains an idempotent rollback manifest. A managed Cura plugin filters selectors to `filament_manager_` material roots, hiding bundled choices without changing Cura's installation files.
 

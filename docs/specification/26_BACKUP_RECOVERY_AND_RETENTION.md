@@ -43,7 +43,7 @@ Restore the Spoolman database and stack independently. If the database cannot be
 
 ## Application validation and derived-state rebuild
 
-The Diagnostics page and `filament-manager-cli verify` run the same read-only recovery checks against schema revision, measurement integrity, credential hashes, Spoolman consistency, Google publication state, and managed Cura deployment state. Results are bounded, sanitized, and persisted for operator review. These checks supplement but never replace an isolated PostgreSQL restore test.
+The Diagnostics page and `filament-manager-cli verify` run the same read-only recovery checks against schema revision, measurement integrity, credential hashes, Spoolman consistency, Google publication state, and managed Cura synchronization state. Results are bounded, sanitized, and persisted for operator review. These checks supplement but never replace an isolated PostgreSQL restore test.
 
 After a canonical restore or external projection loss, an Administrator may use Diagnostics or `filament-manager-cli rebuild-projections --confirm`. The operation queues idempotent Spoolman, Google, and managed Cura projection work from canonical data. It does not mutate canonical inventory/history and does not back up or restore either PostgreSQL database.
 

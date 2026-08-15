@@ -69,6 +69,8 @@ After the web application is available over HTTPS, install one outbound-only wor
 
 No workstation port or inbound firewall rule is required. Create the one-time enrollment code from **Cura workstations** in the web interface.
 
+Before authoritative synchronization begins, review every reported material file and saved print profile on **Cura workstations**. For each source you want to preserve, choose the existing Filament Manager template it should update; leave every unwanted source as **Do not import**. Review all mappings, then use the single **Complete takeover** confirmation. See the workstation-agent guide for the bounded setting and expression-handling rules.
+
 ## Production Swarm with remote PostgreSQL
 
 The root `docker-stack.yml` installs Spoolman, the Filament Manager web service, and the Filament Manager worker in one stack. It does not install PostgreSQL. The remote server remains authoritative and must be reachable from every Swarm node that may run these services.
@@ -239,7 +241,7 @@ No default account is created. The bootstrap job refuses to run after any user a
 
 ### 5. Import the initial workbook on Swarm
 
-The workbook importer is for an empty canonical spool inventory. It imports all populated rows from the `Inventory` sheet into canonical vendors, filament products, spools, measurements, and draft material profiles where the required temperatures exist. Dashboard formulas, validation lists, the wishlist, and material-reference lookup data are supporting workbook content rather than canonical records and are not imported.
+The workbook importer is for an empty canonical spool inventory. It imports all populated rows from the `Inventory` sheet into canonical vendors, filament products, spools, measurements, and current material profiles where the required temperatures exist. Dashboard formulas, validation lists, the wishlist, and material-reference lookup data are supporting workbook content rather than canonical records and are not imported.
 
 Copy the unchanged workbook onto one Swarm manager using a path without spaces. Keep it readable only by the operator, and run both jobs on that same node because a bind mount is node-local:
 
@@ -307,7 +309,7 @@ FILAMENT_MANAGER_START_PRINT BED_TEMP={material_bed_temperature_layer_0} EXTRUDE
 ```
 
   If the current Cura start call uses different temperature placeholders, keep those existing placeholders and add `MATERIAL_GUID={material_guid}`. The workstation agent deliberately does not edit machine start G-code.
-- Publish a product material profile and allow the workstation agent to synchronize Cura before printing. `Template <material type>` entries have no exact physical inventory mapping and are intentionally blocked by preflight.
+- Save a product material profile and allow the workstation agent to synchronize Cura before printing. `Template <material type>` entries have no exact physical inventory mapping and are intentionally blocked by preflight.
 - With the printer idle, verify `SELECT_BUILD_PLATE PLATE=P1`. Then request **Load spool** from Inventory and confirm Fluidd preheats and asks for the exact Spoolman ID. After the existing unload motion completes, Spoolman must show no active spool; only after insertion confirmation and the existing load motion completes may the new ID become active.
 - Send a Cura test file with the already loaded matching product material and confirm it reaches the unchanged `START_PRINT` path without a load prompt. Repeat with another material and confirm Fluidd asks which exact matching spool to insert when more than one is available.
 - Keep **Settings → G-code inspection policy** at the recommended **Warn and continue** default for initial testing. Confirm Print History records matching metadata and any intentional test mismatch. Then, if desired, enable **Block mismatches** and verify Fluidd pauses at **Inspecting G-code**, releases a matching file, and retains a mismatched or unavailable file without running `START_PRINT`.

@@ -29,6 +29,10 @@ from filament_manager.models.inventory import (
     Printer,
 )
 from filament_manager.services.events import add_audit_event, add_outbox_job
+from filament_manager.services.material_settings import (
+    profile_snapshot_checksum,
+    queue_managed_cura_library,
+)
 
 from ..dependencies import DatabaseSession, Operator, Viewer
 from ..errors import ApiError
@@ -336,15 +340,16 @@ def _decimal_result(results: dict[str, object], key: str, default: Decimal | Non
     return Decimal(str(value))
 
 
-@router.post("/{calibration_id}/publish-profile", response_model=ProfileResponse)
-async def publish_calibration_profile(
+@router.post("/{calibration_id}/publish-profile", response_model=ProfileResponse, include_in_schema=False)
+@router.post("/{calibration_id}/apply-profile-settings", response_model=ProfileResponse)
+async def apply_calibration_profile_settings(
     calibration_id: UUID,
     request: Request,
     operator: Operator,
     session: DatabaseSession,
     override_reason: str | None = None,
 ) -> ProfileResponse:
-    """Publish an immutable material profile from completed step results."""
+    """Apply completed calibration results as the current material profile."""
 
     calibration = await _get_calibration(session, calibration_id, lock=True)
     if calibration.status != CalibrationStatus.READY_TO_PUBLISH and not override_reason:
@@ -396,7 +401,7 @@ async def publish_calibration_profile(
         raise ApiError(
             status.HTTP_409_CONFLICT,
             "profile_template_required",
-            "Link this filament to a published template before publishing calibration results",
+            "Link this filament to a material template before applying calibration results",
         )
     base_settings = (
         settings_snapshot_from_profile(baseline) if baseline is not None else dict(base_revision.settings)
@@ -467,6 +472,7 @@ async def publish_calibration_profile(
     )
     session.add(profile)
     await session.flush()
+    profile.checksum = profile_snapshot_checksum(profile)
     calibration.status = CalibrationStatus.PUBLISHED
     calibration.published_profile_id = profile.id
     calibration.override_reason = override_reason
@@ -476,11 +482,16 @@ async def publish_calibration_profile(
         session,
         actor_id=operator.id,
         source="web",
-        action="calibration.publish_profile",
+        action="calibration.apply_profile_settings",
         object_type="calibration_session",
         object_id=calibration.id,
         before={"status": "ready_to_publish"},
-        after={"status": "published", "profile_id": str(profile.id), "override": bool(override_reason)},
+        after={
+            "status": "applied",
+            "profile_id": str(profile.id),
+            "override": bool(override_reason),
+            "direct_save": True,
+        },
         correlation_id=request.state.correlation_id,
     )
     add_outbox_job(
@@ -492,5 +503,6 @@ async def publish_calibration_profile(
         aggregate_version=1,
         payload={"profile_id": str(profile.id)},
     )
+    await queue_managed_cura_library(session, requested_by=operator.id)
     await session.commit()
     return ProfileResponse.model_validate(profile)

@@ -37,6 +37,7 @@ from .printing import PrintAssessment, PrintJob, PrintMaterialSegment
 from .workstations import (
     CuraDeployment,
     CuraManagedEditReceipt,
+    CuraTakeoverMapping,
     WorkstationAgent,
     WorkstationPairingCode,
 )
@@ -52,6 +53,7 @@ __all__ = [
     "CalibrationStep",
     "CuraDeployment",
     "CuraManagedEditReceipt",
+    "CuraTakeoverMapping",
     "Device",
     "DiagnosticRun",
     "FilamentColor",

@@ -31,7 +31,7 @@ One row per physical spool with the current canonical values and original workbo
 
 ### Filament Profiles
 
-One row per published material profile version, including printer, nozzle, settings, and preferred plate.
+One row per current material profile, including printer, nozzle, settings, and preferred plate. Hidden immutable snapshot IDs may be retained for traceability without presenting a revision workflow.
 
 ### Build Plates
 
@@ -39,7 +39,7 @@ All canonical physical P-number plates, including initial P1-P5 and later Moonra
 
 ### Calibration Status
 
-Current sessions, completed steps, selected results, and profile publication state.
+Current sessions, completed steps, selected results, and whether results have been applied to the current profile.
 
 ### Lists
 

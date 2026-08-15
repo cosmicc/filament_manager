@@ -5,23 +5,25 @@
 Each Arch Linux or Windows 11 workstation runs one agent under the same user account as Cura. The agent automatically:
 
 - discovers standard Cura, Flatpak, and Snap user-data locations on Arch Linux and `%APPDATA%\cura` on Windows;
-- reports version, machine metadata, verified desired-library checksum, unmanaged user-material count, and sanitized approved settings from existing materials, never absolute workstation paths;
-- receives the latest published `Template <material type>` entries and resolved product profiles as one desired-state library through an outbound HTTPS poll;
-- reports approved setting edits to known managed material GUIDs so the server can create reviewable draft revisions without accepting new Cura-created materials;
+- reports version, machine metadata, verified desired-library checksum, unmanaged import-source counts, and sanitized approved settings from existing materials and saved print profiles, never absolute workstation paths;
+- receives the current `Template <material type>` entries and resolved product profiles as one desired-state library through an outbound HTTPS poll;
+- reports approved setting edits to known managed material GUIDs so the server can save the corresponding current settings directly without accepting new Cura-created materials;
 - waits while Cura is open;
 - matches the Filament Manager printer and nozzle to one Cura machine instance;
 - installs official-format `.xml.fdm_material` files plus the managed visibility plugin that hides bundled materials from Cura's selectors;
 - backs up every added, replaced, or removed user material and managed-plugin file, writes same-filesystem temporary files, and atomically replaces targets;
-- records a complete-library checksum so repeated deployments are idempotent and heartbeat drift is repaired; and
+- records a complete-library checksum so repeated synchronizations are idempotent and heartbeat drift is repaired; and
 - restores the backup automatically if any write fails.
 
 Install and enable the Cura **Material Settings** and **Klipper Settings** plugins. Filament Manager stores pressure advance as `klipper_pressure_advance_factor` and smooth time as the Klipper plugin's material settings. The agent never patches machine start G-code and never creates or changes quality profiles.
 
 For physical-spool preflight, the operator must make the one-time Cura machine start-G-code change documented in [INSTALL.md](../INSTALL.md). The agent supplies each managed material's stable GUID but intentionally preserves the complete machine start/end G-code. Select a product material, not a `Template <material type>` entry, when sending a print that must resolve to physical inventory.
 
-Existing Cura material files are parsed with a hardened XML parser. Only the approved Material Settings keys are reported; unsupported settings, file paths, and machine start G-code are discarded. On **Cura workstations**, import each material you want to preserve as a draft template, review it on **Templates**, and publish it before enabling authoritative management. Filament Manager records the source workstation and material identifier and prevents duplicate imports. Once any material is selected for preservation, takeover remains blocked until all selected imports are active and published. Enabling management on a workstation with existing user material files still requires an explicit Administrator confirmation because unselected files will be backed up and replaced by Filament Manager's complete library. Bundled files in Cura's installation remain untouched; the managed plugin hides them in material selectors.
+Existing Cura material files are parsed with a hardened XML parser. Saved print profiles under Cura's `quality_changes` directory are read without modification through a non-interpolating bounded parser; matching global and first-extruder layers are merged, explicit values from the extruder layer win, and Cura expressions are omitted rather than evaluated. Both paths report only the approved settings tracked by Filament Manager. Unsupported settings, additional extruders, file paths, machine settings, and start G-code are discarded.
 
-After management is enabled, an edit to approved settings in an existing Filament Manager material is detected by its deterministic GUID and content checksum. The server creates one idempotent draft template/profile revision for review and then restores the published desired library. New or copied Cura materials, changed identity metadata, unknown GUIDs, machine configuration, quality settings, and start/end G-code are never imported. Add all new templates and filament products in Filament Manager.
+On **Templates**, choose **Import from Cura**, or open **Cura workstations** directly. While the workstation says **Awaiting one-time takeover**, every reported material and saved print profile appears with a Filament Manager template selector. Choose the existing template each source should update, or leave it as **Do not import**. Each source and template may be used once. Review all mappings and the ignored count together, then select **Complete takeover** once. Filament Manager applies the mapped literal settings, updates linked profiles through normal inheritance, records provenance, enables management, and queues synchronization atomically. Unmapped user sources are backed up and then replaced by the managed library. Bundled files in Cura's installation remain untouched; the managed plugin hides them in material selectors.
+
+After management is enabled, an edit to approved settings in an existing Filament Manager material is detected by its deterministic GUID and content checksum. The server saves that known template/profile directly and idempotently, preserves explicit filament customizations during template inheritance, and queues the current library for synchronization. Pre-takeover print-profile discovery does not continue as a source of canonical additions after management begins. New or copied Cura materials, changed identity metadata, unknown GUIDs, machine configuration, quality-profile changes, and start/end G-code are never imported. Add all new templates and filament products in Filament Manager.
 
 ## Server requirement
 
@@ -87,7 +89,7 @@ Start-ScheduledTask -TaskName 'Filament Manager Cura Agent'
 
 ## Use
 
-Create and publish material templates first; Cura shows them as `Template PLA`, `Template PETG`, and so on under brand `Template`. Add filament products from those bases, tune and publish each resolved product profile, then open **Cura workstations**. For an installation with existing user materials, use **Import as draft** for each material you want to preserve, review and publish those templates, then choose **Manage and synchronize Cura** and accept the replacement warning. A clean Cura installation is managed automatically. Publishing later template or product revisions queues the complete library automatically. Close Cura when synchronization is pending; the agent retries without manual requeueing.
+Before takeover, open **Cura workstations** and wait for the agent to report existing material files and saved print profiles. Map any source you want to keep to an existing template and leave all others as **Do not import**. Use **Review takeover**, verify the mappings and ignored count, then select **Complete takeover**. A clean installation can complete with zero mappings. Cura shows bases as `Template PLA`, `Template PETG`, and so on under brand `Template`. Later template or product saves queue the complete library automatically. Close Cura when synchronization is pending; the agent retries without manual requeueing.
 
 Useful local commands:
 

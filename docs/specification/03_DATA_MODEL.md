@@ -66,22 +66,26 @@ Append-only cleaning or side-specific mesh-calibration evidence. Plate-level day
 
 ### material_profile
 
-Versioned settings scoped to:
+Immutable internal settings snapshots scoped to:
 
 - filament product
 - printer
 - nozzle diameter
 - optional layer-height range
 
-Every revision directly references one published `material_template_revision`, stores only semantically different `setting_overrides`, and caches the complete resolved values in the typed columns plus `cura_extensions`. The resolved snapshot includes Cura Klipper Settings pressure advance and smooth time and may reference a preferred plate side. A pre-takeover source import stores its workstation and sanitized Cura material identifier. Publishing makes both the base identity, overrides, and resolved output immutable.
+Every current snapshot directly references the current `material_template_revision`, stores only semantically different `setting_overrides`, and caches the complete resolved values in the typed columns plus `cura_extensions`. The resolved snapshot includes Cura Klipper Settings pressure advance and smooth time and may reference a preferred plate side. Direct saves append the next current immutable snapshot and queue projections without an operator-facing draft or publication state.
 
 ### material_template and material_template_revision
 
-The template is a mutable identity for one material type, printer, nozzle, and filament diameter. Its canonical Cura identity is `Template <material type>` under the `Template` brand. Only one active template exists per normalized material family and printer/nozzle scope. Revisions store complete validated settings snapshots and become immutable when published. A selected pre-takeover Cura import records its source workstation and sanitized stable identifier; the source pair is unique across both templates and product profiles. Creating a filament product links Material Profile version 1 to the selected published revision, records only product-specific differences such as density, and computes the resolved snapshot. Publishing a newer template revision does not rewrite linked profiles; each filament must explicitly confirm its own base update, which creates a draft and preserves its overrides.
+The template is a mutable identity for one material type, printer, nozzle, and filament diameter. Its canonical Cura identity is `Template <material type>` under the `Template` brand. Only one active template exists per normalized material family and printer/nozzle scope. Revisions are hidden complete immutable settings snapshots. Creating a filament product links its first current profile to the template's current snapshot, records only product-specific differences such as density, and computes the resolved snapshot. A direct template save immediately creates the next current snapshot for every linked profile while preserving its exact explicit override keys.
+
+### cura_takeover_mapping
+
+Immutable provenance for one Administrator-confirmed workstation source-to-existing-template choice. Unique agent/source and agent/template constraints prevent ambiguous reuse. It records the sanitized source type/name and the exact applied template snapshot; unmapped sources have no canonical material record.
 
 ### cura_managed_edit_receipt
 
-Idempotently records one content checksum reported for a known managed Cura GUID and the draft template/profile revision it created. Unknown GUIDs and new Cura materials never create canonical records.
+Idempotently records one content checksum reported for a known managed Cura GUID and the current template/profile snapshot it created. Unknown GUIDs and new Cura materials never create canonical records.
 
 ### calibration_session
 

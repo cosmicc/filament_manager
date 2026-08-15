@@ -2,7 +2,7 @@
 
 from datetime import date, datetime
 from decimal import Decimal, InvalidOperation
-from typing import Any
+from typing import Any, Literal
 from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field, computed_field, field_validator, model_validator
@@ -529,7 +529,14 @@ class ProfileCreate(MaterialSettingsInput):
 
 
 class ProfileRevisionCreate(ApiModel):
-    """Create an editable draft by copying and replacing one profile snapshot."""
+    """Compatibility request for directly saving one profile snapshot."""
+
+    expected_profile_version: int = Field(ge=1)
+    settings: MaterialSettingsInput
+
+
+class ProfileDirectUpdate(ApiModel):
+    """Directly save current effective settings with optimistic concurrency."""
 
     expected_profile_version: int = Field(ge=1)
     settings: MaterialSettingsInput
@@ -566,7 +573,7 @@ class ProfileResponse(ProfileCreate):
 
 
 class CuraMaterialImportRequest(ApiModel):
-    """Map one workstation-discovered Cura material into a new draft profile."""
+    """Compatibility import for one workstation-discovered Cura source."""
 
     agent_id: UUID
     source_id: str = Field(pattern=r"^[0-9a-f]{64}$")
@@ -574,10 +581,12 @@ class CuraMaterialImportRequest(ApiModel):
     printer_id: UUID
     nozzle_diameter_mm: Decimal = Field(gt=0)
     preferred_build_plate_surface_id: UUID | None = None
+    extruder_temp_c: Decimal | None = Field(default=None, gt=0, le=500)
+    bed_temp_c: Decimal | None = Field(default=None, ge=0, le=200)
 
 
 class CuraMaterialTemplateImportRequest(ApiModel):
-    """Preserve one workstation-discovered Cura material as a draft template."""
+    """Compatibility import for one workstation-discovered Cura template."""
 
     agent_id: UUID
     source_id: str = Field(pattern=r"^[0-9a-f]{64}$")
@@ -589,10 +598,12 @@ class CuraMaterialTemplateImportRequest(ApiModel):
     filament_diameter_mm: Decimal = Field(default=Decimal("1.75"), gt=0)
     filament_density_g_cm3: Decimal = Field(gt=0)
     preferred_build_plate_surface_id: UUID | None = None
+    extruder_temp_c: Decimal | None = Field(default=None, gt=0, le=500)
+    bed_temp_c: Decimal | None = Field(default=None, ge=0, le=200)
 
 
 class MaterialTemplateCreate(ApiModel):
-    """Create a scoped template and its first draft revision."""
+    """Create and immediately activate one scoped template."""
 
     name: str = Field(min_length=1, max_length=160)
     material_type: str = Field(min_length=1, max_length=48)
@@ -614,7 +625,14 @@ class MaterialTemplateUpdate(ApiModel):
 
 
 class MaterialTemplateRevisionCreate(ApiModel):
-    """Create the next complete draft settings revision."""
+    """Compatibility request for directly saving template settings."""
+
+    expected_template_version: int = Field(ge=1)
+    settings: MaterialSettingsInput
+
+
+class MaterialTemplateDirectUpdate(ApiModel):
+    """Directly save current template settings with optimistic concurrency."""
 
     expected_template_version: int = Field(ge=1)
     settings: MaterialSettingsInput
@@ -842,7 +860,7 @@ class CuraInstallationReport(ApiModel):
 
 
 class CuraMaterialReport(ApiModel):
-    """Sanitized existing Cura material offered for explicit import."""
+    """Sanitized existing Cura material or print profile offered for import."""
 
     source_id: str = Field(pattern=r"^[0-9a-f]{64}$")
     installation_id: str = Field(pattern=r"^[A-Za-z0-9_.-]+$", max_length=96)
@@ -851,6 +869,10 @@ class CuraMaterialReport(ApiModel):
     material_type: str = Field(min_length=1, max_length=160)
     color_name: str = Field(min_length=1, max_length=160)
     settings: dict[str, str | bool]
+    source_kind: Literal["material", "print_profile"] = "material"
+    machine_name: str | None = Field(default=None, max_length=255)
+    quality_type: str | None = Field(default=None, max_length=96)
+    omitted_setting_count: int = Field(default=0, ge=0, le=len(CURA_MATERIAL_SETTINGS))
 
     @field_validator("settings")
     @classmethod
@@ -907,6 +929,33 @@ class WorkstationHeartbeat(ApiModel):
     cura_materials: list[CuraMaterialReport] = Field(default_factory=list, max_length=200)
     cura_managed_materials: list[CuraManagedMaterialReport] = Field(default_factory=list, max_length=500)
     last_error: str | None = Field(default=None, max_length=500)
+
+
+class CuraTakeoverMapping(ApiModel):
+    """Map one reported Cura source to one existing canonical template."""
+
+    source_id: str = Field(pattern=r"^[0-9a-f]{64}$")
+    template_id: UUID
+
+
+class CuraTakeoverRequest(ApiModel):
+    """Atomically apply reviewed mappings and enable authoritative Cura sync."""
+
+    expected_agent_version: int = Field(ge=1)
+    confirmed: bool
+    mappings: list[CuraTakeoverMapping] = Field(default_factory=list, max_length=200)
+
+    @model_validator(mode="after")
+    def validate_unique_mappings(self) -> "CuraTakeoverRequest":
+        """Prevent ambiguous last-write-wins mapping behavior."""
+
+        source_ids = [mapping.source_id for mapping in self.mappings]
+        template_ids = [mapping.template_id for mapping in self.mappings]
+        if len(source_ids) != len(set(source_ids)):
+            raise ValueError("each Cura source may be mapped only once")
+        if len(template_ids) != len(set(template_ids)):
+            raise ValueError("each template may receive only one Cura source")
+        return self
 
 
 class ProfileTemplateRebaseRequest(ApiModel):

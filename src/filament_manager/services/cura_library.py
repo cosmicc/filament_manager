@@ -93,7 +93,7 @@ async def _printer_payload(
 
 
 async def build_cura_library(session: AsyncSession) -> dict[str, object]:
-    """Return the latest published templates and product profiles as desired state."""
+    """Return the current templates and product profiles as desired state."""
 
     entries: list[dict[str, object]] = []
     templates = list(
@@ -171,7 +171,7 @@ async def build_cura_library(session: AsyncSession) -> dict[str, object]:
         product = await session.get(FilamentProduct, profile.filament_product_id)
         printer = await session.get(Printer, profile.printer_id)
         if product is None or printer is None:
-            raise RuntimeError("A published material profile has an incomplete scope")
+            raise RuntimeError("A current material profile has an incomplete scope")
         vendor = await session.get(Vendor, product.vendor_id) if product.vendor_id else None
         entries.append(
             {
@@ -228,7 +228,7 @@ async def queue_cura_library(
     payload = await build_cura_library(session)
     materials = payload["materials"]
     if not isinstance(materials, list) or not materials:
-        raise ValueError("Publish at least one template or material profile before Cura synchronization")
+        raise ValueError("Save at least one template or material profile before Cura synchronization")
     checksum = str(payload["library_checksum"])
     now = datetime.now(UTC)
     deployments: list[CuraDeployment] = []

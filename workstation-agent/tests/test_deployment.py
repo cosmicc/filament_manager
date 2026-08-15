@@ -10,8 +10,10 @@ from filament_manager_agent.discovery import (
     discover_installations,
     discover_managed_materials,
     discover_materials,
+    discover_print_profiles,
 )
 from filament_manager_agent.render import render_deployment
+from filament_manager_agent.service import heartbeat_payload
 
 
 def _cura_fixture(tmp_path: Path, monkeypatch: object) -> Path:
@@ -210,6 +212,90 @@ def test_discovers_existing_material_settings_without_reporting_paths(
         "klipper_pressure_advance_factor": "0.035",
     }
     assert "path" not in report
+
+
+def test_discovers_saved_print_profile_layers_with_only_tracked_literal_settings(
+    tmp_path: Path, monkeypatch: object
+) -> None:
+    """Global and first-extruder layers merge without evaluating Cura expressions."""
+
+    version = _cura_fixture(tmp_path, monkeypatch)
+    quality_changes = version / "quality_changes"
+    quality_changes.mkdir()
+    (quality_changes / "flsun_v400_Normal PLA.inst.cfg").write_text(
+        """[general]
+version = 4
+name = Normal PLA
+definition = flsun_v400
+
+[metadata]
+type = quality_changes
+quality_type = normal
+setting_version = 27
+
+[values]
+speed_print = 80
+material_print_temperature = 200
+machine_start_gcode = G28
+""",
+        encoding="utf-8",
+    )
+    (quality_changes / "flsun_v400_extruder_0_#2_Normal PLA.inst.cfg").write_text(
+        """[general]
+version = 4
+name = Normal PLA
+definition = flsun_v400
+
+[metadata]
+type = quality_changes
+quality_type = normal
+setting_version = 27
+position = 0
+
+[values]
+speed_print = 95
+material_bed_temperature = 55
+retraction_amount = =machine_nozzle_size * 2
+""",
+        encoding="utf-8",
+    )
+    external_profile = tmp_path / "external-profile.cfg"
+    external_profile.write_text(
+        """[general]
+name = Secret Profile
+
+[metadata]
+type = quality_changes
+
+[values]
+speed_print = 999
+""",
+        encoding="utf-8",
+    )
+    (quality_changes / "flsun_v400_Secret Profile.inst.cfg").symlink_to(external_profile)
+
+    installations = discover_installations()
+    profiles = discover_print_profiles(installations)
+
+    assert len(profiles) == 1
+    report = profiles[0].report()
+    assert report["source_kind"] == "print_profile"
+    assert report["name"] == "Normal PLA"
+    assert report["machine_name"] == "FLSUN V400"
+    assert report["quality_type"] == "normal"
+    assert report["settings"] == {
+        "speed_print": "95",
+        "material_print_temperature": "200",
+        "material_bed_temperature": "55",
+    }
+    assert report["omitted_setting_count"] == 1
+    assert "path" not in report
+
+    heartbeat = heartbeat_payload(installations)
+    assert heartbeat["capabilities"]["cura_print_profile_import"] is True
+    assert heartbeat["capabilities"]["unmanaged_print_profile_count"] == 1
+    assert heartbeat["capabilities"]["unmanaged_import_source_count"] == 1
+    assert heartbeat["cura_materials"][0]["source_kind"] == "print_profile"
 
 
 def test_rollback_rejects_path_like_deployment_identity() -> None:

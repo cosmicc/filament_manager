@@ -57,8 +57,8 @@ Environment variables are intentionally transitional and are visible to authoriz
 - protect against SSRF by allowing only configured Spoolman and Moonraker endpoints
 - bound and sanitize every printer-side material GUID, Spoolman ID, prompt label, temperature, and catalog size before embedding it in G-code
 - treat requested spools as untrusted future targets; only a completed physical macro boundary may change active Spoolman identity
-- fail closed when Cura material identity, eligible inventory, published temperature, or persistent physical-spool state is unavailable
-- accept managed Cura setting edits only for deterministic known GUIDs and approved bounded keys; derive the idempotency checksum server-side, create drafts only, and reject new Cura-created materials as canonical input
+- fail closed when Cura material identity, eligible inventory, current exact-profile temperature, or persistent physical-spool state is unavailable
+- accept managed Cura setting edits only for deterministic known GUIDs and approved bounded keys; derive the idempotency checksum server-side, save the known current settings directly, and reject new Cura-created materials as canonical input
 
 ## Future device security
 

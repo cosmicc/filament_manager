@@ -38,15 +38,13 @@ Spool responses include a derived completed-print count. Every completed job cou
 - `GET /filament-colors`
 - `GET /profiles`
 - `POST /profiles`
-- `POST /profiles/{id}/publish`
-- `POST /profiles/{id}/revisions`
+- `PUT /profiles/{id}/settings`
 - `GET /profiles/{id}/exports/cura`
 - `GET/POST /profiles/templates`
+- `PUT /profiles/templates/{id}/settings`
 - `PATCH /profiles/templates/{id}`
-- `POST /profiles/templates/{id}/revisions`
-- `POST /profiles/templates/{id}/revisions/{revision_id}/publish`
 
-`POST /filaments` may select a published template revision and atomically creates the product plus its copied draft profile. Filament create/update resolves the case-insensitive remembered color sample and propagates a changed sample to matching products with their projection jobs in the same transaction.
+`POST /filaments` selects a current template snapshot and atomically creates the product plus its current inherited profile. Direct profile/template saves append hidden immutable snapshots, immediately become current, and queue projections. A template save also writes the next current profile snapshot for every linked filament while retaining each sparse explicit customization. Filament create/update resolves the case-insensitive remembered color sample and propagates a changed sample to matching products with their projection jobs in the same transaction.
 
 ### Build plates
 
@@ -68,10 +66,12 @@ The Side B route derives `P<number>b` from the parent plate, rejects duplicates,
 ### Material profiles
 
 - `GET /profiles/cura-settings/catalog`
-- `POST /profiles/import-cura-material`
 - `POST /profiles`
-- `POST /profiles/{id}/publish`
+- `PUT /profiles/{id}/settings`
 - `GET /profiles/{id}/exports/cura`
+- `POST /workstation-agents/{id}/cura-takeover`
+
+The takeover request contains the expected agent version, explicit confirmation, and zero or more unique source-to-existing-template mappings. The server validates the latest reported source catalog, active template scopes, and single-use source/template constraints; directly applies mapped settings; cascades linked-profile inheritance; records mappings; enables management; and queues synchronization in one transaction. Unmapped sources create no canonical materials. Historical revision, publication, standalone Cura-import, template-rebase, and manual Cura-deployment routes remain hidden compatibility endpoints only.
 
 ### Calibration
 
@@ -79,7 +79,7 @@ The Side B route derives `P<number>b` from the parent plate, rejects duplicates,
 - `GET /calibrations/{id}`
 - `POST /calibrations/{id}/steps/{step}/start`
 - `POST /calibrations/{id}/steps/{step}/result`
-- `POST /calibrations/{id}/publish-profile`
+- `POST /calibrations/{id}/apply-profile-settings`
 
 ### Print history and inspection
 

@@ -1,6 +1,6 @@
 # Changelog
 
-## 0.2.2 - 08.14.2026
+## 0.2.2 - 08.15.2026
 
 ### Added
 
@@ -10,16 +10,20 @@
 - Added a dedicated Diagnostics page for connection, synchronization, worker, queue, and operational status; bounded recent errors; persisted recovery-validation results; safe projection rebuilds; and job retry/reconciliation controls.
 - Added the running Filament Manager version to the application shell and Diagnostics, plus a cached Diagnostics comparison with the newest non-draft GitHub release, including testing prereleases.
 - Added `filament-manager-cli verify` for read-only recovery validation and `filament-manager-cli rebuild-projections --confirm` for safe full projection requeueing.
-- Added an explicit pre-takeover Cura source-selection workflow that imports one material-family source as the printer/nozzle template and other selected sources as filament-specific draft profiles.
+- Added an atomic one-time Cura takeover that lists every discovered source with an existing-template selector, allows any source to remain unmapped, reviews all choices together, and records source/template provenance.
+- Added read-only discovery of saved Cura print profiles during one-time takeover, including merged global/first-extruder settings, machine and quality metadata, tracked literal settings, and safely omitted expression counts.
 - Added Arch Linux and Windows workstation-agent uninstallers that remove the per-user service/task, executable, pairing credential, local state, and agent backups while leaving Cura's current managed library in place.
 
 ### Changed
 
 - Moved live connection, synchronization, worker, queue, and error information from Dashboard, Printers, Integrations, and Cura Workstations into Diagnostics.
-- Changed Cura source imports to retain provenance on both draft templates and draft product profiles, reject duplicate source use, require publication before takeover, and enforce one active template per material family and printer/nozzle scope.
+- Changed template, filament-profile, calibration, workbook-import, and managed Cura edits to save directly as current settings, automatically queue projections, and keep versioned snapshots only as hidden immutable history.
+- Changed template saves to update every linked filament profile immediately while preserving each explicit customized setting, even when its value temporarily matches the new template.
+- Changed Cura takeover to map each selected source directly to an existing template, allow each source/template once, ignore unmapped sources, and apply all template changes plus linked-profile inheritance in one confirmed transaction.
+- Changed print-profile import to accept only settings tracked by Filament Manager and omit unevaluated Cura expressions.
 - Changed printer nozzle editing to use installed physical nozzle records; installation and removal are recorded as append-only lifecycle events.
 - Changed all server, frontend, and workstation-agent version surfaces to 0.2.2.
-- Changed `LOAD_FILAMENT`, `FILAMENT_MANAGER_LOAD_TARGET`, and M600 replacement selection to use a dedicated live manual-load catalog without a hidden macro-variable prerequisite. Non-empty projected spools may use their latest exact draft profile or linked template temperature, while Cura print preflight still requires a published exact profile.
+- Changed `LOAD_FILAMENT`, `FILAMENT_MANAGER_LOAD_TARGET`, and M600 replacement selection to use a dedicated live manual-load catalog without a hidden macro-variable prerequisite. Non-empty projected spools may use their newest exact profile or linked template temperature, while Cura print preflight still requires a current exact profile.
 - Changed direct non-null Spoolman selections into guarded Fluidd target confirmations: the worker restores the last physical ID until the operator confirms an existing load or completes the unload/load routine.
 - Changed the application shell to show only an icon-labelled Logout action and directional sidebar chevrons, and moved the persistent light/dark theme control to Settings.
 - Changed `SELECT_BUILD_PLATE` without parameters to build its chooser live from Klipper's saved exact P-number meshes.
@@ -29,9 +33,11 @@
 
 - Fixed the missing workflow for adding the second printable side of an existing physical build plate.
 - Fixed operational status being fragmented across unrelated pages instead of providing one reviewable diagnostics surface.
-- Fixed pre-takeover Cura preservation presenting every reported source as a template even when same-family sources should become filament-specific profiles.
+- Fixed pre-takeover Cura preservation lacking a clear per-source destination selector and one atomic completion step.
+- Fixed saved Cura print settings being absent from the one-time takeover import and therefore unavailable for preservation before authoritative synchronization.
+- Fixed user-facing material workflows requiring draft creation, publication, per-filament template-update confirmation, or manual Cura deployment instead of direct saves and automatic synchronization.
 - Fixed manual filament loading dead-ending with “Select a Target Spool” even after `FILAMENT_MANAGER_LOAD_TARGET` was run.
-- Fixed valid non-empty Spoolman spools being hidden from manual loading solely because their exact printer/nozzle profile had not been published.
+- Fixed valid non-empty Spoolman spools being hidden from manual loading solely because they lacked a current exact printer/nozzle print profile.
 - Fixed rerunning M600 during an unfinished selection reporting only that a workflow was active instead of reopening the exact-spool chooser.
 - Fixed direct Spoolman selections disappearing without a safe way to use them as the requested physical target.
 - Fixed the build-plate selector requiring static per-mesh macros whenever another valid mesh was saved.

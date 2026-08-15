@@ -69,4 +69,4 @@ Before production, separately verify:
 - exact plate-side discovery accepts P1, P4b, P6, and P10b while rejecting malformed names and G-code input
 - Moonraker synchronization groups A/B sides under physical plates, preserves metadata, marks missing side meshes unavailable without deletion, and aligns the active plate and side
 - pairing-code replay and disabled or cross-agent credentials
-- hardened existing-material parsing/allowlisting, clean versus takeover-required workstations, Cura running during deployment, ambiguous machine/nozzle matches, full desired-library XML/plugin rendering, bundled-material filtering, exclusive user-material cleanup, checksum drift, symlink/root escapes, partial-write rollback, and idempotent reapply
+- hardened material and saved-print-profile parsing/allowlisting, optional source-to-template mappings, atomic takeover, Cura running during synchronization, ambiguous machine/nozzle matches, full desired-library XML/plugin rendering, bundled-material filtering, exclusive user-material cleanup, checksum drift, symlink/root escapes, partial-write rollback, and idempotent reapply

@@ -137,14 +137,14 @@ When mandatory steps are complete:
 1. show a consolidated comparison;
 2. validate settings against printer limits;
 3. select preferred build-plate side;
-4. publish a new profile version;
+4. apply the results directly to the current profile;
 5. queue Spoolman and Google projections;
 6. offer Cura export;
 7. store pressure advance for the Cura Klipper Settings plugin in the material profile.
 
 ## Overrides
 
-An administrator may publish an incomplete profile only with a recorded reason. The profile displays an “incomplete calibration” warning.
+An administrator may apply incomplete results only with a recorded reason. The profile displays an “incomplete calibration” warning.
 
 ## Authoritative implementation references
 

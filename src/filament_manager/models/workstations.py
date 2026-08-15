@@ -114,3 +114,29 @@ class CuraManagedEditReceipt(UUIDPrimaryKeyMixin, Base):
         ForeignKey("material_template_revisions.id", ondelete="SET NULL")
     )
     detected_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+
+
+class CuraTakeoverMapping(UUIDPrimaryKeyMixin, Base):
+    """Immutable record of one source-to-template choice made at takeover."""
+
+    __tablename__ = "cura_takeover_mappings"
+    __table_args__ = (
+        UniqueConstraint("agent_id", "source_id", name="uq_cura_takeover_mapping_source"),
+        UniqueConstraint("agent_id", "template_id", name="uq_cura_takeover_mapping_template"),
+        Index("ix_cura_takeover_mapping_agent_created", "agent_id", "created_at"),
+    )
+
+    agent_id: Mapped[UUID] = mapped_column(
+        ForeignKey("workstation_agents.id", ondelete="RESTRICT"), nullable=False
+    )
+    source_id: Mapped[str] = mapped_column(String(64), nullable=False)
+    source_kind: Mapped[str] = mapped_column(String(16), nullable=False)
+    source_name: Mapped[str] = mapped_column(String(255), nullable=False)
+    template_id: Mapped[UUID] = mapped_column(
+        ForeignKey("material_templates.id", ondelete="RESTRICT"), nullable=False
+    )
+    applied_template_revision_id: Mapped[UUID] = mapped_column(
+        ForeignKey("material_template_revisions.id", ondelete="RESTRICT"), nullable=False
+    )
+    created_by: Mapped[UUID] = mapped_column(ForeignKey("users.id", ondelete="RESTRICT"), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)

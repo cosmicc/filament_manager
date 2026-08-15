@@ -659,7 +659,25 @@ async def test_workbook_upload_dry_run_and_commit_populates_inventory(
             assert await session.scalar(select(func.count(Spool.id))) == 35
             assert await session.scalar(select(func.count(Printer.id))) == 1
             assert await session.scalar(select(func.count(BuildPlate.id))) == 5
-            assert await session.scalar(select(func.count(OutboxJob.id))) == 36
+            assert await session.scalar(select(func.count(OutboxJob.id))) == 66
+            assert (
+                await session.scalar(
+                    select(func.count(OutboxJob.id)).where(OutboxJob.job_type == "spoolman.spool.upsert")
+                )
+                == 35
+            )
+            assert (
+                await session.scalar(
+                    select(func.count(OutboxJob.id)).where(OutboxJob.job_type == "google.profile.publish")
+                )
+                == committed.json()["profiles"]
+            )
+            assert (
+                await session.scalar(
+                    select(func.count(OutboxJob.id)).where(OutboxJob.job_type == "google.inventory.publish")
+                )
+                == 1
+            )
             audit = await session.scalar(
                 select(AuditEvent).where(AuditEvent.action == "workbook.import.commit")
             )

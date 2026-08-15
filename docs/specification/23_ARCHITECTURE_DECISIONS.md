@@ -53,10 +53,10 @@
 **Decision:** treat accepted scale measurements as periodic physical corrections rather than a second consumption counter.  
 **Reason:** prevents double-counting with Moonraker usage.
 
-## ADR-010: Version profiles
+## ADR-010: Direct saves with immutable snapshots
 
-**Decision:** published material profiles are immutable versions.  
-**Reason:** traceability and repeatable Cura generation.
+**Decision:** operator edits save directly as current settings while material profile and template snapshots remain immutable internal history.
+**Reason:** simple operation without sacrificing traceability, exact print state, or repeatable Cura generation.
 
 ## ADR-011: Environment-only Docker configuration
 

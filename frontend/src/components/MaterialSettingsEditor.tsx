@@ -175,7 +175,7 @@ export function MaterialSettingsEditor({
               <div className="setting-field">
                 <label className="check-row">
                   <input name="cooling_enabled" type="checkbox" defaultChecked={settings?.cooling_enabled ?? true} />
-                  <span><strong>Enable print cooling</strong><small>Stored with this material revision.</small></span>
+                  <span><strong>Enable print cooling</strong><small>Stored with the current material settings.</small></span>
                 </label>
                 {ownership('cooling_enabled', baseSettings?.cooling_enabled)}
               </div>

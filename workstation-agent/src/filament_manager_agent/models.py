@@ -1,6 +1,7 @@
 """Validated local configuration and Cura discovery types."""
 
 from pathlib import Path
+from typing import Literal
 from uuid import UUID
 
 from pydantic import BaseModel, Field, HttpUrl, SecretStr, field_validator
@@ -68,7 +69,7 @@ class CuraInstallation(BaseModel):
 
 
 class CuraMaterial(BaseModel):
-    """Sanitized existing material that can be imported by the management server."""
+    """Sanitized existing Cura source offered for explicit canonical import."""
 
     source_id: str
     installation_id: str
@@ -77,6 +78,10 @@ class CuraMaterial(BaseModel):
     material_type: str
     color_name: str
     settings: dict[str, str | bool]
+    source_kind: Literal["material", "print_profile"] = "material"
+    machine_name: str | None = None
+    quality_type: str | None = None
+    omitted_setting_count: int = Field(default=0, ge=0)
     material_guid: UUID | None = None
     content_checksum: str | None = Field(default=None, pattern=r"^[0-9a-f]{64}$")
 

@@ -20,10 +20,6 @@ from filament_manager.domain.mass import (
     MeasurementConfirmationRequired,
     calculate_measurement,
 )
-from filament_manager.domain.profile_inheritance import (
-    profile_columns_from_settings,
-    sparse_profile_overrides,
-)
 from filament_manager.domain.spool_preflight import SpoolPreflightError
 from filament_manager.models.enums import MeasurementStatus, ProfileStatus, SpoolStatus
 from filament_manager.models.inventory import (
@@ -38,6 +34,10 @@ from filament_manager.models.inventory import (
     Vendor,
 )
 from filament_manager.services.events import add_audit_event, add_outbox_job
+from filament_manager.services.material_settings import (
+    create_published_profile_snapshot,
+    queue_managed_cura_library,
+)
 from filament_manager.services.print_statistics import completed_spool_print_counts
 from filament_manager.services.spool_preflight import spool_change_target
 
@@ -373,7 +373,7 @@ async def create_filament(
             raise ApiError(
                 status.HTTP_422_UNPROCESSABLE_ENTITY,
                 "template_revision_unavailable",
-                "Select a published material template revision",
+                "Select a current material template",
             )
         template = await session.get(MaterialTemplate, template_revision.material_template_id)
         if template is None or not template.active:
@@ -416,21 +416,14 @@ async def create_filament(
         # Product density is canonical for the actual purchasable filament and
         # intentionally supersedes the generic template's starting density.
         profile_values["filament_density_g_cm3"] = product.density_g_cm3
-        profile = MaterialProfile(
-            **profile_columns_from_settings(profile_values),
+        profile = await create_published_profile_snapshot(
+            session,
             filament_product_id=product.id,
             printer_id=template.printer_id,
             nozzle_diameter_mm=template.nozzle_diameter_mm,
-            version=1,
-            status=ProfileStatus.DRAFT,
-            base_template_revision_id=template_revision.id,
-            setting_overrides=sparse_profile_overrides(
-                template_revision.settings,
-                profile_values,
-            ),
+            base_revision=template_revision,
+            settings=profile_values,
         )
-        session.add(profile)
-        await session.flush()
     add_audit_event(
         session,
         actor_id=operator.id,
@@ -458,6 +451,8 @@ async def create_filament(
         aggregate_version=1,
         payload={"filament_product_id": str(product.id)},
     )
+    if profile is not None:
+        await queue_managed_cura_library(session, requested_by=operator.id)
     await session.commit()
     await session.refresh(product, attribute_names=["vendor"])
     return filament_response(product)

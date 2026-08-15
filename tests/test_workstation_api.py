@@ -35,6 +35,19 @@ from filament_manager.models.workstations import (
 from filament_manager.security import hash_password
 
 
+def test_combined_cura_import_source_count_prevents_automatic_takeover() -> None:
+    """Saved print profiles block automatic takeover even without user materials."""
+
+    assert (
+        workstations._unmanaged_cura_source_count(
+            {"unmanaged_material_count": 0, "unmanaged_import_source_count": 2}
+        )
+        == 2
+    )
+    assert workstations._unmanaged_cura_source_count({"unmanaged_material_count": 0}) == 0
+    assert workstations._unmanaged_cura_source_count({"unmanaged_material_count": True}) is None
+
+
 @pytest.mark.integration
 @pytest.mark.asyncio
 async def test_pair_queue_claim_and_complete_workstation_deployment(
@@ -305,19 +318,25 @@ async def test_pair_queue_claim_and_complete_workstation_deployment(
             assert agent.token_hash != agent_token
             deployment = await session.get(CuraDeployment, deployment_id)
             assert deployment is not None
-            # Capturing the local draft immediately re-queues the last published
-            # library so Cura returns to canonical state until review/publication.
-            assert deployment.status == CuraDeploymentStatus.PENDING
-            draft = await session.scalar(
+            assert deployment.status == CuraDeploymentStatus.SUCCEEDED
+            queued_current_library = await session.scalar(
+                select(CuraDeployment)
+                .where(CuraDeployment.id != deployment_id)
+                .order_by(CuraDeployment.created_at.desc())
+                .limit(1)
+            )
+            assert queued_current_library is not None
+            assert queued_current_library.status == CuraDeploymentStatus.PENDING
+            current_profile = await session.scalar(
                 select(MaterialProfile)
                 .where(MaterialProfile.filament_product_id == profile.filament_product_id)
                 .order_by(MaterialProfile.version.desc())
                 .limit(1)
             )
-            assert draft is not None and draft.version == 2
-            assert draft.status == ProfileStatus.DRAFT
-            assert draft.extruder_temp_c == Decimal("225.00000")
-            assert draft.base_template_revision_id == template_revision.id
+            assert current_profile is not None and current_profile.version == 2
+            assert current_profile.status == ProfileStatus.PUBLISHED
+            assert current_profile.extruder_temp_c == Decimal("225.00000")
+            assert current_profile.base_template_revision_id == template_revision.id
             receipt = await session.scalar(select(CuraManagedEditReceipt))
             assert receipt is not None
             assert receipt.content_checksum != "d" * 64

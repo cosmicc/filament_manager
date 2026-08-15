@@ -1,6 +1,6 @@
 # User Changelog
 
-## 0.2.2 - 08.14.2026
+## 0.2.2 - 08.15.2026
 
 ### Added
 
@@ -9,15 +9,18 @@
 - Added **Add Side B** to each physical build plate. The side remains unavailable for selection until its exact `P#b` Klipper mesh is discovered.
 - Added **Diagnostics** with all connection, synchronization, worker, and queue health; a small recent-error view; recovery validation; safe projection rebuild; and existing retry/reconciliation actions.
 - Added the running app version to the sidebar and Diagnostics. Diagnostics now compares it with the newest published GitHub testing or stable release.
-- Added a guided one-time Cura import where one selected source becomes the material-family template and other selected sources become filament-specific profiles before takeover.
+- Added a guided one-time Cura takeover where every discovered source has its own existing-template selector, unwanted sources can remain unmapped, and all choices are reviewed and confirmed together.
+- Added saved Cura print profiles to the one-time takeover list, including their tracked literal settings and a clear count of safely omitted Cura expressions.
 - Added workstation-agent uninstallers for Arch Linux and Windows.
 
 ### Changed
 
 - Operational status now lives on Diagnostics instead of being split across Dashboard, Printers, Integrations, and Cura Workstations.
 - Printer nozzle details now come from installable physical nozzle records rather than editable printer text fields.
-- Cura takeover remains blocked until every selected template or filament-profile import is reviewed and published.
-- **Load Filament** now opens a live list of non-empty projected spools directly in Fluidd, even when a spool's current exact profile is still a draft. Cura print starts remain restricted to published profiles. A spool selected in Spoolman opens a safe confirmation instead of being silently discarded.
+- Templates, filament profiles, calibration results, workbook imports, and known Cura edits now save directly and synchronize automatically—there are no revision, publication, or manual Cura deployment steps.
+- Template changes immediately flow to every linked filament profile unless a value was explicitly customized for that filament.
+- Cura expressions are skipped safely during takeover. Each selected source maps directly to one existing template; unmapped sources are ignored after backup.
+- **Load Filament** now opens a live list of non-empty projected spools directly in Fluidd, even when a spool does not yet have an exact print-ready profile. Cura print starts remain restricted to exact current profiles. A spool selected in Spoolman opens a safe confirmation instead of being silently discarded.
 - The sidebar now has a simple Logout button and direction-only collapse control. Light/dark theme selection moved to Settings.
 - Running **Select Build Plate** without a plate now lists the current valid P-number meshes saved in Klipper.
 - Workstation installers now say explicitly whether they are performing a fresh installation or an upgrade.
@@ -26,7 +29,9 @@
 
 - Fixed there being no way to add the second side of an existing physical build plate.
 - Fixed existing Cura source selection being difficult to find before authoritative synchronization.
-- Fixed multiple same-material Cura sources being treated as competing templates instead of one template plus filament-specific profiles.
+- Fixed saved Cura print profiles not appearing as import choices before authoritative synchronization.
+- Fixed Cura takeover lacking a clear template choice for each discovered source.
+- Fixed material editing requiring draft, publish, and manual deployment actions before a change became active.
 - Fixed the Target Spool error that prevented manual loading and the stale M600 selection state that reported a workflow was already active.
 - Fixed manual loading incorrectly reporting that no eligible spools were available when the only missing item was profile publication.
 - Fixed new build-plate meshes requiring hand-written selector buttons.

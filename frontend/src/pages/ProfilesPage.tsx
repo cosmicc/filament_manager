@@ -1,5 +1,5 @@
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { Download, FileInput, GitCompareArrows, MonitorUp, Pencil, SlidersHorizontal, Upload } from 'lucide-react'
+import { useQuery } from '@tanstack/react-query'
+import { Download, GitCompareArrows, Pencil, SlidersHorizontal } from 'lucide-react'
 import { useState } from 'react'
 import { apiFetch } from '../api/client'
 import type {
@@ -9,123 +9,48 @@ import type {
   MaterialProfile,
   MaterialTemplate,
   Printer,
-  WorkstationAgent,
 } from '../api/types'
-import { EditorSection } from '../components/EditorSection'
 import { EmptyState } from '../components/EmptyState'
 import { LoadingState } from '../components/LoadingState'
 import { MaterialComparisonModal } from '../components/MaterialComparisonModal'
-import { Modal } from '../components/Modal'
 import { PageHeader } from '../components/PageHeader'
-import { StatusPill } from '../components/StatusPill'
-import { useAuth } from '../context/AuthContext'
 import { Link } from '../context/RouterContext'
 
 export default function ProfilesPage() {
-  const { user } = useAuth()
-  const client = useQueryClient()
   const profiles = useQuery({ queryKey: ['profiles'], queryFn: () => apiFetch<MaterialProfile[]>('/profiles') })
   const filaments = useQuery({ queryKey: ['filaments'], queryFn: () => apiFetch<Filament[]>('/filaments') })
   const printers = useQuery({ queryKey: ['printers'], queryFn: () => apiFetch<Printer[]>('/printers') })
   const plates = useQuery({ queryKey: ['plates'], queryFn: () => apiFetch<BuildPlate[]>('/build-plates') })
   const templates = useQuery({ queryKey: ['material-templates'], queryFn: () => apiFetch<MaterialTemplate[]>('/profiles/templates?include_inactive=true') })
   const catalog = useQuery({ queryKey: ['cura-settings-catalog'], queryFn: () => apiFetch<CuraSettingCatalogItem[]>('/profiles/cura-settings/catalog') })
-  const agents = useQuery({ queryKey: ['workstation-agents'], queryFn: () => apiFetch<WorkstationAgent[]>('/workstation-agents') })
-  const publish = useMutation({ mutationFn: (id: string) => apiFetch(`/profiles/${id}/publish`, { method: 'POST' }), onSuccess: () => client.invalidateQueries({ queryKey: ['profiles'] }) })
-  const [deploymentMessage, setDeploymentMessage] = useState<string | null>(null)
-  const [importing, setImporting] = useState(false)
   const [comparisonProfileId, setComparisonProfileId] = useState<string | null>(null)
-  const deploy = useMutation({
-    mutationFn: (id: string) => apiFetch(`/profiles/${id}/deployments`, { method: 'POST', body: '{}' }),
-    onSuccess: () => setDeploymentMessage('Complete authoritative Cura library queued for every managed workstation.'),
-    onError: (error: Error) => setDeploymentMessage(error.message),
-  })
-  const importMaterial = useMutation({
-    mutationFn: (payload: Record<string, string | null>) => apiFetch('/profiles/import-cura-material', { method: 'POST', body: JSON.stringify(payload) }),
-    onSuccess: async () => {
-      setDeploymentMessage('Cura material imported as a new draft profile.')
-      setImporting(false)
-      await client.invalidateQueries({ queryKey: ['profiles'] })
-    },
-    onError: (error: Error) => setDeploymentMessage(error.message),
-  })
-  const materialOptions = (agents.data ?? []).flatMap((agent) =>
-    agent.cura_materials.map((material) => ({
-      key: `${agent.id}:${material.source_id}`,
-      agentId: agent.id,
-      sourceId: material.source_id,
-      label: `${material.name} · ${agent.display_name}`,
-      settingCount: Object.keys(material.settings).length,
-    })),
-  )
   const filamentName = (id: string) => {
     const item = filaments.data?.find((value) => value.id === id)
     return item ? `${item.vendor_name ?? ''} ${item.material_type} · ${item.color_name}`.trim() : 'Unknown filament'
   }
   const printerName = (id: string) => printers.data?.find((value) => value.id === id)?.name ?? 'Unknown printer'
 
-  return (
-    <div>
-      <PageHeader
-        eyebrow="Slicer-ready settings"
-        title="Material profiles"
-        description="Template-linked filament settings with sparse overrides and immutable resolved snapshots for Cura."
-        actions={<>
-          {profiles.data?.length ? <button className="button" onClick={() => setComparisonProfileId(profiles.data[0].id)}><GitCompareArrows size={17} /> Compare settings</button> : null}
-          {user?.role !== 'viewer' && materialOptions.length ? <button className="button button--primary" onClick={() => setImporting(true)}><FileInput size={17} /> Import Cura material</button> : null}
-        </>}
-      />
-      {deploymentMessage ? <div className="deployment-note" role="status">{deploymentMessage}</div> : null}
-      {profiles.isLoading ? <LoadingState /> : !profiles.data?.length ? (
-        <EmptyState icon={SlidersHorizontal} title="No profiles yet" description={materialOptions.length ? 'Import an existing Cura material above or complete a calibration session.' : 'Complete a calibration session, or let a paired workstation report existing Cura materials for import.'} />
-      ) : (
-        <div className="table-card"><table><thead><tr><th>Filament</th><th>Printer</th><th>Version</th><th>Template base</th><th>Overrides</th><th>Temperatures</th><th>Cura settings</th><th>Status</th><th>Actions</th></tr></thead><tbody>{profiles.data.map((profile) => <tr key={profile.id}><td><strong>{filamentName(profile.filament_product_id)}</strong></td><td>{printerName(profile.printer_id)} · {profile.nozzle_diameter_mm} mm</td><td>v{profile.version}</td><td>{profile.base_template_name ?? 'Missing'} · v{profile.base_template_version ?? '—'}{profile.latest_template_revision_id !== profile.base_template_revision_id ? <small>Update available</small> : null}</td><td>{profile.override_count ? `${profile.override_count} customized` : 'Inherited'}</td><td>{profile.extruder_temp_c}° / {profile.bed_temp_c}°</td><td>{Object.keys(profile.cura_settings).length} resolved</td><td><StatusPill status={profile.status} /></td><td><div className="table-actions"><button className="icon-button" onClick={() => setComparisonProfileId(profile.id)} title="Compare material settings" aria-label={`Compare ${filamentName(profile.filament_product_id)} profile settings`}><GitCompareArrows size={17} /></button><Link className="icon-button" to={`/filaments/${profile.filament_product_id}`} title="Edit filament and profile settings"><Pencil size={17} /></Link>{user?.role !== 'viewer' && profile.status !== 'published' && <button className="icon-button" onClick={() => publish.mutate(profile.id)} title="Publish profile"><Upload size={17} /></button>}{user?.role !== 'viewer' && profile.status === 'published' && <button className="icon-button" disabled={deploy.isPending} onClick={() => deploy.mutate(profile.id)} title="Deploy material to all Cura workstations"><MonitorUp size={17} /></button>}<a className="icon-button" href={`/api/v1/profiles/${profile.id}/exports/cura`} title="Download Cura material settings"><Download size={17} /></a></div></td></tr>)}</tbody></table></div>
-      )}
-      {comparisonProfileId && profiles.data ? <MaterialComparisonModal
-        profiles={profiles.data}
-        templates={templates.data ?? []}
-        printers={printers.data ?? []}
-        filaments={filaments.data ?? []}
-        plates={plates.data ?? []}
-        catalog={catalog.data ?? []}
-        initialProfileId={comparisonProfileId}
-        onClose={() => setComparisonProfileId(null)}
-      /> : null}
-      {importing ? <Modal title="Import a Cura material" description="Copy approved Material Settings values into a new Filament Manager draft. The local Cura file is not modified." onClose={() => setImporting(false)} size="wide" footer={<><button className="button" type="button" onClick={() => setImporting(false)}>Cancel</button><button className="button button--primary" form="import-cura-material" disabled={importMaterial.isPending}><FileInput size={17} />{importMaterial.isPending ? 'Importing…' : 'Import as draft'}</button></>}>
-        <form
-          id="import-cura-material"
-          className="editor-form"
-          onSubmit={(event) => {
-            event.preventDefault()
-            const data = new FormData(event.currentTarget)
-            const materialKey = String(data.get('material') ?? '')
-            const option = materialOptions.find((item) => item.key === materialKey)
-            const printerId = String(data.get('printer_id') ?? '')
-            const printer = printers.data?.find((item) => item.id === printerId)
-            if (!option || !printer) return
-            importMaterial.mutate({
-              agent_id: option.agentId,
-              source_id: option.sourceId,
-              filament_product_id: String(data.get('filament_product_id') ?? ''),
-              printer_id: printerId,
-              nozzle_diameter_mm: printer.nozzle_diameter_mm,
-              preferred_build_plate_surface_id: String(data.get('preferred_build_plate_surface_id') ?? '') || null,
-            })
-          }}
-        >
-          <EditorSection title="Cura source" description="Choose a material reported by a paired workstation agent.">
-            <label>Cura material<select name="material" required autoFocus>{materialOptions.map((option) => <option key={option.key} value={option.key}>{option.label} ({option.settingCount} settings)</option>)}</select></label>
-          </EditorSection>
-          <EditorSection title="Filament Manager target" description="Assign the imported values to an exact filament, printer, nozzle, and optional plate side.">
-            <div className="form-grid">
-              <label>Canonical filament<select name="filament_product_id" required>{filaments.data?.map((filament) => <option key={filament.id} value={filament.id}>{filamentName(filament.id)}</option>)}</select></label>
-              <label>Printer and nozzle<select name="printer_id" required>{printers.data?.map((printer) => <option key={printer.id} value={printer.id}>{printer.name} · {printer.nozzle_diameter_mm} mm</option>)}</select></label>
-              <label className="form-grid__wide">Preferred plate side<select name="preferred_build_plate_surface_id"><option value="">No preference</option>{plates.data?.flatMap((plate) => plate.surfaces.map((surface) => <option key={surface.id} value={surface.id}>{surface.surface_code} · {surface.surface_material ?? 'Surface not specified'}</option>))}</select></label>
-            </div>
-          </EditorSection>
-          {importMaterial.error ? <p className="form-error" role="alert">{importMaterial.error.message}</p> : null}
-        </form>
-      </Modal> : null}
-    </div>
-  )
+  return <div>
+    <PageHeader
+      eyebrow="Slicer-ready settings"
+      title="Material profiles"
+      description="Current template-linked filament settings. Direct saves synchronize automatically while immutable history remains available to print records and audits."
+      actions={profiles.data?.length ? <button className="button" onClick={() => setComparisonProfileId(profiles.data[0].id)}><GitCompareArrows size={17} /> Compare settings</button> : undefined}
+    />
+    {profiles.isLoading ? <LoadingState /> : !profiles.data?.length ? (
+      <EmptyState icon={SlidersHorizontal} title="No profiles yet" description="Create a filament from a material template or apply a completed calibration." />
+    ) : (
+      <div className="table-card"><table><thead><tr><th>Filament</th><th>Printer</th><th>Linked template</th><th>Overrides</th><th>Temperatures</th><th>Cura settings</th><th>Actions</th></tr></thead><tbody>{profiles.data.map((profile) => <tr key={profile.id}><td><strong>{filamentName(profile.filament_product_id)}</strong></td><td>{printerName(profile.printer_id)} · {profile.nozzle_diameter_mm} mm</td><td>{profile.base_template_name ?? 'Missing'}</td><td>{profile.override_count ? `${profile.override_count} customized` : 'Inherited'}</td><td>{profile.extruder_temp_c}° / {profile.bed_temp_c}°</td><td>{Object.keys(profile.cura_settings).length} resolved</td><td><div className="table-actions"><button className="icon-button" onClick={() => setComparisonProfileId(profile.id)} title="Compare material settings" aria-label={`Compare ${filamentName(profile.filament_product_id)} profile settings`}><GitCompareArrows size={17} /></button><Link className="icon-button" to={`/filaments/${profile.filament_product_id}`} title="Edit filament and profile settings"><Pencil size={17} /></Link><a className="icon-button" href={`/api/v1/profiles/${profile.id}/exports/cura`} title="Download Cura material settings"><Download size={17} /></a></div></td></tr>)}</tbody></table></div>
+    )}
+    {comparisonProfileId && profiles.data ? <MaterialComparisonModal
+      profiles={profiles.data}
+      templates={templates.data ?? []}
+      printers={printers.data ?? []}
+      filaments={filaments.data ?? []}
+      plates={plates.data ?? []}
+      catalog={catalog.data ?? []}
+      initialProfileId={comparisonProfileId}
+      onClose={() => setComparisonProfileId(null)}
+    /> : null}
+  </div>
 }

@@ -8,12 +8,13 @@ export function StatusPill({ status, label }: { status: string; label?: string }
     'published',
     'in_stock',
     'ready',
+    'applied',
     'active',
     'validated',
     'healthy',
   ].includes(normalized)
     ? 'success'
-    : ['low', 'needs_weighing', 'needs_review', 'pending', 'claimed', 'in_progress'].includes(normalized)
+    : ['low', 'needs_weighing', 'needs_review', 'pending', 'claimed', 'in_progress', 'ready_to_apply'].includes(normalized)
       ? 'warning'
       : ['unavailable', 'failed', 'dead', 'empty', 'error', 'invalid'].includes(normalized)
         ? 'danger'

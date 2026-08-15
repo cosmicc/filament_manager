@@ -14,10 +14,6 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from filament_manager.domain.colors import normalize_color_name
-from filament_manager.domain.profile_inheritance import (
-    profile_columns_from_settings,
-    sparse_profile_overrides,
-)
 from filament_manager.models.auth import User
 from filament_manager.models.enums import ProfileStatus, SpoolStatus, UserRole
 from filament_manager.models.inventory import (
@@ -33,6 +29,7 @@ from filament_manager.models.inventory import (
 from filament_manager.models.operations import ImportRun
 
 from .events import add_audit_event, add_outbox_job
+from .material_settings import create_published_profile_snapshot, queue_managed_cura_library
 
 HEADERS = [
     "Spool ID",
@@ -437,20 +434,14 @@ async def commit_approved_run(
                     await session.flush()
                 template_revisions[template_key] = template_revision
                 product.source_template_revision_id = template_revision.id
-                profile = MaterialProfile(
-                    **profile_columns_from_settings(profile_settings),
+                await create_published_profile_snapshot(
+                    session,
                     filament_product_id=product.id,
                     printer_id=printer.id,
                     nozzle_diameter_mm=printer.nozzle_diameter_mm,
-                    version=1,
-                    status=ProfileStatus.DRAFT,
-                    base_template_revision_id=template_revision.id,
-                    setting_overrides=sparse_profile_overrides(
-                        template_revision.settings,
-                        profile_settings,
-                    ),
+                    base_revision=template_revision,
+                    settings=profile_settings,
                 )
-                session.add(profile)
                 imported_profiles += 1
 
     workbook.close()
@@ -478,6 +469,7 @@ async def commit_approved_run(
         after={"status": "committed", "spools": imported_spools, "profiles": imported_profiles},
         correlation_id=correlation_id or f"import-{run.id}",
     )
+    await queue_managed_cura_library(session, requested_by=administrator.id)
     await session.commit()
     return {
         "spools": imported_spools,

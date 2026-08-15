@@ -10,8 +10,8 @@
 - Activity: append-only operational and security audit history
 - Cura workstations: pairing, detected Cura versions/machines, pre-takeover source selection, and authoritative management controls
 - Build Plates: per-side Moonraker mesh checks, newly discovered physical plates/sides, unavailable mappings, and the active loaded side
-- Print History: current capture, supported Moonraker history progress, inspection status, unresolved legacy rows, M600 segments, and outcome revisions
-- Notifications: unread Moonraker, dead-job, low/empty spool, overdue plate, and failed Cura deployment conditions
+- Print History: current capture, supported Moonraker history progress, inspection status, unresolved legacy rows, M600 segments, and retained outcome history
+- Notifications: unread Moonraker, dead-job, low/empty spool, overdue plate, and failed Cura synchronization conditions
 
 Canonical inventory changes create supported-API Spoolman jobs in the same transaction and dispatch normally begins within one worker polling cycle. Every minute by default, a safety sweep imports printer-recorded usage first and then converges every canonical vendor, filament product, and spool. Every 15 seconds the worker reads Moonraker's supported active Spoolman ID, persistent physical-spool macro state, and exact P-number mesh state. A valid non-null direct selection in an idle/manual-selection phase opens a guarded Fluidd target, and the worker restores Spoolman to the last completed physical boundary until confirmation; other drift is repaired without target capture. The same pass refreshes the bounded Cura/manual-load spool catalog. Every 5 seconds it captures current print state and incrementally reconciles Moonraker history; every 5 minutes it refreshes sanitized printer information. Notification conditions converge every minute. These jobs also seed the configured printer and initial plates on a fresh database. Google publication is scheduled when enabled. External outages create bounded retries and never roll back already committed canonical changes.
 
@@ -19,7 +19,7 @@ The web and worker emit structured console logs for request completion, stable A
 
 ## Recovery validation and projection rebuild
 
-Use the **Diagnostics** page for the routine read-only validation report. It checks the current Alembic revision, measurement integrity, stored credential hashes, Spoolman projection consistency, Google publication state, and managed Cura deployment state, then persists a sanitized result. This validates application recovery readiness; it does not create or restore a PostgreSQL backup.
+Use the **Diagnostics** page for the routine read-only validation report. It checks the current Alembic revision, measurement integrity, stored credential hashes, Spoolman projection consistency, Google publication state, and managed Cura synchronization state, then persists a sanitized result. This validates application recovery readiness; it does not create or restore a PostgreSQL backup.
 
 The same checks are available inside the application container:
 
@@ -84,17 +84,17 @@ Confirm `MOONRAKER_BASE_URL` is reachable from the Swarm node and container netw
 
 ### Spool workflow does not open or print preflight is blocked
 
-Run `FILAMENT_MANAGER_SPOOL_STATE` in Fluidd. Confirm the integration macro file is included last and the worker log shows `moonraker_spool_preflight_catalog_synchronized` and a one-time `moonraker_spool_preflight_state_initialized`. A missing Cura print candidate means Cura has a stale material revision, a `Template <material type>` entry was selected, no eligible projected spool remains, or the product lacks a current published profile for the configured printer/nozzle. Synchronize the Cura workstation and resend the sliced file after correcting inventory/profile readiness.
+Run `FILAMENT_MANAGER_SPOOL_STATE` in Fluidd. Confirm the integration macro file is included last and the worker log shows `moonraker_spool_preflight_catalog_synchronized` and a one-time `moonraker_spool_preflight_state_initialized`. A missing Cura print candidate means Cura has stale material settings, a `Template <material type>` entry was selected, no eligible projected spool remains, or the product lacks a current exact profile for the configured printer/nozzle. Synchronize the Cura workstation and resend the sliced file after correcting inventory/profile readiness.
 
 If Klipper reports that `variable_catalog_revision` is not a valid literal during startup, replace the installed macro reference with the current `integrations/klipper/filament-manager-macros.cfg`. The current reference uses a non-empty initialization sentinel so config editors cannot collapse the value; the worker replaces it with the real catalog revision after startup.
 
-Keep Fluidd's **Show spool selection dialog on print start** disabled. Run `LOAD_FILAMENT` or `FILAMENT_MANAGER_LOAD_TARGET` without parameters for the managed manual-load chooser. It accepts a projected non-empty spool with a safe temperature from its latest exact non-archived profile, including a draft, or its linked in-scope template; it does not weaken Cura's published-profile requirement. If this chooser is empty, confirm the spool has reached Spoolman, has remaining mass, and has one of those temperature sources. A non-null direct Spoolman selection made while idle or while M600 is waiting becomes a guarded Fluidd target within the next 15-second state pass; the worker still restores the persisted physical ID until the operator explicitly adopts an already-loaded spool or completes motion. A direct clear, invalid target, or selection during another phase is repaired without changing canonical state.
+Keep Fluidd's **Show spool selection dialog on print start** disabled. Run `LOAD_FILAMENT` or `FILAMENT_MANAGER_LOAD_TARGET` without parameters for the managed manual-load chooser. It accepts a projected non-empty spool with a safe temperature from its latest exact non-archived profile or linked in-scope template; it does not weaken Cura's current exact-profile requirement. If this chooser is empty, confirm the spool has reached Spoolman, has remaining mass, and has one of those temperature sources. A non-null direct Spoolman selection made while idle or while M600 is waiting becomes a guarded Fluidd target within the next 15-second state pass; the worker still restores the persisted physical ID until the operator explicitly adopts an already-loaded spool or completes motion. A direct clear, invalid target, or selection during another phase is repaired without changing canonical state.
 
 Diagnostics shows the running version and compares it with the highest non-draft semantic GitHub release, including testing prereleases. The fixed public lookup is cached for 15 minutes. An unavailable result is informational about the check itself; it does not indicate that the application or database is unhealthy.
 
 During a change, `unloading` retains the old active ID, `inserting` means no active spool, and `loading` still means no active spool. `ready` means the exact new ID has been committed. `load_select` and `manual_select` are recoverable chooser phases: rerun `FILAMENT_MANAGER_LOAD_TARGET` to reopen the prompt. A ten-minute insertion timeout turns off the nozzle and retains the last completed boundary. Use the prompt's cancel action or `FILAMENT_MANAGER_ABORT` after a macro error; never invoke the internal `_FILAMENT_MANAGER_RECORD_LOADED` helper manually.
 
-For a **G-code Blocked** prompt, open the matching Print History row. A listed mismatch requires reslicing or publishing/synchronizing the intended profile. An unavailable result means Moonraker could not supply the file or its exact managed profile could not be resolved; do not bypass it by changing Spoolman manually. Administrators may return to the recommended warning policy during diagnosis, but the setting change is audited and synchronized to Klipper.
+For a **G-code Blocked** prompt, open the matching Print History row. A listed mismatch requires correcting the current profile, allowing synchronization, and reslicing. An unavailable result means Moonraker could not supply the file or its exact managed profile could not be resolved; do not bypass it by changing Spoolman manually. Administrators may return to the recommended warning policy during diagnosis, but the setting change is audited and synchronized to Klipper.
 
 ### Print history is missing or duplicated
 
@@ -124,7 +124,7 @@ Confirm the selected spool, scale zero, gross value, and stored tare. The applic
 
 The dry run is tied to the exact SHA-256 file. Resolve row errors or select the unchanged approved file. Import is intentionally refused when canonical spool inventory is not empty.
 
-### Cura deployment remains pending
+### Cura synchronization remains pending
 
 Confirm the per-user systemd service or Windows logon task is running and its last-contact time is current. Close Cura; the agent deliberately defers all writes while any Cura process is open. Run `filament-manager-agent scan` under the Cura user and confirm the expected version, machine name, and nozzle are detected.
 
@@ -136,17 +136,17 @@ Inspect both web and worker logs for `database_migration_started`, `database_mig
 
 The workstation reports only the approved settings exposed by the configured Material Settings catalog. Unsupported keys and machine start G-code are intentionally discarded. Confirm the current Material Settings and Klipper Settings plugins are installed and the desired settings are stored on the Cura material, then let the agent heartbeat again before importing.
 
-### A managed Cura edit does not appear as a draft
+### A managed Cura edit does not appear
 
-Confirm Cura is closed so its material file is complete, the workstation is under authoritative management, and the edited entry was originally synchronized by Filament Manager. The agent accepts setting changes only from a known deterministic managed GUID. New or copied Cura materials and metadata-only edits are intentionally ignored. After the next heartbeat, review the new draft on the linked Template or Filament detail page; the published library is automatically restored in Cura until the draft is explicitly published.
+Confirm Cura is closed so its material file is complete, the workstation is under authoritative management, and the edited entry was originally synchronized by Filament Manager. The agent accepts setting changes only from a known deterministic managed GUID. New or copied Cura materials and metadata-only edits are intentionally ignored. After the next heartbeat, reload the linked Template or Filament detail page; the accepted change saves directly and the current library synchronizes automatically.
 
-### A filament shows a template update
+### A filament did not inherit a template change
 
-Review the effective setting differences on that filament and confirm the update only if they are correct for that specific product. Confirmation creates a new draft; it does not publish or change another filament. Existing customized values remain overrides. Review and publish the resulting draft to send it to Cura.
+Reload the filament detail and confirm whether that specific key is marked customized. Explicit customizations intentionally remain unchanged; every other value inherits immediately from the template save. Use **Reset to Template** for a key that should return to inherited ownership, then allow automatic Cura synchronization.
 
-### A Cura deployment fails during file replacement
+### Cura synchronization fails during file replacement
 
-The agent restores the pre-deployment backup automatically. Review the sanitized deployment error and local structured agent log. Use `filament-manager-agent rollback DEPLOYMENT_UUID` for an explicit restoration when required. After authoritative management is enabled, do not maintain user material files directly in Cura because heartbeat synchronization will restore Filament Manager's desired state.
+The agent restores the pre-synchronization backup automatically. Review the sanitized synchronization error and local structured agent log. Use `filament-manager-agent rollback DEPLOYMENT_UUID` for an explicit restoration when required. After authoritative management is enabled, do not create or copy user material files directly in Cura because heartbeat synchronization will restore Filament Manager's desired state.
 
 ## Recovery objectives
 
