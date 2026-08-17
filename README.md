@@ -24,7 +24,7 @@ PostgreSQL is the canonical data store. A distinct Spoolman service remains the 
 - Outbound-only Cura workstation agents with clearly identified fresh-install/upgrade paths and uninstallers, one-time source-to-existing-template mapping, direct intake of edits to known managed materials, and authoritative synchronization on Arch Linux and Windows 11 with backup, drift repair, bundled-material hiding, and rollback
 - Workshop Navy light and dark web interface with browser-local theme selection under Settings and the running version in the application shell
 - Health, readiness, and Prometheus metrics endpoints
-- A dedicated Diagnostics page with connection, synchronization, worker, queue, recent-error, running/latest-version, read-only recovery-validation, and safe projection-rebuild controls
+- A dedicated Diagnostics page with connection, synchronization, worker, queue, recent-error, running/latest-version, read-only recovery-validation, safe projection-rebuild controls, and a sanitized plain-text log download
 
 ## Start locally
 

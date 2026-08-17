@@ -62,7 +62,7 @@ Manual Fluidd load commands show the live non-empty projected-spool catalog with
 
 Nozzles shows physical identity, diameter, construction material, lifecycle state, installed printer, completed prints, total filament use, and append-only install/remove history. Installing a nozzle replaces no record silently and one printer has at most one installed nozzle.
 
-Diagnostics shows the running application version and cached newest non-draft GitHub release, then groups connection, synchronization, worker, and operational information; queue depth and job actions; bounded recent errors; persisted read-only validation results; and an Administrator-only safe projection rebuild. Dashboard, Printers, Integrations, and Cura Workstations link to this page instead of duplicating live operational status.
+Diagnostics shows the running application version and cached newest non-draft GitHub release, then groups connection, synchronization, worker, and operational information; queue depth and job actions; bounded recent errors with a **Download log** text action; persisted read-only validation results; and an Administrator-only safe projection rebuild. The download comes from the authenticated server overview and uses the same bounded sanitization as the screen. Dashboard, Printers, Integrations, and Cura Workstations link to this page instead of duplicating live operational status.
 
 ## Print history, notifications, and accounts
 

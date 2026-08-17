@@ -17,6 +17,14 @@ test.beforeEach(async ({ page }) => {
 })
 
 test('diagnostics consolidates operational status and recovery controls', async ({ page }) => {
+  await page.route('**/api/v1/diagnostics/log.txt', (route) => route.fulfill({
+    status: 200,
+    headers: {
+      'Content-Type': 'text/plain; charset=utf-8',
+      'Content-Disposition': 'attachment; filename="filament-manager-diagnostics-20260814T120000Z.txt"',
+    },
+    body: 'Filament Manager diagnostics\nGenerated: 2026-08-14T12:00:00Z\n',
+  }))
   await page.route('**/api/v1/diagnostics/version', (route) => route.fulfill({ json: {
     running_version: '0.2.2', latest_version: '0.2.2', status: 'current',
     release_url: 'https://github.com/cosmicc/filament_manager/releases/tag/v0.2.2',
@@ -49,6 +57,9 @@ test('diagnostics consolidates operational status and recovery controls', async 
   await expect(page.getByRole('heading', { name: 'Synchronizations' })).toBeVisible()
   await expect(page.getByRole('heading', { name: 'Workers and queues' })).toBeVisible()
   await expect(page.getByRole('heading', { name: 'Recent errors' })).toBeVisible()
+  const downloadPromise = page.waitForEvent('download')
+  await page.getByRole('link', { name: 'Download log' }).click()
+  await expect((await downloadPromise).suggestedFilename()).toBe('filament-manager-diagnostics-20260814T120000Z.txt')
   await expect(page.getByRole('button', { name: 'Run validation' })).toBeVisible()
   await expect(page.getByRole('button', { name: /Rebuild projections/ })).toBeVisible()
   await page.screenshot({ path: '../docs/design/validation/diagnostics-v022.png', fullPage: true })

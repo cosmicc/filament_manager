@@ -5,7 +5,7 @@ import hashlib
 import json
 import time
 from datetime import UTC, datetime, timedelta
-from decimal import Decimal
+from decimal import ROUND_HALF_UP, Decimal, InvalidOperation
 from typing import cast
 from uuid import UUID
 
@@ -48,6 +48,7 @@ from filament_manager.services.spool_preflight import (
 
 SPOOLMAN_FIELD_LOCK_KEY = 0x464D53504649454C
 SPOOLMAN_FIELD_CACHE_SECONDS = 30
+SPOOL_MASS_QUANTUM = Decimal("0.001")
 _spoolman_fields_ready_until = 0.0
 _spoolman_fields_lock = asyncio.Lock()
 logger = structlog.get_logger()
@@ -89,6 +90,31 @@ def _projected_spool_location(value: str | None) -> str | None:
     """Bound a canonical location to Spoolman's documented 64 characters."""
 
     return value[:64] if value is not None else None
+
+
+def _canonical_spool_mass(value: object) -> Decimal:
+    """Normalize Spoolman mass to the canonical PostgreSQL NUMERIC scale."""
+
+    try:
+        mass = Decimal(str(value))
+    except (InvalidOperation, ValueError) as exc:
+        raise ValueError("Spoolman returned an invalid remaining weight") from exc
+    if not mass.is_finite() or mass < 0:
+        raise ValueError("Spoolman returned an invalid remaining weight")
+    try:
+        return mass.quantize(SPOOL_MASS_QUANTUM, rounding=ROUND_HALF_UP)
+    except InvalidOperation as exc:
+        raise ValueError("Spoolman returned an invalid remaining weight") from exc
+
+
+def _failure_class_summary(failures: list[Exception]) -> str:
+    """Summarize bounded failure classes without retaining external response content."""
+
+    counts: dict[str, int] = {}
+    for failure in failures:
+        name = type(failure).__name__[:80]
+        counts[name] = counts.get(name, 0) + 1
+    return ", ".join(f"{name} x{count}" if count > 1 else name for name, count in sorted(counts.items()))
 
 
 def _managed_remote_ids(items: list[dict[str, object]], key: str) -> dict[UUID, int]:
@@ -625,7 +651,9 @@ async def _reconcile_spoolman(session: AsyncSession, client: SpoolmanClient) -> 
                 {"location": _projected_spool_location(spool.location)},
             )
             remote = {**remote, **updated_remote}
-        remote_remaining = Decimal(str(remote.get("remaining_weight", spool.remaining_mass_expected_g)))
+        remote_remaining = _canonical_spool_mass(
+            remote.get("remaining_weight", spool.remaining_mass_expected_g)
+        )
         delta = remote_remaining - spool.remaining_mass_expected_g
         if delta < 0:
             occurred_at = datetime.now(UTC)
@@ -917,7 +945,10 @@ async def _reconcile_moonraker_state(session: AsyncSession, job: OutboxJob) -> N
                 active_surface_code=plate_sync.active_surface_code,
             )
     if failures:
-        raise RuntimeError(f"Moonraker state synchronization had {len(failures)} failure(s)") from failures[0]
+        raise RuntimeError(
+            f"Moonraker state synchronization had {len(failures)} failure(s): "
+            f"{_failure_class_summary(failures)}"
+        ) from failures[0]
 
 
 async def _reconcile_moonraker_printer_information(session: AsyncSession, job: OutboxJob) -> None:
@@ -953,7 +984,8 @@ async def _reconcile_moonraker_printer_information(session: AsyncSession, job: O
             )
     if failures:
         raise RuntimeError(
-            f"Moonraker printer-information synchronization had {len(failures)} failure(s)"
+            f"Moonraker printer-information synchronization had {len(failures)} failure(s): "
+            f"{_failure_class_summary(failures)}"
         ) from failures[0]
 
 
@@ -962,6 +994,8 @@ async def _reconcile_moonraker_print_history(session: AsyncSession, job: OutboxJ
 
     failures: list[Exception] = []
     for printer, configured in await _configured_printer_bindings(session):
+        printer_id = printer.id
+        printer_code = printer.printer_code
         client = MoonrakerClient(configured)
         print_result, preflight_result = await asyncio.gather(
             client.print_state(), client.spool_preflight_state(), return_exceptions=True
@@ -976,7 +1010,7 @@ async def _reconcile_moonraker_print_history(session: AsyncSession, job: OutboxJ
             await session.commit()
             logger.error(
                 "moonraker_print_state_sync_failed",
-                printer_code=printer.printer_code,
+                printer_code=printer_code,
                 error_class=type(print_result).__name__,
                 error=str(print_result),
             )
@@ -996,10 +1030,20 @@ async def _reconcile_moonraker_print_history(session: AsyncSession, job: OutboxJ
                 failures.append(exc)
                 logger.exception(
                     "moonraker_live_print_capture_failed",
-                    printer_code=printer.printer_code,
+                    printer_code=printer_code,
                     error_class=type(exc).__name__,
                     error=str(exc),
                 )
+                reloaded_printer = await session.get(Printer, printer_id)
+                if reloaded_printer is None:
+                    missing = LookupError("Moonraker print-history synchronization lost its printer")
+                    failures.append(missing)
+                    logger.error(
+                        "moonraker_print_history_printer_missing",
+                        printer_code=printer_code,
+                    )
+                    continue
+                printer = reloaded_printer
         try:
             imported = await synchronize_print_history(
                 session,
@@ -1009,7 +1053,7 @@ async def _reconcile_moonraker_print_history(session: AsyncSession, job: OutboxJ
             )
             logger.info(
                 "moonraker_print_history_synchronized",
-                printer_code=printer.printer_code,
+                printer_code=printer_code,
                 reconciled_jobs=imported,
             )
         except Exception as exc:
@@ -1017,13 +1061,14 @@ async def _reconcile_moonraker_print_history(session: AsyncSession, job: OutboxJ
             failures.append(exc)
             logger.exception(
                 "moonraker_print_history_sync_failed",
-                printer_code=printer.printer_code,
+                printer_code=printer_code,
                 error_class=type(exc).__name__,
                 error=str(exc),
             )
     if failures:
         raise RuntimeError(
-            f"Moonraker print-history synchronization had {len(failures)} failure(s)"
+            f"Moonraker print-history synchronization had {len(failures)} failure(s): "
+            f"{_failure_class_summary(failures)}"
         ) from failures[0]
 
 

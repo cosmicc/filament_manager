@@ -5,7 +5,7 @@
 - `GET /health/live`: process liveness
 - `GET /health/ready`: PostgreSQL connectivity and current Alembic revision
 - `GET /metrics`: Prometheus request totals and latency
-- Diagnostics: running/latest Filament Manager version plus Spoolman, Moonraker, Google, Cura-agent, worker, and synchronization status without secret exposure
+- Diagnostics: running/latest Filament Manager version plus Spoolman, Moonraker, Google, Cura-agent, worker, and synchronization status without secret exposure; **Download log** saves the same bounded overview as text
 - Diagnostics queues: pending depth, attempts, dead jobs, and explicit Administrator retry
 - Activity: append-only operational and security audit history
 - Cura workstations: pairing, detected Cura versions/machines, pre-takeover source selection, and authoritative management controls
@@ -15,7 +15,7 @@
 
 Canonical inventory changes create supported-API Spoolman jobs in the same transaction and dispatch normally begins within one worker polling cycle. Every minute by default, a safety sweep imports printer-recorded usage first and then converges every canonical vendor, filament product, and spool. Every 15 seconds the worker reads Moonraker's supported active Spoolman ID, persistent physical-spool macro state, and exact P-number mesh state. A valid non-null direct selection in an idle/manual-selection phase opens a guarded Fluidd target, and the worker restores Spoolman to the last completed physical boundary until confirmation; other drift is repaired without target capture. The same pass refreshes the bounded Cura/manual-load spool catalog. Every 5 seconds it captures current print state and incrementally reconciles Moonraker history; every 5 minutes it refreshes sanitized printer information. Notification conditions converge every minute. These jobs also seed the configured printer and initial plates on a fresh database. Google publication is scheduled when enabled. External outages create bounded retries and never roll back already committed canonical changes.
 
-The web and worker emit structured console logs for request completion, stable API rejections, validation errors, scheduler and outbox activity, and Moonraker synchronization results. Browser API requests also log their method, path, status, and correlation ID. Error logs include safe messages and tracebacks but never credentials, connection URLs, request bodies, or external response bodies.
+The web and worker emit structured console logs for request completion, stable API rejections, validation errors, scheduler and outbox activity, and Moonraker synchronization results. Browser API requests also log their method, path, status, and correlation ID. Error logs include safe messages and tracebacks but never credentials, connection URLs, request bodies, or external response bodies. The Diagnostics text download is a sanitized operational summary rather than a copy of raw process logs; it omits SQL, tracebacks, URLs, credentials, and upstream response content.
 
 ## Recovery validation and projection rebuild
 
@@ -64,13 +64,15 @@ Quarterly, compare spool/product counts, effective weights, profile versions, pl
 
 Confirm `FILAMENT_MANAGER_DB_*` and `POSTGRES_*` stack variables assemble the intended non-SSL URL for `filament_user`, then inspect the web or worker logs for the automatic-migration result. Do not grant access to the `spoolman` database. Run `alembic current` and `alembic upgrade head` only with the application services stopped when following the recovery procedure below.
 
+If Diagnostics reports that the database is already at `d0e1f2a3b456` but expects `c9d0e1f2a345`, the database is current and the running web image contains the earlier 0.2.2 comparison bug. Upgrade both the web and worker from the same corrected image; do not downgrade or manually edit the Alembic revision.
+
 ### Web or worker tasks repeatedly restart after startup
 
 Use the current stack file and image together. The web health check must send the hostname from `FILAMENT_MANAGER_BASE_URL`, and the worker must have its inherited HTTP health check disabled. Do not add a wildcard to `FILAMENT_MANAGER_ALLOWED_HOSTS`; confirm that an explicit list includes the public base-URL hostname.
 
 ### Jobs remain pending or fail
 
-Check that the worker service is running, then inspect worker logs, external DNS from the `filament-services` overlay, and the sanitized error class shown in Diagnostics. The Spoolman connection check verifies both API health and managed projection fields. Repair the external service, then allow automatic retry or use Administrator retry for unrelated dead jobs. The 0.1.5 repair migration automatically requeues Spoolman work affected by the former field contract, and the next one-minute sweep projects all existing canonical inventory even when no usable job remains.
+Check that the worker service is running, then inspect worker logs, external DNS from the `filament-services` overlay, and the sanitized error class shown in Diagnostics. The Spoolman connection check verifies both API health and managed projection fields. Repair the external service, then allow automatic retry or use Administrator retry for unrelated dead jobs. The 0.1.5 repair migration automatically requeues Spoolman work affected by the former field contract, and the next one-minute sweep projects all existing canonical inventory even when no usable job remains. Corrected 0.2.2 workers normalize long fractional Spoolman weights before comparison and reload printer state after a failed live-print transaction, preventing the repeated `IntegrityError` and `MissingGreenlet` jobs caused by those conditions. Existing dead rows remain durable and require explicit Administrator retry; do not clear them directly in PostgreSQL.
 
 After redeployment, recent worker logs should show `spoolman.reconcile.full` completing. The Diagnostics queue should show new filament/spool upserts completing, and Spoolman should receive existing inventory no later than the next safety sweep when the internal API is reachable.
 
@@ -81,6 +83,10 @@ Verify `http://spoolman:8000/api/v1/health` from the combined Filament Manager s
 ### Moonraker is unavailable
 
 Confirm `MOONRAKER_BASE_URL` is reachable from the Swarm node and container network. If `MOONRAKER_WEBSOCKET_URL` is empty, Filament Manager derives the same host with `ws` or `wss` and the `/websocket` path. Confirm the configured API key only when Moonraker requires one. In worker logs, inspect `moonraker_active_spool_sync_failed`, `moonraker_build_plate_sync_failed`, or `moonraker_printer_information_sync_failed`; the associated outbox job retries automatically.
+
+### Cura agent has not reported recently
+
+Confirm Cura is closed, then rerun the current workstation-agent installer on the named workstation. The installer identifies an upgrade, preserves pairing and local state, refreshes the service definition, and restarts the service only when it was already running. If Diagnostics still shows the old contact time, inspect the workstation service status and its local logs before pairing a replacement agent.
 
 ### Spool workflow does not open or print preflight is blocked
 

@@ -14,9 +14,10 @@ from filament_manager.api.schemas import SpoolUpdate
 from filament_manager.models import Base
 from filament_manager.models.auth import User
 from filament_manager.models.enums import SpoolStatus, UserRole
-from filament_manager.models.inventory import FilamentProduct, Spool
+from filament_manager.models.inventory import FilamentProduct, Spool, SpoolUsageEvent
 from filament_manager.models.operations import AuditEvent, OutboxJob
 from filament_manager.services import events
+from filament_manager.workers import dispatcher
 from filament_manager.workers.dispatcher import _reconcile_spoolman
 
 
@@ -26,12 +27,13 @@ class FakeSpoolmanClient:
     def __init__(self, spool_id: UUID) -> None:
         self.spool_id = spool_id
         self.location: str | None = "Bucket 17"
+        self.remaining_weight = "1000"
         self.location_updates: list[str | None] = []
 
     def _remote(self) -> dict[str, object]:
         return {
             "id": 7,
-            "remaining_weight": "1000",
+            "remaining_weight": self.remaining_weight,
             "location": self.location,
             "extra": {"filament_manager_spool_uuid": f'"{self.spool_id}"'},
         }
@@ -159,5 +161,76 @@ async def test_reconciliation_adopts_location_once_then_repairs_remote_drift(
             )
             assert projection_job is not None
         assert fake_client.location_updates == [None]
+
+        await engine.dispose()
+
+
+@pytest.mark.integration
+@pytest.mark.asyncio
+async def test_fractional_spoolman_usage_is_quantized_and_idempotent(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Sub-milligram API precision must not recreate the same usage event forever."""
+
+    runtime_settings = SimpleNamespace(
+        sync=SimpleNamespace(max_retry_attempts=12, low_spool_threshold_percent=10)
+    )
+    monkeypatch.setattr(events, "get_settings", lambda: runtime_settings)
+    monkeypatch.setattr(dispatcher, "get_settings", lambda: runtime_settings)
+
+    with PostgresContainer("postgres:17-alpine", driver="psycopg") as postgres:
+        database_url = postgres.get_connection_url().replace(
+            "postgresql+psycopg2://", "postgresql+psycopg://"
+        )
+        engine = create_async_engine(database_url)
+        factory = async_sessionmaker(engine, expire_on_commit=False)
+        async with engine.begin() as connection:
+            await connection.run_sync(Base.metadata.create_all)
+
+        async with factory() as session:
+            product = FilamentProduct(
+                material_type="PLA",
+                color_name="Blue",
+                diameter_mm=Decimal("1.75"),
+                density_g_cm3=Decimal("1.24"),
+                nominal_net_mass_g=Decimal("1000"),
+            )
+            spool = Spool(
+                spool_code="FRACTIONAL-USAGE",
+                filament_product=product,
+                nominal_net_mass_g=Decimal("1000"),
+                tare_mass_g=Decimal("200"),
+                remaining_mass_expected_g=Decimal("900"),
+                remaining_mass_effective_g=Decimal("900"),
+                weight_confidence="estimated",
+                status=SpoolStatus.IN_STOCK,
+                location="Bucket 17",
+                location_authoritative=True,
+                spoolman_id=33,
+            )
+            session.add(spool)
+            await session.commit()
+            spool_id = spool.id
+
+        fake_client = FakeSpoolmanClient(spool_id)
+        fake_client.remaining_weight = "880.8606844950401"
+        async with factory() as session:
+            await _reconcile_spoolman(session, fake_client)  # type: ignore[arg-type]
+            await session.commit()
+        async with factory() as session:
+            await _reconcile_spoolman(session, fake_client)  # type: ignore[arg-type]
+            await session.commit()
+
+        async with factory() as session:
+            reconciled = await session.get(Spool, spool_id)
+            assert reconciled is not None
+            assert reconciled.remaining_mass_expected_g == Decimal("880.861")
+            assert reconciled.remaining_mass_effective_g == Decimal("880.861")
+            usage_events = list(
+                await session.scalars(select(SpoolUsageEvent).where(SpoolUsageEvent.spool_id == spool_id))
+            )
+            assert len(usage_events) == 1
+            assert usage_events[0].mass_delta_g == Decimal("-19.139")
+            assert usage_events[0].idempotency_key == "spoolman:7:9E+2:880.861"
 
         await engine.dispose()

@@ -179,10 +179,32 @@ async def test_physical_nozzle_side_b_and_distinct_completed_print_counts(
                 detail="This installation matches the newest published GitHub release.",
             )
 
+        async def diagnostic_overview(_: AsyncSession) -> dict[str, object]:
+            """Return one safe export fixture without calling external integrations."""
+
+            checked_at = datetime(2026, 8, 15, 5, 7, tzinfo=UTC)
+            return {
+                "checked_at": checked_at,
+                "checks": [
+                    {
+                        "key": "database.schema",
+                        "label": "Canonical PostgreSQL",
+                        "category": "connection",
+                        "status": "healthy",
+                        "detail": "Schema is current at d0e1f2a3b456",
+                        "checked_at": checked_at,
+                    }
+                ],
+                "queue_counts": {"pending": 0, "running": 0, "failed": 0, "dead": 0},
+                "job_type_counts": {},
+                "error_log": [],
+            }
+
         monkeypatch.setattr(config_module, "get_settings", lambda: settings)
         monkeypatch.setattr(main, "get_settings", lambda: settings)
         monkeypatch.setattr(events, "get_settings", lambda: settings)
         monkeypatch.setattr(diagnostic_routes, "run_recovery_validation", recovery_validation)
+        monkeypatch.setattr(diagnostic_routes, "operational_overview", diagnostic_overview)
         monkeypatch.setattr(diagnostic_routes, "version_status", version_check)
         application = main.create_app()
         application.dependency_overrides[dependencies.session_dependency] = session_override
@@ -220,6 +242,15 @@ async def test_physical_nozzle_side_b_and_distinct_completed_print_counts(
             assert version_response.status_code == 200, version_response.text
             assert version_response.json()["running_version"] == "0.2.2"
             assert version_response.json()["status"] == "current"
+            diagnostic_log = await client.get("/api/v1/diagnostics/log.txt")
+            assert diagnostic_log.status_code == 200, diagnostic_log.text
+            assert diagnostic_log.headers["content-type"].startswith("text/plain")
+            assert diagnostic_log.headers["cache-control"] == "no-store"
+            assert diagnostic_log.headers["x-content-type-options"] == "nosniff"
+            assert diagnostic_log.headers["content-disposition"] == (
+                'attachment; filename="filament-manager-diagnostics-20260815T050700Z.txt"'
+            )
+            assert "Schema is current at d0e1f2a3b456" in diagnostic_log.text
             validation = await client.post("/api/v1/diagnostics/validation-runs")
             assert validation.status_code == 201, validation.text
             assert validation.json()["status"] == "completed"

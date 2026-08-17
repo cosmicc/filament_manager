@@ -5,10 +5,12 @@ from datetime import UTC, datetime
 import structlog
 from fastapi import APIRouter, Request, status
 from fastapi.encoders import jsonable_encoder
+from fastapi.responses import PlainTextResponse
 from sqlalchemy import select
 
 from filament_manager.models.operations import DiagnosticRun
 from filament_manager.services.diagnostics import (
+    diagnostics_text,
     operational_overview,
     queue_projection_rebuild,
     run_recovery_validation,
@@ -35,6 +37,27 @@ async def diagnostics_overview(
     """Return current sanitized connections, workers, syncs, queues, and errors."""
 
     return DiagnosticOverviewResponse.model_validate(await operational_overview(session))
+
+
+@router.get("/log.txt", response_class=PlainTextResponse)
+async def download_diagnostics_log(
+    _: Viewer,
+    session: DatabaseSession,
+) -> PlainTextResponse:
+    """Download the current bounded diagnostic overview as sanitized plain text."""
+
+    overview = await operational_overview(session)
+    checked_at = overview["checked_at"]
+    assert isinstance(checked_at, datetime)
+    filename = f"filament-manager-diagnostics-{checked_at.strftime('%Y%m%dT%H%M%SZ')}.txt"
+    return PlainTextResponse(
+        diagnostics_text(overview),
+        headers={
+            "Cache-Control": "no-store",
+            "Content-Disposition": f'attachment; filename="{filename}"',
+            "X-Content-Type-Options": "nosniff",
+        },
+    )
 
 
 @router.get("/version", response_model=VersionStatusResponse)

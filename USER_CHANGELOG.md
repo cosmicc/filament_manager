@@ -1,6 +1,6 @@
 # User Changelog
 
-## 0.2.2 - 08.15.2026
+## 0.2.2 - 08.17.2026
 
 ### Added
 
@@ -12,6 +12,7 @@
 - Added a guided one-time Cura takeover where every discovered source has its own existing-template selector, unwanted sources can remain unmapped, and all choices are reviewed and confirmed together.
 - Added saved Cura print profiles to the one-time takeover list, including their tracked literal settings and a clear count of safely omitted Cura expressions.
 - Added workstation-agent uninstallers for Arch Linux and Windows.
+- Added **Download log** on Diagnostics for a safe plain-text copy of the current checks, queue summary, and recent errors.
 
 ### Changed
 
@@ -24,6 +25,7 @@
 - The sidebar now has a simple Logout button and direction-only collapse control. Light/dark theme selection moved to Settings.
 - Running **Select Build Plate** without a plate now lists the current valid P-number meshes saved in Klipper.
 - Workstation installers now say explicitly whether they are performing a fresh installation or an upgrade.
+- Stale Cura-agent checks now show clearer workstation-service recovery guidance, and grouped Moonraker failures identify the types of errors encountered.
 
 ### Fixed
 
@@ -36,6 +38,9 @@
 - Fixed manual loading incorrectly reporting that no eligible spools were available when the only missing item was profile publication.
 - Fixed new build-plate meshes requiring hand-written selector buttons.
 - Fixed a Klipper startup error caused by an empty Filament Manager catalog-revision value.
+- Fixed the false out-of-date canonical database schema warning after upgrading to 0.2.2.
+- Fixed repeating Spoolman reconciliation failures caused by fractional remaining-weight precision.
+- Fixed Moonraker print-history reconciliation failing after a live-print capture error.
 
 ## 0.2.1 - 08.13.2026
 

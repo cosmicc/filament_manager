@@ -32,8 +32,18 @@ from filament_manager.models.workstations import CuraDeployment, WorkstationAgen
 from filament_manager.services.cura_library import build_cura_library, queue_cura_library
 from filament_manager.services.events import add_audit_event, add_outbox_job
 
-EXPECTED_SCHEMA_VERSION = "c9d0e1f2a345"
+EXPECTED_SCHEMA_VERSION = "d0e1f2a3b456"
 SYSTEM_AGGREGATE_ID = UUID("00000000-0000-0000-0000-000000000001")
+
+DATABASE_ERROR_CLASSES = {
+    "DBAPIError",
+    "DatabaseError",
+    "IntegrityError",
+    "MissingGreenlet",
+    "OperationalError",
+    "ProgrammingError",
+    "SQLAlchemyError",
+}
 
 
 def _check(
@@ -54,6 +64,74 @@ def _check(
         "detail": detail[:500],
         "checked_at": checked_at,
     }
+
+
+def _sanitized_error_detail(error_class: str | None, detail: str | None) -> str | None:
+    """Return bounded operator guidance without SQL, URLs, or upstream response content."""
+
+    if not detail:
+        return None
+    normalized = " ".join(detail.split())
+    if error_class in DATABASE_ERROR_CLASSES or any(
+        marker in normalized for marker in ("[SQL:", "psycopg.errors.", "sqlalche.me/e/", "Traceback (")
+    ):
+        return "A database operation failed. Review the server worker log for the matching time."
+    if "http://" in normalized or "https://" in normalized:
+        return "An external integration request failed. Review the server worker log for the matching time."
+    return normalized[:500]
+
+
+def diagnostics_text(overview: dict[str, object]) -> str:
+    """Render one sanitized operational overview as a portable plain-text report."""
+
+    checked_at = cast(datetime, overview["checked_at"])
+    checks = cast(list[dict[str, object]], overview["checks"])
+    queue_counts = cast(dict[str, int], overview["queue_counts"])
+    job_type_counts = cast(dict[str, int], overview["job_type_counts"])
+    error_log = cast(list[dict[str, object]], overview["error_log"])
+    lines = [
+        "Filament Manager diagnostics",
+        f"Generated: {checked_at.isoformat()}",
+        "This bounded export excludes credentials, configured URLs, upstream response bodies, "
+        "SQL, and tracebacks.",
+        "",
+        "Checks",
+        "------",
+    ]
+    for check in checks:
+        status = str(check["status"]).upper()
+        lines.extend(
+            [
+                f"[{status}] {check['label']} ({check['category']})",
+                f"  {check['detail']}",
+                f"  Checked: {cast(datetime, check['checked_at']).isoformat()}",
+            ]
+        )
+    lines.extend(["", "Projection queue", "----------------"])
+    if queue_counts:
+        lines.extend(f"{key}: {value}" for key, value in sorted(queue_counts.items()))
+    else:
+        lines.append("No queued work has been recorded.")
+    lines.extend(["", "Active job types", "----------------"])
+    if job_type_counts:
+        lines.extend(f"{key}: {value}" for key, value in sorted(job_type_counts.items()))
+    else:
+        lines.append("No pending, running, or dead job types.")
+    lines.extend(["", "Recent errors", "-------------"])
+    if error_log:
+        for entry in error_log:
+            occurred_at = cast(datetime, entry["occurred_at"])
+            lines.extend(
+                [
+                    f"[{str(entry['severity']).upper()}] {entry['summary']}",
+                    f"  Source: {entry['source']}",
+                    f"  Occurred: {occurred_at.isoformat()}",
+                    f"  Detail: {entry.get('detail') or 'No additional detail retained.'}",
+                ]
+            )
+    else:
+        lines.append("No recent operational errors.")
+    return "\n".join(lines) + "\n"
 
 
 async def _connection_checks(checked_at: datetime) -> list[dict[str, object]]:
@@ -315,7 +393,14 @@ async def operational_overview(session: AsyncSession) -> dict[str, object]:
                     if not agent.enabled
                     else "Agent reported an operational error; review the bounded error log"
                     if agent.last_error
-                    else f"Last contact: {agent.last_seen_at or 'never'}"
+                    else f"Last contact: {agent.last_seen_at}"
+                    if fresh
+                    else (
+                        f"No recent contact; last contact was {agent.last_seen_at}. "
+                        "Verify the workstation service is running and upgraded."
+                        if agent.last_seen_at
+                        else "The agent has never contacted the server; verify pairing and service state."
+                    )
                 ),
                 checked_at,
             )
@@ -336,7 +421,7 @@ async def operational_overview(session: AsyncSession) -> dict[str, object]:
                 "source": "Projection worker",
                 "severity": "error" if job.status == JobStatus.DEAD else "warning",
                 "summary": f"{job.job_type} · {job.last_error_class}",
-                "detail": job.last_error_message,
+                "detail": _sanitized_error_detail(job.last_error_class, job.last_error_message),
                 "occurred_at": job.locked_at or job.created_at,
                 "correlation_id": None,
             }
@@ -355,7 +440,10 @@ async def operational_overview(session: AsyncSession) -> dict[str, object]:
                 "source": "Cura deployment",
                 "severity": "error" if deployment.status == CuraDeploymentStatus.FAILED else "warning",
                 "summary": f"{deployment.last_error_class or 'Deployment error'}",
-                "detail": deployment.last_error_message,
+                "detail": _sanitized_error_detail(
+                    deployment.last_error_class,
+                    deployment.last_error_message,
+                ),
                 "occurred_at": deployment.updated_at,
                 "correlation_id": None,
             }

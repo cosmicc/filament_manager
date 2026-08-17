@@ -154,12 +154,13 @@ Only one physical nozzle may be installed on a printer. Responses derive complet
 - `POST /jobs/{id}/retry`
 - `GET /audit-events`
 - `GET /diagnostics`
+- `GET /diagnostics/log.txt`
 - `GET /diagnostics/version`
 - `GET /diagnostics/validation-runs`
 - `POST /diagnostics/validation-runs` (Administrator only)
 - `POST /diagnostics/projection-rebuild` (Administrator only)
 
-Diagnostics responses contain only sanitized bounded checks, counts, timestamps, versions, and messages. The version route compares the running version with the highest non-draft semantic release from the fixed public GitHub repository endpoint, includes testing prereleases, caches the result, and never returns the upstream body. Validation is read-only and persisted. Rebuild queues idempotent derived work and never performs a database restore.
+Diagnostics responses contain only sanitized bounded checks, counts, timestamps, versions, and messages. The authenticated text route generates a non-cacheable attachment from that same sanitized overview and never includes URLs, SQL, tracebacks, credentials, or upstream response bodies. The version route compares the running version with the highest non-draft semantic release from the fixed public GitHub repository endpoint, includes testing prereleases, caches the result, and never returns the upstream body. Validation is read-only and persisted. Rebuild queues idempotent derived work and never performs a database restore.
 
 ## WebSocket/SSE events
 

@@ -1,6 +1,6 @@
 # Changelog
 
-## 0.2.2 - 08.15.2026
+## 0.2.2 - 08.17.2026
 
 ### Added
 
@@ -13,6 +13,7 @@
 - Added an atomic one-time Cura takeover that lists every discovered source with an existing-template selector, allows any source to remain unmapped, reviews all choices together, and records source/template provenance.
 - Added read-only discovery of saved Cura print profiles during one-time takeover, including merged global/first-extruder settings, machine and quality metadata, tracked literal settings, and safely omitted expression counts.
 - Added Arch Linux and Windows workstation-agent uninstallers that remove the per-user service/task, executable, pairing credential, local state, and agent backups while leaving Cura's current managed library in place.
+- Added an authenticated **Download log** action on Diagnostics that exports the current bounded, sanitized operational report as a plain-text file.
 
 ### Changed
 
@@ -28,6 +29,8 @@
 - Changed the application shell to show only an icon-labelled Logout action and directional sidebar chevrons, and moved the persistent light/dark theme control to Settings.
 - Changed `SELECT_BUILD_PLATE` without parameters to build its chooser live from Klipper's saved exact P-number meshes.
 - Changed workstation installers to state clearly whether they are performing a fresh installation or an upgrade while retaining conditional restart and rollback behavior.
+- Changed stale Cura-agent diagnostics to identify the last contact and recommend checking or upgrading the workstation service.
+- Changed aggregate Moonraker reconciliation errors to retain bounded exception-class counts without exposing tracebacks, external responses, URLs, or database details.
 
 ### Fixed
 
@@ -42,6 +45,9 @@
 - Fixed direct Spoolman selections disappearing without a safe way to use them as the requested physical target.
 - Fixed the build-plate selector requiring static per-mesh macros whenever another valid mesh was saved.
 - Fixed Klipper startup failing when a configuration transfer or editor collapsed an empty catalog-revision macro literal.
+- Fixed Diagnostics comparing the canonical PostgreSQL schema with the superseded pre-0.2.2 Alembic revision.
+- Fixed fractional Spoolman remaining-weight values repeatedly creating the same usage event and dead reconciliation job after PostgreSQL rounded the stored mass.
+- Fixed a failed live-print capture expiring its SQLAlchemy printer object and causing `MissingGreenlet` during subsequent Moonraker history reconciliation.
 
 ## 0.2.1 - 08.13.2026
 
