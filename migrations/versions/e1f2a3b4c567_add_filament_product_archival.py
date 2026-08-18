@@ -48,13 +48,20 @@ def upgrade() -> None:
                 nullable=False,
             ),
         )
-        op.execute(
-            sa.text(
-                f"UPDATE {table_name} SET color_hexes = "
-                "CASE WHEN color_hex IS NULL THEN '[]'::jsonb "
-                "ELSE jsonb_build_array(color_hex) END"
-            )
+    op.execute(
+        sa.text(
+            "UPDATE filament_colors SET color_hexes = "
+            "CASE WHEN color_hex IS NULL THEN '[]'::jsonb "
+            "ELSE jsonb_build_array(color_hex) END"
         )
+    )
+    op.execute(
+        sa.text(
+            "UPDATE filament_products SET color_hexes = "
+            "CASE WHEN color_hex IS NULL THEN '[]'::jsonb "
+            "ELSE jsonb_build_array(color_hex) END"
+        )
+    )
 
 
 def downgrade() -> None:
