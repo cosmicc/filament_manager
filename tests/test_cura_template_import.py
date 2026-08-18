@@ -262,17 +262,28 @@ async def test_atomic_cura_source_mapping_completes_takeover_and_preserves_overr
             unconfirmed = await client.post(
                 f"/api/v1/workstation-agents/{agent_id}/cura-takeover",
                 json={
-                    "expected_agent_version": 1,
+                    "reviewed_source_ids": ["b" * 64, "c" * 64],
                     "confirmed": False,
                     "mappings": [],
                 },
             )
             assert unconfirmed.status_code == 422
 
+            stale_catalog = await client.post(
+                f"/api/v1/workstation-agents/{agent_id}/cura-takeover",
+                json={
+                    "reviewed_source_ids": ["b" * 64],
+                    "confirmed": True,
+                    "mappings": [{"source_id": "b" * 64, "template_id": template["id"]}],
+                },
+            )
+            assert stale_catalog.status_code == 409
+            assert stale_catalog.json()["code"] == "cura_source_catalog_changed"
+
             takeover = await client.post(
                 f"/api/v1/workstation-agents/{agent_id}/cura-takeover",
                 json={
-                    "expected_agent_version": 1,
+                    "reviewed_source_ids": ["b" * 64, "c" * 64],
                     "confirmed": True,
                     "mappings": [{"source_id": "b" * 64, "template_id": template["id"]}],
                 },
@@ -298,7 +309,7 @@ async def test_atomic_cura_source_mapping_completes_takeover_and_preserves_overr
             repeated = await client.post(
                 f"/api/v1/workstation-agents/{agent_id}/cura-takeover",
                 json={
-                    "expected_agent_version": takeover.json()["record_version"],
+                    "reviewed_source_ids": ["b" * 64, "c" * 64],
                     "confirmed": True,
                     "mappings": [],
                 },

@@ -60,6 +60,10 @@ class FilamentColor(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     name: Mapped[str] = mapped_column(String(96), nullable=False)
     normalized_name: Mapped[str] = mapped_column(String(96), nullable=False, unique=True)
     color_hex: Mapped[str] = mapped_column(String(6), nullable=False)
+    color_mode: Mapped[str] = mapped_column(
+        String(16), nullable=False, default="solid", server_default=text("'solid'")
+    )
+    color_hexes: Mapped[list[str]] = mapped_column(JSONB, nullable=False, default=list)
     record_version: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
 
 
@@ -86,6 +90,10 @@ class FilamentProduct(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     finish: Mapped[str | None] = mapped_column(String(96))
     color_name: Mapped[str] = mapped_column(String(96), nullable=False)
     color_hex: Mapped[str | None] = mapped_column(String(6))
+    color_mode: Mapped[str] = mapped_column(
+        String(16), nullable=False, default="solid", server_default=text("'solid'")
+    )
+    color_hexes: Mapped[list[str]] = mapped_column(JSONB, nullable=False, default=list)
     product_name: Mapped[str | None] = mapped_column(String(160))
     diameter_mm: Mapped[Decimal] = mapped_column(MEASUREMENT, nullable=False)
     tolerance_mm: Mapped[Decimal | None] = mapped_column(MEASUREMENT)
@@ -94,6 +102,9 @@ class FilamentProduct(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     notes: Mapped[str | None] = mapped_column(Text)
     source_template_revision_id: Mapped[UUID | None] = mapped_column(
         ForeignKey("material_template_revisions.id", ondelete="SET NULL"), index=True
+    )
+    archived: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False, server_default=text("false"), index=True
     )
     record_version: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
 

@@ -4,22 +4,36 @@
 
 ### Added
 
+- Added an idempotent `Template ASA` starting profile for each configured printer/nozzle scope so an existing Cura ASA profile has a canonical takeover target.
 - Added an explicit two-stage Cura takeover dialog where Administrators map each reported material or saved print profile to an existing template, then review the complete batch before confirmation.
 - Added clear visual highlighting for every filament setting that is explicitly customized instead of inherited from its linked template.
+- Added custom named filament colors, two- or three-color palettes, and rainbow spool swatches across inventory, dashboard, and labels.
+- Added complete filament and spool correction editors plus safe delete-or-archive actions.
+- Added automatic empty-spool tare calculation from the entered filament amount and optional full-spool scale weight.
 
 ### Changed
 
 - Changed the filament settings editor to render the complete effective template-linked values while continuing to persist only semantic differences as sparse filament overrides.
+- Changed filament settings into Cura-like temperature, flow, speed, retraction, cooling, support, dimensional, filament, Klipper, and build-plate groups with no catch-all advanced section.
+- Changed customized-setting highlighting to update immediately while editing and remain visible after saving.
+- Changed user-facing numeric values to compact field-specific precision with no displays beyond two decimal places.
+- Changed completed, failed, and cancelled jobs to deduct only actual Moonraker-reported segment use from each exact spool, without a predicted fallback or duplicate deductions.
+- Changed filament colors to remain editable until the filament has retained spool-use or print history, after which identity is locked for historical consistency.
 - Changed overlapping Cura retract-speed and maximum-fan aliases to use one canonical application control while still writing the required deterministic alias values to Cura.
 - Changed workstation discovery to keep named Cura materials and saved print profiles selectable even when they contain no tracked literal overrides or only safely omitted expressions.
 - Changed all server, frontend, and workstation-agent version surfaces to 0.2.3.
 
 ### Fixed
 
+- Fixed periodic workstation heartbeats invalidating an open Cura mapping review with `Workstation changed; reload and retry`; takeover now locks against the exact reviewed Cura source catalog instead of unrelated workstation activity.
 - Fixed the workstation agent using HTTPX's bundled public CA file instead of the operating-system trust store, which prevented heartbeats and Cura profile discovery on installations secured by a locally trusted private CA.
 - Fixed duplicate retraction-speed and maximum-fan controls appearing under both grouped profile settings and Additional Cura Material Settings.
 - Fixed Cura takeover showing zero importable profiles when discovered saved profiles contained only inherited Cura expressions or no literal settings tracked by Filament Manager.
 - Fixed **Back to mappings** returning to a workstation card without an unmistakable source-to-template mapping screen.
+- Fixed the Arch workstation service failing Cura deployment when its platformdirs title-case state root did not exist beneath systemd read-only home protection.
+- Fixed new-spool gross weight being rejected instead of deriving empty-spool tare from gross weight minus filament amount.
+- Fixed setup mistakes lacking a safe delete path and incomplete spool/filament editors preventing correction of original setup fields.
+- Fixed terminal failed and cancelled jobs not reducing exact spool inventory from their reported actual filament use.
 
 ## 0.2.2 - 08.17.2026
 

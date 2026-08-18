@@ -7,7 +7,11 @@ from uuid import UUID, uuid4
 import pytest
 
 from filament_manager.models.enums import PrintJobStatus
-from filament_manager.services.print_history import _actual_weight_g, _history_status
+from filament_manager.services.print_history import (
+    _actual_weight_g,
+    _history_status,
+    _terminal_usage_targets,
+)
 from filament_manager.workers import dispatcher
 
 
@@ -37,6 +41,40 @@ def test_actual_weight_stays_unknown_for_legacy_unresolved_material() -> None:
     """Legacy history never invents an exact material density."""
 
     assert _actual_weight_g(Decimal("1000"), {"legacy_unresolved": True}) is None
+
+
+def test_terminal_usage_aggregates_reused_spools_from_immutable_segments() -> None:
+    """M600 segments that return to one spool subtract that spool's total exactly once."""
+
+    first_spool = uuid4()
+    second_spool = uuid4()
+    job = SimpleNamespace(
+        segments=[
+            SimpleNamespace(
+                segment_number=1,
+                spool_id=first_spool,
+                actual_filament_weight_g=Decimal("4.25"),
+                state_snapshot={"spool": {"remaining_mass_g": "900"}},
+            ),
+            SimpleNamespace(
+                segment_number=2,
+                spool_id=second_spool,
+                actual_filament_weight_g=Decimal("3.5"),
+                state_snapshot={"spool": {"remaining_mass_g": "700"}},
+            ),
+            SimpleNamespace(
+                segment_number=3,
+                spool_id=first_spool,
+                actual_filament_weight_g=Decimal("2.75"),
+                state_snapshot={"spool": {"remaining_mass_g": "900"}},
+            ),
+        ]
+    )
+
+    assert _terminal_usage_targets(job) == {
+        first_spool: (Decimal("900"), Decimal("7.000")),
+        second_spool: (Decimal("700"), Decimal("3.500")),
+    }
 
 
 @pytest.mark.asyncio

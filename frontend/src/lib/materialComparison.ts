@@ -1,4 +1,5 @@
 import type { BuildPlate, CuraSettingCatalogItem, MaterialSettings } from '../api/types'
+import { compactNumber } from './format'
 
 export interface MaterialSettingDifference {
   key: string
@@ -19,28 +20,29 @@ const coreComparisonFields: Array<{
   label: string
   unit?: string
   valueType: ComparisonValueType
+  precision?: number
 }> = [
-  { key: 'extruder_temp_c', label: 'Printing temperature', unit: '°C', valueType: 'number' },
-  { key: 'bed_temp_c', label: 'Build plate temperature', unit: '°C', valueType: 'number' },
-  { key: 'chamber_temp_c', label: 'Chamber temperature', unit: '°C', valueType: 'number' },
-  { key: 'flow_percent', label: 'Flow', unit: '%', valueType: 'number' },
-  { key: 'print_speed_mm_s', label: 'Print speed', unit: 'mm/s', valueType: 'number' },
-  { key: 'outer_wall_speed_mm_s', label: 'Outer wall speed', unit: 'mm/s', valueType: 'number' },
-  { key: 'inner_wall_speed_mm_s', label: 'Inner wall speed', unit: 'mm/s', valueType: 'number' },
-  { key: 'infill_speed_mm_s', label: 'Infill speed', unit: 'mm/s', valueType: 'number' },
-  { key: 'top_bottom_speed_mm_s', label: 'Top/bottom speed', unit: 'mm/s', valueType: 'number' },
-  { key: 'initial_layer_speed_mm_s', label: 'Initial layer speed', unit: 'mm/s', valueType: 'number' },
-  { key: 'travel_speed_mm_s', label: 'Travel speed', unit: 'mm/s', valueType: 'number' },
-  { key: 'support_speed_mm_s', label: 'Support speed', unit: 'mm/s', valueType: 'number' },
-  { key: 'retraction_distance_mm', label: 'Retraction distance', unit: 'mm', valueType: 'number' },
-  { key: 'retraction_speed_mm_s', label: 'Retraction speed', unit: 'mm/s', valueType: 'number' },
+  { key: 'extruder_temp_c', label: 'Printing temperature', unit: '°C', valueType: 'number', precision: 0 },
+  { key: 'bed_temp_c', label: 'Build plate temperature', unit: '°C', valueType: 'number', precision: 0 },
+  { key: 'chamber_temp_c', label: 'Chamber temperature', unit: '°C', valueType: 'number', precision: 0 },
+  { key: 'flow_percent', label: 'Flow', unit: '%', valueType: 'number', precision: 0 },
+  { key: 'print_speed_mm_s', label: 'Print speed', unit: 'mm/s', valueType: 'number', precision: 0 },
+  { key: 'outer_wall_speed_mm_s', label: 'Outer wall speed', unit: 'mm/s', valueType: 'number', precision: 0 },
+  { key: 'inner_wall_speed_mm_s', label: 'Inner wall speed', unit: 'mm/s', valueType: 'number', precision: 0 },
+  { key: 'infill_speed_mm_s', label: 'Infill speed', unit: 'mm/s', valueType: 'number', precision: 0 },
+  { key: 'top_bottom_speed_mm_s', label: 'Top/bottom speed', unit: 'mm/s', valueType: 'number', precision: 0 },
+  { key: 'initial_layer_speed_mm_s', label: 'Initial layer speed', unit: 'mm/s', valueType: 'number', precision: 0 },
+  { key: 'travel_speed_mm_s', label: 'Travel speed', unit: 'mm/s', valueType: 'number', precision: 0 },
+  { key: 'support_speed_mm_s', label: 'Support speed', unit: 'mm/s', valueType: 'number', precision: 0 },
+  { key: 'retraction_distance_mm', label: 'Retraction distance', unit: 'mm', valueType: 'number', precision: 1 },
+  { key: 'retraction_speed_mm_s', label: 'Retraction speed', unit: 'mm/s', valueType: 'number', precision: 0 },
   { key: 'cooling_enabled', label: 'Print cooling', valueType: 'boolean' },
-  { key: 'cooling_min_percent', label: 'Minimum fan', unit: '%', valueType: 'number' },
-  { key: 'cooling_max_percent', label: 'Maximum fan', unit: '%', valueType: 'number' },
-  { key: 'support_overhang_angle_deg', label: 'Support overhang angle', unit: '°', valueType: 'number' },
-  { key: 'tree_max_branch_angle_deg', label: 'Tree maximum branch angle', unit: '°', valueType: 'number' },
-  { key: 'pressure_advance', label: 'Klipper pressure advance', unit: 's', valueType: 'number' },
-  { key: 'filament_density_g_cm3', label: 'Filament density', unit: 'g/cm³', valueType: 'number' },
+  { key: 'cooling_min_percent', label: 'Minimum fan', unit: '%', valueType: 'number', precision: 0 },
+  { key: 'cooling_max_percent', label: 'Maximum fan', unit: '%', valueType: 'number', precision: 0 },
+  { key: 'support_overhang_angle_deg', label: 'Support overhang angle', unit: '°', valueType: 'number', precision: 0 },
+  { key: 'tree_max_branch_angle_deg', label: 'Tree maximum branch angle', unit: '°', valueType: 'number', precision: 0 },
+  { key: 'pressure_advance', label: 'Klipper pressure advance', unit: 's', valueType: 'number', precision: 2 },
+  { key: 'filament_density_g_cm3', label: 'Filament density', unit: 'g/cm³', valueType: 'number', precision: 2 },
   { key: 'preferred_build_plate_surface_id', label: 'Preferred plate side', valueType: 'plate' },
 ]
 
@@ -73,11 +75,20 @@ function displayValue(
   valueType: ComparisonValueType,
   unit: string | null | undefined,
   plateNames: Map<string, string>,
+  precision = 1,
 ): string {
   if (isUnset(value)) return 'Not set'
   if (valueType === 'boolean') return value === true || value === 'true' ? 'Yes' : 'No'
   if (valueType === 'plate') return plateNames.get(String(value)) ?? 'Unknown plate side'
-  return `${String(value)}${unit ? ` ${unit}` : ''}`
+  const displayed = valueType === 'number' ? compactNumber(String(value), precision) : String(value)
+  return `${displayed}${unit ? ` ${unit}` : ''}`
+}
+
+function extensionPrecision(item: CuraSettingCatalogItem | undefined): number {
+  if (!item) return 1
+  if (item.unit === '%' || item.unit === '°C' || item.unit === 'mm/s' || item.unit === '°') return 0
+  if (item.key.startsWith('xy_offset') || item.key.startsWith('hole_xy_offset') || item.key.startsWith('klipper_')) return 2
+  return 1
 }
 
 function inferredExtensionType(
@@ -113,8 +124,8 @@ export function getMaterialSettingDifferences(
     differences.push({
       key: field.key,
       label: field.label,
-      leftDisplay: displayValue(leftValue, field.valueType, field.unit, plateNames),
-      rightDisplay: displayValue(rightValue, field.valueType, field.unit, plateNames),
+      leftDisplay: displayValue(leftValue, field.valueType, field.unit, plateNames, field.precision),
+      rightDisplay: displayValue(rightValue, field.valueType, field.unit, plateNames, field.precision),
     })
   }
 
@@ -141,8 +152,8 @@ export function getMaterialSettingDifferences(
     differences.push({
       key,
       label: item?.label ?? key.replaceAll('_', ' '),
-      leftDisplay: displayValue(leftValue, valueType, item?.unit, plateNames),
-      rightDisplay: displayValue(rightValue, valueType, item?.unit, plateNames),
+      leftDisplay: displayValue(leftValue, valueType, item?.unit, plateNames, extensionPrecision(item)),
+      rightDisplay: displayValue(rightValue, valueType, item?.unit, plateNames, extensionPrecision(item)),
     })
   }
 

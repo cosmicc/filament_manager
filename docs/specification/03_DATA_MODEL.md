@@ -2,7 +2,7 @@
 
 ## Modeling principles
 
-- UUID technical keys, immutable human business IDs.
+- UUID technical keys and human business IDs that become immutable when retained history begins.
 - Numeric types for mass, dimensions, density, flow, and money.
 - Immutable event tables for measurements, usage, and calibration results.
 - Versioned material templates, sparse product overrides, and immutable resolved profile snapshots.
@@ -21,11 +21,11 @@ A purchasable material definition: material, filler, finish, color, product/grad
 
 ### filament_color
 
-A remembered case-insensitive color name and six-digit screen sample. The first spelling is retained for display. Changing the sample updates every matching product mirror so current and future filaments with names such as `Red` or `Temp Sensitive` remain visually consistent.
+A remembered case-insensitive color name plus a solid, two/three-color, or fixed rainbow display palette. The first spelling is retained for display. Changing the palette updates every matching product mirror so current and future filaments with names such as `Red` or `Temp Sensitive` remain visually consistent. A product palette cannot change after retained spool use or print history exists.
 
 ### spool
 
-A physical spool with immutable `spool_code`, tare mass, purchase details, current expected remaining mass, status, bounded free-text location, internal location-ownership state, Spoolman ID, and label data. Existing rows with no canonical location may adopt one remote location; a local edit or clear makes the canonical value authoritative.
+A physical spool with `spool_code`, tare mass, purchase details, current expected remaining mass, status, bounded free-text location, internal location-ownership state, Spoolman ID, and label data. The code and linked filament may be corrected only while the record has no retained measurement/use/print/calibration/NFC history, then become immutable. Existing rows with no canonical location may adopt one remote location; a local edit or clear makes the canonical value authoritative.
 
 ### spool_measurement
 
@@ -97,7 +97,7 @@ One of temperature, flow, pressure advance, retraction, dimensional size/hole co
 
 ### print_job, print_material_segment, and print_assessment
 
-`print_job` merges supported Moonraker live/history records and retains one immutable start-state snapshot: printer, physical nozzle, physical spool, product, exact material-profile revision, plate side, sliced metadata, actual usage, complete streamed-file hash, and bounded inspection evidence. Records imported without reconstructable state remain explicitly unresolved. `print_material_segment` records the ordered spool intervals created by M600 transitions and their usage. `print_assessment` appends quality revisions and never overwrites an earlier score. Completed statistics count the captured nozzle and side once and each distinct start/segment spool once per completed job.
+`print_job` merges supported Moonraker live/history records and retains one immutable start-state snapshot: printer, physical nozzle, physical spool, product, exact material-profile revision, plate side, sliced metadata, actual usage, complete streamed-file hash, and bounded inspection evidence. Records imported without reconstructable state remain explicitly unresolved. `print_material_segment` records the ordered spool intervals created by M600 transitions and their usage. When a completed, failed, or cancelled job reaches a terminal state, each exact spool receives one idempotent actual-use event aggregated from its segments; a lower Spoolman-imported boundary wins to prevent double subtraction, and unavailable actual use has no predicted fallback. `print_assessment` appends quality revisions and never overwrites an earlier score. Completed statistics count the captured nozzle and side once and each distinct start/segment spool once per completed job.
 
 ### diagnostic_run and worker_heartbeat
 

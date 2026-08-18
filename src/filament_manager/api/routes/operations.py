@@ -385,7 +385,7 @@ async def seed_configured_resources(
     """Seed missing server-configured printers and build plates from validated settings."""
 
     seeded = await seed_configured_system(session, get_settings())
-    if seeded["plates"] or seeded["printers"]:
+    if seeded["plates"] or seeded["printers"] or seeded["templates"]:
         add_audit_event(
             session,
             actor_id=administrator.id,
@@ -394,7 +394,11 @@ async def seed_configured_resources(
             object_type="system",
             object_id=None,
             before=None,
-            after={"plates": seeded["plates"], "printers": seeded["printers"]},
+            after={
+                "plates": seeded["plates"],
+                "printers": seeded["printers"],
+                "templates": seeded["templates"],
+            },
             correlation_id=request.state.correlation_id,
         )
     await session.commit()

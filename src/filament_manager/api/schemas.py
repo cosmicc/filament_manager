@@ -2,7 +2,7 @@
 
 from datetime import date, datetime
 from decimal import Decimal, InvalidOperation
-from typing import Any, Literal
+from typing import Annotated, Any, Literal
 from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field, computed_field, field_validator, model_validator
@@ -94,6 +94,9 @@ class VendorCreate(ApiModel):
     notes: str | None = Field(default=None, max_length=2000)
 
 
+ColorHex = Annotated[str, Field(pattern=r"^#?[0-9A-Fa-f]{6}$")]
+
+
 class FilamentCreate(ApiModel):
     vendor_id: UUID | None = None
     material_type: str = Field(min_length=1, max_length=48)
@@ -101,6 +104,8 @@ class FilamentCreate(ApiModel):
     finish: str | None = Field(default=None, max_length=96)
     color_name: str = Field(min_length=1, max_length=96)
     color_hex: str | None = Field(default=None, pattern=r"^[0-9A-Fa-f]{6}$")
+    color_mode: Literal["solid", "multicolor", "rainbow"] = "solid"
+    color_hexes: list[ColorHex] = Field(default_factory=list, max_length=6)
     product_name: str | None = Field(default=None, max_length=160)
     diameter_mm: Decimal = Field(gt=0)
     tolerance_mm: Decimal | None = Field(default=None, ge=0)
@@ -113,6 +118,8 @@ class FilamentCreate(ApiModel):
 class FilamentResponse(FilamentCreate):
     id: UUID
     vendor_name: str | None = None
+    archived: bool = False
+    color_editable: bool = True
     record_version: int
 
 
@@ -126,12 +133,16 @@ class FilamentUpdate(ApiModel):
     finish: str | None = Field(default=None, max_length=96)
     color_name: str | None = Field(default=None, min_length=1, max_length=96)
     color_hex: str | None = Field(default=None, pattern=r"^[0-9A-Fa-f]{6}$")
+    color_mode: Literal["solid", "multicolor", "rainbow"] | None = None
+    color_hexes: list[ColorHex] | None = Field(default=None, max_length=6)
     product_name: str | None = Field(default=None, max_length=160)
     diameter_mm: Decimal | None = Field(default=None, gt=0)
     tolerance_mm: Decimal | None = Field(default=None, ge=0)
     density_g_cm3: Decimal | None = Field(default=None, gt=0)
     nominal_net_mass_g: Decimal | None = Field(default=None, gt=0)
     notes: str | None = Field(default=None, max_length=4000)
+    material_template_revision_id: UUID | None = None
+    archived: bool | None = None
 
 
 class FilamentColorResponse(ApiModel):
@@ -141,6 +152,8 @@ class FilamentColorResponse(ApiModel):
     name: str
     normalized_name: str
     color_hex: str
+    color_mode: Literal["solid", "multicolor", "rainbow"]
+    color_hexes: list[str]
     record_version: int
 
 
@@ -148,7 +161,14 @@ class SpoolCreate(ApiModel):
     spool_code: str = Field(pattern=r"^[A-Za-z0-9_-]+$", max_length=64)
     filament_product_id: UUID
     nominal_net_mass_g: Decimal = Field(gt=0)
-    tare_mass_g: Decimal = Field(ge=0)
+    tare_mass_g: Decimal | None = Field(
+        default=None,
+        ge=0,
+        description=(
+            "Optional known empty-spool mass. When omitted with a full-spool scale weight, "
+            "Filament Manager infers it from gross mass minus the entered filament amount."
+        ),
+    )
     initial_gross_mass_g: Decimal | None = Field(default=None, ge=0)
     purchase_source: str | None = Field(default=None, max_length=160)
     purchase_date: date | None = None
@@ -169,10 +189,16 @@ class SpoolCreate(ApiModel):
 
 class SpoolUpdate(ApiModel):
     expected_version: int = Field(ge=1)
+    spool_code: str | None = Field(default=None, pattern=r"^[A-Za-z0-9_-]+$", max_length=64)
+    filament_product_id: UUID | None = None
+    nominal_net_mass_g: Decimal | None = Field(default=None, gt=0)
+    tare_mass_g: Decimal | None = Field(default=None, ge=0)
+    remaining_mass_g: Decimal | None = Field(default=None, ge=0)
     location: str | None = Field(default=None, max_length=160)
     purchase_source: str | None = Field(default=None, max_length=160)
     purchase_date: date | None = None
     purchase_cost: Decimal | None = Field(default=None, ge=0)
+    currency: str | None = Field(default=None, pattern=r"^[A-Z]{3}$")
     notes: str | None = Field(default=None, max_length=4000)
     archived: bool | None = None
 
@@ -195,6 +221,8 @@ class SpoolResponse(ApiModel):
     finish: str | None
     color_name: str
     color_hex: str | None
+    color_mode: Literal["solid", "multicolor", "rainbow"]
+    color_hexes: list[str]
     vendor_name: str | None
     product_name: str | None
     nominal_net_mass_g: Decimal
@@ -205,6 +233,10 @@ class SpoolResponse(ApiModel):
     remaining_percent: Decimal
     weight_confidence: str
     status: str
+    purchase_source: str | None
+    purchase_date: date | None
+    purchase_cost: Decimal | None
+    currency: str
     location: str | None
     spoolman_id: int | None
     active_printer_id: UUID | None
@@ -931,17 +963,20 @@ class WorkstationHeartbeat(ApiModel):
     last_error: str | None = Field(default=None, max_length=500)
 
 
+CuraSourceId = Annotated[str, Field(pattern=r"^[0-9a-f]{64}$")]
+
+
 class CuraTakeoverMapping(ApiModel):
     """Map one reported Cura source to one existing canonical template."""
 
-    source_id: str = Field(pattern=r"^[0-9a-f]{64}$")
+    source_id: CuraSourceId
     template_id: UUID
 
 
 class CuraTakeoverRequest(ApiModel):
     """Atomically apply reviewed mappings and enable authoritative Cura sync."""
 
-    expected_agent_version: int = Field(ge=1)
+    reviewed_source_ids: list[CuraSourceId] = Field(default_factory=list, max_length=200)
     confirmed: bool
     mappings: list[CuraTakeoverMapping] = Field(default_factory=list, max_length=200)
 

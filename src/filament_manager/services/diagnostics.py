@@ -32,7 +32,7 @@ from filament_manager.models.workstations import CuraDeployment, WorkstationAgen
 from filament_manager.services.cura_library import build_cura_library, queue_cura_library
 from filament_manager.services.events import add_audit_event, add_outbox_job
 
-EXPECTED_SCHEMA_VERSION = "d0e1f2a3b456"
+EXPECTED_SCHEMA_VERSION = "e1f2a3b4c567"
 SYSTEM_AGGREGATE_ID = UUID("00000000-0000-0000-0000-000000000001")
 
 DATABASE_ERROR_CLASSES = {

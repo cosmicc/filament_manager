@@ -172,6 +172,8 @@ async def build_cura_library(session: AsyncSession) -> dict[str, object]:
         printer = await session.get(Printer, profile.printer_id)
         if product is None or printer is None:
             raise RuntimeError("A current material profile has an incomplete scope")
+        if product.archived:
+            continue
         vendor = await session.get(Vendor, product.vendor_id) if product.vendor_id else None
         entries.append(
             {

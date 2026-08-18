@@ -320,8 +320,6 @@ async def complete_cura_takeover(
     )
     if agent is None:
         raise ApiError(status.HTTP_404_NOT_FOUND, "workstation_unknown", "Workstation not found")
-    if agent.record_version != payload.expected_agent_version:
-        raise ApiError(status.HTTP_409_CONFLICT, "version_conflict", "Workstation changed; reload and retry")
     if not agent.enabled:
         raise ApiError(status.HTTP_409_CONFLICT, "workstation_disabled", "Enable the workstation first")
     if agent.cura_management_enabled:
@@ -342,6 +340,12 @@ async def complete_cura_takeover(
         for source in agent.cura_materials
         if isinstance(source, dict) and isinstance(source.get("source_id"), str)
     }
+    if set(payload.reviewed_source_ids) != set(reported_sources):
+        raise ApiError(
+            status.HTTP_409_CONFLICT,
+            "cura_source_catalog_changed",
+            "The reported Cura profiles changed; reopen the mapping review and try again",
+        )
     requested_source_ids = {mapping.source_id for mapping in payload.mappings}
     unknown_sources = sorted(requested_source_ids - reported_sources.keys())
     if unknown_sources:

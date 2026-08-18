@@ -10,7 +10,7 @@ import { Modal } from '../components/Modal'
 import { PageHeader } from '../components/PageHeader'
 import { StatusPill } from '../components/StatusPill'
 import { useAuth } from '../context/AuthContext'
-import { dateTime, titleCase } from '../lib/format'
+import { compactNumber, dateTime, inputNumber, titleCase } from '../lib/format'
 
 function optional(data: FormData, key: string) {
   return String(data.get(key) ?? '').trim() || null
@@ -95,10 +95,10 @@ function PlateEditorModal({
         <EditorSection title="Geometry" description="Use rectangular dimensions or a round diameter as appropriate.">
           <div className="form-grid">
             <label>Shape<select name="shape" defaultValue={plate.shape ?? ''}><option value="">Not specified</option><option value="rectangular">Rectangular</option><option value="round">Round</option><option value="other">Other</option></select></label>
-            <label>Thickness (mm)<input name="thickness" type="number" min="0.01" step="any" defaultValue={plate.dimensions_mm?.thickness ?? ''} /></label>
-            <label>Width (mm)<input name="width" type="number" min="0.01" step="any" defaultValue={plate.dimensions_mm?.width ?? ''} /></label>
-            <label>Depth (mm)<input name="depth" type="number" min="0.01" step="any" defaultValue={plate.dimensions_mm?.depth ?? ''} /></label>
-            <label>Diameter (mm)<input name="diameter" type="number" min="0.01" step="any" defaultValue={plate.dimensions_mm?.diameter ?? ''} /></label>
+            <label>Thickness (mm)<input name="thickness" type="number" min="0.1" step="0.1" defaultValue={inputNumber(plate.dimensions_mm?.thickness, 1)} /></label>
+            <label>Width (mm)<input name="width" type="number" min="0.1" step="0.1" defaultValue={inputNumber(plate.dimensions_mm?.width, 1)} /></label>
+            <label>Depth (mm)<input name="depth" type="number" min="0.1" step="0.1" defaultValue={inputNumber(plate.dimensions_mm?.depth, 1)} /></label>
+            <label>Diameter (mm)<input name="diameter" type="number" min="0.1" step="0.1" defaultValue={inputNumber(plate.dimensions_mm?.diameter, 1)} /></label>
           </div>
         </EditorSection>
         <EditorSection title="Condition and use" description="Group maintenance state and slicer guidance in one place.">
@@ -108,7 +108,7 @@ function PlateEditorModal({
             <label>Condition<select name="condition" defaultValue={plate.condition}><option value="new">New</option><option value="good">Good</option><option value="worn">Worn</option><option value="damaged">Damaged</option><option value="retired">Retired</option></select></label>
             <label>Status<select name="status" defaultValue={plate.status}><option value="active">Active</option><option value="maintenance">Maintenance</option><option value="retired">Retired</option></select></label>
             <label>Preferred materials<input name="preferred_materials" defaultValue={plate.preferred_materials.join(', ')} placeholder="PLA, PETG, ASA" /></label>
-            <label>Maximum bed temperature (°C)<input name="max_bed_temp_c" type="number" min="0" max="500" step="any" defaultValue={plate.max_bed_temp_c ?? ''} /></label>
+            <label>Maximum bed temperature (°C)<input name="max_bed_temp_c" type="number" min="0" max="500" step="1" defaultValue={inputNumber(plate.max_bed_temp_c, 0)} /></label>
             <label className="form-grid__wide">Plate notes<textarea name="notes" defaultValue={plate.notes ?? ''} maxLength={4000} rows={3} /></label>
           </div>
         </EditorSection>
@@ -310,7 +310,7 @@ export default function BuildPlatesPage() {
                       <div><dt>Shape</dt><dd>{plate.shape ?? 'Not specified'}</dd></div>
                       <div><dt>Properties</dt><dd>{[plate.magnetic === true ? 'Magnetic' : null, plate.flexible === true ? 'Flexible' : null].filter(Boolean).join(' · ') || 'Not specified'}</dd></div>
                       <div><dt>Preferred materials</dt><dd>{plate.preferred_materials.join(', ') || 'Not specified'}</dd></div>
-                      <div><dt>Maximum bed temperature</dt><dd>{plate.max_bed_temp_c ? `${plate.max_bed_temp_c} °C` : 'Not specified'}</dd></div>
+                      <div><dt>Maximum bed temperature</dt><dd>{plate.max_bed_temp_c ? `${compactNumber(plate.max_bed_temp_c, 0)} °C` : 'Not specified'}</dd></div>
                       <div><dt>Last cleaned</dt><dd>{dateTime(plate.last_cleaned_at)}</dd></div>
                       <div><dt>Cleaning state</dt><dd>{due?.cleaning_due ? 'Due now' : `${due?.cleaning_prints_since ?? 0} prints since cleaning`}</dd></div>
                     </dl>

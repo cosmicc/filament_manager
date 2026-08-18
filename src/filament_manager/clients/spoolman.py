@@ -31,6 +31,7 @@ MANAGED_EXTRA_FIELDS: dict[str, dict[str, str]] = {
         "filler": "Filler / reinforcement",
         "finish": "Finish / effect",
         "color_name": "Color name",
+        "display_palette": "Filament Manager display palette",
     },
     "spool": {
         "filament_manager_spool_uuid": "Filament Manager spool UUID",
@@ -224,6 +225,11 @@ class SpoolmanClient:
             raise SpoolmanError("Spoolman filament update returned an invalid payload")
         return data
 
+    async def delete_filament(self, filament_id: int) -> None:
+        """Delete one unused managed filament through Spoolman's supported API."""
+
+        await self._send("DELETE", f"/filament/{filament_id}")
+
     async def create_spool(self, payload: dict[str, Any]) -> dict[str, Any]:
         data = await self._request("POST", "/spool", json=self._prepare_payload(payload))
         if not isinstance(data, dict):
@@ -246,6 +252,11 @@ class SpoolmanClient:
         if not isinstance(data, dict):
             raise SpoolmanError("Spoolman spool update returned an invalid payload")
         return data
+
+    async def delete_spool(self, spool_id: int) -> None:
+        """Delete one unused managed spool through Spoolman's supported API."""
+
+        await self._send("DELETE", f"/spool/{spool_id}")
 
     async def measure_spool(self, spool_id: int, gross_weight_g: float) -> dict[str, Any]:
         """Submit the documented current gross-weight measurement."""

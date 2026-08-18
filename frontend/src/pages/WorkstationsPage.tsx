@@ -10,7 +10,7 @@ import { Modal } from '../components/Modal'
 import { PageHeader } from '../components/PageHeader'
 import { StatusPill } from '../components/StatusPill'
 import { useAuth } from '../context/AuthContext'
-import { dateTime } from '../lib/format'
+import { compactNumber, dateTime } from '../lib/format'
 
 function platformLabel(platform: WorkstationAgent['platform']) {
   return platform === 'windows_11' ? 'Windows 11' : 'Arch Linux'
@@ -56,7 +56,7 @@ export default function WorkstationsPage() {
     mutationFn: (agent: WorkstationAgent) => apiFetch<WorkstationAgent>(`/workstation-agents/${agent.id}/cura-takeover`, {
       method: 'POST',
       body: JSON.stringify({
-        expected_agent_version: agent.record_version,
+        reviewed_source_ids: [...new Set(agent.cura_materials.map((source) => source.source_id))],
         confirmed: true,
         mappings: agent.cura_materials
           .map((source) => ({ source_id: source.source_id, template_id: mappings[`${agent.id}:${source.source_id}`] }))
@@ -83,7 +83,7 @@ export default function WorkstationsPage() {
     ? agents.data?.find((agent) => agent.id === takeoverAgent.id) ?? takeoverAgent
     : null
   const printerName = (printerId: string) => printers.data?.find((printer) => printer.id === printerId)?.name ?? 'Unknown printer'
-  const templateLabel = (template: MaterialTemplate) => `${template.name} · ${printerName(template.printer_id)} · ${template.nozzle_diameter_mm} mm`
+  const templateLabel = (template: MaterialTemplate) => `${template.name} · ${printerName(template.printer_id)} · ${compactNumber(template.nozzle_diameter_mm, 1)} mm`
   const openTakeover = (agent: WorkstationAgent) => {
     setMessage('')
     setTakeoverAgent(agent)
@@ -110,7 +110,7 @@ export default function WorkstationsPage() {
       return <article className="workstation-card card" key={agent.id}>
         <header><span className="workstation-card__icon"><MonitorCog size={22} /></span><div><h2>{agent.display_name}</h2><p>{platformLabel(agent.platform)} · {agent.hostname} · Agent {agent.agent_version}</p></div><StatusPill status={agent.enabled ? 'active' : 'disabled'} /></header>
         <dl className="definition-list"><div><dt>Cura installations</dt><dd>{agent.cura_installations.length}</dd></div><div><dt>Material library</dt><dd>{agent.cura_management_enabled ? 'Automatic synchronization active' : 'Awaiting one-time takeover'}</dd></div><div><dt>Existing material profiles</dt><dd>{String(agent.capabilities.unmanaged_material_count ?? 'Unknown')}</dd></div><div><dt>Saved print profiles</dt><dd>{String(agent.capabilities.unmanaged_print_profile_count ?? 'Unknown')}</dd></div><div><dt>Agent ID</dt><dd>{agent.agent_code}</dd></div></dl>
-        {agent.cura_installations.map((installation) => <div className="cura-installation" key={installation.installation_id}><strong>Cura {installation.version}</strong><small>{installation.channel} · Settings v{installation.setting_version ?? 'unknown'}</small>{installation.machines.length ? <span>{installation.machines.map((machine) => `${machine.display_name}${machine.nozzle_diameter_mm ? ` · ${machine.nozzle_diameter_mm} mm` : ''}`).join(', ')}</span> : <span>No machine instances detected</span>}</div>)}
+        {agent.cura_installations.map((installation) => <div className="cura-installation" key={installation.installation_id}><strong>Cura {installation.version}</strong><small>{installation.channel} · Settings v{installation.setting_version ?? 'unknown'}</small>{installation.machines.length ? <span>{installation.machines.map((machine) => `${machine.display_name}${machine.nozzle_diameter_mm ? ` · ${compactNumber(machine.nozzle_diameter_mm, 1)} mm` : ''}`).join(', ')}</span> : <span>No machine instances detected</span>}</div>)}
         {!agent.cura_management_enabled ? <section className="cura-preservation" aria-label={`Cura sources reported by ${agent.display_name}`}>
           <div><h3>Import Cura profiles into templates</h3><p className="muted">Choose each Cura source from a list and map it to one existing template. Sources you leave unmapped will be discarded only after backup.</p></div>
           <dl className="definition-list definition-list--compact"><div><dt>Selectable Cura sources</dt><dd>{agent.cura_materials.length}</dd></div><div><dt>Available templates</dt><dd>{activeTemplates.length}</dd></div></dl>

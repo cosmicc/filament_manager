@@ -19,6 +19,7 @@ import { Modal } from '../components/Modal'
 import { PageHeader } from '../components/PageHeader'
 import { useAuth } from '../context/AuthContext'
 import { Link } from '../context/RouterContext'
+import { compactNumber, inputNumber } from '../lib/format'
 
 function nullable(value: FormDataEntryValue | null) {
   const normalized = String(value ?? '').trim()
@@ -86,7 +87,7 @@ export default function TemplatesPage() {
     {message && <div className="deployment-note" role="status">{message}</div>}
     {loading ? <LoadingState /> : !templates.data?.length ? <EmptyState icon={Library} title="No material templates" description="Add Template PLA, Template PETG, Template ASA, and the other material bases you use." /> : <div className="catalog-grid">{templates.data.map((template) => {
       const latest = template.revisions[0]
-      return <article className="catalog-card catalog-card--template" key={template.id}><div><p className="eyebrow">{template.material_type} · {template.nozzle_diameter_mm} mm nozzle</p><h2>{template.name}</h2><p>{template.description ?? 'No description'}</p></div><dl className="catalog-meta"><div><dt>Printer</dt><dd>{printers.data?.find((item) => item.id === template.printer_id)?.name ?? 'Unknown'}</dd></div><div><dt>Linked behavior</dt><dd>Automatic inheritance</dd></div><div><dt>Temperatures</dt><dd>{latest.settings.extruder_temp_c}° / {latest.settings.bed_temp_c}°</dd></div><div><dt>Profile settings</dt><dd>{Object.keys(latest.settings.cura_extensions).length + canonicalMaterialFieldCount} unique controls</dd></div></dl><div className="template-card__actions">{profiles.data?.length ? <button className="button" onClick={() => setComparisonTargetKey(`template:${latest.id}`)}><GitCompareArrows size={16} /> Compare settings</button> : null}{user?.role !== 'viewer' && <button className="button" onClick={() => openEditor(template)}><Pencil size={16} /> Edit template</button>}</div></article>
+      return <article className="catalog-card catalog-card--template" key={template.id}><div><p className="eyebrow">{template.material_type} · {compactNumber(template.nozzle_diameter_mm, 1)} mm nozzle</p><h2>{template.name}</h2><p>{template.description ?? 'No description'}</p></div><dl className="catalog-meta"><div><dt>Printer</dt><dd>{printers.data?.find((item) => item.id === template.printer_id)?.name ?? 'Unknown'}</dd></div><div><dt>Linked behavior</dt><dd>Automatic inheritance</dd></div><div><dt>Temperatures</dt><dd>{compactNumber(latest.settings.extruder_temp_c, 0)}° / {compactNumber(latest.settings.bed_temp_c, 0)}°</dd></div><div><dt>Profile settings</dt><dd>{Object.keys(latest.settings.cura_extensions).length + canonicalMaterialFieldCount} unique controls</dd></div></dl><div className="template-card__actions">{profiles.data?.length ? <button className="button" onClick={() => setComparisonTargetKey(`template:${latest.id}`)}><GitCompareArrows size={16} /> Compare settings</button> : null}{user?.role !== 'viewer' && <button className="button" onClick={() => openEditor(template)}><Pencil size={16} /> Edit template</button>}</div></article>
     })}</div>}
     {comparisonTargetKey && profiles.data ? <MaterialComparisonModal
       profiles={profiles.data}
@@ -104,7 +105,7 @@ export default function TemplatesPage() {
           <div className="form-grid">
             <label>Material type<input name="material_type" list="common-material-types" placeholder="PLA, PCTPE, Nylon 645…" required autoFocus /><small className="field-help">Cura name: Template + material type; brand: Template.</small><datalist id="common-material-types">{['PLA', 'PLA+', 'PETG', 'ASA', 'TPU', 'PCTPE', 'Nylon 645'].map((material) => <option key={material} value={material} />)}</datalist></label>
             <label>Printer<select name="printer_id" required>{printers.data?.map((printer) => <option key={printer.id} value={printer.id}>{printer.name}</option>)}</select></label>
-            <label>Nozzle diameter<input name="nozzle_diameter_mm" type="number" min="0.1" step="0.05" defaultValue={printers.data?.[0]?.nozzle_diameter_mm ?? '0.4'} required /></label>
+            <label>Nozzle diameter<input name="nozzle_diameter_mm" type="number" min="0.1" step="0.1" defaultValue={inputNumber(printers.data?.[0]?.nozzle_diameter_mm ?? '0.4', 1)} required /></label>
             <label>Filament diameter<input name="filament_diameter_mm" type="number" min="0.1" step="0.01" defaultValue="1.75" required /></label>
             <label className="form-grid__wide">Description<textarea name="description" rows={2} placeholder="Purpose, behavior, and calibration notes" /></label>
           </div>

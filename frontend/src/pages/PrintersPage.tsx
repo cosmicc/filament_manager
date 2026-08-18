@@ -10,6 +10,7 @@ import { Modal } from '../components/Modal'
 import { PageHeader } from '../components/PageHeader'
 import { useAuth } from '../context/AuthContext'
 import { Link } from '../context/RouterContext'
+import { compactNumber, inputNumber } from '../lib/format'
 
 function optional(data: FormData, key: string) {
   return String(data.get(key) ?? '').trim() || null
@@ -60,10 +61,10 @@ function PrinterEditorModal({
         <EditorSection title="Build volume" description="Use X, Y, and Z for rectangular machines or diameter and Z for round beds.">
           <div className="form-grid">
             <label>Build shape<select name="shape" defaultValue={printer.build_volume.shape ?? ''}><option value="">Not specified</option><option value="rectangular">Rectangular</option><option value="round">Round</option><option value="other">Other</option></select></label>
-            <label>X (mm)<input name="x_mm" type="number" min="0.01" step="any" defaultValue={printer.build_volume.x_mm ?? ''} /></label>
-            <label>Y (mm)<input name="y_mm" type="number" min="0.01" step="any" defaultValue={printer.build_volume.y_mm ?? ''} /></label>
-            <label>Z (mm)<input name="z_mm" type="number" min="0.01" step="any" defaultValue={printer.build_volume.z_mm ?? ''} /></label>
-            <label>Diameter (mm)<input name="diameter_mm" type="number" min="0.01" step="any" defaultValue={printer.build_volume.diameter_mm ?? ''} /></label>
+            <label>X (mm)<input name="x_mm" type="number" min="0.1" step="0.1" defaultValue={inputNumber(printer.build_volume.x_mm, 1)} /></label>
+            <label>Y (mm)<input name="y_mm" type="number" min="0.1" step="0.1" defaultValue={inputNumber(printer.build_volume.y_mm, 1)} /></label>
+            <label>Z (mm)<input name="z_mm" type="number" min="0.1" step="0.1" defaultValue={inputNumber(printer.build_volume.z_mm, 1)} /></label>
+            <label>Diameter (mm)<input name="diameter_mm" type="number" min="0.1" step="0.1" defaultValue={inputNumber(printer.build_volume.diameter_mm, 1)} /></label>
           </div>
         </EditorSection>
         {error ? <p className="form-error" role="alert">{error}</p> : null}
@@ -157,9 +158,9 @@ export default function PrintersPage() {
                   <EditorSection title="Hardware and workspace">
                     <dl className="definition-list">
                       <div><dt>Printer type</dt><dd>{printer.kinematics ? `${printer.kinematics} kinematics` : 'Not reported'}{printer.extruder_type ? ` · ${printer.extruder_type}` : ''}</dd></div>
-                      <div><dt>Build volume</dt><dd>{printer.build_volume.shape === 'round' ? `Ø ${printer.build_volume.diameter_mm ?? printer.build_volume.x_mm ?? '—'} × ${printer.build_volume.z_mm ?? '—'} mm` : printer.build_volume.x_mm ? `${printer.build_volume.x_mm} × ${printer.build_volume.y_mm ?? '—'} × ${printer.build_volume.z_mm ?? '—'} mm` : 'Not reported'}</dd></div>
+                      <div><dt>Build volume</dt><dd>{printer.build_volume.shape === 'round' ? `Ø ${compactNumber(printer.build_volume.diameter_mm ?? printer.build_volume.x_mm, 1)} × ${compactNumber(printer.build_volume.z_mm, 1)} mm` : printer.build_volume.x_mm ? `${compactNumber(printer.build_volume.x_mm, 1)} × ${compactNumber(printer.build_volume.y_mm, 1)} × ${compactNumber(printer.build_volume.z_mm, 1)} mm` : 'Not reported'}</dd></div>
                       <div><dt>Active plate</dt><dd>{plate ? `${plate.plate_code} - ${plate.display_name}` : 'Not selected'}</dd></div>
-                      <div><dt>Installed nozzle</dt><dd>{nozzle ? `${nozzle.nozzle_code} · ${nozzle.diameter_mm} mm ${nozzle.material}` : 'No physical nozzle assigned'}</dd></div>
+                      <div><dt>Installed nozzle</dt><dd>{nozzle ? `${nozzle.nozzle_code} · ${compactNumber(nozzle.diameter_mm, 1)} mm ${nozzle.material}` : 'No physical nozzle assigned'}</dd></div>
                     </dl>
                   </EditorSection>
                 </div>

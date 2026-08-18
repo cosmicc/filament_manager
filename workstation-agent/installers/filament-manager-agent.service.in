@@ -12,7 +12,10 @@ NoNewPrivileges=true
 PrivateTmp=true
 ProtectSystem=strict
 ProtectHome=read-only
-ReadWritePaths="-%h/.config/Filament Manager Agent" "-%h/.local/share/Filament Manager Agent" -%h/.local/share/cura -%h/.var/app/com.ultimaker.cura/data/cura -%h/snap/cura-slicer/current/.local/share/cura -%h/snap/cura/current/.local/share/cura
+# The installer creates the two required private roots before this unit starts.
+# Keep optional Cura roots prefixed with '-' because not every packaging format
+# exists on every workstation.
+ReadWritePaths="%h/.config/Filament Manager Agent" "%h/.local/share/Filament Manager Agent" -%h/.local/share/cura -%h/.var/app/com.ultimaker.cura/data/cura -%h/snap/cura-slicer/current/.local/share/cura -%h/snap/cura/current/.local/share/cura
 
 [Install]
 WantedBy=default.target

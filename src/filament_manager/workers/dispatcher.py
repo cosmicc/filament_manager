@@ -342,6 +342,10 @@ async def _project_filament(
             "filler": product.filler or "",
             "finish": product.finish or "",
             "color_name": product.color_name,
+            "display_palette": {
+                "mode": product.color_mode,
+                "colors": product.color_hexes,
+            },
         },
     }
     remote: dict[str, object] | None = None
@@ -732,7 +736,7 @@ async def _configured_printer_bindings(
     settings = get_settings()
     seeded = await seed_configured_system(session, settings)
     await session.commit()
-    if seeded["printers"] or seeded["plates"]:
+    if seeded["printers"] or seeded["plates"] or seeded["templates"]:
         logger.info("configured_system_seeded", **seeded)
     result = await session.execute(
         select(Printer).where(Printer.printer_code.in_([item.id for item in settings.moonraker.printers]))
@@ -1087,6 +1091,16 @@ async def dispatch_job(session: AsyncSession, job: OutboxJob) -> None:
         )
         if product:
             await _project_filament(session, spoolman, product)
+    elif job.job_type == "spoolman.filament.delete":
+        remote_id = job.payload.get("remote_id")
+        if remote_id is not None:
+            try:
+                await spoolman.delete_filament(int(str(remote_id)))
+            except SpoolmanNotFoundError:
+                pass
+        state = await _projection(session, "spoolman", "filament_product", job.aggregate_id)
+        if state is not None:
+            await session.delete(state)
     elif job.job_type == "spoolman.spool.upsert":
         spool = await session.scalar(
             select(Spool)
@@ -1095,6 +1109,16 @@ async def dispatch_job(session: AsyncSession, job: OutboxJob) -> None:
         )
         if spool:
             await _project_spool(session, spoolman, spool)
+    elif job.job_type == "spoolman.spool.delete":
+        remote_id = job.payload.get("remote_id")
+        if remote_id is not None:
+            try:
+                await spoolman.delete_spool(int(str(remote_id)))
+            except SpoolmanNotFoundError:
+                pass
+        state = await _projection(session, "spoolman", "spool", job.aggregate_id)
+        if state is not None:
+            await session.delete(state)
     elif job.job_type == "spoolman.spool.adjust_weight":
         spool = await session.get(Spool, job.aggregate_id)
         if spool and spool.spoolman_id:

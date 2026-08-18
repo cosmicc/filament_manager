@@ -19,10 +19,16 @@ from filament_manager.clients.moonraker import (
     MoonrakerPrintState,
     MoonrakerSpoolPreflightState,
 )
+from filament_manager.config import get_settings
 from filament_manager.domain.gcode_inspection import InspectionResult, inspect_gcode
 from filament_manager.domain.profile_inheritance import settings_snapshot_from_profile
 from filament_manager.domain.spool_preflight import cura_material_guid
-from filament_manager.models.enums import GcodeInspectionStatus, PrintJobStatus, ProfileStatus
+from filament_manager.models.enums import (
+    GcodeInspectionStatus,
+    PrintJobStatus,
+    ProfileStatus,
+    SpoolStatus,
+)
 from filament_manager.models.inventory import (
     BuildPlate,
     BuildPlateSurface,
@@ -31,13 +37,15 @@ from filament_manager.models.inventory import (
     Nozzle,
     Printer,
     Spool,
+    SpoolUsageEvent,
 )
 from filament_manager.models.operations import ApplicationSetting
 from filament_manager.models.printing import PrintJob, PrintMaterialSegment
-from filament_manager.services.events import add_audit_event
+from filament_manager.services.events import add_audit_event, add_outbox_job
 
 MAX_INITIAL_HISTORY_JOBS = 10_000
 HISTORY_PAGE_SIZE = 100
+MASS_QUANTUM = Decimal("0.001")
 
 
 def _json_safe(value: object) -> dict[str, object]:
@@ -231,6 +239,125 @@ def _actual_weight_g(length_mm: Decimal | None, snapshot: dict[str, object]) -> 
         return None
     cross_section_mm2 = Decimal(str(pi)) * (diameter / Decimal("2")) ** 2
     return length_mm * cross_section_mm2 / Decimal("1000") * density
+
+
+def _terminal_usage_targets(job: PrintJob) -> dict[UUID, tuple[Decimal, Decimal]]:
+    """Return each exact spool's captured starting mass and total reported use."""
+
+    targets: dict[UUID, tuple[Decimal, Decimal]] = {}
+    for segment in sorted(job.segments, key=lambda item: item.segment_number):
+        if segment.spool_id is None or segment.actual_filament_weight_g is None:
+            continue
+        used = segment.actual_filament_weight_g.quantize(MASS_QUANTUM)
+        if used <= 0:
+            continue
+        snapshot_spool = segment.state_snapshot.get("spool")
+        starting = (
+            _decimal(snapshot_spool.get("remaining_mass_g")) if isinstance(snapshot_spool, dict) else None
+        )
+        if starting is None:
+            continue
+        previous = targets.get(segment.spool_id)
+        targets[segment.spool_id] = (
+            previous[0] if previous is not None else starting,
+            (previous[1] if previous is not None else Decimal("0")) + used,
+        )
+    return targets
+
+
+async def _apply_terminal_spool_usage(
+    session: AsyncSession,
+    *,
+    job: PrintJob,
+    correlation_id: str,
+) -> None:
+    """Apply actual terminal-job use once without double-counting prior Spoolman use.
+
+    The immutable segment snapshot supplies the pre-print baseline. If Spoolman
+    has already moved canonical inventory below that target, the lower trusted
+    value wins and the zero adjustment still records that this job was handled.
+    """
+
+    if job.status not in {
+        PrintJobStatus.COMPLETED,
+        PrintJobStatus.CANCELLED,
+        PrintJobStatus.FAILED,
+    }:
+        return
+    now = datetime.now(UTC)
+    for spool_id, (starting_mass, used_mass) in _terminal_usage_targets(job).items():
+        usage_key = f"print:{job.id}:spool:{spool_id}"
+        existing = await session.scalar(
+            select(SpoolUsageEvent.id).where(
+                SpoolUsageEvent.source == "moonraker_print",
+                SpoolUsageEvent.idempotency_key == usage_key,
+            )
+        )
+        if existing is not None:
+            continue
+        spool = await session.scalar(select(Spool).where(Spool.id == spool_id).with_for_update())
+        if spool is None:
+            continue
+        target_remaining = max(Decimal("0"), starting_mass - used_mass).quantize(MASS_QUANTUM)
+        before_effective = spool.remaining_mass_effective_g
+        before_expected = spool.remaining_mass_expected_g
+        corrected_remaining = min(before_effective, target_remaining)
+        applied_delta = corrected_remaining - before_effective
+        session.add(
+            SpoolUsageEvent(
+                spool_id=spool.id,
+                source="moonraker_print",
+                printer_id=job.printer_id,
+                print_job_id=str(job.id),
+                mass_delta_g=applied_delta,
+                idempotency_key=usage_key,
+                occurred_at=job.ended_at or now,
+                created_at=now,
+            )
+        )
+        spool.remaining_mass_expected_g = min(before_expected, target_remaining)
+        spool.remaining_mass_effective_g = corrected_remaining
+        spool.last_usage_event_at = job.ended_at or now
+        spool.last_used_at = job.ended_at or now
+        spool.first_used_at = spool.first_used_at or job.started_at or now
+        spool.record_version += 1
+        if corrected_remaining <= 0:
+            spool.status = SpoolStatus.EMPTY
+        elif corrected_remaining / spool.nominal_net_mass_g * Decimal("100") < Decimal(
+            str(get_settings().sync.low_spool_threshold_percent)
+        ):
+            spool.status = SpoolStatus.LOW
+        else:
+            spool.status = SpoolStatus.IN_STOCK
+        add_audit_event(
+            session,
+            actor_id=None,
+            source="moonraker",
+            action="spool.print_usage.apply",
+            object_type="spool",
+            object_id=spool.id,
+            before={
+                "remaining_mass_expected_g": str(before_expected),
+                "remaining_mass_effective_g": str(before_effective),
+            },
+            after={
+                "reported_actual_mass_g": str(used_mass),
+                "remaining_mass_expected_g": str(spool.remaining_mass_expected_g),
+                "remaining_mass_effective_g": str(spool.remaining_mass_effective_g),
+                "print_status": job.status.value,
+            },
+            correlation_id=correlation_id,
+        )
+        if spool.spoolman_id is not None:
+            add_outbox_job(
+                session,
+                job_type="spoolman.spool.adjust_weight",
+                idempotency_key=f"spool:{spool.id}:print:{job.id}",
+                aggregate_type="spool",
+                aggregate_id=spool.id,
+                aggregate_version=spool.record_version,
+                payload={"spool_id": str(spool.id), "print_job_id": str(job.id)},
+            )
 
 
 def _apply_extracted(job: PrintJob, extracted: dict[str, object]) -> None:
@@ -561,6 +688,12 @@ async def synchronize_live_print(
                     open_segment.actual_filament_length_mm, open_segment.state_snapshot
                 )
         job.record_version += 1
+        if observed_status in terminal_statuses:
+            await _apply_terminal_spool_usage(
+                session,
+                job=job,
+                correlation_id=correlation_id,
+            )
         await session.commit()
     return job
 
@@ -644,9 +777,27 @@ async def _upsert_history_job(
     job.print_duration_seconds = _decimal(remote.get("print_duration"))
     job.total_duration_seconds = _decimal(remote.get("total_duration"))
     job.record_version += 0 if created else 1
-    for segment in job.segments:
-        if segment.ended_at is None and job.ended_at:
-            segment.ended_at = job.ended_at
+    open_segment = next((segment for segment in reversed(job.segments) if segment.ended_at is None), None)
+    if open_segment is not None and job.ended_at:
+        open_segment.ended_at = job.ended_at
+        if job.actual_filament_length_mm is not None:
+            used_before = sum(
+                (segment.actual_filament_length_mm or Decimal("0"))
+                for segment in job.segments
+                if segment.id != open_segment.id and segment.ended_at is not None
+            )
+            open_segment.actual_filament_length_mm = max(
+                Decimal("0"), job.actual_filament_length_mm - used_before
+            )
+            open_segment.actual_filament_weight_g = _actual_weight_g(
+                open_segment.actual_filament_length_mm,
+                open_segment.state_snapshot,
+            )
+    await _apply_terminal_spool_usage(
+        session,
+        job=job,
+        correlation_id=correlation_id,
+    )
     if created:
         await session.flush()
         add_audit_event(

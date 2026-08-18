@@ -7,17 +7,17 @@ PostgreSQL is the canonical data store. A distinct Spoolman service remains the 
 ## Current capabilities
 
 - Local Administrator, Operator, and Viewer accounts
-- Canonical spool, filament, profile, printer, physical nozzle, remembered color, and build-plate records with consistent grouped in-app editors
-- Browser-based `.xlsx` workbook upload with automatic first-run printer and build-plate seeding
+- Canonical spool, filament, profile, printer, physical nozzle, solid/multicolor/rainbow color, and build-plate records with consistent grouped in-app editors
+- Browser-based `.xlsx` workbook upload with automatic first-run printer/build-plate seeding and a conservative `Template ASA` takeover target for each configured printer/nozzle
 - Directly saved `Template <material type>` Cura entries whose complete effective values flow to linked filament profiles except for visibly highlighted sparse customizations, with overlapping Cura aliases represented by one editor control
 - Difference-only comparison of two to four current profiles/templates with printer/nozzle scope warnings and exact-profile print success rates
-- Manual gross-weight measurements with variance confirmation
+- Simple new-spool entry from filament amount plus optional full scale weight, automatic empty-spool calculation, correction editors, safe delete-or-archive behavior, and later gross-weight measurements with variance confirmation
 - Immutable audit history and transactional projection outbox
 - Immediate Spoolman REST projection plus one-minute complete convergence and usage reconciliation, including Filament Manager-owned free-text bucket locations, plus Moonraker control clients
 - Exact completed-print counts per physical nozzle, build-plate side, and each distinct spool used by a print
 - Guarded direct-Spoolman selection, automatic physical-spool drift repair, and P-number build-plate synchronization with a live saved-mesh selector, including manual Side B setup followed by exact mesh discovery (`P4`/`P4b`)
 - Cura-to-Fluidd spool preflight with bounded G-code/profile inspection, optional fail-closed blocking, strict current exact-profile print choices, broader safe manual-load choices, and Spoolman updates only at completed unload/load boundaries
-- Moonraker-backed print history with exact immutable material/plate/profile state, M600 segments, legacy import, G-code hashes, use estimates, actual use, and append-only outcome scoring
+- Moonraker-backed print history with exact immutable material/plate/profile state, M600 segments, legacy import, G-code hashes, actual terminal-job spool deductions for every outcome, and append-only outcome scoring
 - Automatic 5-minute Moonraker/Klipper printer information discovery with editable manual nozzle, hardware, and build-volume metadata
 - Seven-step calibration workflow with X/Y/Z, hole, shaft, wall/flow, material-shrinkage, and non-applying printer-geometry recommendations
 - Configurable build-plate cleaning/mesh reminders plus a persistent operator notification center

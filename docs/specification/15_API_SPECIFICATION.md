@@ -18,12 +18,13 @@
 - `POST /spools`
 - `GET /spools/{id}`
 - `PATCH /spools/{id}`
+- `DELETE /spools/{id}`
 - `POST /spools/{id}/measurements`
 - `POST /spools/{id}/labels`
 - `POST /spools/{id}/set-active`
 - `POST /printer-context/active-spool/clear`
 
-`PATCH /spools/{id}` accepts a bounded free-text `location` plus `expected_version`. Supplying a value or `null` establishes Filament Manager ownership and queues the Spoolman projection atomically.
+`POST /spools` accepts filament-only capacity and an optional full-spool gross reading; when tare is omitted, it infers tare as gross minus capacity and records the initial observation atomically. `PATCH /spools/{id}` accepts every setup field, explicit current-remaining correction, bounded free-text `location`, and `expected_version`. A changed current remaining amount appends an operator-correction usage event; supplying a location value or `null` establishes Filament Manager ownership. `DELETE /spools/{id}` deletes setup-only mistakes and their creation measurement, but archives any record with later measurement/use/print/calibration/NFC history. All paths queue supported Spoolman work atomically.
 
 `POST /spools/{id}/set-active` is retained as the compatibility route for the Inventory **Load spool** action. It validates that the spool is available and projected and has a safe temperature from the newest non-archived exact profile or linked in-scope template, records an audited request, and queues `moonraker.spool_change.request`. It does not require publication, mutate canonical or Spoolman active state, or weaken the separate published-profile Cura print gate. The physical Klipper workflow performs state changes only at completed unload/load boundaries; periodic reconciliation observes the result.
 
@@ -35,6 +36,7 @@ Spool responses include a derived completed-print count. Every completed job cou
 - `GET /filaments/{id}`
 - `POST /filaments`
 - `PATCH /filaments/{id}`
+- `DELETE /filaments/{id}`
 - `GET /filament-colors`
 - `GET /profiles`
 - `POST /profiles`
@@ -44,7 +46,7 @@ Spool responses include a derived completed-print count. Every completed job cou
 - `PUT /profiles/templates/{id}/settings`
 - `PATCH /profiles/templates/{id}`
 
-`POST /filaments` selects a current template snapshot and atomically creates the product plus its current inherited profile. Direct profile/template saves append hidden immutable snapshots, immediately become current, and queue projections. A template save also writes the next current profile snapshot for every linked filament while retaining each sparse explicit customization. Filament create/update resolves the case-insensitive remembered color sample and propagates a changed sample to matching products with their projection jobs in the same transaction.
+`POST /filaments` selects a current template snapshot and atomically creates the product plus its current inherited profile. `PATCH /filaments/{id}` corrects product setup and can relink a compatible current template while preserving sparse overrides. `DELETE /filaments/{id}` deletes only dependency-free setup mistakes and otherwise archives. Direct profile/template saves append hidden immutable snapshots, immediately become current, and queue projections. A template save also writes the next current profile snapshot for every linked filament while retaining each sparse explicit customization. Filament create/update resolves a case-insensitive solid, two/three-color, or rainbow remembered palette and propagates a changed palette to matching products with their projection jobs in the same transaction. Palette changes are rejected after retained spool use or print history. Configured-system seeding reports counts for printers, plates, and newly created recommended ASA templates.
 
 ### Build plates
 
@@ -71,7 +73,7 @@ The Side B route derives `P<number>b` from the parent plate, rejects duplicates,
 - `GET /profiles/{id}/exports/cura`
 - `POST /workstation-agents/{id}/cura-takeover`
 
-The takeover request contains the expected agent version, explicit confirmation, and zero or more unique source-to-existing-template mappings. The server validates the latest reported source catalog, active template scopes, and single-use source/template constraints; directly applies mapped settings; cascades linked-profile inheritance; records mappings; enables management; and queues synchronization in one transaction. Unmapped sources create no canonical materials. Historical revision, publication, standalone Cura-import, template-rebase, and manual Cura-deployment routes remain hidden compatibility endpoints only.
+The takeover request contains the complete reviewed source-ID set, explicit confirmation, and zero or more unique source-to-existing-template mappings. The server requires that content-hashed set to equal the latest reported source catalog, then validates active template scopes and single-use source/template constraints; directly applies mapped settings; cascades linked-profile inheritance; records mappings; enables management; and queues synchronization in one transaction. Unmapped sources create no canonical materials. Historical revision, publication, standalone Cura-import, template-rebase, and manual Cura-deployment routes remain hidden compatibility endpoints only.
 
 ### Calibration
 

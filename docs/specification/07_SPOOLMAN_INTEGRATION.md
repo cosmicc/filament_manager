@@ -76,7 +76,7 @@ Manufacturer name and selected custom metadata.
 
 ### Filament
 
-Material, vendor, product name/grade/hardness, diameter, density, nominal weight, color, temperatures, and compatible custom fields.
+Material, vendor, product name/grade/hardness, diameter, density, nominal weight, primary color, Filament Manager display palette, temperatures, and compatible custom fields.
 
 ### Spool
 
@@ -91,7 +91,7 @@ Canonical creates and edits enqueue an immediate transactional outbox projection
 The worker idempotently provisions these text fields through `POST /api/v1/field/{entity_type}/{key}` before projecting records:
 
 - vendor: `filament_manager_vendor_uuid`
-- filament: `filament_manager_product_uuid`, `filler`, `finish`, and `color_name`
+- filament: `filament_manager_product_uuid`, `filler`, `finish`, `color_name`, and `display_palette`
 - spool: `filament_manager_spool_uuid` and `sheet_spool_id`
 
 Spoolman stores every custom-field value as a JSON-encoded string. Encode managed values before create/update and decode them before UUID comparison. Managed UUID discovery makes retries duplicate-safe when a worker stops after remote creation but before saving the local remote ID.

@@ -48,7 +48,7 @@ def test_previous_schema_automatically_upgrades_to_metadata_head(
 
         upgrade_database(DatabaseConfig(url=database_url))
         with engine.connect() as connection:
-            assert connection.scalar(text("SELECT version_num FROM alembic_version")) == "d0e1f2a3b456"
+            assert connection.scalar(text("SELECT version_num FROM alembic_version")) == "e1f2a3b4c567"
             recovered = connection.execute(
                 text(
                     """

@@ -5,14 +5,15 @@ import {
   Filter,
   MapPin,
   PackageMinus,
+  Pencil,
   Plus,
   QrCode,
   Scale,
   Search,
   Star,
+  Trash2,
 } from "lucide-react";
 import {
-  type CSSProperties,
   type FormEvent,
   useEffect,
   useMemo,
@@ -27,14 +28,15 @@ import { Modal } from "../components/Modal";
 import { PageHeader } from "../components/PageHeader";
 import { StatusPill } from "../components/StatusPill";
 import { useAuth } from "../context/AuthContext";
-import { dateTime, grams, percent } from "../lib/format";
+import { filamentSwatchStyle } from "../lib/colors";
+import { dateTime, grams, inputNumber, percent } from "../lib/format";
 
 function WeighModal({ spool, onClose }: { spool: Spool; onClose: () => void }) {
   const queryClient = useQueryClient();
   const { user } = useAuth();
   const [grossMass, setGrossMass] = useState("");
   const [tareMass, setTareMass] = useState(
-    Number(spool.tare_mass_g) > 0 ? spool.tare_mass_g : "",
+    Number(spool.tare_mass_g) > 0 ? inputNumber(spool.tare_mass_g, 1) : "",
   );
   const [notes, setNotes] = useState("");
   const [confirmed, setConfirmed] = useState(false);
@@ -119,9 +121,7 @@ function WeighModal({ spool, onClose }: { spool: Spool; onClose: () => void }) {
         <div className="spool-identity-callout">
           <span
             className="filament-swatch"
-            style={
-              { "--swatch": `#${spool.color_hex ?? "2F80A5"}` } as CSSProperties
-            }
+            style={filamentSwatchStyle(spool.color_mode, spool.color_hexes, spool.color_hex ?? "2F80A5")}
           />
           <div>
             <strong>
@@ -259,8 +259,16 @@ function CreateSpoolModal({
 }) {
   const queryClient = useQueryClient();
   const [filamentId, setFilamentId] = useState(filaments[0]?.id ?? "");
+  const [filamentMass, setFilamentMass] = useState(
+    inputNumber(filaments[0]?.nominal_net_mass_g ?? "1000", 0),
+  );
+  const [fullSpoolMass, setFullSpoolMass] = useState("");
   const [error, setError] = useState("");
   const selected = filaments.find((item) => item.id === filamentId);
+  const inferredTare =
+    fullSpoolMass && filamentMass
+      ? Number(fullSpoolMass) - Number(filamentMass)
+      : null;
   const mutation = useMutation({
     mutationFn: (form: HTMLFormElement) => {
       if (!selected) throw new Error("Select a filament product");
@@ -270,10 +278,10 @@ function CreateSpoolModal({
         body: JSON.stringify({
           spool_code: String(data.get("spool_code")).trim(),
           filament_product_id: selected.id,
-          nominal_net_mass_g: selected.nominal_net_mass_g,
-          tare_mass_g: String(data.get("tare_mass_g")),
+          nominal_net_mass_g: filamentMass,
+          tare_mass_g: null,
           initial_gross_mass_g:
-            String(data.get("initial_gross_mass_g") ?? "").trim() || null,
+            fullSpoolMass.trim() || null,
           purchase_source:
             String(data.get("purchase_source") ?? "").trim() || null,
           purchase_date: String(data.get("purchase_date") ?? "") || null,
@@ -301,7 +309,7 @@ function CreateSpoolModal({
   return (
     <Modal
       title="Add a physical spool"
-      description="Choose the canonical filament product, label the spool, and optionally record its first measured weight."
+      description="Choose the filament, enter how much filament is on the new spool, and optionally enter its full scale weight."
       onClose={onClose}
       footer={
         <>
@@ -337,7 +345,12 @@ function CreateSpoolModal({
               Filament product
               <select
                 value={filamentId}
-                onChange={(event) => setFilamentId(event.target.value)}
+                onChange={(event) => {
+                  const nextId = event.target.value;
+                  setFilamentId(nextId);
+                  const nextFilament = filaments.find((item) => item.id === nextId);
+                  if (nextFilament) setFilamentMass(inputNumber(nextFilament.nominal_net_mass_g, 0));
+                }}
                 required
                 autoFocus
               >
@@ -353,7 +366,7 @@ function CreateSpoolModal({
               Spool code
               <input
                 name="spool_code"
-                pattern="[A-Za-z0-9_-]+"
+                pattern={'[A-Za-z0-9_\\-]+'}
                 maxLength={64}
                 placeholder="SPOOL-001"
                 required
@@ -367,33 +380,44 @@ function CreateSpoolModal({
         </EditorSection>
         <EditorSection
           title="Starting weight"
-          description="Record the tare and optional first gross measurement."
+          description="The filament amount starts inventory tracking. A full-spool scale weight lets Filament Manager calculate the empty-spool weight automatically."
         >
           <div className="form-grid">
             <label>
-              Empty spool tare (g)
+              Filament on this spool (g)
               <input
-                name="tare_mass_g"
                 type="number"
-                min="0"
+                min="0.1"
                 step="0.1"
-                defaultValue="0"
+                value={filamentMass}
+                onChange={(event) => setFilamentMass(event.target.value)}
                 required
               />
               <small className="field-help">
-                Use 0 if unknown; the first weighing will establish it.
+                Usually 1000 g for a new 1 kg spool. This is filament only, without the plastic spool.
               </small>
             </label>
             <label>
-              Initial gross weight (g)
+              Full spool scale weight (g) <span className="label-optional">Optional</span>
               <input
-                name="initial_gross_mass_g"
                 type="number"
                 min="0"
                 step="0.1"
+                value={fullSpoolMass}
+                onChange={(event) => setFullSpoolMass(event.target.value)}
               />
+              <small className="field-help">The scale reading with the filament and physical spool together.</small>
             </label>
           </div>
+          {inferredTare !== null ? (
+            inferredTare >= 0 ? (
+              <p className="security-note">
+                Calculated empty-spool weight: {grams(String(inferredTare), 1)} ({grams(fullSpoolMass, 1)} total minus {grams(filamentMass, 1)} filament).
+              </p>
+            ) : (
+              <p className="form-error" role="alert">Full spool weight must be at least the entered filament amount.</p>
+            )
+          ) : null}
         </EditorSection>
         <EditorSection
           title="Purchase and notes"
@@ -420,8 +444,7 @@ function CreateSpoolModal({
         </EditorSection>
         {selected && (
           <p className="muted">
-            Nominal filament mass: {grams(selected.nominal_net_mass_g)}. The new
-            spool will be projected to Spoolman automatically.
+            The selected filament defaults to {grams(selected.nominal_net_mass_g)}. You may correct the amount for this physical spool before saving. It will be projected to Spoolman automatically.
           </p>
         )}
         {error && (
@@ -434,27 +457,47 @@ function CreateSpoolModal({
   );
 }
 
-function EditLocationModal({
+function EditSpoolModal({
   spool,
+  filaments,
   onClose,
   onSaved,
+  onDeleted,
 }: {
   spool: Spool;
+  filaments: Filament[];
   onClose: () => void;
   onSaved: (updated: Spool) => void;
+  onDeleted: (disposition: string) => void;
 }) {
   const queryClient = useQueryClient();
-  const [location, setLocation] = useState(spool.location ?? "");
   const [error, setError] = useState("");
   const mutation = useMutation({
-    mutationFn: () =>
-      apiFetch<Spool>(`/spools/${spool.id}`, {
+    mutationFn: (form: HTMLFormElement) => {
+      const data = new FormData(form);
+      const remainingMass = String(data.get("remaining_mass_g"));
+      const payload: Record<string, unknown> = {
+        expected_version: spool.record_version,
+        spool_code: String(data.get("spool_code")).trim(),
+        filament_product_id: String(data.get("filament_product_id")),
+        nominal_net_mass_g: String(data.get("nominal_net_mass_g")),
+        tare_mass_g: String(data.get("tare_mass_g")),
+        location: String(data.get("location") ?? "").trim() || null,
+        purchase_source: String(data.get("purchase_source") ?? "").trim() || null,
+        purchase_date: String(data.get("purchase_date") ?? "") || null,
+        purchase_cost: String(data.get("purchase_cost") ?? "").trim() || null,
+        currency: String(data.get("currency")),
+        notes: String(data.get("notes") ?? "").trim() || null,
+        archived: data.get("archived") === "on",
+      };
+      if (Number(remainingMass) !== Number(spool.remaining_mass_effective_g)) {
+        payload.remaining_mass_g = remainingMass;
+      }
+      return apiFetch<Spool>(`/spools/${spool.id}`, {
         method: "PATCH",
-        body: JSON.stringify({
-          expected_version: spool.record_version,
-          location: location.trim() || null,
-        }),
-      }),
+        body: JSON.stringify(payload),
+      });
+    },
     onSuccess: async (updated) => {
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: ["spools"] }),
@@ -466,62 +509,87 @@ function EditLocationModal({
       setError(
         caught instanceof Error
           ? caught.message
-          : "The spool location could not be saved",
+          : "The spool could not be saved",
       ),
+  });
+  const remove = useMutation({
+    mutationFn: () => apiFetch<{ disposition: string }>(`/spools/${spool.id}`, { method: "DELETE" }),
+    onSuccess: async (result) => {
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ["spools"] }),
+        queryClient.invalidateQueries({ queryKey: ["dashboard"] }),
+      ]);
+      onDeleted(result.disposition);
+    },
+    onError: (caught) => setError(caught instanceof Error ? caught.message : "The spool could not be removed"),
   });
 
   return (
     <Modal
-      title={`Move ${spool.spool_code}`}
-      description="Set the free-text bucket or storage location used by Filament Manager and Spoolman."
+      title={`Edit ${spool.spool_code}`}
+      description="Correct any setup field. Remaining-mass corrections are retained as immutable adjustment history."
       onClose={onClose}
+      size="wide"
       footer={
         <>
+          <button
+            className="button button--danger"
+            type="button"
+            disabled={remove.isPending || mutation.isPending}
+            onClick={() => {
+              if (window.confirm(`Remove ${spool.spool_code}? It will be archived instead if retained history prevents safe deletion.`)) remove.mutate();
+            }}
+          >
+            <Trash2 size={17} /> {remove.isPending ? "Removing…" : "Delete or archive"}
+          </button>
           <button className="button" onClick={onClose}>
             Cancel
           </button>
           <button
             className="button button--primary"
-            form="edit-location-form"
-            disabled={mutation.isPending}
+            form="edit-spool-form"
+            disabled={mutation.isPending || remove.isPending}
           >
-            <MapPin size={17} />
-            {mutation.isPending ? "Saving…" : "Save location"}
+            <Pencil size={17} />
+            {mutation.isPending ? "Saving…" : "Save spool"}
           </button>
         </>
       }
     >
       <form
-        id="edit-location-form"
-        className="form-stack"
+        id="edit-spool-form"
+        className="editor-form"
         onSubmit={(event) => {
           event.preventDefault();
           setError("");
-          mutation.mutate();
+          mutation.mutate(event.currentTarget);
         }}
       >
         <EditorSection
-          title="Storage assignment"
-          description="Filament Manager owns this value and projects it to Spoolman."
+          title="Identity and filament"
+          description="Correct the physical label, linked filament, capacity, tare, or current remaining amount."
         >
-          <label>
-            Bucket or location
-            <input
-              value={location}
-              onChange={(event) => setLocation(event.target.value)}
-              maxLength={160}
-              placeholder="Bucket 12"
-              autoFocus
-            />
-            <small className="field-help">
-              Leave this blank to mark the spool as not currently assigned to a
-              bucket.
-            </small>
-          </label>
+          <div className="form-grid">
+            <label>Spool code<input name="spool_code" defaultValue={spool.spool_code} pattern={'[A-Za-z0-9_\\-]+'} maxLength={64} required autoFocus /></label>
+            <label>Filament product<select name="filament_product_id" defaultValue={spool.filament_product_id} required>{filaments.map((filament) => <option key={filament.id} value={filament.id}>{filament.vendor_name ?? 'Unspecified'} · {filament.material_type} · {filament.color_name}</option>)}</select></label>
+            <label>Filament capacity (g)<input name="nominal_net_mass_g" type="number" min="1" step="1" defaultValue={inputNumber(spool.nominal_net_mass_g, 0)} required /></label>
+            <label>Empty spool weight (g)<input name="tare_mass_g" type="number" min="0" step="0.1" defaultValue={inputNumber(spool.tare_mass_g, 1)} required /></label>
+            <label>Current filament remaining (g)<input name="remaining_mass_g" type="number" min="0" step="1" defaultValue={inputNumber(spool.remaining_mass_effective_g, 0)} required /><small className="field-help">Changing this records an operator correction and updates Spoolman.</small></label>
+            <label>Bucket or location<input name="location" defaultValue={spool.location ?? ''} maxLength={160} placeholder="Bucket 12" /></label>
+          </div>
           <p className="security-note">
-            <MapPin size={16} /> Filament Manager will restore this value if it
-            changes in Spoolman.
+            <MapPin size={16} /> Filament Manager remains authoritative and will project these corrections to Spoolman.
           </p>
+        </EditorSection>
+        <EditorSection title="Purchase and lifecycle" description="Correct acquisition details, notes, or archive state.">
+          <div className="form-grid">
+            <label>Purchase source<input name="purchase_source" defaultValue={spool.purchase_source ?? ''} maxLength={160} /></label>
+            <label>Purchase date<input name="purchase_date" type="date" defaultValue={spool.purchase_date ?? ''} /></label>
+            <label>Purchase cost<input name="purchase_cost" type="number" min="0" step="0.01" defaultValue={spool.purchase_cost ?? ''} /></label>
+            <label>Currency<input name="currency" pattern="[A-Z]{3}" maxLength={3} defaultValue={spool.currency} required /></label>
+            <label className="form-grid__wide">Notes<textarea name="notes" rows={3} maxLength={4000} defaultValue={spool.notes ?? ''} /></label>
+            <label className="check-row form-grid__wide"><input name="archived" type="checkbox" defaultChecked={spool.archived} /><span><strong>Archive this spool</strong><small>Archived spools are retained for history and hidden from normal inventory.</small></span></label>
+          </div>
         </EditorSection>
         {error && (
           <p className="form-error" role="alert">
@@ -541,7 +609,7 @@ export default function SpoolsPage() {
   const [status, setStatus] = useState("");
   const [selected, setSelected] = useState<Spool | null>(null);
   const [weighing, setWeighing] = useState<Spool | null>(null);
-  const [editingLocation, setEditingLocation] = useState<Spool | null>(null);
+  const [editingSpool, setEditingSpool] = useState<Spool | null>(null);
   const [creating, setCreating] = useState(false);
   const [actionError, setActionError] = useState("");
   const [actionMessage, setActionMessage] = useState("");
@@ -728,11 +796,7 @@ export default function SpoolsPage() {
                       <div className="table-identity">
                         <span
                           className="filament-swatch"
-                          style={
-                            {
-                              "--swatch": `#${spool.color_hex ?? "2F80A5"}`,
-                            } as CSSProperties
-                          }
+                          style={filamentSwatchStyle(spool.color_mode, spool.color_hexes, spool.color_hex ?? "2F80A5")}
                         />
                         <span>
                           <strong>{spool.spool_code}</strong>
@@ -819,11 +883,7 @@ export default function SpoolsPage() {
                   <div className="table-identity">
                     <span
                       className="filament-swatch filament-swatch--large"
-                      style={
-                        {
-                          "--swatch": `#${selected.color_hex ?? "2F80A5"}`,
-                        } as CSSProperties
-                      }
+                      style={filamentSwatchStyle(selected.color_mode, selected.color_hexes, selected.color_hex ?? "2F80A5")}
                     />
                     <span>
                       <p className="eyebrow">Selected spool</p>
@@ -901,9 +961,9 @@ export default function SpoolsPage() {
                     {canEdit && (
                       <button
                         className="button"
-                        onClick={() => setEditingLocation(selected)}
+                        onClick={() => setEditingSpool(selected)}
                       >
-                        <MapPin size={17} /> Edit location
+                        <Pencil size={17} /> Edit spool
                       </button>
                     )}
                     {canEdit && selected.active_printer_id ? (
@@ -984,13 +1044,24 @@ export default function SpoolsPage() {
           }}
         />
       )}
-      {editingLocation && (
-        <EditLocationModal
-          spool={editingLocation}
-          onClose={() => setEditingLocation(null)}
+      {editingSpool && (
+        <EditSpoolModal
+          spool={editingSpool}
+          filaments={filaments.data ?? []}
+          onClose={() => setEditingSpool(null)}
           onSaved={(updated) => {
             setSelected(updated);
-            setEditingLocation(null);
+            setEditingSpool(null);
+            setActionMessage("Spool corrections saved and queued for Spoolman.");
+          }}
+          onDeleted={(disposition) => {
+            setSelected(null);
+            setEditingSpool(null);
+            setActionMessage(
+              disposition === "deleted"
+                ? "Unused spool deleted."
+                : "Spool has retained history, so it was archived.",
+            );
           }}
         />
       )}

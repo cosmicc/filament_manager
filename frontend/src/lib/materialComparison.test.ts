@@ -81,7 +81,7 @@ describe('material comparison', () => {
     }
 
     expect(getMaterialSettingDifferences(settings, other, catalog, plates)).toEqual([
-      { key: 'extruder_temp_c', label: 'Printing temperature', leftDisplay: '210 °C', rightDisplay: '215.0 °C' },
+      { key: 'extruder_temp_c', label: 'Printing temperature', leftDisplay: '210 °C', rightDisplay: '215 °C' },
       { key: 'cooling_enabled', label: 'Print cooling', leftDisplay: 'Yes', rightDisplay: 'No' },
       { key: 'preferred_build_plate_surface_id', label: 'Preferred plate side', leftDisplay: 'P1 · PEI', rightDisplay: 'Not set' },
       { key: 'retraction_enable', label: 'Enable Retraction', leftDisplay: 'Yes', rightDisplay: 'No' },

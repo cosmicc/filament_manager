@@ -205,7 +205,7 @@ async def commit_workbook_import(
             "The validated uploaded workbook is no longer available",
         )
     seeded = await seed_configured_system(session, get_settings())
-    if seeded["plates"] or seeded["printers"]:
+    if seeded["plates"] or seeded["printers"] or seeded["templates"]:
         add_audit_event(
             session,
             actor_id=administrator.id,
@@ -214,7 +214,11 @@ async def commit_workbook_import(
             object_type="system",
             object_id=None,
             before=None,
-            after={"plates": seeded["plates"], "printers": seeded["printers"]},
+            after={
+                "plates": seeded["plates"],
+                "printers": seeded["printers"],
+                "templates": seeded["templates"],
+            },
             correlation_id=request.state.correlation_id,
         )
     try:

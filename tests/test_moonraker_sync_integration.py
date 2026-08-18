@@ -27,6 +27,7 @@ from filament_manager.models.inventory import (
     MaterialTemplateRevision,
     Printer,
     Spool,
+    SpoolUsageEvent,
 )
 from filament_manager.models.operations import AuditEvent
 from filament_manager.models.printing import PrintJob, PrintMaterialSegment
@@ -397,6 +398,20 @@ async def test_active_spool_selection_and_clear_follow_moonraker(
                 correlation_id="terminal-poll-3",
             )
             assert await session.scalar(select(func.count(PrintJob.id))) == 1
+            repeat_job_id = await session.scalar(
+                select(PrintJob.id).where(PrintJob.filename == "repeatable.gcode")
+            )
+            repeat_segment = await session.scalar(
+                select(PrintMaterialSegment).where(PrintMaterialSegment.print_job_id == repeat_job_id)
+            )
+            assert repeat_segment is not None
+            assert repeat_segment.actual_filament_weight_g is not None
+            assert await session.scalar(select(func.count(SpoolUsageEvent.id))) == 1
+            refreshed_second = await session.get(Spool, second.id)
+            assert refreshed_second is not None
+            assert refreshed_second.remaining_mass_effective_g == (
+                Decimal("900") - repeat_segment.actual_filament_weight_g
+            ).quantize(Decimal("0.001"))
 
             material_change_start = MoonrakerPrintState(
                 filename="material-change.gcode",
@@ -475,5 +490,19 @@ async def test_active_spool_selection_and_clear_follow_moonraker(
                 Decimal("50"),
             ]
             assert all(segment.ended_at is not None for segment in segments)
+            assert all(segment.actual_filament_weight_g is not None for segment in segments)
+            second_spool_weight = segments[0].actual_filament_weight_g
+            first_spool_weight = segments[1].actual_filament_weight_g
+            assert second_spool_weight is not None and first_spool_weight is not None
+            assert await session.scalar(select(func.count(SpoolUsageEvent.id))) == 3
+            refreshed_first = await session.get(Spool, first.id)
+            refreshed_second = await session.get(Spool, second.id)
+            assert refreshed_first is not None and refreshed_second is not None
+            assert refreshed_first.remaining_mass_effective_g == (
+                Decimal("800") - first_spool_weight
+            ).quantize(Decimal("0.001"))
+            assert refreshed_second.remaining_mass_effective_g == (
+                Decimal("900") - repeat_segment.actual_filament_weight_g - second_spool_weight
+            ).quantize(Decimal("0.001"))
 
         await engine.dispose()

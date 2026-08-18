@@ -191,7 +191,7 @@ async def test_physical_nozzle_side_b_and_distinct_completed_print_counts(
                         "label": "Canonical PostgreSQL",
                         "category": "connection",
                         "status": "healthy",
-                        "detail": "Schema is current at d0e1f2a3b456",
+                        "detail": "Schema is current at e1f2a3b4c567",
                         "checked_at": checked_at,
                     }
                 ],
@@ -250,7 +250,7 @@ async def test_physical_nozzle_side_b_and_distinct_completed_print_counts(
             assert diagnostic_log.headers["content-disposition"] == (
                 'attachment; filename="filament-manager-diagnostics-20260815T050700Z.txt"'
             )
-            assert "Schema is current at d0e1f2a3b456" in diagnostic_log.text
+            assert "Schema is current at e1f2a3b4c567" in diagnostic_log.text
             validation = await client.post("/api/v1/diagnostics/validation-runs")
             assert validation.status_code == 201, validation.text
             assert validation.json()["status"] == "completed"

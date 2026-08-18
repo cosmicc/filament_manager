@@ -4,21 +4,32 @@
 
 ### Added
 
+- Added a recommended `Template ASA` starting point to the templates available during Cura takeover.
 - Added a dedicated Cura mapping dialog that lists every reported profile beside the template it can import into, followed by a separate review step.
 - Added visible highlighting around filament settings customized away from their linked template.
+- Added custom color names, two- or three-color spool displays, and a rainbow spool display.
+- Added complete correction and delete-or-archive actions for filaments and spools.
+- Added automatic empty-spool weight calculation when a new spool is entered with its filament amount and full scale weight.
 
 ### Changed
 
 - Filament settings now always begin with the linked template's effective values, and only changed values are retained as filament customizations.
 - Retraction speed and maximum fan speed now appear once in the editor instead of being repeated under Additional Cura Material Settings.
 - Cura profiles with only inherited expressions or no tracked literal overrides remain available in the one-time takeover list.
+- Filament settings are grouped like Cura, changed values highlight immediately, and displayed numbers no longer show unnecessary decimal places.
+- Completed, failed, and cancelled prints now reduce each exact spool by Moonraker's reported actual filament use.
+- Filament color remains editable until that filament has recorded use, then locks to preserve history.
 
 ### Fixed
 
+- Fixed the Cura takeover confirmation being rejected whenever the workstation agent checked in while the mapping dialog was open.
 - Fixed the workstation agent repeatedly failing certificate verification and never reporting Cura profiles when Filament Manager uses a private CA already trusted by the workstation.
 - Fixed Cura takeover reporting zero selectable profiles even though Cura contained saved profiles.
 - Fixed **Back to mappings** not returning to a clear profile-and-template selection screen.
 - Fixed overlapping settings appearing more than once while editing a filament profile.
+- Fixed the Arch workstation agent being unable to write its Cura deployment state after installation.
+- Fixed a new full-spool weight being rejected instead of calculating the empty spool weight automatically.
+- Fixed incorrect new spool or filament records being difficult to correct or remove safely.
 
 ## 0.2.2 - 08.17.2026
 

@@ -87,6 +87,13 @@ fi
     assert "--user start filament-manager-agent.service" in service_log.read_text(encoding="utf-8")
     assert user_config.read_text(encoding="utf-8") == '{"agent_token":"preserve-me"}\n'
     assert user_config.stat().st_mode & 0o777 == 0o600
+    private_state = tmp_path / "data" / "Filament Manager Agent"
+    assert private_state.is_dir()
+    assert private_state.stat().st_mode & 0o777 == 0o700
+    installed_unit = tmp_path / "config" / "systemd" / "user" / "filament-manager-agent.service"
+    unit_text = installed_unit.read_text(encoding="utf-8")
+    assert 'ReadWritePaths="%h/.config/Filament Manager Agent"' in unit_text
+    assert '"%h/.local/share/Filament Manager Agent"' in unit_text
 
     removed = subprocess.run(
         [str(INSTALLERS / "uninstall-arch.sh")],

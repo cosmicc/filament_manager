@@ -12,7 +12,7 @@ from filament_manager.services.diagnostics import (
 def test_expected_schema_matches_current_migration_head() -> None:
     """Diagnostics must advance whenever the single Alembic head advances."""
 
-    assert EXPECTED_SCHEMA_VERSION == "d0e1f2a3b456"
+    assert EXPECTED_SCHEMA_VERSION == "e1f2a3b4c567"
 
 
 def test_error_details_remove_database_and_external_response_content() -> None:
@@ -47,7 +47,7 @@ def test_diagnostics_text_contains_bounded_current_overview() -> None:
                     "label": "Canonical PostgreSQL",
                     "category": "connection",
                     "status": "healthy",
-                    "detail": "Schema is current at d0e1f2a3b456",
+                    "detail": "Schema is current at e1f2a3b4c567",
                     "checked_at": checked_at,
                 }
             ],
@@ -67,7 +67,7 @@ def test_diagnostics_text_contains_bounded_current_overview() -> None:
     )
 
     assert "Filament Manager diagnostics" in report
-    assert "Schema is current at d0e1f2a3b456" in report
+    assert "Schema is current at e1f2a3b4c567" in report
     assert "dead: 2" in report
     assert "moonraker.state.reconcile: 2" in report
     assert "MoonrakerError x2" in report

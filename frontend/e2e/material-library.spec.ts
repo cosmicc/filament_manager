@@ -1,4 +1,6 @@
-import { expect, test } from '@playwright/test'
+import { expect, test, type Page } from '@playwright/test'
+
+const browserErrors = new WeakMap<Page, string[]>()
 
 const user = {
   id: 'administrator-id', username: 'admin', display_name: 'Administrator',
@@ -40,9 +42,10 @@ const template = {
 const filament = {
   id: 'd1e1d7ce-f0bc-46f5-86b2-d2c74f272f00', vendor_id: null, vendor_name: null, material_type: 'PLA',
   filler: null, finish: null, color_name: 'Blue', color_hex: '2F80A5',
+  color_mode: 'solid', color_hexes: ['2F80A5'],
   product_name: 'Workshop PLA', diameter_mm: '1.75', tolerance_mm: null,
   density_g_cm3: '1.24', nominal_net_mass_g: '1000', notes: null,
-  material_template_revision_id: 'revision-id', record_version: 1,
+  material_template_revision_id: 'revision-id', archived: false, color_editable: true, record_version: 1,
 }
 
 const comparisonProfile = {
@@ -69,22 +72,33 @@ const differentScopeProfile = {
 const spool = {
   id: 'spool-id', spool_code: 'PLA-BLUE-01', filament_product_id: filament.id,
   material_type: 'PLA', filler: null, finish: null, color_name: 'Blue',
-  color_hex: '2F80A5', vendor_name: null, product_name: 'Workshop PLA',
+  color_hex: '2F80A5', color_mode: 'solid', color_hexes: ['2F80A5'], vendor_name: null, product_name: 'Workshop PLA',
   nominal_net_mass_g: '1000', tare_mass_g: '200', remaining_mass_expected_g: '800',
   remaining_mass_measured_g: '800', remaining_mass_effective_g: '800',
   remaining_percent: '80', weight_confidence: 'measured', status: 'in_stock',
+  purchase_source: null, purchase_date: null, purchase_cost: null, currency: 'USD',
   location: 'Bucket 3', spoolman_id: 7, active_printer_id: null, last_measurement_at: '2026-08-11T14:00:00Z',
   notes: null, archived: false, record_version: 3, completed_print_count: 6,
 }
 
 test.beforeEach(async ({ page }) => {
+  const errors: string[] = []
+  browserErrors.set(page, errors)
+  page.on('console', (message) => {
+    if (message.type() === 'error') errors.push(message.text())
+  })
+  page.on('pageerror', (error) => errors.push(error.message))
   await page.route('**/api/v1/auth/me', (route) => route.fulfill({ json: user }))
   await page.route('**/api/v1/printers', (route) => route.fulfill({ json: [printer] }))
   await page.route('**/api/v1/build-plates', (route) => route.fulfill({ json: [] }))
   await page.route('**/api/v1/notifications**', (route) => route.fulfill({ json: [] }))
   await page.route('**/api/v1/filament-colors', (route) => route.fulfill({ json: [
-    { id: 'blue-id', name: 'Blue', normalized_name: 'blue', color_hex: '2F80A5', record_version: 1 },
+    { id: 'blue-id', name: 'Blue', normalized_name: 'blue', color_hex: '2F80A5', color_mode: 'solid', color_hexes: ['2F80A5'], record_version: 1 },
   ] }))
+})
+
+test.afterEach(async ({ page }) => {
+  expect(browserErrors.get(page) ?? [], 'browser console and page errors').toEqual([])
 })
 
 test('template library is usable at desktop and mobile sizes', async ({ page }) => {
@@ -107,7 +121,9 @@ test('template library is usable at desktop and mobile sizes', async ({ page }) 
   await page.getByRole('button', { name: 'Edit template' }).click()
   await expect(page.getByRole('dialog', { name: 'Edit Template PLA' })).toBeVisible()
   await expect(page.getByLabel('Printing temperature (°C)')).toHaveValue('210')
-  await expect(page.getByRole('heading', { name: /Advanced Cura-only Settings/ })).toBeVisible()
+  await expect(page.getByRole('heading', { name: 'Retraction' })).toBeVisible()
+  await expect(page.getByRole('heading', { name: 'Klipper' })).toBeVisible()
+  await expect(page.getByRole('heading', { name: /Advanced Cura-only Settings/ })).toHaveCount(0)
   await expect(page.getByText('Enable Klipper Smooth Time', { exact: true })).toBeVisible()
 
   await page.setViewportSize({ width: 390, height: 844 })
@@ -169,10 +185,17 @@ test('filament creation requires and submits a current template', async ({ page 
   await page.goto('/filaments')
   await page.getByRole('button', { name: 'Add filament' }).click()
   await page.getByLabel('Product name').fill('Workshop PLA')
-  await page.getByLabel('Color name', { exact: true }).fill('Blue')
+  await page.getByRole('combobox', { name: /^Color name/ }).fill('Workshop Sunset')
+  await page.getByLabel('Display type').selectOption('multicolor')
+  await page.getByLabel('Number of colors').selectOption('3')
+  await page.getByLabel('Color 1').fill('#ff0000')
+  await page.getByLabel('Color 2').fill('#00ff00')
+  await page.getByLabel('Color 3').fill('#0000ff')
   await page.getByRole('button', { name: 'Create filament' }).click()
   await expect.poll(() => submitted?.material_template_revision_id).toBe('revision-id')
   await expect.poll(() => submitted?.material_type).toBe('PLA')
+  await expect.poll(() => submitted?.color_mode).toBe('multicolor')
+  await expect.poll(() => submitted?.color_hexes).toEqual(['FF0000', '00FF00', '0000FF'])
   await expect(page.getByText(/current settings linked to its template/)).toBeVisible()
 })
 
@@ -202,12 +225,15 @@ test('filament details remember colors and save Cura settings directly', async (
         ...currentFilament,
         color_name: String(filamentUpdate.color_name),
         color_hex: String(filamentUpdate.color_hex),
+        color_mode: String(filamentUpdate.color_mode),
+        color_hexes: filamentUpdate.color_hexes as string[],
         record_version: 2,
       }
     }
     await route.fulfill({ json: currentFilament })
   })
   await page.route('**/api/v1/vendors', (route) => route.fulfill({ json: [] }))
+  await page.route('**/api/v1/profiles/templates?include_inactive=false', (route) => route.fulfill({ json: [template] }))
   await page.route('**/api/v1/profiles', (route) => route.fulfill({ json: [profile] }))
   await page.route('**/api/v1/profiles/cura-settings/catalog', (route) => route.fulfill({ json: [
     { key: 'xy_offset', label: 'Horizontal Expansion', value_type: 'number', unit: 'mm', editable: true },
@@ -226,7 +252,7 @@ test('filament details remember colors and save Cura settings directly', async (
   await expect(page.getByText('Template PLA', { exact: true })).toBeVisible()
   await page.getByRole('button', { name: 'Edit', exact: true }).click()
   await expect(page.getByRole('dialog', { name: 'Edit filament product' })).toBeVisible()
-  await page.getByLabel('Color name', { exact: true }).fill('Red')
+  await page.getByRole('combobox', { name: /^Color name/ }).fill('Red')
   await page.getByLabel('Screen color sample').fill('#ff0000')
   await page.getByRole('button', { name: 'Save filament' }).click()
   await expect.poll(() => filamentUpdate?.color_name).toBe('Red')
@@ -238,10 +264,15 @@ test('filament details remember colors and save Cura settings directly', async (
   await expect(page.getByLabel('Retraction Retract Speed (mm/s)')).toHaveCount(0)
   await expect(page.getByLabel('Retraction Prime Speed (mm/s)')).toHaveCount(0)
   await expect(page.getByLabel('Maximum Fan Speed (%)')).toHaveCount(0)
+  await page.getByLabel('Build plate temperature (°C)').fill('61')
+  await expect(page.locator('.setting-field--customized')).toHaveCount(3)
+  await page.getByLabel('Build plate temperature (°C)').fill('60')
+  await expect(page.locator('.setting-field--customized')).toHaveCount(2)
   await page.getByLabel('Printing temperature (°C)').fill('215')
   await page.getByRole('button', { name: 'Save settings' }).click()
   await expect.poll(() => profileUpdate?.expected_profile_version).toBe(1)
   await expect.poll(() => (profileUpdate?.settings as Record<string, unknown>)?.extruder_temp_c).toBe('215')
+  await expect.poll(() => (profileUpdate?.settings as Record<string, unknown>)?.pressure_advance).toBe('0.035')
   await expect.poll(() => (profileUpdate?.settings as Record<string, unknown>)?.cura_extensions).toEqual({ xy_offset: '0.05' })
 })
 
@@ -282,10 +313,10 @@ test('free-text bucket location is editable from Filament Manager', async ({ pag
   await page.goto('/spools')
   await page.getByText('PLA-BLUE-01', { exact: true }).click()
   await expect(page.getByText('Bucket 3', { exact: true }).last()).toBeVisible()
-  await page.getByRole('button', { name: 'Edit location' }).click()
+  await page.getByRole('button', { name: 'Edit spool' }).click()
   await page.getByLabel('Bucket or location').fill('Bucket 12')
   await page.setViewportSize({ width: 390, height: 844 })
-  await page.getByRole('button', { name: 'Save location' }).click()
+  await page.getByRole('button', { name: 'Save spool' }).click()
 
   await expect.poll(() => submitted?.expected_version).toBe(3)
   await expect.poll(() => submitted?.location).toBe('Bucket 12')
@@ -371,6 +402,6 @@ test('each reported Cura source can be mapped to a template or intentionally ign
   await dialog.getByRole('button', { name: 'Complete takeover' }).click()
 
   await expect.poll(() => submitted?.confirmed).toBe(true)
-  await expect.poll(() => submitted?.expected_agent_version).toBe(1)
+  await expect.poll(() => submitted?.reviewed_source_ids).toEqual([material.source_id, printProfile.source_id])
   await expect.poll(() => submitted?.mappings).toEqual([{ source_id: material.source_id, template_id: template.id }])
 })

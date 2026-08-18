@@ -9,6 +9,8 @@ fi
 script_directory=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)
 source_root=$(cd -- "${script_directory}/.." && pwd)
 agent_root="${XDG_DATA_HOME:-${HOME}/.local/share}/filament-manager-agent"
+state_root="${XDG_DATA_HOME:-${HOME}/.local/share}/Filament Manager Agent"
+config_root="${XDG_CONFIG_HOME:-${HOME}/.config}/Filament Manager Agent"
 unit_directory="${XDG_CONFIG_HOME:-${HOME}/.config}/systemd/user"
 unit_path="${unit_directory}/filament-manager-agent.service"
 binary_path=${1:-}
@@ -44,7 +46,10 @@ cleanup() {
 }
 trap cleanup EXIT
 
-mkdir -p "${agent_root}" "${unit_directory}"
+# systemd must see these paths before it creates the service's read-only home
+# namespace. ReadWritePaths cannot make a missing path writable after startup.
+mkdir -p "${agent_root}" "${state_root}" "${config_root}" "${unit_directory}"
+chmod 0700 "${agent_root}" "${state_root}" "${config_root}"
 if [[ -n ${binary_path} ]]; then
   [[ -f ${binary_path} ]] || { echo "Standalone agent binary not found: ${binary_path}" >&2; exit 1; }
   staged_path=$(mktemp "${agent_root}/.filament-manager-agent.XXXXXX")

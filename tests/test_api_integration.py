@@ -24,6 +24,8 @@ from filament_manager.models.inventory import (
     BuildPlateSurface,
     FilamentColor,
     FilamentProduct,
+    MaterialTemplate,
+    MaterialTemplateRevision,
     Printer,
     Spool,
     SpoolMeasurement,
@@ -212,6 +214,7 @@ async def test_seed_system_route_creates_configured_resources(monkeypatch: pytes
                 return user
 
         monkeypatch.setattr(operations, "get_settings", lambda: settings)
+        monkeypatch.setattr(inventory, "get_settings", lambda: settings)
         from filament_manager import config as config_module
 
         monkeypatch.setattr(config_module, "get_settings", lambda: settings)
@@ -250,6 +253,43 @@ async def test_seed_system_route_creates_configured_resources(monkeypatch: pytes
             recolored = await client.patch(
                 f"/api/v1/filaments/{red_one.json()['id']}",
                 json={"expected_version": 1, "color_hex": "A00000"},
+            )
+            setup_spool = await client.post(
+                "/api/v1/spools",
+                json={
+                    "spool_code": "SETUP-ERROR",
+                    "filament_product_id": red_one.json()["id"],
+                    "nominal_net_mass_g": "1000",
+                    "initial_gross_mass_g": "1152",
+                },
+            )
+            deleted_setup_spool = await client.delete(f"/api/v1/spools/{setup_spool.json()['id']}")
+            tracked_spool = await client.post(
+                "/api/v1/spools",
+                json={
+                    "spool_code": "TRACKED-RED",
+                    "filament_product_id": red_one.json()["id"],
+                    "nominal_net_mass_g": "1000",
+                    "initial_gross_mass_g": "1152",
+                },
+            )
+            corrected_spool = await client.patch(
+                f"/api/v1/spools/{tracked_spool.json()['id']}",
+                json={
+                    "expected_version": tracked_spool.json()["record_version"],
+                    "remaining_mass_g": "925",
+                },
+            )
+            archived_spool = await client.delete(f"/api/v1/spools/{tracked_spool.json()['id']}")
+            locked_color = await client.patch(
+                f"/api/v1/filaments/{red_one.json()['id']}",
+                json={
+                    "expected_version": recolored.json()["record_version"],
+                    "color_name": "Dark Red",
+                    "color_hex": "800000",
+                    "color_mode": "solid",
+                    "color_hexes": ["800000"],
+                },
             )
             remembered_colors = await client.get("/api/v1/filament-colors")
             printers_response = await client.get("/api/v1/printers")
@@ -313,14 +353,23 @@ async def test_seed_system_route_creates_configured_resources(monkeypatch: pytes
             )
 
         assert seeded.status_code == 200, seeded.text
-        assert seeded.json() == {"plates": 5, "printers": 1}
+        assert seeded.json() == {"plates": 5, "printers": 1, "templates": 1}
         assert seeded_again.status_code == 200, seeded_again.text
-        assert seeded_again.json() == {"plates": 0, "printers": 0}
+        assert seeded_again.json() == {"plates": 0, "printers": 0, "templates": 0}
         assert red_one.status_code == 201, red_one.text
         assert red_two.status_code == 201, red_two.text
         assert recolored.status_code == 200, recolored.text
         assert recolored.json()["color_name"] == "Red"
         assert recolored.json()["color_hex"] == "A00000"
+        assert setup_spool.status_code == 201, setup_spool.text
+        assert Decimal(setup_spool.json()["tare_mass_g"]) == Decimal("152")
+        assert Decimal(setup_spool.json()["remaining_mass_effective_g"]) == Decimal("1000")
+        assert deleted_setup_spool.json() == {"disposition": "deleted"}
+        assert corrected_spool.status_code == 200, corrected_spool.text
+        assert Decimal(corrected_spool.json()["remaining_mass_effective_g"]) == Decimal("925")
+        assert archived_spool.json() == {"disposition": "archived"}
+        assert locked_color.status_code == 409, locked_color.text
+        assert locked_color.json()["code"] == "filament_color_locked"
         assert remembered_colors.json()[0]["color_hex"] == "A00000"
         assert profile.status_code == 201, profile.text
         assert profile_revision.status_code == 201, profile_revision.text
@@ -335,6 +384,21 @@ async def test_seed_system_route_creates_configured_resources(monkeypatch: pytes
             assert await session.scalar(select(func.count(Printer.id))) == 1
             assert await session.scalar(select(func.count(BuildPlate.id))) == 5
             assert await session.scalar(select(func.count(BuildPlateSurface.id))) == 5
+            asa_template = await session.scalar(
+                select(MaterialTemplate).where(MaterialTemplate.material_type == "ASA")
+            )
+            assert asa_template is not None
+            assert asa_template.name == "Template ASA"
+            assert asa_template.active is True
+            asa_revision = await session.scalar(
+                select(MaterialTemplateRevision).where(
+                    MaterialTemplateRevision.material_template_id == asa_template.id
+                )
+            )
+            assert asa_revision is not None
+            assert asa_revision.settings["extruder_temp_c"] == "245"
+            assert asa_revision.settings["bed_temp_c"] == "95"
+            assert asa_revision.settings["filament_density_g_cm3"] == "1.07"
             assert await session.scalar(select(func.count(FilamentColor.id))) == 1
             products = list(
                 await session.scalars(select(FilamentProduct).order_by(FilamentProduct.material_type))
@@ -343,7 +407,7 @@ async def test_seed_system_route_creates_configured_resources(monkeypatch: pytes
             assert [product.color_name for product in products] == ["Red", "Red"]
             audit = await session.scalar(select(AuditEvent).where(AuditEvent.action == "system.seed.web"))
             assert audit is not None
-            assert audit.after == {"plates": 5, "printers": 1}
+            assert audit.after == {"plates": 5, "printers": 1, "templates": 1}
 
         await engine.dispose()
 
@@ -687,6 +751,6 @@ async def test_workbook_upload_dry_run_and_commit_populates_inventory(
                 select(AuditEvent).where(AuditEvent.action == "system.seed.auto")
             )
             assert seed_audit is not None
-            assert seed_audit.after == {"plates": 5, "printers": 1}
+            assert seed_audit.after == {"plates": 5, "printers": 1, "templates": 1}
 
         await engine.dispose()

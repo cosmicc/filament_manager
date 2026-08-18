@@ -26,6 +26,8 @@ export interface Spool {
   finish: string | null
   color_name: string
   color_hex: string | null
+  color_mode: 'solid' | 'multicolor' | 'rainbow'
+  color_hexes: string[]
   vendor_name: string | null
   product_name: string | null
   nominal_net_mass_g: string
@@ -36,6 +38,10 @@ export interface Spool {
   remaining_percent: string
   weight_confidence: string
   status: 'needs_weighing' | 'in_stock' | 'low' | 'empty' | 'archived'
+  purchase_source: string | null
+  purchase_date: string | null
+  purchase_cost: string | null
+  currency: string
   location: string | null
   spoolman_id: number | null
   active_printer_id: string | null
@@ -132,6 +138,8 @@ export interface Filament {
   finish: string | null
   color_name: string
   color_hex: string | null
+  color_mode: 'solid' | 'multicolor' | 'rainbow'
+  color_hexes: string[]
   product_name: string | null
   diameter_mm: string
   tolerance_mm: string | null
@@ -139,6 +147,8 @@ export interface Filament {
   nominal_net_mass_g: string
   notes: string | null
   material_template_revision_id: string | null
+  archived: boolean
+  color_editable: boolean
   record_version: number
 }
 
@@ -147,6 +157,8 @@ export interface FilamentColor {
   name: string
   normalized_name: string
   color_hex: string
+  color_mode: 'solid' | 'multicolor' | 'rainbow'
+  color_hexes: string[]
   record_version: number
 }
 

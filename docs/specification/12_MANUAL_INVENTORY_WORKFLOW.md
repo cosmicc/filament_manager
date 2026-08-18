@@ -8,11 +8,13 @@ The initial release uses labels and manual measurements. Scale and NFC hardware 
 
 1. Select or create the filament product.
 2. Assign the next human spool code.
-3. Enter nominal filament weight, tare, purchase data, and cost.
-4. Print a label with spool code, QR code, material, color, and optional vendor.
-5. Enter initial gross weight if measured.
+3. Enter the filament-only amount, usually 1000 g, plus optional purchase data and cost.
+4. If available, enter the full spool scale weight. Filament Manager calculates empty-spool tare as full weight minus filament amount.
+5. Print a label with spool code, QR code, material, color, and optional vendor.
 6. Project the spool to Spoolman.
 7. Publish the record to Google Sheets.
+
+A setup-only mistake may be corrected or deleted. After a later measurement, remaining-mass correction, usage event, print, calibration, or NFC association exists, identity is locked and removal archives the record instead of deleting retained history.
 
 ## Loading a spool
 
