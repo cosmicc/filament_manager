@@ -6,7 +6,10 @@ from collections.abc import Mapping
 from decimal import Decimal, InvalidOperation
 from uuid import UUID
 
-from filament_manager.domain.cura_material_settings import CURA_EXTENSION_SETTING_KEYS
+from filament_manager.domain.cura_material_settings import (
+    CURA_EXTENSION_SETTING_KEYS,
+    CURA_PROFILE_ALIAS_SETTING_KEYS,
+)
 
 
 def merge_cura_settings(
@@ -21,6 +24,7 @@ def merge_cura_settings(
         {"material_bed_temperature", "default_material_bed_temperature"},
         {"cool_fan_speed_max", "cool_fan_speed"},
         {"speed_print_layer_0", "speed_layer_0"},
+        {"retraction_speed", "retraction_retract_speed", "retraction_prime_speed"},
     )
     for keys in synonymous_groups:
         if keys.intersection(source_settings):
@@ -85,7 +89,11 @@ def material_settings_from_cura(
     flow_percent = _decimal(settings, "material_flow")
     if flow_percent is None:
         flow_percent = Decimal("100")
-    extensions = {key: value for key, value in settings.items() if key in CURA_EXTENSION_SETTING_KEYS}
+    extensions = {
+        key: value
+        for key, value in settings.items()
+        if key in CURA_EXTENSION_SETTING_KEYS and key not in CURA_PROFILE_ALIAS_SETTING_KEYS
+    }
     return {
         "chamber_temp_c": _decimal(settings, "build_volume_temperature"),
         "extruder_temp_c": _decimal(
@@ -110,7 +118,12 @@ def material_settings_from_cura(
         "travel_speed_mm_s": _decimal(settings, "speed_travel"),
         "support_speed_mm_s": _decimal(settings, "speed_support"),
         "retraction_distance_mm": _decimal(settings, "retraction_amount"),
-        "retraction_speed_mm_s": _decimal(settings, "retraction_speed"),
+        "retraction_speed_mm_s": _decimal(
+            settings,
+            "retraction_speed",
+            "retraction_retract_speed",
+            "retraction_prime_speed",
+        ),
         "cooling_enabled": _boolean(settings, "cool_fan_enabled", default=True),
         "cooling_min_percent": cooling_min,
         "cooling_max_percent": cooling_max,

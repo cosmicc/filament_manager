@@ -408,6 +408,7 @@ textarea { resize: vertical; }
 .field-help { display: block; font-weight: 400; }
 .setting-field { display: grid; gap: 6px; align-content: start; }
 .setting-field > label { display: grid; gap: 6px; }
+.setting-field--customized { margin: -8px; border: 1px solid var(--blue-600); border-radius: var(--radius-sm); padding: 8px; background: var(--blue-50); }
 .setting-ownership { display: flex; align-items: center; justify-content: space-between; gap: 8px; color: var(--text-muted); font-size: 0.78rem; }
 .setting-ownership .button { flex: 0 0 auto; }
 .check-row { display: flex !important; align-items: flex-start; gap: 10px; border-radius: var(--radius-sm); padding: 10px; background: var(--surface-muted); }

@@ -37,7 +37,11 @@ def heartbeat_payload(
     materials = discover_materials(installations)
     print_profiles = discover_print_profiles(installations)
     import_sources = [*materials[:100], *print_profiles[:100]]
-    material_count = unmanaged_material_count(installations)
+    material_file_count = unmanaged_material_count(installations)
+    # The takeover count must describe the rows actually sent to the server.  Cura
+    # sources with no literal tracked values are still included because mapping them
+    # to a template is a valid reviewed no-op and keeps the one-time takeover complete.
+    material_count = len(materials)
     return {
         "agent_version": __version__,
         "capabilities": {
@@ -51,9 +55,10 @@ def heartbeat_payload(
             "authoritative_material_library": True,
             "hide_bundled_materials": True,
             "unmanaged_material_count": material_count,
+            "unmanaged_material_file_count": material_file_count,
             "cura_print_profile_import": True,
             "unmanaged_print_profile_count": len(print_profiles),
-            "unmanaged_import_source_count": material_count + len(print_profiles),
+            "unmanaged_import_source_count": len(import_sources),
         },
         "cura_installations": installation_reports,
         "cura_materials": [source.report() for source in import_sources],

@@ -298,6 +298,44 @@ speed_print = 999
     assert heartbeat["cura_materials"][0]["source_kind"] == "print_profile"
 
 
+def test_reports_saved_profile_with_only_inherited_expressions_for_takeover(
+    tmp_path: Path, monkeypatch: object
+) -> None:
+    """A named Cura profile remains selectable even when it has no literal override."""
+
+    version = _cura_fixture(tmp_path, monkeypatch)
+    quality_changes = version / "quality_changes"
+    quality_changes.mkdir()
+    (quality_changes / "flsun_v400_Inherited PLA.inst.cfg").write_text(
+        """[general]
+version = 4
+name = Inherited PLA
+definition = flsun_v400
+
+[metadata]
+type = quality_changes
+quality_type = normal
+setting_version = 27
+
+[values]
+speed_print = =machine_max_feedrate_x
+retraction_speed = =machine_nozzle_size * 100
+""",
+        encoding="utf-8",
+    )
+
+    installations = discover_installations()
+    profiles = discover_print_profiles(installations)
+    heartbeat = heartbeat_payload(installations)
+
+    assert len(profiles) == 1
+    assert profiles[0].name == "Inherited PLA"
+    assert profiles[0].settings == {}
+    assert profiles[0].omitted_setting_count == 2
+    assert heartbeat["capabilities"]["unmanaged_import_source_count"] == 1
+    assert heartbeat["cura_materials"][0]["name"] == "Inherited PLA"
+
+
 def test_rollback_rejects_path_like_deployment_identity() -> None:
     with pytest.raises(RuntimeError, match="must be a UUID"):
         rollback("../../outside")

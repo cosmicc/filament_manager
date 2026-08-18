@@ -107,7 +107,7 @@ test('template library is usable at desktop and mobile sizes', async ({ page }) 
   await page.getByRole('button', { name: 'Edit template' }).click()
   await expect(page.getByRole('dialog', { name: 'Edit Template PLA' })).toBeVisible()
   await expect(page.getByLabel('Printing temperature (°C)')).toHaveValue('210')
-  await expect(page.getByRole('heading', { name: /Additional Cura Material Settings/ })).toBeVisible()
+  await expect(page.getByRole('heading', { name: /Advanced Cura-only Settings/ })).toBeVisible()
   await expect(page.getByText('Enable Klipper Smooth Time', { exact: true })).toBeVisible()
 
   await page.setViewportSize({ width: 390, height: 844 })
@@ -212,6 +212,9 @@ test('filament details remember colors and save Cura settings directly', async (
   await page.route('**/api/v1/profiles/cura-settings/catalog', (route) => route.fulfill({ json: [
     { key: 'xy_offset', label: 'Horizontal Expansion', value_type: 'number', unit: 'mm', editable: true },
     { key: 'hole_xy_offset', label: 'Hole Horizontal Expansion', value_type: 'number', unit: 'mm', editable: true },
+    { key: 'retraction_retract_speed', label: 'Retraction Retract Speed', value_type: 'number', unit: 'mm/s', editable: true },
+    { key: 'retraction_prime_speed', label: 'Retraction Prime Speed', value_type: 'number', unit: 'mm/s', editable: true },
+    { key: 'cool_fan_speed_max', label: 'Maximum Fan Speed', value_type: 'number', unit: '%', editable: true },
   ] }))
   await page.route('**/api/v1/profiles/profile-id/settings', async (route) => {
     profileUpdate = route.request().postDataJSON() as Record<string, unknown>
@@ -231,6 +234,10 @@ test('filament details remember colors and save Cura settings directly', async (
 
   await page.getByRole('button', { name: 'Edit settings' }).click()
   await expect(page.getByText('Customized · Template: 210')).toBeVisible()
+  await expect(page.locator('.setting-field--customized')).toHaveCount(2)
+  await expect(page.getByLabel('Retraction Retract Speed (mm/s)')).toHaveCount(0)
+  await expect(page.getByLabel('Retraction Prime Speed (mm/s)')).toHaveCount(0)
+  await expect(page.getByLabel('Maximum Fan Speed (%)')).toHaveCount(0)
   await page.getByLabel('Printing temperature (°C)').fill('215')
   await page.getByRole('button', { name: 'Save settings' }).click()
   await expect.poll(() => profileUpdate?.expected_profile_version).toBe(1)
@@ -304,8 +311,11 @@ test('an empty Cura library can complete the one-time atomic takeover', async ({
 
   await page.goto('/workstations')
   await expect(page.getByText('Awaiting one-time takeover')).toBeVisible()
-  await page.getByRole('button', { name: 'Review takeover (0 mapped)' }).click()
-  const dialog = page.getByRole('dialog', { name: 'Review Cura takeover' })
+  await page.getByRole('button', { name: 'Review empty takeover' }).click()
+  let dialog = page.getByRole('dialog', { name: 'Map Cura profiles to templates' })
+  await expect(dialog.getByText('No Cura profiles are selectable.')).toBeVisible()
+  await dialog.getByRole('button', { name: 'Review takeover (0 mapped)' }).click()
+  dialog = page.getByRole('dialog', { name: 'Review Cura takeover' })
   await expect(dialog.getByText('No Cura sources will be imported.')).toBeVisible()
   await dialog.getByRole('button', { name: 'Complete takeover' }).click()
   await expect.poll(() => submitted?.confirmed).toBe(true)
@@ -347,13 +357,15 @@ test('each reported Cura source can be mapped to a template or intentionally ign
 
   await page.goto('/workstations')
   await expect(page.getByRole('heading', { name: 'Choose what becomes each template' })).toBeVisible()
-  await expect(page.getByLabel('Template for Polymaker PETG · PolyLite')).toHaveValue('')
-  await page.getByLabel('Template for Polymaker PETG · PolyLite').selectOption(template.id)
-  await expect(page.getByText('Saved print profile · Workshop Printer · normal · 3 tracked settings')).toBeVisible()
-  await expect(page.getByText('2 Cura expressions omitted safely')).toBeVisible()
-  await expect(page.getByLabel('Template for Precision PLA')).toHaveValue('')
-  await page.getByRole('button', { name: 'Review takeover (1 mapped)' }).click()
-  const dialog = page.getByRole('dialog', { name: 'Review Cura takeover' })
+  await page.getByRole('button', { name: 'Map Cura profiles' }).click()
+  let dialog = page.getByRole('dialog', { name: 'Map Cura profiles to templates' })
+  await expect(dialog.getByLabel('Template for Polymaker PETG · PolyLite')).toHaveValue('')
+  await dialog.getByLabel('Template for Polymaker PETG · PolyLite').selectOption(template.id)
+  await expect(dialog.getByText('Saved print profile · Workshop Printer · normal · 3 tracked settings')).toBeVisible()
+  await expect(dialog.getByText('2 Cura expressions omitted safely')).toBeVisible()
+  await expect(dialog.getByLabel('Template for Precision PLA')).toHaveValue('')
+  await dialog.getByRole('button', { name: 'Review takeover (1 mapped)' }).click()
+  dialog = page.getByRole('dialog', { name: 'Review Cura takeover' })
   await expect(dialog.getByText('Polymaker PETG · PolyLite')).toBeVisible()
   await expect(dialog.getByText('1 of 2 reported sources will not be imported.')).toBeVisible()
   await dialog.getByRole('button', { name: 'Complete takeover' }).click()

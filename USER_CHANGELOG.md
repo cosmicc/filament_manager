@@ -1,5 +1,24 @@
 # User Changelog
 
+## 0.2.3 - 08.17.2026
+
+### Added
+
+- Added a dedicated Cura mapping dialog that lists every reported profile beside the template it can import into, followed by a separate review step.
+- Added visible highlighting around filament settings customized away from their linked template.
+
+### Changed
+
+- Filament settings now always begin with the linked template's effective values, and only changed values are retained as filament customizations.
+- Retraction speed and maximum fan speed now appear once in the editor instead of being repeated under Additional Cura Material Settings.
+- Cura profiles with only inherited expressions or no tracked literal overrides remain available in the one-time takeover list.
+
+### Fixed
+
+- Fixed Cura takeover reporting zero selectable profiles even though Cura contained saved profiles.
+- Fixed **Back to mappings** not returning to a clear profile-and-template selection screen.
+- Fixed overlapping settings appearing more than once while editing a filament profile.
+
 ## 0.2.2 - 08.17.2026
 
 ### Added

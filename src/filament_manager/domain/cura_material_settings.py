@@ -88,6 +88,19 @@ CURA_MATERIAL_SETTINGS: tuple[CuraMaterialSetting, ...] = (
 CURA_MATERIAL_SETTING_KEYS = frozenset(setting.key for setting in CURA_MATERIAL_SETTINGS)
 CURA_EDITABLE_SETTING_KEYS = frozenset(setting.key for setting in CURA_MATERIAL_SETTINGS if setting.editable)
 
+# Cura exposes a few child/alias keys that duplicate one canonical material value in
+# Filament Manager.  Continue accepting legacy snapshots containing these keys, but
+# never present or persist them as independent profile customizations.  Emission below
+# deliberately writes the canonical value to every Cura alias so the generated material
+# remains deterministic without showing operators overlapping controls.
+CURA_PROFILE_ALIAS_SETTING_KEYS = frozenset(
+    {
+        "cool_fan_speed_max",
+        "retraction_prime_speed",
+        "retraction_retract_speed",
+    }
+)
+
 # These values live in typed canonical columns. The remaining approved settings are stored
 # in cura_extensions so arbitrary Cura keys can never be injected into workstation files.
 CURA_TYPED_SETTING_KEYS = frozenset(
@@ -162,6 +175,7 @@ def cura_settings_for_profile(profile: MaterialProfileValues) -> dict[str, objec
         "build_volume_temperature": _decimal(profile.chamber_temp_c),
         "cool_fan_enabled": profile.cooling_enabled,
         "cool_fan_speed": _decimal(profile.cooling_max_percent),
+        "cool_fan_speed_max": _decimal(profile.cooling_max_percent),
         "cool_fan_speed_min": _decimal(profile.cooling_min_percent),
         "default_material_bed_temperature": _decimal(profile.bed_temp_c),
         "default_material_print_temperature": _decimal(profile.extruder_temp_c),
@@ -170,6 +184,8 @@ def cura_settings_for_profile(profile: MaterialProfileValues) -> dict[str, objec
         "material_flow": _decimal(profile.flow_percent),
         "material_print_temperature": _decimal(profile.extruder_temp_c),
         "retraction_amount": _decimal(profile.retraction_distance_mm),
+        "retraction_prime_speed": _decimal(profile.retraction_speed_mm_s),
+        "retraction_retract_speed": _decimal(profile.retraction_speed_mm_s),
         "retraction_speed": _decimal(profile.retraction_speed_mm_s),
         "speed_infill": _decimal(profile.infill_speed_mm_s),
         "speed_layer_0": _decimal(profile.initial_layer_speed_mm_s),

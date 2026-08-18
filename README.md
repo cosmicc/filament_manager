@@ -9,7 +9,7 @@ PostgreSQL is the canonical data store. A distinct Spoolman service remains the 
 - Local Administrator, Operator, and Viewer accounts
 - Canonical spool, filament, profile, printer, physical nozzle, remembered color, and build-plate records with consistent grouped in-app editors
 - Browser-based `.xlsx` workbook upload with automatic first-run printer and build-plate seeding
-- Directly saved `Template <material type>` Cura entries whose changes immediately flow to linked filament profiles except for sparse explicit customizations
+- Directly saved `Template <material type>` Cura entries whose complete effective values flow to linked filament profiles except for visibly highlighted sparse customizations, with overlapping Cura aliases represented by one editor control
 - Difference-only comparison of two to four current profiles/templates with printer/nozzle scope warnings and exact-profile print success rates
 - Manual gross-weight measurements with variance confirmation
 - Immutable audit history and transactional projection outbox
@@ -21,7 +21,7 @@ PostgreSQL is the canonical data store. A distinct Spoolman service remains the 
 - Automatic 5-minute Moonraker/Klipper printer information discovery with editable manual nozzle, hardware, and build-volume metadata
 - Seven-step calibration workflow with X/Y/Z, hole, shaft, wall/flow, material-shrinkage, and non-applying printer-geometry recommendations
 - Configurable build-plate cleaning/mesh reminders plus a persistent operator notification center
-- Outbound-only Cura workstation agents with clearly identified fresh-install/upgrade paths and uninstallers, one-time source-to-existing-template mapping, direct intake of edits to known managed materials, and authoritative synchronization on Arch Linux and Windows 11 with backup, drift repair, bundled-material hiding, and rollback
+- Outbound-only Cura workstation agents with clearly identified fresh-install/upgrade paths and uninstallers, an explicit map-then-review source-to-existing-template takeover, direct intake of edits to known managed materials, and authoritative synchronization on Arch Linux and Windows 11 with backup, drift repair, bundled-material hiding, and rollback
 - Workshop Navy light and dark web interface with browser-local theme selection under Settings and the running version in the application shell
 - Health, readiness, and Prometheus metrics endpoints
 - A dedicated Diagnostics page with connection, synchronization, worker, queue, recent-error, running/latest-version, read-only recovery-validation, safe projection-rebuild controls, and a sanitized plain-text log download

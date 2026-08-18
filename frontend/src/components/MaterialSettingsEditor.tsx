@@ -9,9 +9,11 @@ export const typedCuraKeys = new Set([
   'cool_fan_speed_min', 'default_material_bed_temperature',
   'default_material_print_temperature', 'klipper_pressure_advance_factor',
   'material_bed_temperature', 'material_flow', 'material_print_temperature',
-  'retraction_amount', 'retraction_speed', 'speed_infill', 'speed_layer_0',
+  'retraction_amount', 'retraction_prime_speed', 'retraction_retract_speed',
+  'retraction_speed', 'speed_infill', 'speed_layer_0',
   'speed_print', 'speed_print_layer_0', 'speed_support', 'speed_topbottom',
   'speed_travel', 'speed_wall_0', 'speed_wall_x', 'support_angle',
+  'cool_fan_speed_max',
 ])
 
 const coreFields: Array<{
@@ -42,6 +44,8 @@ const coreFields: Array<{
   { key: 'pressure_advance', label: 'Klipper pressure advance', unit: 's' },
   { key: 'filament_density_g_cm3', label: 'Filament density', unit: 'g/cm³', required: true, defaultValue: '1.24' },
 ]
+
+export const canonicalMaterialFieldCount = coreFields.length + 2
 
 function nullable(value: FormDataEntryValue | null) {
   const normalized = String(value ?? '').trim()
@@ -104,6 +108,8 @@ export function MaterialSettingsEditor({
 }) {
   const [resetKeys, setResetKeys] = useState<Set<string>>(() => new Set())
   const customized = (key: string) => overrideKeys.includes(key) && !resetKeys.has(key)
+  const effectiveValue = (key: keyof MaterialSettings) => settings?.[key] ?? baseSettings?.[key]
+  const effectiveExtensionValue = (key: string) => settings?.cura_extensions[key] ?? baseSettings?.cura_extensions[key]
   const resetControl = (
     key: string,
     baseValue: string | number | boolean | null | undefined,
@@ -156,7 +162,7 @@ export function MaterialSettingsEditor({
         <EditorSection key={group.title} title={group.title} description={group.description}>
           <div className="form-grid">
             {coreFields.filter((field) => group.keys.includes(field.key)).map((field) => (
-              <div className="setting-field" key={field.key}>
+              <div className={`setting-field${customized(field.key) ? ' setting-field--customized' : ''}`} key={field.key}>
                 <label>
                   {field.label}{field.unit ? ` (${field.unit})` : ''}
                   <input
@@ -165,26 +171,26 @@ export function MaterialSettingsEditor({
                     step="any"
                     min={field.key === 'pressure_advance' ? '0' : undefined}
                     required={field.required}
-                    defaultValue={settings?.[field.key] == null ? field.defaultValue ?? '' : String(settings[field.key])}
+                    defaultValue={effectiveValue(field.key) == null ? field.defaultValue ?? '' : String(effectiveValue(field.key))}
                   />
                 </label>
                 {ownership(field.key, baseSettings?.[field.key] as string | number | boolean | null | undefined)}
               </div>
             ))}
             {group.title === 'Retraction, cooling, and support' ? (
-              <div className="setting-field">
+              <div className={`setting-field${customized('cooling_enabled') ? ' setting-field--customized' : ''}`}>
                 <label className="check-row">
-                  <input name="cooling_enabled" type="checkbox" defaultChecked={settings?.cooling_enabled ?? true} />
+                  <input name="cooling_enabled" type="checkbox" defaultChecked={effectiveValue('cooling_enabled') == null ? true : Boolean(effectiveValue('cooling_enabled'))} />
                   <span><strong>Enable print cooling</strong><small>Stored with the current material settings.</small></span>
                 </label>
                 {ownership('cooling_enabled', baseSettings?.cooling_enabled)}
               </div>
             ) : null}
             {group.title === 'Klipper and build plate' ? (
-              <div className="setting-field">
+              <div className={`setting-field${customized('preferred_build_plate_surface_id') ? ' setting-field--customized' : ''}`}>
                 <label>
                   Preferred plate side
-                  <select name="preferred_build_plate_surface_id" defaultValue={settings?.preferred_build_plate_surface_id ?? ''}>
+                  <select name="preferred_build_plate_surface_id" defaultValue={String(effectiveValue('preferred_build_plate_surface_id') ?? '')}>
                     <option value="">No preference</option>
                     {plates.flatMap((plate) => plate.surfaces.map((surface) => (
                       <option key={surface.id} value={surface.id}>
@@ -199,12 +205,12 @@ export function MaterialSettingsEditor({
           </div>
         </EditorSection>
       ))}
-      <EditorSection title={`Additional Cura Material Settings (${extensionCatalog.length})`} description="All supported advanced values remain visible and grouped instead of hidden behind a fold-down section.">
+      <EditorSection title={`Advanced Cura-only Settings (${extensionCatalog.length})`} description="Only supported settings without an equivalent grouped control appear here; overlapping Cura aliases are handled by the canonical fields above.">
         {extensionCatalog.length ? (
           <div className="form-grid">
-            {extensionCatalog.map((item) => <div className="setting-field" key={item.key}>{item.value_type === 'boolean' ? (
+            {extensionCatalog.map((item) => <div className={`setting-field${customized(item.key) ? ' setting-field--customized' : ''}`} key={item.key}>{item.value_type === 'boolean' ? (
               <label className="check-row">
-                <input name={`cura__${item.key}`} type="checkbox" defaultChecked={Boolean(settings?.cura_extensions[item.key])} />
+                <input name={`cura__${item.key}`} type="checkbox" defaultChecked={Boolean(effectiveExtensionValue(item.key))} />
                 <span><strong>{item.label}</strong><small>{item.key}</small></span>
               </label>
             ) : (
@@ -214,7 +220,7 @@ export function MaterialSettingsEditor({
                   name={`cura__${item.key}`}
                   type={item.value_type === 'number' ? 'number' : 'text'}
                   step={item.value_type === 'number' ? 'any' : undefined}
-                  defaultValue={settings?.cura_extensions[item.key] == null ? '' : String(settings.cura_extensions[item.key])}
+                  defaultValue={effectiveExtensionValue(item.key) == null ? '' : String(effectiveExtensionValue(item.key))}
                 />
                 <small className="field-help">{item.key}</small>
               </label>

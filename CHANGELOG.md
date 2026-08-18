@@ -1,5 +1,25 @@
 # Changelog
 
+## 0.2.3 - 08.17.2026
+
+### Added
+
+- Added an explicit two-stage Cura takeover dialog where Administrators map each reported material or saved print profile to an existing template, then review the complete batch before confirmation.
+- Added clear visual highlighting for every filament setting that is explicitly customized instead of inherited from its linked template.
+
+### Changed
+
+- Changed the filament settings editor to render the complete effective template-linked values while continuing to persist only semantic differences as sparse filament overrides.
+- Changed overlapping Cura retract-speed and maximum-fan aliases to use one canonical application control while still writing the required deterministic alias values to Cura.
+- Changed workstation discovery to keep named Cura materials and saved print profiles selectable even when they contain no tracked literal overrides or only safely omitted expressions.
+- Changed all server, frontend, and workstation-agent version surfaces to 0.2.3.
+
+### Fixed
+
+- Fixed duplicate retraction-speed and maximum-fan controls appearing under both grouped profile settings and Additional Cura Material Settings.
+- Fixed Cura takeover showing zero importable profiles when discovered saved profiles contained only inherited Cura expressions or no literal settings tracked by Filament Manager.
+- Fixed **Back to mappings** returning to a workstation card without an unmistakable source-to-template mapping screen.
+
 ## 0.2.2 - 08.17.2026
 
 ### Added

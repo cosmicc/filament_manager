@@ -3,6 +3,7 @@
 from decimal import Decimal
 from types import SimpleNamespace
 
+from filament_manager.domain.cura_import import material_settings_from_cura
 from filament_manager.domain.cura_material_settings import (
     CURA_EDITABLE_SETTING_KEYS,
     CURA_EXTENSION_SETTING_KEYS,
@@ -68,3 +69,30 @@ def test_profile_mapping_places_klipper_values_in_the_material_settings() -> Non
     assert settings["klipper_smooth_time_enable"] is True
     assert settings["klipper_smooth_time_factor"] == "0.04"
     assert settings["material_print_temperature"] == "225"
+    assert settings["retraction_speed"] == "35"
+    assert settings["retraction_retract_speed"] == "35"
+    assert settings["retraction_prime_speed"] == "35"
+    assert settings["cool_fan_speed"] == "70"
+    assert settings["cool_fan_speed_max"] == "70"
+
+
+def test_cura_aliases_resolve_to_one_canonical_setting_without_extension_overlap() -> None:
+    """Cura child aliases import through one canonical application control."""
+
+    settings = material_settings_from_cura(
+        {
+            "material_print_temperature": "210",
+            "material_bed_temperature": "60",
+            "retraction_retract_speed": "42",
+            "retraction_prime_speed": "38",
+            "cool_fan_speed_max": "80",
+        },
+        filament_density_g_cm3=Decimal("1.24"),
+        preferred_build_plate_surface_id=None,
+    )
+
+    assert settings["retraction_speed_mm_s"] == Decimal("42")
+    assert settings["cooling_max_percent"] == Decimal("80")
+    assert "retraction_retract_speed" not in settings["cura_extensions"]
+    assert "retraction_prime_speed" not in settings["cura_extensions"]
+    assert "cool_fan_speed_max" not in settings["cura_extensions"]

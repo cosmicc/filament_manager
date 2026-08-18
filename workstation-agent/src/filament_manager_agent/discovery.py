@@ -339,8 +339,6 @@ def _material_from_file(path: Path, installation_id: str) -> CuraMaterial | None
             if len(value) > 500 or "\n" in value or "\r" in value:
                 continue
             settings[key] = value == "True" if value in {"True", "False"} else value
-    if not settings:
-        return None
     content_checksum = hashlib.sha256(
         json.dumps(
             {"material_guid": str(material_guid) if material_guid else None, "settings": settings},
@@ -499,8 +497,6 @@ def discover_print_profiles(installations: list[CuraInstallation]) -> list[CuraM
                 for key, value in extruder_part.settings.items():
                     settings[key] = value
                     omitted_keys.discard(key)
-            if not settings:
-                continue
             source_part = extruder_part or global_part
             assert source_part is not None
             source_payload = json.dumps(

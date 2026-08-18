@@ -14,7 +14,7 @@ import { EditorSection } from '../components/EditorSection'
 import { EmptyState } from '../components/EmptyState'
 import { LoadingState } from '../components/LoadingState'
 import { MaterialComparisonModal } from '../components/MaterialComparisonModal'
-import { MaterialSettingsEditor, settingsFromForm, typedCuraKeys } from '../components/MaterialSettingsEditor'
+import { canonicalMaterialFieldCount, MaterialSettingsEditor, settingsFromForm } from '../components/MaterialSettingsEditor'
 import { Modal } from '../components/Modal'
 import { PageHeader } from '../components/PageHeader'
 import { useAuth } from '../context/AuthContext'
@@ -86,7 +86,7 @@ export default function TemplatesPage() {
     {message && <div className="deployment-note" role="status">{message}</div>}
     {loading ? <LoadingState /> : !templates.data?.length ? <EmptyState icon={Library} title="No material templates" description="Add Template PLA, Template PETG, Template ASA, and the other material bases you use." /> : <div className="catalog-grid">{templates.data.map((template) => {
       const latest = template.revisions[0]
-      return <article className="catalog-card catalog-card--template" key={template.id}><div><p className="eyebrow">{template.material_type} · {template.nozzle_diameter_mm} mm nozzle</p><h2>{template.name}</h2><p>{template.description ?? 'No description'}</p></div><dl className="catalog-meta"><div><dt>Printer</dt><dd>{printers.data?.find((item) => item.id === template.printer_id)?.name ?? 'Unknown'}</dd></div><div><dt>Linked behavior</dt><dd>Automatic inheritance</dd></div><div><dt>Temperatures</dt><dd>{latest.settings.extruder_temp_c}° / {latest.settings.bed_temp_c}°</dd></div><div><dt>Cura settings</dt><dd>{Object.keys(latest.settings.cura_extensions).length + typedCuraKeys.size} available</dd></div></dl><div className="template-card__actions">{profiles.data?.length ? <button className="button" onClick={() => setComparisonTargetKey(`template:${latest.id}`)}><GitCompareArrows size={16} /> Compare settings</button> : null}{user?.role !== 'viewer' && <button className="button" onClick={() => openEditor(template)}><Pencil size={16} /> Edit template</button>}</div></article>
+      return <article className="catalog-card catalog-card--template" key={template.id}><div><p className="eyebrow">{template.material_type} · {template.nozzle_diameter_mm} mm nozzle</p><h2>{template.name}</h2><p>{template.description ?? 'No description'}</p></div><dl className="catalog-meta"><div><dt>Printer</dt><dd>{printers.data?.find((item) => item.id === template.printer_id)?.name ?? 'Unknown'}</dd></div><div><dt>Linked behavior</dt><dd>Automatic inheritance</dd></div><div><dt>Temperatures</dt><dd>{latest.settings.extruder_temp_c}° / {latest.settings.bed_temp_c}°</dd></div><div><dt>Profile settings</dt><dd>{Object.keys(latest.settings.cura_extensions).length + canonicalMaterialFieldCount} unique controls</dd></div></dl><div className="template-card__actions">{profiles.data?.length ? <button className="button" onClick={() => setComparisonTargetKey(`template:${latest.id}`)}><GitCompareArrows size={16} /> Compare settings</button> : null}{user?.role !== 'viewer' && <button className="button" onClick={() => openEditor(template)}><Pencil size={16} /> Edit template</button>}</div></article>
     })}</div>}
     {comparisonTargetKey && profiles.data ? <MaterialComparisonModal
       profiles={profiles.data}
