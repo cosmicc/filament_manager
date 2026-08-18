@@ -1,6 +1,6 @@
 # User Changelog
 
-## 0.2.3 - 08.17.2026
+## 0.2.3 - 08.18.2026
 
 ### Added
 
@@ -15,6 +15,7 @@
 
 ### Fixed
 
+- Fixed the workstation agent repeatedly failing certificate verification and never reporting Cura profiles when Filament Manager uses a private CA already trusted by the workstation.
 - Fixed Cura takeover reporting zero selectable profiles even though Cura contained saved profiles.
 - Fixed **Back to mappings** not returning to a clear profile-and-template selection screen.
 - Fixed overlapping settings appearing more than once while editing a filament profile.

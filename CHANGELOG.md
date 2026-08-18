@@ -1,6 +1,6 @@
 # Changelog
 
-## 0.2.3 - 08.17.2026
+## 0.2.3 - 08.18.2026
 
 ### Added
 
@@ -16,6 +16,7 @@
 
 ### Fixed
 
+- Fixed the workstation agent using HTTPX's bundled public CA file instead of the operating-system trust store, which prevented heartbeats and Cura profile discovery on installations secured by a locally trusted private CA.
 - Fixed duplicate retraction-speed and maximum-fan controls appearing under both grouped profile settings and Additional Cura Material Settings.
 - Fixed Cura takeover showing zero importable profiles when discovered saved profiles contained only inherited Cura expressions or no literal settings tracked by Filament Manager.
 - Fixed **Back to mappings** returning to a workstation card without an unmistakable source-to-template mapping screen.

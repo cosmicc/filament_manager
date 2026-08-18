@@ -1,11 +1,28 @@
 """Narrow authenticated HTTP client for the workstation agent endpoints."""
 
+import ssl
 from typing import Any
 from uuid import UUID
 
 import httpx
 
 from .models import AgentConfig, DeploymentClaim
+
+
+def _http_client(*, timeout: int) -> httpx.Client:
+    """Build a strict client using the workstation operating-system trust store.
+
+    HTTPX otherwise selects its bundled Certifi file, which excludes private roots
+    installed by an operator in the normal Linux or Windows trust store.  An explicit
+    default SSL context preserves hostname and chain verification while honoring those
+    system-managed roots and the standard ``SSL_CERT_FILE``/``SSL_CERT_DIR`` overrides.
+    """
+
+    return httpx.Client(
+        timeout=timeout,
+        follow_redirects=False,
+        verify=ssl.create_default_context(),
+    )
 
 
 class AgentClient:
@@ -19,7 +36,7 @@ class AgentClient:
         return {"Authorization": f"Bearer {self._token}"}
 
     def heartbeat(self, payload: dict[str, Any]) -> None:
-        with httpx.Client(timeout=20, follow_redirects=False) as client:
+        with _http_client(timeout=20) as client:
             response = client.post(
                 f"{self._base_url}/api/v1/workstation-agent/heartbeat",
                 headers=self._headers(),
@@ -28,7 +45,7 @@ class AgentClient:
             response.raise_for_status()
 
     def claim(self) -> DeploymentClaim | None:
-        with httpx.Client(timeout=30, follow_redirects=False) as client:
+        with _http_client(timeout=30) as client:
             response = client.post(
                 f"{self._base_url}/api/v1/workstation-agent/deployments/claim",
                 headers=self._headers(),
@@ -47,7 +64,7 @@ class AgentClient:
         error_message: str | None = None,
         retry_after_seconds: int = 60,
     ) -> None:
-        with httpx.Client(timeout=30, follow_redirects=False) as client:
+        with _http_client(timeout=30) as client:
             response = client.post(
                 f"{self._base_url}/api/v1/workstation-agent/deployments/{deployment_id}/complete",
                 headers=self._headers(),
@@ -65,7 +82,7 @@ class AgentClient:
 def pair_agent(server_url: str, payload: dict[str, Any]) -> dict[str, Any]:
     """Exchange a one-time enrollment code without retaining it."""
 
-    with httpx.Client(timeout=30, follow_redirects=False) as client:
+    with _http_client(timeout=30) as client:
         response = client.post(f"{server_url.rstrip('/')}/api/v1/workstation-agent/pair", json=payload)
         response.raise_for_status()
     value = response.json()

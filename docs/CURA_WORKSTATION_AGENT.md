@@ -27,7 +27,7 @@ After management is enabled, an edit to approved settings in an existing Filamen
 
 ## Server requirement
 
-Use an HTTPS Filament Manager public URL. Plain HTTP pairing is accepted only for an explicit loopback development installation. The agent follows no HTTP redirects and validates the normal operating-system certificate trust store.
+Use an HTTPS Filament Manager public URL. Plain HTTP pairing is accepted only for an explicit loopback development installation. The agent follows no HTTP redirects and validates the normal operating-system certificate trust store, including private CA roots installed by the workstation operator. Standard `SSL_CERT_FILE` and `SSL_CERT_DIR` overrides remain available when a managed service needs an explicit trust bundle; certificate verification cannot be disabled.
 
 Docker web and worker startup automatically applies the workstation schema migration under the shared PostgreSQL advisory lock. Confirm both services are healthy before pairing agents.
 

@@ -150,6 +150,10 @@ Confirm Cura is closed so its material file is complete, the workstation is unde
 
 Reload the filament detail and confirm whether that specific key is marked customized. Explicit customizations intentionally remain unchanged; every other value inherits immediately from the template save. Use **Reset to Template** for a key that should return to inherited ownership, then allow automatic Cura synchronization.
 
+### A workstation is paired but Cura profiles never appear
+
+Check the workstation's agent service log first. If it reports `CERTIFICATE_VERIFY_FAILED` even though the Filament Manager private CA is trusted by the operating system, upgrade the workstation agent to the current 0.2.3 package. The corrected agent uses the verified operating-system TLS context for pairing and every service request. Do not disable certificate verification. After restart, confirm that Diagnostics shows a current contact time, then reopen the takeover mapping dialog.
+
 ### Cura synchronization fails during file replacement
 
 The agent restores the pre-synchronization backup automatically. Review the sanitized synchronization error and local structured agent log. Use `filament-manager-agent rollback DEPLOYMENT_UUID` for an explicit restoration when required. After authoritative management is enabled, do not create or copy user material files directly in Cura because heartbeat synchronization will restore Filament Manager's desired state.
