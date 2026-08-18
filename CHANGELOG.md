@@ -1,5 +1,31 @@
 # Changelog
 
+## 0.2.4 - 08.18.2026
+
+### Added
+
+- Added sanitized structured API validation details and accessible red per-field messages in template and filament material-setting editors.
+- Added automatic Cura favorites for every synchronized `Template <material type>` entry.
+- Added bounded workstation cleanup for user-created Cura quality-change profiles, including pre-change backup, recoverable-format repair, corrupt-profile quarantine, drift detection, and rollback coverage.
+- Added a maintained plain-text checklist of all 54 Cura Material Settings plugin selections tracked by Filament Manager, with automated central-catalog parity coverage.
+
+### Changed
+
+- Changed the server-supplied approved Cura material-setting catalog to be the authoritative list used by the workstation deployment and Cura enforcement plugin.
+- Changed the managed Cura plugin to mirror each selected managed material's explicit values into Cura's top supported user layer, ensuring built-in and custom quality profiles cannot supersede filament-specific settings.
+- Changed user-created Cura main/custom profiles to remain workstation-owned and unsynchronized while removing only centrally managed material keys; all unrelated quality, purpose, and model settings remain intact.
+- Changed the Cura deployment contract to schema 3; upgrade every paired workstation to the 0.2.4 agent before expecting profile cleanup or the updated enforcement plugin.
+- Changed all server, frontend, and workstation-agent version surfaces to 0.2.4.
+- Changed solid, multicolor, and rainbow inventory swatches to share the same physical spool silhouette; multicolor uses its selected hard color segments while rainbow uses a distinct continuous spectrum.
+
+### Fixed
+
+- Fixed template saves reporting only `Request validation failed` without identifying the invalid control, constraint, or reason.
+- Fixed synchronized templates not being automatically favorited in Cura.
+- Fixed Cura quality and sidebar layers taking precedence over managed material values exposed by the Material Settings plugin.
+- Fixed recoverable duplicate-section user profiles continuing to trigger Cura corruption warnings, and isolated malformed profiles so Cura no longer attempts to load them.
+- Fixed multicolor and rainbow fills replacing the spool illustration instead of coloring its filament regions.
+
 ## 0.2.3 - 08.18.2026
 
 ### Added

@@ -1,5 +1,28 @@
 # User Changelog
 
+## 0.2.4 - 08.18.2026
+
+### Added
+
+- Added red explanations beside each invalid template or material-profile value, including what must be corrected.
+- Added automatic Cura favorites for every synchronized `Template <material type>` material.
+- Added automatic backup and repair of recoverable custom Cura profiles plus safe quarantine for malformed profiles.
+- Added a downloadable repository text checklist of every Cura Material Settings plugin option tracked by Filament Manager.
+
+### Changed
+
+- Cura's main/custom profiles remain available for print-quality and purpose settings, but filament-specific settings now come from the selected Filament Manager material.
+- Filament Manager's centralized material-setting list now controls which values are removed from custom Cura profiles and enforced from materials.
+- Paired Cura workstations must be upgraded to the 0.2.4 agent before this cleanup and enforcement can be installed.
+- Solid, multicolor, and rainbow displays now share the same spool shape; multicolor shows its selected colors and rainbow remains visually distinct.
+
+### Fixed
+
+- Fixed template editing returning only `Request validation failed` without showing which values failed or why.
+- Fixed Cura custom or built-in profile settings sometimes overriding the selected material's temperatures, flow, speeds, retraction, cooling, and other managed filament settings.
+- Fixed synchronized template materials not appearing as favorites and malformed custom profiles continuing to produce Cura corruption warnings.
+- Fixed multicolor and rainbow fills hiding the spool shape on filament and spool screens.
+
 ## 0.2.3 - 08.18.2026
 
 ### Added

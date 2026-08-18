@@ -10,7 +10,10 @@ from uuid import UUID
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from filament_manager.domain.cura_material_settings import cura_settings_for_profile
+from filament_manager.domain.cura_material_settings import (
+    CURA_EDITABLE_SETTING_KEYS,
+    cura_settings_for_profile,
+)
 from filament_manager.domain.spool_preflight import cura_material_guid
 from filament_manager.models.enums import CuraDeploymentStatus, ProfileStatus
 from filament_manager.models.inventory import (
@@ -206,8 +209,9 @@ async def build_cura_library(session: AsyncSession) -> dict[str, object]:
 
     entries.sort(key=lambda item: (str(item["source_kind"]), str(item["source_id"])))
     desired_state: dict[str, object] = {
-        "schema_version": 2,
+        "schema_version": 3,
         "hide_bundled_materials": True,
+        "managed_material_setting_keys": sorted(CURA_EDITABLE_SETTING_KEYS),
         "materials": entries,
     }
     checksum = hashlib.sha256(

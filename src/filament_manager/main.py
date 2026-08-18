@@ -1,5 +1,6 @@
 """FastAPI application factory and production entrypoint."""
 
+import re
 import time
 from collections.abc import AsyncIterator, Awaitable, Callable
 from contextlib import asynccontextmanager
@@ -21,6 +22,7 @@ from filament_manager.api.errors import ApiError, api_error_handler
 from filament_manager.api.router import api_router
 from filament_manager.config import get_settings
 from filament_manager.database import database_ready, get_engine
+from filament_manager.domain.cura_material_settings import CURA_EXTENSION_SETTING_KEYS
 from filament_manager.logging import configure_logging
 
 REQUESTS = Counter("filament_manager_http_requests_total", "HTTP request count", ["method", "path", "status"])
@@ -28,6 +30,41 @@ LATENCY = Histogram(
     "filament_manager_http_request_duration_seconds", "HTTP request duration", ["method", "path"]
 )
 logger = structlog.get_logger()
+
+
+def _safe_validation_errors(exc: RequestValidationError) -> list[dict[str, str]]:
+    """Return bounded field errors without echoing request values or validator context."""
+
+    errors: list[dict[str, str]] = []
+    for error in exc.errors():
+        raw_location = error.get("loc", ())
+        location = [
+            str(part) for part in raw_location if part not in {"body", "query", "path", "header", "cookie"}
+        ]
+        raw_message = str(error.get("msg") or "The supplied value is invalid")
+        message = raw_message.removeprefix("Value error, ")[:300]
+        # Pydantic locates custom dictionary validation at the dictionary itself.
+        # Narrow approved Cura-extension failures to the exact safe catalog key
+        # named by the validator so the UI can annotate the correct control.
+        if location and location[-1] == "cura_extensions":
+            matched_key = next(
+                (
+                    key
+                    for key in sorted(CURA_EXTENSION_SETTING_KEYS)
+                    if re.search(rf"(?<![a-z0-9_]){re.escape(key)}(?![a-z0-9_])", message)
+                ),
+                None,
+            )
+            if matched_key is not None:
+                location.append(matched_key)
+        errors.append(
+            {
+                "field": ".".join(location) or "request",
+                "message": message,
+                "type": str(error.get("type") or "value_error")[:96],
+            }
+        )
+    return errors[:100]
 
 
 @asynccontextmanager
@@ -112,17 +149,19 @@ def create_app() -> FastAPI:
 
     @app.exception_handler(RequestValidationError)
     async def validation_error(request: Request, exc: RequestValidationError) -> JSONResponse:
+        safe_errors = _safe_validation_errors(exc)
         logger.warning(
             "request_validation_failed",
             method=request.method,
             path=request.url.path,
-            error_count=len(exc.errors()),
+            error_count=len(safe_errors),
         )
         return JSONResponse(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
             content={
                 "code": "validation_error",
                 "message": "Request validation failed",
+                "errors": safe_errors,
                 "correlation_id": request.state.correlation_id,
             },
         )

@@ -21,7 +21,7 @@ async def test_version_status_includes_prereleases_and_caches_result(
             json=[
                 {"tag_name": "v9.0.0", "draft": True, "prerelease": False},
                 {"tag_name": "v0.2.4", "draft": False, "prerelease": True},
-                {"tag_name": "v0.2.3", "draft": False, "prerelease": False},
+                {"tag_name": "v0.2.4", "draft": False, "prerelease": False},
                 {"tag_name": "not-a-version", "draft": False, "prerelease": False},
             ],
         )
@@ -30,9 +30,9 @@ async def test_version_status_includes_prereleases_and_caches_result(
     first = await version_service.version_status()
     second = await version_service.version_status()
 
-    assert first.running_version == "0.2.3"
+    assert first.running_version == "0.2.4"
     assert first.latest_version == "0.2.4"
-    assert first.status == "update_available"
+    assert first.status == "current"
     assert first.release_url == "https://github.com/cosmicc/filament_manager/releases/tag/v0.2.4"
     assert second == first
     assert route.call_count == 1

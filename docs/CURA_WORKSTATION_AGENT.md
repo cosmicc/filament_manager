@@ -10,12 +10,13 @@ Each Arch Linux or Windows 11 workstation runs one agent under the same user acc
 - reports approved setting edits to known managed material GUIDs so the server can save the corresponding current settings directly without accepting new Cura-created materials;
 - waits while Cura is open;
 - matches the Filament Manager printer and nozzle to one Cura machine instance;
-- installs official-format `.xml.fdm_material` files plus the managed visibility plugin that hides bundled materials from Cura's selectors;
-- backs up every added, replaced, or removed user material and managed-plugin file, writes same-filesystem temporary files, and atomically replaces targets;
+- installs official-format `.xml.fdm_material` files plus the managed plugin that hides bundled materials, favorites every Template, and enforces selected-material values over Cura's higher profile layers;
+- backs up every added, replaced, removed, repaired, or quarantined user material, managed-plugin, and affected custom-profile file, writes same-filesystem temporary files, and atomically replaces targets;
+- removes only centrally managed material keys from custom Cura profiles, repairs recoverable duplicate sections, and quarantines malformed bounded profiles so Cura no longer loads them;
 - records a complete-library checksum so repeated synchronizations are idempotent and heartbeat drift is repaired; and
 - restores the backup automatically if any write fails.
 
-Install and enable the Cura **Material Settings** and **Klipper Settings** plugins. Filament Manager stores pressure advance as `klipper_pressure_advance_factor` and smooth time as the Klipper plugin's material settings. The agent never patches machine start G-code and never creates or changes quality profiles.
+Install and enable the Cura **Material Settings** and **Klipper Settings** plugins. Filament Manager stores pressure advance as `klipper_pressure_advance_factor` and smooth time as the Klipper plugin's material settings. Cura main/custom profiles remain local and are not synchronized. The agent never creates a quality profile, changes bundled profiles, patches machine start G-code, or alters unrelated custom-profile settings.
 
 For physical-spool preflight, the operator must make the one-time Cura machine start-G-code change documented in [INSTALL.md](../INSTALL.md). The agent supplies each managed material's stable GUID but intentionally preserves the complete machine start/end G-code. Select a product material, not a `Template <material type>` entry, when sending a print that must resolve to physical inventory.
 
@@ -24,6 +25,8 @@ Existing Cura material files are parsed with a hardened XML parser. Saved print 
 On **Templates**, choose **Import from Cura**, or open **Cura workstations** directly. While the workstation says **Awaiting one-time takeover**, select **Map Cura profiles** to open the mapping dialog. Every reported material and saved print profile appears beside a Filament Manager template selector, including named profiles whose tracked values are all inherited expressions. Choose the existing template each source should update, or leave it as **Do not import**. Each source and template may be used once. Continue to the separate review, verify all mappings and the ignored count together, then select **Complete takeover** once. **Back to mappings** always returns to the selectors. Filament Manager applies the mapped literal settings, updates linked profiles through normal inheritance, records provenance, enables management, and queues synchronization atomically. Unmapped user sources are backed up and then replaced by the managed library. Bundled files in Cura's installation remain untouched; the managed plugin hides them in material selectors.
 
 After management is enabled, an edit to approved settings in an existing Filament Manager material is detected by its deterministic GUID and content checksum. The server saves that known template/profile directly and idempotently, preserves explicit filament customizations during template inheritance, and queues the current library for synchronization. Pre-takeover print-profile discovery does not continue as a source of canonical additions after management begins. New or copied Cura materials, changed identity metadata, unknown GUIDs, machine configuration, quality-profile changes, and start/end G-code are never imported. Add all new templates and filament products in Filament Manager.
+
+Cura's sidebar, custom profile, and built-in quality layers normally override material values. The managed plugin uses the central Filament Manager catalog to remove those keys from the active custom layer and mirror the selected material's explicit values into Cura's supported top user layer. Main profiles therefore remain useful for non-material choices, while temperatures, flow, filament-dependent speed/retraction/cooling, dimensional compensation, and Klipper material values come from the selected managed material. If Cura is closed and a saved custom profile reintroduces a managed key, checksum drift queues another backed-up cleanup.
 
 ## Server requirement
 
@@ -89,7 +92,7 @@ Start-ScheduledTask -TaskName 'Filament Manager Cura Agent'
 
 ## Use
 
-Before takeover, open **Cura workstations** and wait for the agent to report existing material files and saved print profiles. If the selectable count is unexpectedly zero, upgrade or restart the agent, keep Cura closed, and wait for the next check-in. Select **Map Cura profiles**, map any source you want to keep to an existing template, and leave all others as **Do not import**. A recommended `Template ASA` is seeded for the configured printer/nozzle when no ASA template already exists. Use **Review takeover**, verify the mappings and ignored count, then select **Complete takeover**. Routine agent check-ins do not invalidate the dialog; an actual source-content change requires a fresh review. A genuinely clean installation can complete with zero mappings. Cura shows bases as `Template PLA`, `Template PETG`, and so on under brand `Template`. Later template or product saves queue the complete library automatically. Close Cura when synchronization is pending; the agent retries without manual requeueing.
+Before takeover, open **Cura workstations** and wait for the agent to report existing material files and saved print profiles. If the selectable count is unexpectedly zero, upgrade or restart the agent, keep Cura closed, and wait for the next check-in. Version 0.2.4 uses Cura deployment schema 3, so every paired workstation must run the 0.2.4 agent before it can install the profile cleanup and material-enforcement plugin. Select **Map Cura profiles**, map any source you want to keep to an existing template, and leave all others as **Do not import**. A recommended `Template ASA` is seeded for the configured printer/nozzle when no ASA template already exists. Use **Review takeover**, verify the mappings and ignored count, then select **Complete takeover**. Routine agent check-ins do not invalidate the dialog; an actual source-content change requires a fresh review. A genuinely clean installation can complete with zero mappings. Cura shows and favorites bases as `Template PLA`, `Template PETG`, and so on under brand `Template`. Later template or product saves queue the complete library automatically. Close Cura when synchronization is pending; the agent retries without manual requeueing.
 
 Useful local commands:
 
@@ -100,7 +103,7 @@ filament-manager-agent run-once
 filament-manager-agent rollback DEPLOYMENT_UUID
 ```
 
-Rollback restores the exact pre-synchronization user materials and managed plugin files captured by that deployment. Authoritative synchronization never changes Cura's machine, quality, start-G-code, or bundled installation files.
+Rollback restores the exact pre-synchronization user materials, managed plugin files, and affected user quality-change profiles captured by that deployment. Corrupt originals are also copied to the agent's `quarantine` data directory under the deployment identity before removal from Cura. Authoritative synchronization never changes Cura's machine, bundled quality, unrelated custom-profile settings, start-G-code, or installation files.
 
 ## Security and removal
 

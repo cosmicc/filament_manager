@@ -106,7 +106,7 @@ svg { flex: 0 0 auto; }
 .progress { height: 9px; overflow: hidden; border-radius: 999px; background: var(--surface-muted); }
 .progress > span { display: block; height: 100%; border-radius: inherit; background: linear-gradient(90deg, var(--blue-600), var(--blue-500)); }
 .active-spool .text-link { grid-column: 1 / -1; margin-top: 10px; }
-.filament-swatch { --swatch: #2f80a5; width: 30px; height: 30px; display: inline-block; flex: 0 0 auto; border: 3px solid color-mix(in srgb, var(--swatch) 60%, var(--surface)); border-radius: 50%; background: var(--swatch-background, radial-gradient(circle, var(--surface) 0 27%, var(--swatch) 29% 56%, var(--surface) 58% 68%, var(--swatch) 70%)); box-shadow: 0 0 0 1px var(--border); }
+.filament-swatch { --swatch: #2f80a5; width: 30px; height: 30px; display: inline-block; flex: 0 0 auto; border: 3px solid color-mix(in srgb, var(--swatch) 60%, var(--surface)); border-radius: 50%; background: radial-gradient(circle, var(--surface) 0 27%, transparent 29% 56%, var(--surface) 58% 68%, transparent 70%), var(--spool-fill, var(--swatch)); box-shadow: 0 0 0 1px var(--border); }
 .filament-swatch--large { width: 52px; height: 52px; }
 .filament-swatch--hero { width: 72px; height: 72px; }
 .plate-summary { display: flex; flex-direction: column; align-items: center; gap: 7px; text-align: center; }
@@ -409,6 +409,13 @@ textarea { resize: vertical; }
 .setting-field { display: grid; gap: 6px; align-content: start; }
 .setting-field > label { display: grid; gap: 6px; }
 .setting-field--customized { margin: -8px; border: 1px solid var(--blue-600); border-radius: var(--radius-sm); padding: 8px; background: var(--blue-50); }
+.setting-field--invalid input,
+.setting-field--invalid select,
+.setting-field--invalid textarea,
+.form-grid input[aria-invalid="true"],
+.form-grid select[aria-invalid="true"],
+.form-grid textarea[aria-invalid="true"] { border-color: var(--danger); box-shadow: 0 0 0 1px var(--danger); }
+.field-validation { display: grid; gap: 2px; color: var(--danger); font-size: 12px; font-weight: 650; }
 .setting-ownership { display: flex; align-items: center; justify-content: space-between; gap: 8px; color: var(--text-muted); font-size: 0.78rem; }
 .setting-ownership .button { flex: 0 0 auto; }
 .check-row { display: flex !important; align-items: flex-start; gap: 10px; border-radius: var(--radius-sm); padding: 10px; background: var(--surface-muted); }

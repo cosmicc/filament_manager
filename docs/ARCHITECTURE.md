@@ -11,7 +11,7 @@ Browser -> FastAPI -> filament_manager PostgreSQL
                                                   `----> Google Sheets API
 
 Cura workstation agent -> outbound HTTPS polling -> FastAPI -> leased desired library
-                     `-> local backup -> atomic material/plugin replacement
+                     `-> local backup -> atomic material/plugin/custom-profile cleanup
 
 Cura -> bounded G-code inspection -> Klipper physical-spool preflight -> Moonraker/Spoolman
 Fluidd -> exact spool and insertion confirmations ---^
@@ -68,7 +68,7 @@ The Diagnostics API assembles sanitized connection, synchronization, worker-hear
 - Trusted hosts, exact CORS origins, security headers, sanitized API errors, login throttling, and least-privilege containers are enabled.
 - Spoolman has no built-in authentication; keep its LAN endpoint firewalled and put remote browser access behind an authenticated proxy.
 - Workstation agents have no listener. Pairing codes expire after ten minutes and are consumed once; long-lived agent credentials are stored as hashes and authorize only agent heartbeat, claim, and completion routes.
-- Cura writes occur only while Cura is closed, under verified discovered data roots, with symlink/root-escape rejection, automatic backups, full-library checksums, atomic desired-state material/plugin replacement, and rollback. Existing-material discovery uses hardened XML, saved print profiles use bounded non-interpolating INI parsing, and managed-edit intake accepts only approved keys, bounded payloads, deterministic known GUIDs, and no local paths. The one-time Administrator takeover maps any source subset to existing templates and applies the batch atomically. Managed edits save known current settings directly; unknown GUIDs and new Cura-created materials cannot enter canonical state.
+- Cura writes occur only while Cura is closed, under verified discovered data roots, with symlink/root-escape rejection, automatic backups, full-library checksums, atomic desired-state material/plugin replacement, bounded user custom-profile material-key cleanup, corrupt-profile quarantine, and rollback. Existing-material discovery uses hardened XML, saved print profiles use bounded non-interpolating INI parsing, and managed-edit intake accepts only approved keys, bounded payloads, deterministic known GUIDs, and no local paths. The one-time Administrator takeover maps any source subset to existing templates and applies the batch atomically. Managed edits save known current settings directly; unknown GUIDs and new Cura-created materials cannot enter canonical state. Cura main profiles remain local and unsynchronized; the managed plugin mirrors explicit selected-material values into the supported user layer so higher quality layers cannot supersede them.
 - G-code filenames, metadata, history, and Cura payloads are untrusted and bounded. File content is streamed, never executed, and external response bodies are not returned or logged.
 - Docker web and worker startup coordinate Alembic upgrades with one bounded PostgreSQL session advisory lock before either long-running process starts.
 

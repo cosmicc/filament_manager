@@ -5,7 +5,7 @@ from pathlib import Path
 
 import pytest
 
-from filament_manager_agent.apply import apply_rendered, rollback
+from filament_manager_agent.apply import apply_rendered, managed_library_checksum, rollback
 from filament_manager_agent.discovery import (
     discover_installations,
     discover_managed_materials,
@@ -106,8 +106,19 @@ def _payload() -> dict[str, object]:
         },
     }
     return {
-        "schema_version": 2,
+        "schema_version": 3,
         "hide_bundled_materials": True,
+        "managed_material_setting_keys": [
+            "cool_fan_enabled",
+            "cool_fan_speed",
+            "klipper_pressure_advance_factor",
+            "klipper_smooth_time_enable",
+            "material_bed_temperature",
+            "material_flow",
+            "material_print_temperature",
+            "speed_print",
+            "support_angle",
+        ],
         "library_checksum": "a" * 64,
         "materials": [entry],
     }
@@ -132,6 +143,15 @@ def test_discovers_and_renders_complete_profile(tmp_path: Path, monkeypatch: obj
     assert not any(path.startswith("quality_changes/") for path in paths)
     assert not any(path.startswith("definition_changes/") for path in paths)
     assert "plugins/FilamentManagerVisibility/FilamentManagerVisibility/plugin.json" in paths
+    plugin_path = Path(
+        "plugins/FilamentManagerVisibility/FilamentManagerVisibility/FilamentManagerVisibility.py"
+    )
+    plugin = rendered.files[plugin_path]
+    compile(plugin, str(plugin_path), "exec")
+    assert b'preferences.setValue("cura/favorite_materials", updated)' in plugin
+    assert b'"speed_print"' not in plugin
+    assert b"'speed_print'" in plugin
+    assert b'user_changes.setProperty(key, "value", material_value)' in plugin
 
 
 def test_apply_is_idempotent_and_rollback_restores_original(tmp_path: Path, monkeypatch: object) -> None:
@@ -154,6 +174,82 @@ def test_apply_is_idempotent_and_rollback_restores_original(tmp_path: Path, monk
     assert (version / "definition_changes" / "flsun-v400_settings.inst.cfg").read_bytes() == original
     assert unmanaged_material.read_text(encoding="utf-8") == "legacy"
     assert not (version / ".filament-manager" / "manifest.json").exists()
+
+
+def test_apply_sanitizes_repairs_and_quarantines_user_quality_profiles(
+    tmp_path: Path,
+    monkeypatch: object,
+) -> None:
+    """Managed keys leave custom profiles while valid quality settings survive."""
+
+    version = _cura_fixture(tmp_path, monkeypatch)
+    quality_changes = version / "quality_changes"
+    quality_changes.mkdir()
+    valid_profile = quality_changes / "flsun_v400_Custom.inst.cfg"
+    valid_profile.write_text(
+        """[general]
+version = 4
+name = Custom
+definition = flsun_v400
+
+[metadata]
+type = quality_changes
+quality_type = normal
+setting_version = 27
+
+[values]
+speed_print = 95
+layer_height = 0.16
+""",
+        encoding="utf-8",
+    )
+    duplicate_profile = quality_changes / "flsun_v400_Duplicate.inst.cfg"
+    duplicate_profile.write_text(
+        """[general]
+version = 4
+name = Duplicate
+definition = flsun_v400
+
+[metadata]
+type = quality_changes
+quality_type = normal
+
+[values]
+material_flow = 99
+[values]
+wall_line_count = 3
+""",
+        encoding="utf-8",
+    )
+    corrupt_profile = quality_changes / "flsun_v400_Corrupt.inst.cfg"
+    corrupt_profile.write_text("[metadata]\ntype = quality_changes\n", encoding="utf-8")
+
+    installation = discover_installations()[0]
+    rendered = render_deployment(installation, _payload())
+    result = apply_rendered(
+        installation,
+        "07f33352-0fab-43d2-a65d-cfdafe9dfca6",
+        "a" * 64,
+        rendered,
+    )
+
+    valid_text = valid_profile.read_text(encoding="utf-8")
+    duplicate_text = duplicate_profile.read_text(encoding="utf-8")
+    assert "speed_print" not in valid_text
+    assert "layer_height = 0.16" in valid_text
+    assert "material_flow" not in duplicate_text
+    assert "wall_line_count = 3" in duplicate_text
+    assert duplicate_text.count("[values]") == 1
+    assert not corrupt_profile.exists()
+    assert result["quality_profiles_sanitized"] == 2
+    assert result["quality_profiles_repaired"] == 1
+    assert result["quality_profile_settings_removed"] == 2
+    assert result["quality_profiles_quarantined"] == 1
+    assert len(result["quarantine_ids"]) == 1
+    assert managed_library_checksum(version) == "a" * 64
+
+    valid_profile.write_text(valid_text.replace("[values]", "[values]\nspeed_print = 120"))
+    assert managed_library_checksum(version) is None
 
 
 def test_reports_managed_material_edits_by_guid_without_treating_them_as_new(

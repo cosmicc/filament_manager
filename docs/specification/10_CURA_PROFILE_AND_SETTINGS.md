@@ -2,7 +2,7 @@
 
 ## Scope
 
-Filament Manager presents directly saved material templates plus template-linked sparse product overrides. Internally it keeps complete immutable resolved snapshots for audit, exact print history, synchronization, and recovery. A workstation synchronization contains the current library for every matching template and product profile. It does not create quality-change profiles and does not patch machine start G-code.
+Filament Manager presents directly saved material templates plus template-linked sparse product overrides. Internally it keeps complete immutable resolved snapshots for audit, exact print history, synchronization, and recovery. A workstation synchronization contains the current library for every matching template and product profile. Cura main/custom profiles remain workstation-owned and unsynchronized. Filament Manager does not create quality-change profiles or patch machine start G-code; it removes only centrally managed material keys from user-created quality changes so those settings cannot supersede the selected material.
 
 Install and enable the Cura **Material Settings** plugin to expose the stored material values and the Cura **Klipper Settings** plugin to consume pressure advance and smooth time.
 
@@ -12,7 +12,7 @@ A profile is scoped by filament product, printer, nozzle diameter, and optional 
 
 ## Approved Cura material catalog
 
-The ordered implementation catalog is `CURA_MATERIAL_SETTINGS` in `src/filament_manager/domain/cura_material_settings.py`. It mirrors the operator's active Cura 5.13 Material Settings configuration.
+The ordered implementation catalog is `CURA_MATERIAL_SETTINGS` in `src/filament_manager/domain/cura_material_settings.py`. It mirrors the operator's active Cura 5.13 Material Settings configuration and is the central source supplied to every managed workstation deployment. The matching operator checklist is the maintained plain-text file at `docs/CURA_MATERIAL_PRINT_SETTINGS.txt`; an automated test requires every editable key and label to remain identical to the central catalog.
 
 - Temperature: `material_print_temperature`, `default_material_print_temperature`, `material_print_temperature_layer_0`, `material_initial_print_temperature`, `material_final_print_temperature`, `material_standby_temperature`, `material_bed_temperature`, `default_material_bed_temperature`, `material_bed_temperature_layer_0`, `build_volume_temperature`.
 - Flow: `material_flow`, `material_flow_layer_0`, `infill_material_flow`, `support_material_flow`, `roofing_material_flow`, `skirt_brim_material_flow`.
@@ -37,7 +37,7 @@ After takeover, the workstation agent separately reports approved settings from 
 
 ## Template and product lifecycle
 
-Templates are scoped to one printer and nozzle and synchronize to Cura with the exact name `Template <material type>` and brand `Template`. Creating or editing a template saves it immediately and queues a new complete-library checksum for every managed workstation. A new filament product receives a current linked profile containing only differences from its template. Saving a template immediately creates a new current resolved snapshot for every linked filament. Explicitly customized keys remain owned by that filament—even when their value temporarily equals the updated template—while all other keys inherit the new value.
+Templates are scoped to one printer and nozzle and synchronize to Cura with the exact name `Template <material type>` and brand `Template`. The managed plugin adds every matching template root to Cura's favorites. Creating or editing a template saves it immediately and queues a new complete-library checksum for every managed workstation. A new filament product receives a current linked profile containing only differences from its template. Saving a template immediately creates a new current resolved snapshot for every linked filament. Explicitly customized keys remain owned by that filament—even when their value temporarily equals the updated template—while all other keys inherit the new value.
 
 Configured-system seeding creates one recommended `Template ASA` for each configured printer and current nozzle scope only when no ASA template already exists. Its conservative starting values are 245 C nozzle, 95 C bed, 45 C chamber, fan disabled, 50 mm/s print speed, 100 percent flow, and 1.07 g/cm3 density. A reviewed Cura ASA mapping or later direct app edit replaces the applicable current values normally.
 
@@ -56,7 +56,11 @@ These status values remain an internal compatibility and history mechanism. Curr
 
 ## Synchronization and export
 
-The JSON export includes the semantic profile, complete computed Cura setting map, checksum, version, and deterministic managed material GUID. The workstation agent writes that GUID into Cura XML so `{material_guid}` identifies the exact current product profile during Klipper print preflight. It matches printer/nozzle entries, waits for Cura to close, backs up the union of existing and desired user material/plugin targets, atomically applies the exact desired state, removes stale user materials, and retains an idempotent rollback manifest. A managed Cura plugin filters selectors to `filament_manager_` material roots, hiding bundled choices without changing Cura's installation files.
+The JSON export includes the semantic profile, complete computed Cura setting map, central managed-key catalog, checksum, version, and deterministic managed material GUID. The workstation agent writes that GUID into Cura XML so `{material_guid}` identifies the exact current product profile during Klipper print preflight. It matches printer/nozzle entries, waits for Cura to close, backs up the union of existing and desired user material/plugin targets plus every user quality-change file that will be altered or quarantined, atomically applies the exact desired state, removes stale user materials, and retains an idempotent rollback manifest.
+
+The agent parses bounded regular files under the user `quality_changes` directory without interpolation. It removes only central managed material keys, preserves unrelated Cura settings, rewrites recoverable duplicate-section profiles into one valid document, and copies malformed profiles to agent-owned quarantine before removing them from Cura's load path. Symlinks, oversized collections, and oversized files fail safely. Quality cleanup participates in desired-library drift detection, deployment reporting, and rollback. Bundled quality files under Cura's installation are never changed.
+
+Cura resolves user and quality layers before materials. The managed plugin therefore filters selectors to `filament_manager_` roots, favorites Template entries, removes central material keys from the active custom-quality layer, and mirrors only values explicitly present in the selected managed material into Cura's supported top user layer. This keeps the material authoritative over both bundled and custom profiles without rewriting bundled Cura files. Non-material main-profile values such as layer-height, structural, support, adhesion, and special-purpose choices remain owned by Cura.
 
 The agent never changes machine start G-code. The operator replaces only the existing Cura `START_PRINT` call with the documented `FILAMENT_MANAGER_START_PRINT ... MATERIAL_GUID={material_guid}` wrapper and preserves every other start/end line. Product materials map to physical inventory; `Template <material type>` entries remain design-time starting points and intentionally have no eligible spool preflight mapping.
 
@@ -71,7 +75,9 @@ Known standard material fields use Cura's standard XML setting names. All other 
 - extension keys must be in the approved catalog and match the expected boolean or numeric type;
 - strings are bounded and may not contain newlines;
 - preferred plate side must exist; and
-- import never evaluates Cura expressions.
+- import never evaluates Cura expressions;
+- request validation responses expose bounded field locations and reasons but never submitted values; and
+- user quality-profile cleanup accepts only bounded regular files and central approved material keys.
 
 ## Authoritative implementation references
 

@@ -35,6 +35,7 @@ class RenderedDeployment:
     files: dict[Path, bytes]
     machine: CuraMachine
     warnings: list[str]
+    managed_material_setting_keys: frozenset[str]
 
 
 def slug(value: str, *, maximum: int = 72) -> str:
@@ -139,7 +140,7 @@ def _material_xml(payload: dict[str, Any]) -> bytes:
     return cast(bytes, ET.tostring(root, encoding="utf-8", xml_declaration=True))
 
 
-PLUGIN_INIT = b'''"""Register Filament Manager's material-visibility extension."""
+PLUGIN_INIT = b'''"""Register Filament Manager's material ownership extension."""
 
 from . import FilamentManagerVisibility
 
@@ -150,17 +151,56 @@ def register(app):
     return {"extension": FilamentManagerVisibility.FilamentManagerVisibility()}
 '''
 
-PLUGIN_MODULE = b'''"""Show only Filament Manager material roots in Cura's material selectors."""
+PLUGIN_MODULE_TEMPLATE = '''"""Enforce Filament Manager material ownership inside Cura."""
 
+from PyQt6.QtCore import QTimer
+from UM.Application import Application
 from UM.Extension import Extension
+from UM.Logger import Logger
 from cura.Machines.Models.BaseMaterialsModel import BaseMaterialsModel
 
 MANAGED_PREFIX = "filament_manager_"
+MANAGED_SETTING_KEYS = frozenset(__MANAGED_SETTING_KEYS__)
+
+
+def _favorite_templates(model):
+    """Add every managed Template material to Cura's favorite-material set."""
+
+    preferences = Application.getInstance().getPreferences()
+    current = str(preferences.getValue("cura/favorite_materials") or "")
+    favorites = {value for value in current.split(";") if value}
+    for material_id, material in model._available_materials.items():
+        if material_id == "empty_material" or not material_id.startswith(MANAGED_PREFIX):
+            continue
+        try:
+            if str(material.getMetaDataEntry("brand", "")) == "Template":
+                favorites.add(material_id)
+        except Exception:
+            Logger.log("w", "Unable to inspect managed template favorite metadata")
+    updated = ";".join(sorted(favorites))
+    if updated != current:
+        preferences.setValue("cura/favorite_materials", updated)
 
 class FilamentManagerVisibility(Extension):
     def __init__(self):
         super().__init__()
+        self._enforcing = False
+        self._scheduled = False
+        self._connected_containers = set()
+        application = Application.getInstance()
+        machine_manager = application.getMachineManager()
+        for signal_name in (
+            "activeMaterialChanged",
+            "activeQualityChanged",
+            "activeQualityChangesGroupChanged",
+            "activeStackChanged",
+            "globalContainerChanged",
+        ):
+            signal = getattr(machine_manager, signal_name, None)
+            if signal is not None:
+                signal.connect(self._schedule_enforcement)
         if getattr(BaseMaterialsModel, "_filament_manager_patched", False):
+            self._schedule_enforcement()
             return
         original_update = BaseMaterialsModel._update
 
@@ -171,29 +211,117 @@ class FilamentManagerVisibility(Extension):
                 for key, material in model._available_materials.items()
                 if key == "empty_material" or key.startswith(MANAGED_PREFIX)
             }
+            _favorite_templates(model)
 
         BaseMaterialsModel._update = managed_update
         BaseMaterialsModel._filament_manager_patched = True
+        self._schedule_enforcement()
+
+    def _schedule_enforcement(self, *args):
+        if self._scheduled:
+            return
+        self._scheduled = True
+        QTimer.singleShot(0, self._enforce_material_settings)
+
+    @staticmethod
+    def _is_managed_material(stack):
+        material = getattr(stack, "material", None)
+        if material is None:
+            return False
+        material_id = str(material.getMetaDataEntry("base_file", material.getId()) or "")
+        return material_id.startswith(MANAGED_PREFIX)
+
+    def _watch(self, container):
+        identity = id(container)
+        if identity in self._connected_containers:
+            return
+        container.propertyChanged.connect(self._schedule_enforcement)
+        self._connected_containers.add(identity)
+
+    def _enforce_material_settings(self):
+        self._scheduled = False
+        if self._enforcing:
+            return
+        self._enforcing = True
+        try:
+            global_stack = Application.getInstance().getGlobalContainerStack()
+            if global_stack is None:
+                return
+            extruders = list(global_stack.extruderList)
+            stacks = [global_stack] + extruders
+            for stack in stacks:
+                quality_changes = stack.qualityChanges
+                self._watch(stack.userChanges)
+                self._watch(quality_changes)
+                changed = False
+                for key in MANAGED_SETTING_KEYS.intersection(quality_changes.getAllKeys()):
+                    quality_changes.removeInstance(key, postpone_emit=True)
+                    changed = True
+                if changed:
+                    quality_changes.sendPostponedEmits()
+
+            # Remove stale top-layer values from the global stack and any
+            # extruder that is no longer using a managed material.
+            for stack in stacks:
+                if stack is not global_stack and self._is_managed_material(stack):
+                    continue
+                user_changes = stack.userChanges
+                changed = False
+                for key in MANAGED_SETTING_KEYS.intersection(user_changes.getAllKeys()):
+                    user_changes.removeInstance(key, postpone_emit=True)
+                    changed = True
+                if changed:
+                    user_changes.sendPostponedEmits()
+
+            # Cura's built-in and custom quality layers sit above its material
+            # layer. Mirror only values explicitly supplied by the selected
+            # managed material into the supported top user layer so the material
+            # remains authoritative without modifying bundled quality profiles.
+            for stack in extruders:
+                if not self._is_managed_material(stack):
+                    continue
+                material = stack.material
+                user_changes = stack.userChanges
+                material_keys = MANAGED_SETTING_KEYS.intersection(material.getAllKeys())
+                stale_keys = MANAGED_SETTING_KEYS.intersection(user_changes.getAllKeys()) - material_keys
+                for key in stale_keys:
+                    user_changes.removeInstance(key, postpone_emit=True)
+                if stale_keys:
+                    user_changes.sendPostponedEmits()
+                for key in material_keys:
+                    material_value = material.getProperty(key, "value")
+                    current_value = user_changes.getProperty(key, "value")
+                    if str(current_value) != str(material_value):
+                        user_changes.setProperty(key, "value", material_value)
+            Logger.log("d", "Filament Manager material settings enforced")
+        except Exception:
+            Logger.logException("e", "Filament Manager could not enforce material settings")
+        finally:
+            self._enforcing = False
 '''
 
 PLUGIN_METADATA = b"""{
   "name": "Filament Manager Material Visibility",
   "author": "Filament Manager",
-  "version": "1.0.0",
-  "description": "Shows only the authoritative Filament Manager material library.",
+  "version": "2.0.0",
+  "description": "Shows, favorites, and enforces the authoritative Filament Manager material library.",
   "api": 5,
   "supported_sdk_versions": ["8.0.0"]
 }
 """
 
 
-def _visibility_plugin_files() -> dict[Path, bytes]:
-    """Return the managed Cura plugin that hides non-authoritative choices."""
+def _visibility_plugin_files(managed_setting_keys: frozenset[str]) -> dict[Path, bytes]:
+    """Return the managed Cura plugin with its bounded central setting catalog."""
 
     plugin_root = Path("plugins") / "FilamentManagerVisibility" / "FilamentManagerVisibility"
+    module = PLUGIN_MODULE_TEMPLATE.replace(
+        "__MANAGED_SETTING_KEYS__",
+        repr(tuple(sorted(managed_setting_keys))),
+    ).encode("utf-8")
     return {
         plugin_root / "__init__.py": PLUGIN_INIT,
-        plugin_root / "FilamentManagerVisibility.py": PLUGIN_MODULE,
+        plugin_root / "FilamentManagerVisibility.py": module,
         plugin_root / "plugin.json": PLUGIN_METADATA,
     }
 
@@ -201,12 +329,22 @@ def _visibility_plugin_files() -> dict[Path, bytes]:
 def render_deployment(installation: CuraInstallation, payload: dict[str, Any]) -> RenderedDeployment:
     """Render every desired material matching this Cura installation."""
 
-    if payload.get("schema_version") != 2 or payload.get("hide_bundled_materials") is not True:
+    if payload.get("schema_version") != 3 or payload.get("hide_bundled_materials") is not True:
         raise ValueError("Deployment payload is not an authoritative Cura library.")
+    raw_managed_keys = payload.get("managed_material_setting_keys")
+    if not isinstance(raw_managed_keys, list) or not raw_managed_keys:
+        raise ValueError("Deployment is missing its managed Cura setting catalog.")
+    if any(
+        not isinstance(key, str) or not re.fullmatch(r"[a-z][a-z0-9_]{0,95}", key) for key in raw_managed_keys
+    ):
+        raise ValueError("Deployment contains an invalid managed Cura setting key.")
+    managed_setting_keys = frozenset(raw_managed_keys)
+    if len(managed_setting_keys) != len(raw_managed_keys):
+        raise ValueError("Deployment contains duplicate managed Cura setting keys.")
     materials = payload.get("materials")
     if not isinstance(materials, list) or not materials:
         raise ValueError("Deployment contains no material library entries.")
-    files = _visibility_plugin_files()
+    files = _visibility_plugin_files(managed_setting_keys)
     machines: list[CuraMachine] = []
     warnings: list[str] = []
     for entry in materials:
@@ -242,4 +380,9 @@ def render_deployment(installation: CuraInstallation, payload: dict[str, Any]) -
         machines.append(machine)
     if not machines:
         raise MachineMatchError("No desired material matches a machine in this Cura installation.")
-    return RenderedDeployment(files=files, machine=machines[0], warnings=warnings)
+    return RenderedDeployment(
+        files=files,
+        machine=machines[0],
+        warnings=warnings,
+        managed_material_setting_keys=managed_setting_keys,
+    )

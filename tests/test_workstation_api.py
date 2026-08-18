@@ -253,7 +253,7 @@ async def test_pair_queue_claim_and_complete_workstation_deployment(
             )
             assert claimed.status_code == 200, claimed.text
             assert claimed.json()["deployment_id"] == deployment_id
-            assert claimed.json()["payload"]["schema_version"] == 2
+            assert claimed.json()["payload"]["schema_version"] == 3
             assert claimed.json()["payload"]["hide_bundled_materials"] is True
             completed = await client.post(
                 f"/api/v1/workstation-agent/deployments/{deployment_id}/complete",

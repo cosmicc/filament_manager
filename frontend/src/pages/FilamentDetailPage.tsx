@@ -1,7 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { ArrowLeft, Pencil, Save, Trash2 } from 'lucide-react'
 import { useEffect, useMemo, useState } from 'react'
-import { apiFetch } from '../api/client'
+import { apiFetch, validationMessagesFor } from '../api/client'
 import type {
   BuildPlate,
   CuraSettingCatalogItem,
@@ -138,6 +138,8 @@ export default function FilamentDetailPage() {
     },
     onError: (error: Error) => setMessage(error.message),
   })
+  const profileValidationErrors = validationMessagesFor(saveProfile.error, 'settings')
+  const hasProfileValidationErrors = Object.keys(profileValidationErrors).length > 0
 
   if (filament.isLoading) return <LoadingState label="Loading filament details" />
   if (!filament.data) return <div><Link className="button" to="/filaments"><ArrowLeft size={16} /> Filaments</Link><p className="form-error">{filament.error?.message ?? 'Filament not found'}</p></div>
@@ -205,8 +207,8 @@ export default function FilamentDetailPage() {
     </Modal> : null}
     {editingSettings && latestProfile ? <Modal title="Edit material profile" description={`Edit resolved values inherited from ${latestProfile.base_template_name ?? 'the linked template'}. Only explicit differences are stored as filament customizations.`} onClose={() => setEditingSettings(false)} size="wide" footer={<><button className="button" type="button" onClick={() => setEditingSettings(false)}>Cancel</button><button className="button button--primary" form="edit-material-profile" disabled={saveProfile.isPending}><Save size={16} />{saveProfile.isPending ? 'Saving…' : 'Save settings'}</button></>}>
       <form id="edit-material-profile" className="editor-form" onSubmit={(event) => { event.preventDefault(); saveProfile.mutate(event.currentTarget) }} key={latestProfile.id}>
-        <MaterialSettingsEditor settings={latestProfile} baseSettings={latestProfile.base_template_settings} overrideKeys={latestProfile.override_keys} catalog={catalog.data ?? []} plates={plates.data ?? []} />
-        {saveProfile.error ? <p className="form-error" role="alert">{saveProfile.error.message}</p> : null}
+        <MaterialSettingsEditor settings={latestProfile} baseSettings={latestProfile.base_template_settings} overrideKeys={latestProfile.override_keys} validationErrors={profileValidationErrors} catalog={catalog.data ?? []} plates={plates.data ?? []} />
+        {saveProfile.error ? <p className="form-error" role="alert">{hasProfileValidationErrors ? 'Correct the highlighted values and save again.' : saveProfile.error.message}</p> : null}
       </form>
     </Modal> : null}
   </div>

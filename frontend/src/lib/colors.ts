@@ -14,9 +14,15 @@ export function filamentSwatchStyle(
   colorHexes: string[] | undefined,
   fallback = '2F80A5',
 ): CSSProperties {
-  const colors = mode === 'rainbow' ? rainbow : normalizedColors(colorHexes, fallback)
+  const colors = normalizedColors(colorHexes, fallback).slice(0, mode === 'multicolor' ? 3 : 1)
   const primary = colors[0]
   if (!mode || mode === 'solid') return { '--swatch': primary } as CSSProperties
+  if (mode === 'rainbow') {
+    return {
+      '--swatch': rainbow[0],
+      '--spool-fill': `conic-gradient(from -45deg, ${[...rainbow, rainbow[0]].join(', ')})`,
+    } as CSSProperties
+  }
   const stops = colors.flatMap((color, index) => {
     const start = Math.round(index / colors.length * 100)
     const end = Math.round((index + 1) / colors.length * 100)
@@ -24,6 +30,6 @@ export function filamentSwatchStyle(
   })
   return {
     '--swatch': primary,
-    '--swatch-background': `conic-gradient(${stops.join(', ')})`,
+    '--spool-fill': `conic-gradient(${stops.join(', ')})`,
   } as CSSProperties
 }

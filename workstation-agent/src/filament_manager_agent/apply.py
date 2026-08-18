@@ -13,6 +13,7 @@ from uuid import UUID
 from .config import data_path
 from .discovery import discover_installations
 from .models import CuraInstallation
+from .quality_profiles import plan_quality_profile_cleanup, quality_profiles_are_clean
 from .render import RenderedDeployment
 
 MANIFEST_PATH = Path(".filament-manager") / "manifest.json"
@@ -104,6 +105,16 @@ def _already_current(root: Path, checksum: str) -> bool:
     }
     if actual_materials != desired_materials:
         return False
+    raw_managed_keys = manifest.get("managed_material_setting_keys")
+    if not isinstance(raw_managed_keys, list) or not raw_managed_keys:
+        return False
+    if any(not isinstance(key, str) for key in raw_managed_keys):
+        return False
+    managed_keys = frozenset(raw_managed_keys)
+    if len(managed_keys) != len(raw_managed_keys):
+        return False
+    if not quality_profiles_are_clean(root, managed_keys):
+        return False
     return True
 
 
@@ -162,6 +173,21 @@ def _restore_backup(root: Path, backup_path: Path, managed_targets: list[Path], 
                 target.unlink(missing_ok=True)
 
 
+def _quarantine_profile(
+    installation: CuraInstallation,
+    deployment_id: str,
+    relative: Path,
+    content: bytes,
+) -> str:
+    """Copy one corrupt profile outside Cura before removing its active file."""
+
+    installation_key = hashlib.sha256(installation.installation_id.encode("utf-8")).hexdigest()[:16]
+    quarantine_root = data_path() / "quarantine" / deployment_id / installation_key
+    quarantine_target = quarantine_root / relative
+    _atomic_write(quarantine_target, content)
+    return f"{deployment_id}/{installation_key}/{PurePosixPath(relative).as_posix()}"
+
+
 def apply_rendered(
     installation: CuraInstallation,
     deployment_id: str,
@@ -180,6 +206,10 @@ def apply_rendered(
             "status": "already_current",
             "warnings": rendered.warnings,
         }
+    quality_cleanup = plan_quality_profile_cleanup(
+        root,
+        rendered.managed_material_setting_keys,
+    )
     desired_targets = set(rendered.files)
     cleanup_targets = {
         Path("materials") / path.name for path in (root / "materials").glob("*.xml.fdm_material")
@@ -188,23 +218,40 @@ def apply_rendered(
     previous_files = previous_manifest.get("files")
     if isinstance(previous_files, dict):
         cleanup_targets.update(Path(value) for value in previous_files if Path(value) not in desired_targets)
-    relative_targets = sorted(desired_targets | cleanup_targets, key=lambda item: item.as_posix())
+    quality_targets = set(quality_cleanup.replacements) | set(quality_cleanup.quarantines)
+    relative_targets = sorted(
+        desired_targets | cleanup_targets | quality_targets,
+        key=lambda item: item.as_posix(),
+    )
     for relative in relative_targets:
         _safe_target(root, relative)
     backup_path, existed = _backup(root, deployment_id, installation.installation_id, relative_targets)
     try:
         for relative, content in rendered.files.items():
             _atomic_write(_safe_target(root, relative), content)
+        for relative, content in quality_cleanup.replacements.items():
+            _atomic_write(_safe_target(root, relative), content)
+        quarantined_profiles: list[str] = []
+        for relative, content in quality_cleanup.quarantines.items():
+            quarantined_profiles.append(_quarantine_profile(installation, deployment_id, relative, content))
+            _safe_target(root, relative).unlink(missing_ok=True)
         for relative in cleanup_targets:
             _safe_target(root, relative).unlink(missing_ok=True)
         manifest = {
-            "schema_version": 2,
+            "schema_version": 3,
             "deployment_id": deployment_id,
             "library_checksum": profile_checksum,
             "installed_at": datetime.now(UTC).isoformat(),
             "cura_version": installation.version,
             "machine_id": rendered.machine.machine_id,
             "backup_path": str(backup_path),
+            "managed_material_setting_keys": sorted(rendered.managed_material_setting_keys),
+            "quality_profile_cleanup": {
+                "sanitized_profiles": len(quality_cleanup.replacements),
+                "repaired_profiles": quality_cleanup.repaired_profile_count,
+                "removed_material_settings": quality_cleanup.removed_setting_count,
+                "quarantined_profiles": len(quality_cleanup.quarantines),
+            },
             "files": {
                 PurePosixPath(relative).as_posix(): _sha256(content)
                 for relative, content in rendered.files.items()
@@ -224,6 +271,11 @@ def apply_rendered(
         "status": "installed",
         "managed_files": len(rendered.files),
         "backup_id": f"{deployment_id}/{installation.installation_id}",
+        "quality_profiles_sanitized": len(quality_cleanup.replacements),
+        "quality_profiles_repaired": quality_cleanup.repaired_profile_count,
+        "quality_profile_settings_removed": quality_cleanup.removed_setting_count,
+        "quality_profiles_quarantined": len(quality_cleanup.quarantines),
+        "quarantine_ids": quarantined_profiles,
         "warnings": rendered.warnings,
     }
 

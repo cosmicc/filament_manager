@@ -546,11 +546,15 @@ class MaterialSettingsInput(ApiModel):
                     )
         return value
 
-    @model_validator(mode="after")
-    def validate_fan_range(self) -> "MaterialSettingsInput":
-        if self.cooling_min_percent > self.cooling_max_percent:
-            raise ValueError("cooling minimum cannot exceed cooling maximum")
-        return self
+    @field_validator("cooling_max_percent")
+    @classmethod
+    def validate_fan_range(cls, value: Decimal, info: Any) -> Decimal:
+        """Attach an invalid fan range to the maximum-fan input itself."""
+
+        minimum = info.data.get("cooling_min_percent")
+        if isinstance(minimum, Decimal) and minimum > value:
+            raise ValueError("Maximum fan must be at least the minimum fan")
+        return value
 
 
 class ProfileCreate(MaterialSettingsInput):

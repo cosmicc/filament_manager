@@ -1,6 +1,6 @@
 /* This editor intentionally exports its form serializer and canonical typed-key set. */
 /* eslint-disable react-refresh/only-export-components */
-import { useState } from 'react'
+import { useId, useState } from 'react'
 import type { BuildPlate, CuraSettingCatalogItem, MaterialSettings } from '../api/types'
 import { compactNumber, inputNumber } from '../lib/format'
 import { EditorSection } from './EditorSection'
@@ -152,21 +152,32 @@ export function MaterialSettingsEditor({
   settings,
   baseSettings,
   overrideKeys = [],
+  validationErrors = {},
   catalog,
   plates,
 }: {
   settings?: MaterialSettings
   baseSettings?: MaterialSettings | null
   overrideKeys?: string[]
+  validationErrors?: Record<string, string[]>
   catalog: CuraSettingCatalogItem[]
   plates: BuildPlate[]
 }) {
+  const editorId = useId().replaceAll(':', '')
   const [resetKeys, setResetKeys] = useState<Set<string>>(() => new Set())
   const [liveOwnership, setLiveOwnership] = useState<Map<string, boolean>>(() => new Map())
   const customized = (key: string) => liveOwnership.get(key) ?? (overrideKeys.includes(key) && !resetKeys.has(key))
   const effectiveValue = (key: keyof MaterialSettings) => settings?.[key] ?? baseSettings?.[key]
   const effectiveExtensionValue = (key: string) => settings?.cura_extensions[key] ?? baseSettings?.cura_extensions[key]
   const extensionCatalog = catalog.filter((item) => item.editable && !typedCuraKeys.has(item.key))
+  const errorsFor = (key: string) => validationErrors[key] ?? []
+  const extensionErrorsFor = (key: string) => validationErrors[`cura_extensions.${key}`] ?? []
+  const errorId = (key: string) => `${editorId}-${key.replaceAll(/[^a-zA-Z0-9_-]/g, '-')}-error`
+  const fieldErrors = (key: string, messages = errorsFor(key)) => messages.length ? (
+    <div className="field-validation" id={errorId(key)} role="alert">
+      {messages.map((message) => <span key={message}>{message}</span>)}
+    </div>
+  ) : null
   const equivalent = (value: string | number | boolean | null | undefined, baseValue: string | number | boolean | null | undefined) => {
     if ((value == null || value === '') && (baseValue == null || baseValue === '')) return true
     if (typeof value === 'boolean' || typeof baseValue === 'boolean') return Boolean(value) === Boolean(baseValue)
@@ -293,7 +304,7 @@ export function MaterialSettingsEditor({
         <EditorSection key={group.title} title={group.title} description={group.description}>
           <div className="form-grid">
             {coreFields.filter((field) => group.keys.includes(field.key)).map((field) => (
-              <div className={`setting-field${customized(field.key) ? ' setting-field--customized' : ''}`} key={field.key}>
+              <div className={`setting-field${customized(field.key) ? ' setting-field--customized' : ''}${errorsFor(field.key).length ? ' setting-field--invalid' : ''}`} key={field.key}>
                 <label>
                   {field.label}{field.unit ? ` (${field.unit})` : ''}
                   <input
@@ -304,26 +315,30 @@ export function MaterialSettingsEditor({
                     required={field.required}
                     defaultValue={effectiveValue(field.key) == null ? field.defaultValue ?? '' : inputNumber(effectiveValue(field.key) as string | number | null, field.precision)}
                     data-exact-value={effectiveValue(field.key) == null ? field.defaultValue ?? '' : String(effectiveValue(field.key))}
+                    aria-invalid={errorsFor(field.key).length ? true : undefined}
+                    aria-describedby={errorsFor(field.key).length ? errorId(field.key) : undefined}
                     onChange={(event) => { event.currentTarget.dataset.changed = 'true'; markOwnership(field.key, event.currentTarget.value, baseSettings?.[field.key] as string | number | boolean | null | undefined) }}
                   />
                 </label>
+                {fieldErrors(field.key)}
                 {ownership(field.key, baseSettings?.[field.key] as string | number | boolean | null | undefined)}
               </div>
             ))}
             {group.id === 'cooling' ? (
-              <div className={`setting-field${customized('cooling_enabled') ? ' setting-field--customized' : ''}`}>
+              <div className={`setting-field${customized('cooling_enabled') ? ' setting-field--customized' : ''}${errorsFor('cooling_enabled').length ? ' setting-field--invalid' : ''}`}>
                 <label className="check-row">
-                  <input name="cooling_enabled" type="checkbox" defaultChecked={effectiveValue('cooling_enabled') == null ? true : Boolean(effectiveValue('cooling_enabled'))} onChange={(event) => markOwnership('cooling_enabled', event.currentTarget.checked, baseSettings?.cooling_enabled)} />
+                  <input name="cooling_enabled" type="checkbox" defaultChecked={effectiveValue('cooling_enabled') == null ? true : Boolean(effectiveValue('cooling_enabled'))} aria-invalid={errorsFor('cooling_enabled').length ? true : undefined} aria-describedby={errorsFor('cooling_enabled').length ? errorId('cooling_enabled') : undefined} onChange={(event) => markOwnership('cooling_enabled', event.currentTarget.checked, baseSettings?.cooling_enabled)} />
                   <span><strong>Enable print cooling</strong><small>Stored with the current material settings.</small></span>
                 </label>
+                {fieldErrors('cooling_enabled')}
                 {ownership('cooling_enabled', baseSettings?.cooling_enabled)}
               </div>
             ) : null}
             {extensionCatalog.filter((item) => curaSettingGroup(item.key) === group.id).map((item) => (
-              <div className={`setting-field${customized(item.key) ? ' setting-field--customized' : ''}`} key={item.key}>
+              <div className={`setting-field${customized(item.key) ? ' setting-field--customized' : ''}${extensionErrorsFor(item.key).length ? ' setting-field--invalid' : ''}`} key={item.key}>
                 {item.value_type === 'boolean' ? (
                   <label className="check-row">
-                    <input name={`cura__${item.key}`} type="checkbox" defaultChecked={Boolean(effectiveExtensionValue(item.key))} onChange={(event) => markOwnership(item.key, event.currentTarget.checked, baseSettings?.cura_extensions[item.key])} />
+                    <input name={`cura__${item.key}`} type="checkbox" defaultChecked={Boolean(effectiveExtensionValue(item.key))} aria-invalid={extensionErrorsFor(item.key).length ? true : undefined} aria-describedby={extensionErrorsFor(item.key).length ? errorId(`cura_extensions.${item.key}`) : undefined} onChange={(event) => markOwnership(item.key, event.currentTarget.checked, baseSettings?.cura_extensions[item.key])} />
                     <span><strong>{item.label}</strong><small>{item.key}</small></span>
                   </label>
                 ) : (
@@ -335,19 +350,22 @@ export function MaterialSettingsEditor({
                       step={item.value_type === 'number' ? 10 ** -extensionPrecision(item) : undefined}
                       defaultValue={effectiveExtensionValue(item.key) == null ? '' : item.value_type === 'number' ? inputNumber(effectiveExtensionValue(item.key) as string | number, extensionPrecision(item)) : String(effectiveExtensionValue(item.key))}
                       data-exact-value={item.value_type === 'number' ? String(effectiveExtensionValue(item.key) ?? '') : undefined}
+                      aria-invalid={extensionErrorsFor(item.key).length ? true : undefined}
+                      aria-describedby={extensionErrorsFor(item.key).length ? errorId(`cura_extensions.${item.key}`) : undefined}
                       onChange={(event) => { if (item.value_type === 'number') event.currentTarget.dataset.changed = 'true'; markOwnership(item.key, event.currentTarget.value, baseSettings?.cura_extensions[item.key]) }}
                     />
                     <small className="field-help">{item.key}</small>
                   </label>
                 )}
+                {fieldErrors(`cura_extensions.${item.key}`, extensionErrorsFor(item.key))}
                 {ownership(item.key, baseSettings?.cura_extensions[item.key])}
               </div>
             ))}
             {group.id === 'build_plate' ? (
-              <div className={`setting-field${customized('preferred_build_plate_surface_id') ? ' setting-field--customized' : ''}`}>
+              <div className={`setting-field${customized('preferred_build_plate_surface_id') ? ' setting-field--customized' : ''}${errorsFor('preferred_build_plate_surface_id').length ? ' setting-field--invalid' : ''}`}>
                 <label>
                   Preferred plate side
-                  <select name="preferred_build_plate_surface_id" defaultValue={String(effectiveValue('preferred_build_plate_surface_id') ?? '')} onChange={(event) => markOwnership('preferred_build_plate_surface_id', event.currentTarget.value, baseSettings?.preferred_build_plate_surface_id)}>
+                  <select name="preferred_build_plate_surface_id" defaultValue={String(effectiveValue('preferred_build_plate_surface_id') ?? '')} aria-invalid={errorsFor('preferred_build_plate_surface_id').length ? true : undefined} aria-describedby={errorsFor('preferred_build_plate_surface_id').length ? errorId('preferred_build_plate_surface_id') : undefined} onChange={(event) => markOwnership('preferred_build_plate_surface_id', event.currentTarget.value, baseSettings?.preferred_build_plate_surface_id)}>
                     <option value="">No preference</option>
                     {plates.flatMap((plate) => plate.surfaces.map((surface) => (
                       <option key={surface.id} value={surface.id}>
@@ -356,6 +374,7 @@ export function MaterialSettingsEditor({
                     )))}
                   </select>
                 </label>
+                {fieldErrors('preferred_build_plate_surface_id')}
                 {ownership('preferred_build_plate_surface_id', baseSettings?.preferred_build_plate_surface_id)}
               </div>
             ) : null}

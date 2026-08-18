@@ -184,6 +184,54 @@ async def test_direct_template_save_updates_linked_product_profile(
 
             templates = await client.get("/api/v1/profiles/templates?include_inactive=true")
             current_template = next(item for item in templates.json() if item["id"] == template["id"])
+            invalid_save = await client.put(
+                f"/api/v1/profiles/templates/{template['id']}/settings",
+                json={
+                    "expected_template_version": current_template["record_version"],
+                    "settings": {
+                        "extruder_temp_c": "250",
+                        "bed_temp_c": "55",
+                        "flow_percent": "0",
+                        "cooling_enabled": True,
+                        "cooling_min_percent": "101",
+                        "cooling_max_percent": "50",
+                        "support_overhang_angle_deg": "91",
+                        "filament_density_g_cm3": "1.20",
+                        "cura_extensions": {"klipper_smooth_time_factor": "0.5"},
+                    },
+                },
+            )
+            assert invalid_save.status_code == 422, invalid_save.text
+            invalid_body = invalid_save.json()
+            assert invalid_body["code"] == "validation_error"
+            errors_by_field = {item["field"]: item["message"] for item in invalid_body["errors"]}
+            assert "settings.flow_percent" in errors_by_field
+            assert "settings.cooling_min_percent" in errors_by_field
+            assert "settings.support_overhang_angle_deg" in errors_by_field
+            assert "settings.cura_extensions.klipper_smooth_time_factor" in errors_by_field
+            assert all("input" not in item for item in invalid_body["errors"])
+            prefixed_extension_save = await client.put(
+                f"/api/v1/profiles/templates/{template['id']}/settings",
+                json={
+                    "expected_template_version": current_template["record_version"],
+                    "settings": {
+                        "extruder_temp_c": "250",
+                        "bed_temp_c": "55",
+                        "flow_percent": "100",
+                        "cooling_enabled": True,
+                        "cooling_min_percent": "20",
+                        "cooling_max_percent": "50",
+                        "filament_density_g_cm3": "1.20",
+                        "cura_extensions": {"xy_offset_layer_0": "not-a-number"},
+                    },
+                },
+            )
+            assert prefixed_extension_save.status_code == 422, prefixed_extension_save.text
+            prefixed_errors = {
+                item["field"]: item["message"] for item in prefixed_extension_save.json()["errors"]
+            }
+            assert "settings.cura_extensions.xy_offset_layer_0" in prefixed_errors
+            assert "settings.cura_extensions.xy_offset" not in prefixed_errors
             direct_save = await client.put(
                 f"/api/v1/profiles/templates/{template['id']}/settings",
                 json={
@@ -236,8 +284,9 @@ async def test_direct_template_save_updates_linked_product_profile(
             assert profile.filament_density_g_cm3 == Decimal("1.21000")
             assert profile.setting_overrides == {"filament_density_g_cm3": "1.21"}
             library = await build_cura_library(session)
-            assert library["schema_version"] == 2
+            assert library["schema_version"] == 3
             assert library["hide_bundled_materials"] is True
+            assert "speed_print" in library["managed_material_setting_keys"]
             materials = library["materials"]
             assert isinstance(materials, list) and len(materials) == 3
             template_material = next(

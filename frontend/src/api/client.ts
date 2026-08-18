@@ -1,12 +1,34 @@
+export interface ApiValidationError {
+  field: string
+  message: string
+  type: string
+}
+
 export class ApiClientError extends Error {
   constructor(
     public status: number,
     public code: string,
     message: string,
+    public validationErrors: ApiValidationError[] = [],
   ) {
     super(message)
     this.name = 'ApiClientError'
   }
+}
+
+export function validationMessagesFor(
+  error: unknown,
+  prefix = '',
+): Record<string, string[]> {
+  if (!(error instanceof ApiClientError) || error.code !== 'validation_error') return {}
+  const messages: Record<string, string[]> = {}
+  for (const issue of error.validationErrors) {
+    const field = prefix && issue.field.startsWith(`${prefix}.`)
+      ? issue.field.slice(prefix.length + 1)
+      : issue.field
+    messages[field] = [...(messages[field] ?? []), issue.message]
+  }
+  return messages
 }
 
 function cookieValue(name: string): string | undefined {
@@ -51,6 +73,17 @@ export async function apiFetch<T>(path: string, init: RequestInit = {}): Promise
   if (response.status === 204) return undefined as T
   const body = await response.json().catch(() => null)
   if (!response.ok) {
+    const validationErrors: ApiValidationError[] = Array.isArray(body?.errors)
+      ? body.errors
+        .filter((item: unknown): item is Record<string, unknown> => Boolean(item) && typeof item === 'object')
+        .filter((item: Record<string, unknown>) => typeof item.field === 'string' && typeof item.message === 'string')
+        .slice(0, 100)
+        .map((item: Record<string, unknown>) => ({
+          field: String(item.field).slice(0, 255),
+          message: String(item.message).slice(0, 300),
+          type: typeof item.type === 'string' ? item.type.slice(0, 96) : 'value_error',
+        }))
+      : []
     console.error('[Filament Manager API] Request rejected', {
       method,
       path,
@@ -63,6 +96,7 @@ export async function apiFetch<T>(path: string, init: RequestInit = {}): Promise
       response.status,
       body?.code ?? 'request_failed',
       body?.message ?? 'The request could not be completed',
+      validationErrors,
     )
   }
   return body as T

@@ -64,7 +64,7 @@ Quarterly, compare spool/product counts, effective weights, profile versions, pl
 
 Confirm `FILAMENT_MANAGER_DB_*` and `POSTGRES_*` stack variables assemble the intended non-SSL URL for `filament_user`, then inspect the web or worker logs for the automatic-migration result. Do not grant access to the `spoolman` database. Run `alembic current` and `alembic upgrade head` only with the application services stopped when following the recovery procedure below.
 
-The current 0.2.3 schema is `e1f2a3b4c567`. If Diagnostics reports an older revision, first confirm web and worker use the same current image and let automatic migration finish. Never downgrade or manually edit `alembic_version`; use the documented stopped-service recovery procedure if an upgrade genuinely failed.
+The current 0.2.4 schema remains `e1f2a3b4c567`. If Diagnostics reports an older revision, first confirm web and worker use the same current image and let automatic migration finish. Never downgrade or manually edit `alembic_version`; use the documented stopped-service recovery procedure if an upgrade genuinely failed.
 
 ### Web or worker tasks repeatedly restart after startup
 
@@ -152,7 +152,7 @@ Reload the filament detail and confirm whether that specific key is marked custo
 
 ### A workstation is paired but Cura profiles never appear
 
-Check the workstation's agent service log first. If it reports `CERTIFICATE_VERIFY_FAILED` even though the Filament Manager private CA is trusted by the operating system, upgrade the workstation agent to the current 0.2.3 package. The corrected agent uses the verified operating-system TLS context for pairing and every service request. Do not disable certificate verification. After restart, confirm that Diagnostics shows a current contact time, then reopen the takeover mapping dialog.
+Check the workstation's agent service log first. If it reports `CERTIFICATE_VERIFY_FAILED` even though the Filament Manager private CA is trusted by the operating system, upgrade the workstation agent to the current 0.2.4 package. The corrected agent uses the verified operating-system TLS context for pairing and every service request. Do not disable certificate verification. After restart, confirm that Diagnostics shows a current contact time, then reopen the takeover mapping dialog.
 
 ### Cura synchronization fails during file replacement
 

@@ -1,7 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { FileInput, GitCompareArrows, Library, Pencil, Plus } from 'lucide-react'
 import { type FormEvent, useState } from 'react'
-import { apiFetch } from '../api/client'
+import { apiFetch, validationMessagesFor } from '../api/client'
 import type {
   BuildPlate,
   CuraSettingCatalogItem,
@@ -69,6 +69,16 @@ export default function TemplatesPage() {
     onError: (error: Error) => setMessage(error.message),
   })
   const sourceSettings = editSource?.revisions[0]?.settings
+  const allValidationErrors = validationMessagesFor(save.error)
+  const settingsValidationErrors = validationMessagesFor(save.error, 'settings')
+  const identityError = (field: string) => allValidationErrors[field] ?? []
+  const identityErrorId = (field: string) => `template-${field}-error`
+  const identityFieldError = (field: string) => identityError(field).length ? (
+    <span className="field-validation" id={identityErrorId(field)} role="alert">
+      {identityError(field).map((error) => <span key={error}>{error}</span>)}
+    </span>
+  ) : null
+  const hasValidationErrors = Object.keys(allValidationErrors).length > 0
   const loading = templates.isLoading || printers.isLoading || plates.isLoading || catalog.isLoading
 
   const openEditor = (template: MaterialTemplate) => {
@@ -103,15 +113,15 @@ export default function TemplatesPage() {
       <form id="edit-material-template" className="editor-form" onSubmit={submit} key={editSource?.revisions[0]?.id ?? 'new-template'}>
         {!editSource ? <EditorSection title="Template identity" description="Scope the reusable starting point to a printer, nozzle, and filament diameter.">
           <div className="form-grid">
-            <label>Material type<input name="material_type" list="common-material-types" placeholder="PLA, PCTPE, Nylon 645…" required autoFocus /><small className="field-help">Cura name: Template + material type; brand: Template.</small><datalist id="common-material-types">{['PLA', 'PLA+', 'PETG', 'ASA', 'TPU', 'PCTPE', 'Nylon 645'].map((material) => <option key={material} value={material} />)}</datalist></label>
-            <label>Printer<select name="printer_id" required>{printers.data?.map((printer) => <option key={printer.id} value={printer.id}>{printer.name}</option>)}</select></label>
-            <label>Nozzle diameter<input name="nozzle_diameter_mm" type="number" min="0.1" step="0.1" defaultValue={inputNumber(printers.data?.[0]?.nozzle_diameter_mm ?? '0.4', 1)} required /></label>
-            <label>Filament diameter<input name="filament_diameter_mm" type="number" min="0.1" step="0.01" defaultValue="1.75" required /></label>
-            <label className="form-grid__wide">Description<textarea name="description" rows={2} placeholder="Purpose, behavior, and calibration notes" /></label>
+            <label>Material type<input name="material_type" list="common-material-types" placeholder="PLA, PCTPE, Nylon 645…" required autoFocus aria-invalid={identityError('material_type').length ? true : undefined} aria-describedby={identityError('material_type').length ? identityErrorId('material_type') : undefined} /><small className="field-help">Cura name: Template + material type; brand: Template.</small>{identityFieldError('material_type')}<datalist id="common-material-types">{['PLA', 'PLA+', 'PETG', 'ASA', 'TPU', 'PCTPE', 'Nylon 645'].map((material) => <option key={material} value={material} />)}</datalist></label>
+            <label>Printer<select name="printer_id" required aria-invalid={identityError('printer_id').length ? true : undefined} aria-describedby={identityError('printer_id').length ? identityErrorId('printer_id') : undefined}>{printers.data?.map((printer) => <option key={printer.id} value={printer.id}>{printer.name}</option>)}</select>{identityFieldError('printer_id')}</label>
+            <label>Nozzle diameter<input name="nozzle_diameter_mm" type="number" min="0.1" step="0.1" defaultValue={inputNumber(printers.data?.[0]?.nozzle_diameter_mm ?? '0.4', 1)} required aria-invalid={identityError('nozzle_diameter_mm').length ? true : undefined} aria-describedby={identityError('nozzle_diameter_mm').length ? identityErrorId('nozzle_diameter_mm') : undefined} />{identityFieldError('nozzle_diameter_mm')}</label>
+            <label>Filament diameter<input name="filament_diameter_mm" type="number" min="0.1" step="0.01" defaultValue="1.75" required aria-invalid={identityError('filament_diameter_mm').length ? true : undefined} aria-describedby={identityError('filament_diameter_mm').length ? identityErrorId('filament_diameter_mm') : undefined} />{identityFieldError('filament_diameter_mm')}</label>
+            <label className="form-grid__wide">Description<textarea name="description" rows={2} placeholder="Purpose, behavior, and calibration notes" aria-invalid={identityError('description').length ? true : undefined} aria-describedby={identityError('description').length ? identityErrorId('description') : undefined} />{identityFieldError('description')}</label>
           </div>
         </EditorSection> : null}
-        <MaterialSettingsEditor settings={sourceSettings} catalog={catalog.data ?? []} plates={plates.data ?? []} />
-        {save.error ? <p className="form-error" role="alert">{save.error.message}</p> : null}
+        <MaterialSettingsEditor settings={sourceSettings} validationErrors={settingsValidationErrors} catalog={catalog.data ?? []} plates={plates.data ?? []} />
+        {save.error ? <p className="form-error" role="alert">{hasValidationErrors ? 'Correct the highlighted values and save again.' : save.error.message}</p> : null}
       </form>
     </Modal> : null}
   </div>
