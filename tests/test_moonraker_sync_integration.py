@@ -33,7 +33,7 @@ from filament_manager.models.operations import AuditEvent
 from filament_manager.models.printing import PrintJob, PrintMaterialSegment
 from filament_manager.services import events
 from filament_manager.services.moonraker_sync import synchronize_active_spool
-from filament_manager.services.print_history import synchronize_live_print
+from filament_manager.services.print_history import synchronize_live_print, synchronize_print_history
 from filament_manager.services.spool_preflight import build_spool_preflight_catalog
 from filament_manager.workers import dispatcher
 
@@ -343,6 +343,26 @@ async def test_active_spool_selection_and_clear_follow_moonraker(
                         size=96,
                     )
 
+                async def history_jobs(
+                    self, *, start: int = 0, limit: int = 100, since: float | None = None
+                ) -> tuple[dict[str, object], ...]:
+                    del limit, since
+                    if start:
+                        return ()
+                    return (
+                        {
+                            "job_id": "repeatable-history-id",
+                            "filename": "repeatable.gcode",
+                            "status": "completed",
+                            "start_time": 1_777_000_000,
+                            "end_time": 1_777_000_060,
+                            "filament_used": 200,
+                            "print_duration": 50,
+                            "total_duration": 60,
+                            "metadata": {},
+                        },
+                    )
+
             preflight = MoonrakerSpoolPreflightState(
                 restored=True,
                 initialized=True,
@@ -412,6 +432,14 @@ async def test_active_spool_selection_and_clear_follow_moonraker(
             assert refreshed_second.remaining_mass_effective_g == (
                 Decimal("900") - repeat_segment.actual_filament_weight_g
             ).quantize(Decimal("0.001"))
+
+            await synchronize_print_history(
+                session,
+                printer=printer,
+                client=client,  # type: ignore[arg-type]
+                correlation_id="history-after-live-completion",
+            )
+            assert printer.last_print_history_sync_at is not None
 
             material_change_start = MoonrakerPrintState(
                 filename="material-change.gcode",

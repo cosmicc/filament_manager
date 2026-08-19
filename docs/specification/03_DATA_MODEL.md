@@ -87,6 +87,14 @@ Immutable provenance for one Administrator-confirmed workstation source-to-exist
 
 Idempotently records one content checksum reported for a known managed Cura GUID and the current template/profile snapshot it created. Unknown GUIDs and new Cura materials never create canonical records.
 
+### cura_recovery_snapshot
+
+Immutable, sanitized operational Cura configuration captured only while Cura is closed. It is scoped to one workstation agent, discovered installation identity, and exact Cura version. The payload is checksummed and bounded and contains allowlisted printer/extruder definitions, user definitions and variants, quality/profile state, setting visibility, safe preferences, and semantic plugin names/versions. It never stores workstation paths, account sessions, credentials, network endpoints, or plugin executable files. Retention keeps the ten newest distinct snapshots for each workstation installation and Cura version; a reset or large deletion is recorded as blocked state without replacing the last known-good snapshot.
+
+### cura_recovery_restore
+
+One confirmed Administrator recovery request copied from an immutable snapshot. It is leased only to the originating agent and matching reported Cura version, retains a bounded success/failure result, and never exposes the stored file payload to the browser. The workstation creates its own rollback backup before applying the restore.
+
 ### calibration_session
 
 Tracks a wizard run for one filament, printer, nozzle, and optional plate. Contains ordered step records and final profile version.

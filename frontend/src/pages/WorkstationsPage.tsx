@@ -1,9 +1,10 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { Check, Clipboard, MonitorCog, Power, PowerOff, RefreshCw, ShieldCheck } from 'lucide-react'
+import { Check, Clipboard, DatabaseBackup, MonitorCog, Power, PowerOff, RefreshCw, ShieldCheck } from 'lucide-react'
 import { useMemo, useState } from 'react'
 import { apiFetch } from '../api/client'
 import type { CuraMaterialReport, MaterialTemplate, Printer, WorkstationAgent, WorkstationPairingCode } from '../api/types'
 import { EditorSection } from '../components/EditorSection'
+import { CuraRecoveryModal } from '../components/CuraRecoveryModal'
 import { EmptyState } from '../components/EmptyState'
 import { LoadingState } from '../components/LoadingState'
 import { Modal } from '../components/Modal'
@@ -29,6 +30,15 @@ function sourceDetails(material: CuraMaterialReport) {
   return `${material.brand} · ${material.material_type} · ${Object.keys(material.settings).length} tracked settings`
 }
 
+function recoveryLabel(status: string | undefined) {
+  if (status === 'ready') return 'Recovery ready'
+  if (status === 'capture_blocked') return 'Last good recovery preserved'
+  if (status === 'restore_pending') return 'Waiting for Cura to close'
+  if (status === 'restoring') return 'Restoring Cura'
+  if (status === 'restore_failed') return 'Recovery failed'
+  return 'Waiting for first recovery point'
+}
+
 export default function WorkstationsPage() {
   const { user } = useAuth()
   const queryClient = useQueryClient()
@@ -37,6 +47,7 @@ export default function WorkstationsPage() {
   const [mappings, setMappings] = useState<Record<string, string>>({})
   const [takeoverAgent, setTakeoverAgent] = useState<WorkstationAgent | null>(null)
   const [takeoverStep, setTakeoverStep] = useState<'mapping' | 'review'>('mapping')
+  const [recoveryAgent, setRecoveryAgent] = useState<WorkstationAgent | null>(null)
   const [message, setMessage] = useState('')
   const agents = useQuery({ queryKey: ['workstation-agents'], queryFn: () => apiFetch<WorkstationAgent[]>('/workstation-agents'), refetchInterval: 15_000 })
   const templates = useQuery({ queryKey: ['material-templates'], queryFn: () => apiFetch<MaterialTemplate[]>('/profiles/templates?include_inactive=true'), refetchInterval: 15_000 })
@@ -96,7 +107,7 @@ export default function WorkstationsPage() {
   }
 
   return <div>
-    <PageHeader eyebrow="Cura automation" title="Cura workstations" description="Complete one reviewed takeover, then Filament Manager keeps Cura synchronized automatically. Changes to known managed materials save directly; new materials are added in Filament Manager." actions={user?.role === 'administrator' ? <button className="button button--primary" onClick={() => createPairing.mutate()} disabled={createPairing.isPending}><ShieldCheck size={17} /> Create pairing code</button> : undefined} />
+    <PageHeader eyebrow="Cura automation" title="Cura workstations" description="Keep managed materials synchronized and retain safe, versioned Cura printer and settings recovery points. Changes to known managed materials save directly; new materials are added in Filament Manager." actions={user?.role === 'administrator' ? <button className="button button--primary" onClick={() => createPairing.mutate()} disabled={createPairing.isPending}><ShieldCheck size={17} /> Create pairing code</button> : undefined} />
     {message && <div className="deployment-note" role="status">{message}</div>}
     {pairing && <section className="pairing-card card" aria-live="polite">
       <div><h2>Pairing code</h2><p>Valid until {dateTime(pairing.expires_at)}. It can enroll one workstation and is never shown again.</p></div>
@@ -111,6 +122,12 @@ export default function WorkstationsPage() {
         <header><span className="workstation-card__icon"><MonitorCog size={22} /></span><div><h2>{agent.display_name}</h2><p>{platformLabel(agent.platform)} · {agent.hostname} · Agent {agent.agent_version}</p></div><StatusPill status={agent.enabled ? 'active' : 'disabled'} /></header>
         <dl className="definition-list"><div><dt>Cura installations</dt><dd>{agent.cura_installations.length}</dd></div><div><dt>Material library</dt><dd>{agent.cura_management_enabled ? 'Automatic synchronization active' : 'Awaiting one-time takeover'}</dd></div><div><dt>Existing material profiles</dt><dd>{String(agent.capabilities.unmanaged_material_count ?? 'Unknown')}</dd></div><div><dt>Saved print profiles</dt><dd>{String(agent.capabilities.unmanaged_print_profile_count ?? 'Unknown')}</dd></div><div><dt>Agent ID</dt><dd>{agent.agent_code}</dd></div></dl>
         {agent.cura_installations.map((installation) => <div className="cura-installation" key={installation.installation_id}><strong>Cura {installation.version}</strong><small>{installation.channel} · Settings v{installation.setting_version ?? 'unknown'}</small>{installation.machines.length ? <span>{installation.machines.map((machine) => `${machine.display_name}${machine.nozzle_diameter_mm ? ` · ${compactNumber(machine.nozzle_diameter_mm, 1)} mm` : ''}`).join(', ')}</span> : <span>No machine instances detected</span>}</div>)}
+        <section className="cura-recovery-summary" aria-label={`Cura recovery for ${agent.display_name}`}>
+          <div><span className="workstation-card__icon"><DatabaseBackup size={19} /></span><span><strong>Cura recovery</strong><small>{agent.last_recovery_snapshot_at ? `Latest snapshot ${dateTime(agent.last_recovery_snapshot_at)}` : 'No recovery point captured yet'}</small></span><StatusPill status={agent.cura_recovery_status ?? 'not_ready'} label={recoveryLabel(agent.cura_recovery_status)} /></div>
+          {agent.cura_recovery_message ? <p className={agent.cura_recovery_status === 'restore_failed' ? 'form-error' : 'muted'}>{agent.cura_recovery_message}</p> : null}
+          {agent.capabilities.cura_recovery_snapshots !== true ? <p className="warning-note">Upgrade this workstation agent to enable automatic printer and settings recovery.</p> : null}
+          {user?.role === 'administrator' ? <button className="button" type="button" disabled={agent.capabilities.cura_recovery_snapshots !== true} onClick={() => setRecoveryAgent(agent)}><DatabaseBackup size={16} /> Recovery points</button> : null}
+        </section>
         {!agent.cura_management_enabled ? <section className="cura-preservation" aria-label={`Cura sources reported by ${agent.display_name}`}>
           <div><h3>Import Cura profiles into templates</h3><p className="muted">Choose each Cura source from a list and map it to one existing template. Sources you leave unmapped will be discarded only after backup.</p></div>
           <dl className="definition-list definition-list--compact"><div><dt>Selectable Cura sources</dt><dd>{agent.cura_materials.length}</dd></div><div><dt>Available templates</dt><dd>{activeTemplates.length}</dd></div></dl>
@@ -147,5 +164,6 @@ export default function WorkstationsPage() {
       {takeover.error ? <p className="form-error" role="alert">{takeover.error.message}</p> : null}
       </>}
     </Modal> : null}
+    {recoveryAgent ? <CuraRecoveryModal agent={recoveryAgent} onClose={() => setRecoveryAgent(null)} onQueued={setMessage} /> : null}
   </div>
 }

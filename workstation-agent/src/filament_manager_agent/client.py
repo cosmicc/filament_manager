@@ -6,7 +6,7 @@ from uuid import UUID
 
 import httpx
 
-from .models import AgentConfig, DeploymentClaim
+from .models import AgentConfig, DeploymentClaim, RecoveryRestoreClaim
 
 
 def _http_client(*, timeout: int) -> httpx.Client:
@@ -53,6 +53,55 @@ class AgentClient:
             response.raise_for_status()
         data = response.json()
         return DeploymentClaim.model_validate(data) if data is not None else None
+
+    def upload_recovery_snapshot(self, payload: dict[str, Any]) -> dict[str, Any]:
+        """Upload one already-sanitized, content-addressed Cura recovery point."""
+
+        with _http_client(timeout=30) as client:
+            response = client.post(
+                f"{self._base_url}/api/v1/workstation-agent/cura-recovery-snapshots",
+                headers=self._headers(),
+                json=payload,
+            )
+            response.raise_for_status()
+        value = response.json()
+        if not isinstance(value, dict):
+            raise RuntimeError("The recovery snapshot server returned an invalid response.")
+        return value
+
+    def claim_recovery_restore(self) -> RecoveryRestoreClaim | None:
+        """Lease one pending recovery operation before ordinary library work."""
+
+        with _http_client(timeout=30) as client:
+            response = client.post(
+                f"{self._base_url}/api/v1/workstation-agent/cura-recovery-restores/claim",
+                headers=self._headers(),
+            )
+            response.raise_for_status()
+        data = response.json()
+        return RecoveryRestoreClaim.model_validate(data) if data is not None else None
+
+    def complete_recovery_restore(
+        self,
+        restore_id: UUID,
+        *,
+        outcome: str,
+        result: dict[str, Any] | None = None,
+        retry_after_seconds: int = 60,
+    ) -> None:
+        """Acknowledge recovery using only the server's bounded result contract."""
+
+        with _http_client(timeout=30) as client:
+            response = client.post(
+                f"{self._base_url}/api/v1/workstation-agent/cura-recovery-restores/{restore_id}/complete",
+                headers=self._headers(),
+                json={
+                    "outcome": outcome,
+                    "result": result,
+                    "retry_after_seconds": retry_after_seconds,
+                },
+            )
+            response.raise_for_status()
 
     def complete(
         self,

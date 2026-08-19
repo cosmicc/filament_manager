@@ -365,6 +365,19 @@ svg { flex: 0 0 auto; }
 .cura-installation span { margin-top: 4px; color: var(--text-muted); font-size: 12px; }
 .cura-preservation { display: grid; gap: 10px; border-top: 1px solid var(--border); padding-top: 14px; }
 .cura-preservation h3 { margin-bottom: 4px; font-size: 15px; }
+.cura-recovery-summary { display: grid; gap: 10px; border-top: 1px solid var(--border); padding-top: 14px; }
+.cura-recovery-summary > div { display: grid; grid-template-columns: 36px minmax(0, 1fr) auto; align-items: center; gap: 10px; }
+.cura-recovery-summary > div > span:nth-child(2) { min-width: 0; display: flex; flex-direction: column; }
+.cura-recovery-summary small { color: var(--text-muted); }
+.cura-recovery-summary > .button { justify-self: start; }
+.cura-recovery-list { display: grid; gap: 9px; }
+.cura-recovery-item { width: 100%; min-height: 66px; display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 14px; border: 1px solid var(--border); border-radius: var(--radius-sm); padding: 11px 12px; color: var(--text); background: var(--surface); text-align: left; }
+.cura-recovery-item:hover { border-color: var(--blue-600); background: var(--blue-50); }
+.cura-recovery-item--selected { border-color: var(--blue-600); box-shadow: 0 0 0 2px color-mix(in srgb, var(--blue-600) 18%, transparent); background: var(--blue-50); }
+.cura-recovery-item > span { display: flex; flex-direction: column; }
+.cura-recovery-item small { color: var(--text-muted); }
+.cura-recovery-item__counts { align-items: flex-end; }
+.cura-recovery-steps { display: grid; gap: 8px; margin: 0 0 0 20px; color: var(--text-muted); }
 .cura-material-list { display: grid; gap: 8px; }
 .cura-material-item { display: flex; justify-content: space-between; align-items: center; gap: 12px; border: 1px solid var(--border); border-radius: var(--radius-sm); padding: 10px 12px; background: var(--surface-muted); }
 .cura-material-item > div:first-child { display: grid; gap: 3px; min-width: 0; }
@@ -524,6 +537,8 @@ textarea { resize: vertical; }
   .plate-surfaces, .printer-card__details { grid-template-columns: 1fr; }
   .import-upload, .import-result__heading { align-items: stretch; grid-template-columns: 1fr; flex-direction: column; }
   .workstation-grid { grid-template-columns: 1fr; }
+  .cura-recovery-item { grid-template-columns: 1fr; }
+  .cura-recovery-item__counts { align-items: flex-start; }
   .diagnostic-check-grid { grid-template-columns: 1fr; }
   .cura-material-item { align-items: stretch; flex-direction: column; }
   .cura-material-item__status { justify-content: space-between; }

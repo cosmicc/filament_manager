@@ -17,6 +17,7 @@ from .quality_profiles import plan_quality_profile_cleanup, quality_profiles_are
 from .render import RenderedDeployment
 
 MANIFEST_PATH = Path(".filament-manager") / "manifest.json"
+DEPLOYMENT_RENDERER_REVISION = 4
 
 
 def _sha256(data: bytes) -> str:
@@ -78,7 +79,11 @@ def _manifest(root: Path) -> dict[str, Any] | None:
 
 def _already_current(root: Path, checksum: str) -> bool:
     manifest = _manifest(root)
-    if not manifest or manifest.get("library_checksum") != checksum:
+    if (
+        not manifest
+        or manifest.get("library_checksum") != checksum
+        or manifest.get("renderer_revision") != DEPLOYMENT_RENDERER_REVISION
+    ):
         return False
     files = manifest.get("files")
     if not isinstance(files, dict):
@@ -239,6 +244,7 @@ def apply_rendered(
             _safe_target(root, relative).unlink(missing_ok=True)
         manifest = {
             "schema_version": 3,
+            "renderer_revision": DEPLOYMENT_RENDERER_REVISION,
             "deployment_id": deployment_id,
             "library_checksum": profile_checksum,
             "installed_at": datetime.now(UTC).isoformat(),

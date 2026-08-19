@@ -13,7 +13,7 @@ PostgreSQL is the canonical data store. A distinct Spoolman service remains the 
 - Difference-only comparison of two to four current profiles/templates with printer/nozzle scope warnings and exact-profile print success rates
 - Simple new-spool entry from filament amount plus optional full scale weight, automatic empty-spool calculation, correction editors, safe delete-or-archive behavior, and later gross-weight measurements with variance confirmation
 - Immutable audit history and transactional projection outbox
-- Immediate Spoolman REST projection plus one-minute complete convergence and usage reconciliation, including Filament Manager-owned free-text bucket locations, plus Moonraker control clients
+- Immediate Spoolman REST projection plus one-minute complete convergence and usage reconciliation, including Filament Manager-owned free-text bucket locations, plus Moonraker control clients with active-spool polling and retry inside one minute
 - Exact completed-print counts per physical nozzle, build-plate side, and each distinct spool used by a print
 - Guarded direct-Spoolman selection, automatic physical-spool drift repair, and P-number build-plate synchronization with a live saved-mesh selector, including manual Side B setup followed by exact mesh discovery (`P4`/`P4b`)
 - Cura-to-Fluidd spool preflight with bounded G-code/profile inspection, optional fail-closed blocking, strict current exact-profile print choices, broader safe manual-load choices, and Spoolman updates only at completed unload/load boundaries
@@ -21,7 +21,7 @@ PostgreSQL is the canonical data store. A distinct Spoolman service remains the 
 - Automatic 5-minute Moonraker/Klipper printer information discovery with editable manual nozzle, hardware, and build-volume metadata
 - Seven-step calibration workflow with X/Y/Z, hole, shaft, wall/flow, material-shrinkage, and non-applying printer-geometry recommendations
 - Configurable build-plate cleaning/mesh reminders plus a persistent operator notification center
-- Outbound-only Cura workstation agents with clearly identified fresh-install/upgrade paths and uninstallers, an explicit map-then-review source-to-existing-template takeover, direct intake of edits to known managed materials, and authoritative synchronization on Arch Linux and Windows 11 with backup, custom-profile material-key cleanup, corrupt-profile quarantine, drift repair, bundled-material hiding, and rollback
+- Outbound-only Cura workstation agents with clearly identified fresh-install/upgrade paths and uninstallers, an explicit map-then-review source-to-existing-template takeover, direct intake of edits to known managed materials, authoritative synchronization including visible filler/finish descriptions and the Material Settings plugin selection, and ten versioned safe Cura recovery points per installation on Arch Linux and Windows 11
 - Workshop Navy light and dark web interface with browser-local theme selection under Settings and the running version in the application shell
 - Health, readiness, and Prometheus metrics endpoints
 - A dedicated Diagnostics page with connection, synchronization, worker, queue, recent-error, running/latest-version, read-only recovery-validation, safe projection-rebuild controls, and a sanitized plain-text log download

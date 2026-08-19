@@ -28,11 +28,11 @@ from filament_manager.models.operations import (
     ProjectionState,
     WorkerHeartbeat,
 )
-from filament_manager.models.workstations import CuraDeployment, WorkstationAgent
+from filament_manager.models.workstations import CuraDeployment, CuraRecoveryRestore, WorkstationAgent
 from filament_manager.services.cura_library import build_cura_library, queue_cura_library
 from filament_manager.services.events import add_audit_event, add_outbox_job
 
-EXPECTED_SCHEMA_VERSION = "e1f2a3b4c567"
+EXPECTED_SCHEMA_VERSION = "f2a3b4c5d678"
 SYSTEM_AGGREGATE_ID = UUID("00000000-0000-0000-0000-000000000001")
 
 DATABASE_ERROR_CLASSES = {
@@ -314,7 +314,6 @@ async def operational_overview(session: AsyncSession) -> dict[str, object]:
                 checked_at,
             )
         )
-
     printers = list(await session.scalars(select(Printer).order_by(Printer.name)))
     for printer in printers:
         state_fresh = printer.last_seen_at is not None and printer.last_seen_at >= checked_at - timedelta(
@@ -405,6 +404,30 @@ async def operational_overview(session: AsyncSession) -> dict[str, object]:
                 checked_at,
             )
         )
+        recovery_status = agent.cura_recovery_status
+        checks.append(
+            _check(
+                f"cura.recovery.{agent.id}",
+                f"Cura recovery · {agent.display_name}",
+                "recovery",
+                (
+                    "healthy"
+                    if recovery_status == "ready"
+                    else "error"
+                    if recovery_status == "restore_failed"
+                    else "warning"
+                ),
+                (
+                    agent.cura_recovery_message
+                    or (
+                        f"Latest safe snapshot: {agent.last_recovery_snapshot_at}"
+                        if agent.last_recovery_snapshot_at
+                        else "No operational Cura recovery point has been captured yet"
+                    )
+                ),
+                checked_at,
+            )
+        )
 
     error_log: list[dict[str, object]] = []
     failed_jobs = list(
@@ -445,6 +468,28 @@ async def operational_overview(session: AsyncSession) -> dict[str, object]:
                     deployment.last_error_message,
                 ),
                 "occurred_at": deployment.updated_at,
+                "correlation_id": None,
+            }
+        )
+    failed_restores = list(
+        await session.scalars(
+            select(CuraRecoveryRestore)
+            .where(CuraRecoveryRestore.last_error_class.is_not(None))
+            .order_by(CuraRecoveryRestore.updated_at.desc())
+            .limit(10)
+        )
+    )
+    for restore in failed_restores:
+        error_log.append(
+            {
+                "source": "Cura recovery",
+                "severity": "error" if restore.status == CuraDeploymentStatus.FAILED else "warning",
+                "summary": f"{restore.last_error_class or 'Recovery error'}",
+                "detail": _sanitized_error_detail(
+                    restore.last_error_class,
+                    restore.last_error_message,
+                ),
+                "occurred_at": restore.updated_at,
                 "correlation_id": None,
             }
         )
@@ -505,7 +550,6 @@ async def run_recovery_validation(session: AsyncSession) -> dict[str, object]:
             checked_at,
         )
     )
-
     invalid_credentials = (
         await session.scalar(
             select(func.count(Device.id)).where(
@@ -601,6 +645,20 @@ async def run_recovery_validation(session: AsyncSession) -> dict[str, object]:
             "recovery",
             "healthy" if missing_deployments == 0 else "warning",
             f"{missing_deployments} managed workstations lack the current successful library",
+            checked_at,
+        )
+    )
+    recovery_ready = sum(
+        agent.cura_recovery_status == "ready" and agent.last_recovery_snapshot_at is not None
+        for agent in managed_agents
+    )
+    checks.append(
+        _check(
+            "integrity.cura_recovery_snapshots",
+            "Cura workstation recovery points",
+            "recovery",
+            "healthy" if recovery_ready == len(managed_agents) else "warning",
+            f"{recovery_ready} of {len(managed_agents)} managed workstations have a current safe snapshot",
             checked_at,
         )
     )

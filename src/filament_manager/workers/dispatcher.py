@@ -1223,5 +1223,18 @@ async def fail_job(session: AsyncSession, job: OutboxJob, exc: Exception) -> Non
     else:
         persisted.status = JobStatus.PENDING
         delay_seconds = min(3600, 2 ** min(persisted.attempts, 10))
+        settings = get_settings()
+        periodic_retry_caps = {
+            "moonraker.state.reconcile": settings.sync.moonraker_state_interval_seconds,
+            "moonraker.print_history.reconcile": settings.sync.moonraker_print_interval_seconds,
+            "moonraker.printer_info.reconcile": settings.sync.moonraker_info_interval_seconds,
+            "spoolman.reconcile.full": settings.spoolman.full_reconcile_interval_minutes * 60,
+            "notifications.evaluate": 60,
+        }
+        if settings.google.enabled:
+            periodic_retry_caps["google.publish.pending"] = settings.google.publish_interval_seconds
+        retry_cap = periodic_retry_caps.get(persisted.job_type)
+        if retry_cap is not None:
+            delay_seconds = min(delay_seconds, retry_cap)
         persisted.next_attempt_at = datetime.now(UTC) + timedelta(seconds=delay_seconds)
     await session.commit()

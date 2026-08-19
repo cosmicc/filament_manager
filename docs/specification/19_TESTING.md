@@ -13,6 +13,7 @@
 - deterministic Cura material GUIDs, separate bounded strict-print/manual-load catalogs, exact-profile/template load-temperature fallback, Klipper macro syntax, and physical unload/load commit ordering
 - derived completed-print counts for one plate side, captured physical nozzle, and each distinct start/M600 spool
 - manual Side B creation, duplicate rejection, and mesh-unavailable initial state
+- Cura recovery path/setting allowlists, credential/endpoint/path removal, deterministic checksums, semantic plugin inventory, exact-version enforcement, reset detection, retention, local rollback, and preference merging
 
 ## PostgreSQL integration tests
 
@@ -26,6 +27,7 @@ Use a real disposable PostgreSQL instance for:
 - outbox atomicity
 - optimistic concurrency
 - nozzle lifecycle events, one-installed-nozzle enforcement, worker heartbeats, and persisted diagnostic runs
+- immutable Cura recovery snapshots, per-installation/version retention, idempotent upload, reset-blocked preservation, leased restore claims, and bounded completion state
 
 ## Connector tests
 
@@ -55,6 +57,7 @@ Mock or containerize:
 15. Each selected Cura source maps to one existing template or remains ignored; one confirmation applies all mappings and linked-profile inheritance atomically before synchronization starts.
 16. Read-only recovery validation persists sanitized results without changing canonical records, and projection rebuild queues complete derived work.
 17. A completed print with repeated M600 segments counts each distinct spool once and its captured nozzle and plate side once.
+18. A closed Cura installation captures a sanitized recovery point; a simulated reset cannot displace it; an Administrator-confirmed exact-version restore rolls back safely on write failure and is followed by canonical material synchronization.
 
 ## Swarm tests
 
@@ -67,7 +70,7 @@ Mock or containerize:
 
 ## Restore test
 
-Restore both PostgreSQL databases independently to an isolated environment, deploy both services in the combined stack, rebuild Spoolman projections through the API, and rebuild a new Google Sheet. This is the definitive disaster-recovery test.
+Restore both PostgreSQL databases independently to an isolated environment, deploy both services in the combined stack, rebuild Spoolman projections through the API, rebuild a new Google Sheet, and verify that retained Cura recovery metadata remains available without exposing raw payloads to the browser. This is the definitive server disaster-recovery test. Test workstation recovery separately with the same Cura version and non-production account/connection state.
 
 ## Stack-boundary tests
 

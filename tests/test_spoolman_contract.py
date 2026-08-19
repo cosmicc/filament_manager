@@ -35,6 +35,21 @@ def test_managed_extra_values_are_json_encoded_and_safely_decoded() -> None:
     assert decode_text_extra_field("17") is None
 
 
+def test_structured_metadata_is_nested_inside_a_spoolman_text_field() -> None:
+    """Managed text fields must decode to strings even when they carry compact JSON."""
+
+    encoded = encode_managed_extra_fields(
+        {"display_palette": {"mode": "multicolor", "colors": ["112233", "AABBCC"]}}
+    )
+
+    assert encoded == {
+        "display_palette": '"{\\"mode\\":\\"multicolor\\",\\"colors\\":[\\"112233\\",\\"AABBCC\\"]}"'
+    }
+    assert decode_text_extra_field(encoded["display_palette"]) == (
+        '{"mode":"multicolor","colors":["112233","AABBCC"]}'
+    )
+
+
 def test_duplicate_managed_uuid_is_rejected() -> None:
     managed_uuid = str(uuid4())
     items = [

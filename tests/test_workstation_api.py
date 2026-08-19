@@ -14,6 +14,7 @@ from testcontainers.community.postgres import PostgresContainer
 from filament_manager.api import dependencies
 from filament_manager.api.routes import workstations
 from filament_manager.config import Settings
+from filament_manager.domain.cura_recovery import recovery_checksum
 from filament_manager.domain.spool_preflight import cura_material_guid
 from filament_manager.models import Base
 from filament_manager.models.auth import User
@@ -30,9 +31,11 @@ from filament_manager.models.operations import AuditEvent
 from filament_manager.models.workstations import (
     CuraDeployment,
     CuraManagedEditReceipt,
+    CuraRecoveryRestore,
+    CuraRecoverySnapshot,
     WorkstationAgent,
 )
-from filament_manager.security import hash_password
+from filament_manager.security import create_agent_token, hash_password, hash_token
 
 
 def test_combined_cura_import_source_count_prevents_automatic_takeover() -> None:
@@ -113,6 +116,8 @@ async def test_pair_queue_claim_and_complete_workstation_deployment(
                 material_type="PETG",
                 product_name="Workshop PETG",
                 color_name="Black",
+                filler=None,
+                finish="Silk",
                 color_hex="111111",
                 diameter_mm=Decimal("1.75"),
                 density_g_cm3=Decimal("1.27"),
@@ -255,6 +260,13 @@ async def test_pair_queue_claim_and_complete_workstation_deployment(
             assert claimed.json()["deployment_id"] == deployment_id
             assert claimed.json()["payload"]["schema_version"] == 3
             assert claimed.json()["payload"]["hide_bundled_materials"] is True
+            claimed_product = next(
+                material
+                for material in claimed.json()["payload"]["materials"]
+                if material["source_kind"] == "product"
+            )
+            assert claimed_product["material"]["filler"] is None
+            assert claimed_product["material"]["finish"] == "Silk"
             completed = await client.post(
                 f"/api/v1/workstation-agent/deployments/{deployment_id}/complete",
                 headers={"Authorization": f"Bearer {agent_token}"},
@@ -342,5 +354,264 @@ async def test_pair_queue_claim_and_complete_workstation_deployment(
             assert receipt.content_checksum != "d" * 64
             assert await session.scalar(select(func.count(CuraManagedEditReceipt.id))) == 1
             assert await session.scalar(select(func.count(AuditEvent.id))) == 5
+
+        await engine.dispose()
+
+
+@pytest.mark.integration
+@pytest.mark.asyncio
+async def test_cura_recovery_snapshot_and_restore_lifecycle(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Retain sanitized exact-version snapshots and lease confirmed restores."""
+
+    with PostgresContainer("postgres:17-alpine", driver="psycopg") as postgres:
+        database_url = postgres.get_connection_url().replace(
+            "postgresql+psycopg2://", "postgresql+psycopg://"
+        )
+        settings = Settings.model_validate(
+            {
+                "app": {
+                    "base_url": "http://localhost",
+                    "allowed_hosts": ["localhost"],
+                    "secure_cookies": False,
+                },
+                "database": {"url": database_url},
+                "spoolman": {"base_url": "http://spoolman.test:8000"},
+                "moonraker": {
+                    "printers": [
+                        {
+                            "id": "test-printer",
+                            "name": "Workshop Printer",
+                            "base_url": "http://moonraker.test:7125",
+                            "websocket_url": "ws://moonraker.test:7125/websocket",
+                            "nozzle_diameter_mm": 0.4,
+                        }
+                    ]
+                },
+                "google": {"enabled": False},
+                "sync": {},
+                "plates": {"allowed_codes": ["P1", "P2", "P3", "P4", "P5"]},
+                "devices": {},
+                "security": {},
+            }
+        )
+        engine = create_async_engine(database_url)
+        factory = async_sessionmaker(engine, expire_on_commit=False)
+        async with engine.begin() as connection:
+            await connection.run_sync(Base.metadata.create_all)
+
+        agent_token = create_agent_token()
+        async with factory() as session:
+            administrator = User(
+                username="recovery-admin",
+                normalized_username="recovery-admin",
+                display_name="Recovery Administrator",
+                password_hash=hash_password("integration test password"),
+                role=UserRole.ADMINISTRATOR,
+            )
+            session.add(administrator)
+            await session.flush()
+            agent = WorkstationAgent(
+                agent_code="WS-RECOVERYTEST",
+                display_name="Recovery Cura",
+                hostname="recovery-workstation",
+                platform="arch_linux",
+                architecture="x86_64",
+                agent_version="0.2.4",
+                token_hash=hash_token(agent_token),
+                enabled=True,
+                cura_management_enabled=False,
+                capabilities={"cura_recovery_snapshots": True},
+                cura_installations=[
+                    {
+                        "installation_id": "cura-test",
+                        "version": "5.13",
+                        "channel": "Linux Cura",
+                        "path_hint": "Linux Cura user data / 5.13",
+                        "setting_version": 27,
+                        "machines": [
+                            {
+                                "machine_id": "workshop",
+                                "display_name": "Workshop Printer",
+                            }
+                        ],
+                    }
+                ],
+                cura_materials=[],
+                created_by=administrator.id,
+            )
+            session.add(agent)
+            await session.commit()
+            agent_id = agent.id
+
+        async def session_override() -> AsyncIterator[AsyncSession]:
+            async with factory() as session:
+                yield session
+
+        async def user_override() -> User:
+            async with factory() as session:
+                user = await session.scalar(select(User).where(User.username == "recovery-admin"))
+                assert user is not None
+                return user
+
+        monkeypatch.setattr(workstations, "get_settings", lambda: settings)
+        from filament_manager import config as config_module
+        from filament_manager import main
+
+        monkeypatch.setattr(config_module, "get_settings", lambda: settings)
+        monkeypatch.setattr(main, "get_settings", lambda: settings)
+        application = main.create_app()
+        application.dependency_overrides[dependencies.session_dependency] = session_override
+        application.dependency_overrides[dependencies.current_user] = user_override
+        transport = httpx.ASGITransport(app=application)
+        snapshot_payload: dict[str, object] = {
+            "schema_version": 1,
+            "installation_id": "cura-test",
+            "cura_version": "5.13",
+            "setting_version": 27,
+            "files": [
+                {
+                    "scope": "data",
+                    "relative_path": "machine_instances/Workshop.global.cfg",
+                    "content": "[general]\nname = Workshop Printer\n",
+                },
+                {
+                    "scope": "config",
+                    "relative_path": "cura.cfg",
+                    "content": "[general]\ntheme = dark\n\n[cura]\nactive_machine = workshop\n",
+                },
+            ],
+            "plugins": [
+                {
+                    "package_id": "MaterialSettingsPlugin",
+                    "display_name": "Material Settings",
+                    "version": "4.3.1",
+                    "enabled": True,
+                }
+            ],
+        }
+        checksum = recovery_checksum(snapshot_payload)
+
+        async with httpx.AsyncClient(transport=transport, base_url="http://localhost") as client:
+            headers = {"Authorization": f"Bearer {agent_token}"}
+            uploaded = await client.post(
+                "/api/v1/workstation-agent/cura-recovery-snapshots",
+                headers=headers,
+                json={"snapshot_checksum": checksum, "payload": snapshot_payload},
+            )
+            assert uploaded.status_code == 200, uploaded.text
+            assert uploaded.json()["accepted"] is True
+            snapshot_id = uploaded.json()["snapshot_id"]
+            duplicate = await client.post(
+                "/api/v1/workstation-agent/cura-recovery-snapshots",
+                headers=headers,
+                json={"snapshot_checksum": checksum, "payload": snapshot_payload},
+            )
+            assert duplicate.status_code == 200, duplicate.text
+            assert duplicate.json()["snapshot_id"] == snapshot_id
+
+            reset_payload = {
+                **snapshot_payload,
+                "files": [
+                    {
+                        "scope": "config",
+                        "relative_path": "cura.cfg",
+                        "content": "[general]\ntheme = light\n",
+                    }
+                ],
+            }
+            blocked = await client.post(
+                "/api/v1/workstation-agent/cura-recovery-snapshots",
+                headers=headers,
+                json={
+                    "snapshot_checksum": recovery_checksum(reset_payload),
+                    "payload": reset_payload,
+                },
+            )
+            assert blocked.status_code == 200, blocked.text
+            assert blocked.json()["accepted"] is False
+            assert blocked.json()["reason"] == "no_printer_configuration"
+
+            snapshots = await client.get(f"/api/v1/workstation-agents/{agent_id}/cura-recovery-snapshots")
+            assert snapshots.status_code == 200, snapshots.text
+            assert len(snapshots.json()) == 1
+            assert snapshots.json()[0]["plugin_count"] == 1
+            assert "payload" not in snapshots.json()[0]
+
+            queued = await client.post(
+                f"/api/v1/workstation-agents/{agent_id}/cura-recovery-restores",
+                json={"snapshot_id": snapshot_id, "confirmed": True},
+            )
+            assert queued.status_code == 201, queued.text
+            restore_id = queued.json()["id"]
+            claimed = await client.post(
+                "/api/v1/workstation-agent/cura-recovery-restores/claim",
+                headers=headers,
+            )
+            assert claimed.status_code == 200, claimed.text
+            assert claimed.json()["restore_id"] == restore_id
+            completed = await client.post(
+                f"/api/v1/workstation-agent/cura-recovery-restores/{restore_id}/complete",
+                headers=headers,
+                json={
+                    "outcome": "succeeded",
+                    "result": {
+                        "installation_id": "cura-test",
+                        "version": "5.13",
+                        "status": "restored",
+                        "restored_files": 2,
+                        "removed_files": 1,
+                        "preferences_merged": True,
+                        "backup_id": f"{restore_id}/cura-test",
+                        "missing_plugins": [],
+                    },
+                },
+            )
+            assert completed.status_code == 204, completed.text
+
+            for index in range(10):
+                retained_payload = {
+                    **snapshot_payload,
+                    "files": [
+                        snapshot_payload["files"][0],  # type: ignore[index]
+                        {
+                            "scope": "config",
+                            "relative_path": "cura.cfg",
+                            "content": (
+                                f"[general]\ntheme = retained-{index}\n\n[cura]\nactive_machine = workshop\n"
+                            ),
+                        },
+                    ],
+                }
+                retained_checksum = recovery_checksum(retained_payload)
+                retained = await client.post(
+                    "/api/v1/workstation-agent/cura-recovery-snapshots",
+                    headers=headers,
+                    json={
+                        "snapshot_checksum": retained_checksum,
+                        "payload": retained_payload,
+                    },
+                )
+                assert retained.status_code == 200, retained.text
+                assert retained.json()["accepted"] is True
+
+            retained_snapshots = await client.get(
+                f"/api/v1/workstation-agents/{agent_id}/cura-recovery-snapshots"
+            )
+            assert retained_snapshots.status_code == 200, retained_snapshots.text
+            assert len(retained_snapshots.json()) == 10
+            assert snapshot_id not in {item["id"] for item in retained_snapshots.json()}
+
+        async with factory() as session:
+            assert await session.scalar(select(func.count(CuraRecoverySnapshot.id))) == 10
+            restore = await session.get(CuraRecoveryRestore, restore_id)
+            assert restore is not None and restore.status == CuraDeploymentStatus.SUCCEEDED
+            assert restore.snapshot_id is None
+            assert restore.snapshot_checksum == checksum
+            agent = await session.get(WorkstationAgent, agent_id)
+            assert agent is not None
+            assert agent.cura_recovery_status == "ready"
+            assert agent.last_recovery_restore_at is not None
 
         await engine.dispose()

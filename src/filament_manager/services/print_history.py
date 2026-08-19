@@ -9,6 +9,7 @@ from math import pi
 from typing import Any
 from uuid import UUID
 
+import structlog
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
@@ -46,6 +47,7 @@ from filament_manager.services.events import add_audit_event, add_outbox_job
 MAX_INITIAL_HISTORY_JOBS = 10_000
 HISTORY_PAGE_SIZE = 100
 MASS_QUANTUM = Decimal("0.001")
+logger = structlog.get_logger()
 
 
 def _json_safe(value: object) -> dict[str, object]:
@@ -829,19 +831,34 @@ async def synchronize_print_history(
         since = (printer.last_print_history_end_at - timedelta(seconds=1)).timestamp()
     start = 0
     imported = 0
+    skipped = 0
     latest_end = printer.last_print_history_end_at
     while start < MAX_INITIAL_HISTORY_JOBS:
         jobs = await client.history_jobs(start=start, limit=HISTORY_PAGE_SIZE, since=since)
         if not jobs:
             break
-        for remote in jobs:
-            if await _upsert_history_job(
-                session,
-                printer=printer,
-                remote=remote,
-                correlation_id=correlation_id,
-            ):
-                imported += 1
+        for record_index, remote in enumerate(jobs, start=start):
+            try:
+                reconciled: PrintJob | None
+                async with session.begin_nested():
+                    reconciled = await _upsert_history_job(
+                        session,
+                        printer=printer,
+                        remote=remote,
+                        correlation_id=correlation_id,
+                    )
+                if reconciled is not None:
+                    imported += 1
+            except (InvalidOperation, TypeError, ValueError) as exc:
+                # One malformed legacy Moonraker row must not poison every
+                # subsequent history pass or prevent the success checkpoint.
+                skipped += 1
+                logger.warning(
+                    "moonraker_print_history_record_skipped",
+                    printer_code=printer.printer_code,
+                    record_index=record_index,
+                    error_class=type(exc).__name__,
+                )
             end_at = _timestamp(remote.get("end_time"))
             if end_at is not None and (latest_end is None or end_at > latest_end):
                 latest_end = end_at
@@ -853,6 +870,12 @@ async def synchronize_print_history(
     printer.last_print_history_sync_at = now
     printer.last_print_history_end_at = latest_end
     await session.commit()
+    if skipped:
+        logger.warning(
+            "moonraker_print_history_completed_with_skips",
+            printer_code=printer.printer_code,
+            skipped_records=skipped,
+        )
     return imported
 
 

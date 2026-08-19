@@ -48,7 +48,7 @@ def test_previous_schema_automatically_upgrades_to_metadata_head(
 
         upgrade_database(DatabaseConfig(url=database_url))
         with engine.connect() as connection:
-            assert connection.scalar(text("SELECT version_num FROM alembic_version")) == "e1f2a3b4c567"
+            assert connection.scalar(text("SELECT version_num FROM alembic_version")) == "f2a3b4c5d678"
             recovered = connection.execute(
                 text(
                     """
@@ -86,6 +86,14 @@ def test_previous_schema_automatically_upgrades_to_metadata_head(
         assert "nozzle_lifecycle_events" in inspector.get_table_names()
         assert "diagnostic_runs" in inspector.get_table_names()
         assert "worker_heartbeats" in inspector.get_table_names()
+        assert "cura_recovery_snapshots" in inspector.get_table_names()
+        assert "cura_recovery_restores" in inspector.get_table_names()
+        assert {
+            "cura_recovery_status",
+            "cura_recovery_message",
+            "last_recovery_snapshot_at",
+            "last_recovery_restore_at",
+        } <= {column["name"] for column in inspector.get_columns("workstation_agents")}
         assert "active_nozzle_id" in {column["name"] for column in inspector.get_columns("printers")}
         assert "nozzle_id" in {column["name"] for column in inspector.get_columns("print_jobs")}
         assert {"source_workstation_agent_id", "source_cura_material_id"} <= set(profile_columns)

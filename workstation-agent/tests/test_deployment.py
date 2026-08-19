@@ -1,7 +1,10 @@
 """Transactional Cura rendering and installation tests."""
 
+import importlib.util
 import json
+import sys
 from pathlib import Path
+from types import ModuleType
 
 import pytest
 
@@ -85,6 +88,8 @@ def _payload() -> dict[str, object]:
             "material_type": "PETG",
             "product_name": "PolyLite PETG",
             "color_name": "Black",
+            "filler": None,
+            "finish": "Silk",
             "color_hex": "#111111",
             "diameter_mm": "1.75",
             "density_g_cm3": "1.27",
@@ -140,6 +145,7 @@ def test_discovers_and_renders_complete_profile(tmp_path: Path, monkeypatch: obj
     assert b'key="klipper_smooth_time_enable">True' in material_file
     assert b'key="speed_print">180' in material_file
     assert b"<GUID>00000000-0000-4000-8000-000000000001</GUID>" in material_file
+    assert b"<description>Filament Filler: None\nFilament Finish: Silk</description>" in material_file
     assert not any(path.startswith("quality_changes/") for path in paths)
     assert not any(path.startswith("definition_changes/") for path in paths)
     assert "plugins/FilamentManagerVisibility/FilamentManagerVisibility/plugin.json" in paths
@@ -147,11 +153,143 @@ def test_discovers_and_renders_complete_profile(tmp_path: Path, monkeypatch: obj
         "plugins/FilamentManagerVisibility/FilamentManagerVisibility/FilamentManagerVisibility.py"
     )
     plugin = rendered.files[plugin_path]
+    plugin_init = rendered.files[
+        Path("plugins/FilamentManagerVisibility/FilamentManagerVisibility/__init__.py")
+    ]
     compile(plugin, str(plugin_path), "exec")
+    assert b"FilamentManagerVisibility(app)" in plugin_init
     assert b'preferences.setValue("cura/favorite_materials", updated)' in plugin
+    assert b'preferences.setValue("material_settings/visible_settings", expected)' in plugin
     assert b'"speed_print"' not in plugin
     assert b"'speed_print'" in plugin
     assert b'user_changes.setProperty(key, "value", material_value)' in plugin
+
+
+def test_generated_plugin_defers_machine_manager_until_cura_initialization(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Plugin registration must not start active-machine restoration during loading."""
+
+    _cura_fixture(tmp_path, monkeypatch)
+    rendered = render_deployment(discover_installations()[0], _payload())
+    plugin_path = Path(
+        "plugins/FilamentManagerVisibility/FilamentManagerVisibility/FilamentManagerVisibility.py"
+    )
+    plugin = rendered.files[plugin_path]
+
+    class FakeSignal:
+        def __init__(self) -> None:
+            self.callbacks: list[object] = []
+
+        def connect(self, callback: object) -> None:
+            self.callbacks.append(callback)
+
+        def emit(self) -> None:
+            for callback in self.callbacks:
+                callback()  # type: ignore[operator]
+
+    class FakeTimer:
+        @staticmethod
+        def singleShot(_delay: int, callback: object) -> None:
+            callback()  # type: ignore[operator]
+
+    class FakeExtension:
+        pass
+
+    class FakeLogger:
+        @staticmethod
+        def log(*_args: object) -> None:
+            return None
+
+        @staticmethod
+        def logException(*_args: object) -> None:
+            return None
+
+    class FakeBaseMaterialsModel:
+        def _update(self) -> None:
+            return None
+
+    class FakeMachineManager:
+        def __init__(self) -> None:
+            for name in (
+                "activeMaterialChanged",
+                "activeQualityChanged",
+                "activeQualityChangesGroupChanged",
+                "activeStackChanged",
+                "globalContainerChanged",
+            ):
+                setattr(self, name, FakeSignal())
+
+    class FakeApplication:
+        def __init__(self) -> None:
+            self.initializationFinished = FakeSignal()
+            self.started = False
+            self.machine_manager_calls = 0
+            self.machine_manager = FakeMachineManager()
+            self.preferences: dict[str, str] = {}
+
+        def getPreferences(self) -> object:
+            preferences = self.preferences
+
+            class FakePreferences:
+                @staticmethod
+                def getValue(key: str) -> str:
+                    return preferences.get(key, "")
+
+                @staticmethod
+                def setValue(key: str, value: str) -> None:
+                    preferences[key] = value
+
+            return FakePreferences()
+
+        def getMachineManager(self) -> FakeMachineManager:
+            self.machine_manager_calls += 1
+            return self.machine_manager
+
+        def getGlobalContainerStack(self) -> None:
+            return None
+
+    qt_module = ModuleType("PyQt6.QtCore")
+    qt_module.QTimer = FakeTimer  # type: ignore[attr-defined]
+    extension_module = ModuleType("UM.Extension")
+    extension_module.Extension = FakeExtension  # type: ignore[attr-defined]
+    logger_module = ModuleType("UM.Logger")
+    logger_module.Logger = FakeLogger  # type: ignore[attr-defined]
+    model_module = ModuleType("cura.Machines.Models.BaseMaterialsModel")
+    model_module.BaseMaterialsModel = FakeBaseMaterialsModel  # type: ignore[attr-defined]
+    for module_name, module in {
+        "PyQt6": ModuleType("PyQt6"),
+        "PyQt6.QtCore": qt_module,
+        "UM": ModuleType("UM"),
+        "UM.Extension": extension_module,
+        "UM.Logger": logger_module,
+        "cura": ModuleType("cura"),
+        "cura.Machines": ModuleType("cura.Machines"),
+        "cura.Machines.Models": ModuleType("cura.Machines.Models"),
+        "cura.Machines.Models.BaseMaterialsModel": model_module,
+    }.items():
+        monkeypatch.setitem(sys.modules, module_name, module)
+
+    plugin_file = tmp_path / "FilamentManagerVisibility.py"
+    plugin_file.write_bytes(plugin)
+    specification = importlib.util.spec_from_file_location(
+        "filament_manager_visibility_test",
+        plugin_file,
+    )
+    assert specification is not None
+    assert specification.loader is not None
+    plugin_module = importlib.util.module_from_spec(specification)
+    specification.loader.exec_module(plugin_module)
+    application = FakeApplication()
+    plugin_module.FilamentManagerVisibility(application)
+
+    assert application.machine_manager_calls == 0
+    application.initializationFinished.emit()
+    assert application.machine_manager_calls == 1
+    assert application.preferences["material_settings/visible_settings"] == ";".join(
+        sorted(_payload()["managed_material_setting_keys"])  # type: ignore[arg-type]
+    )
 
 
 def test_apply_is_idempotent_and_rollback_restores_original(tmp_path: Path, monkeypatch: object) -> None:
@@ -167,9 +305,29 @@ def test_apply_is_idempotent_and_rollback_restores_original(tmp_path: Path, monk
     assert first["status"] == "installed"
     manifest = json.loads((version / ".filament-manager" / "manifest.json").read_text())
     assert manifest["library_checksum"] == "a" * 64
+    assert manifest["renderer_revision"] == 4
     assert not unmanaged_material.exists()
     second = apply_rendered(installation, deployment_id, "a" * 64, rendered)
     assert second["status"] == "already_current"
+
+    # An upgraded renderer must replace older managed plugin output even when
+    # canonical material settings—and therefore the server checksum—did not change.
+    manifest.pop("renderer_revision")
+    (version / ".filament-manager" / "manifest.json").write_text(
+        json.dumps(manifest),
+        encoding="utf-8",
+    )
+    assert managed_library_checksum(version) is None
+    upgraded = apply_rendered(
+        installation,
+        "49c3e100-71ae-457d-9329-fcba6e8374a4",
+        "a" * 64,
+        rendered,
+    )
+    assert upgraded["status"] == "installed"
+    upgraded_manifest = json.loads((version / ".filament-manager" / "manifest.json").read_text())
+    assert upgraded_manifest["renderer_revision"] == 4
+
     assert rollback(deployment_id) == ["Cura 5.10"]
     assert (version / "definition_changes" / "flsun-v400_settings.inst.cfg").read_bytes() == original
     assert unmanaged_material.read_text(encoding="utf-8") == "legacy"

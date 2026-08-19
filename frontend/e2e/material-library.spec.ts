@@ -184,7 +184,7 @@ test('filament creation requires and submits a current template', async ({ page 
   })
   await page.goto('/filaments')
   await page.getByRole('button', { name: 'Add filament' }).click()
-  await page.getByLabel('Product name').fill('Workshop PLA')
+  await page.getByLabel('Display name').fill('Workshop PLA')
   await page.getByRole('combobox', { name: /^Color name/ }).fill('Workshop Sunset')
   await page.getByLabel('Display type').selectOption('multicolor')
   await page.getByLabel('Number of colors').selectOption('3')

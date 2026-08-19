@@ -59,6 +59,8 @@ Environment variables are intentionally transitional and are visible to authoriz
 - treat requested spools as untrusted future targets; only a completed physical macro boundary may change active Spoolman identity
 - fail closed when Cura material identity, eligible inventory, current exact-profile temperature, or persistent physical-spool state is unavailable
 - accept managed Cura setting edits only for deterministic known GUIDs and approved bounded keys; derive the idempotency checksum server-side, save the known current settings directly, and reject new Cura-created materials as canonical input
+- accept Cura recovery snapshots only from the paired agent for its exact currently reported installation/version; enforce fixed target allowlists, bounded content, semantic checksums, reset detection, and conservative credential/endpoint/path filtering
+- expose only recovery metadata to authenticated browser users, require Administrator confirmation to queue a restore, and lease the copied restore payload only to its originating agent
 
 ## Future device security
 
@@ -70,7 +72,7 @@ Environment variables are intentionally transitional and are visible to authoriz
 
 ## Backup security
 
-Backups of both databases must use the central backup platform's encryption and retention controls. Restore tests must occur in isolated environments with non-production secrets.
+Backups of both databases must use the central backup platform's encryption and retention controls. Restore tests must occur in isolated environments with non-production secrets. Sanitized Cura recovery points reside inside the canonical database backup. Workstation-local pre-restore archives contain the local Cura files they replaced and must be protected as private user data; they are never uploaded as recovery snapshots.
 
 ## Authoritative implementation references
 

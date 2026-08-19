@@ -13,10 +13,20 @@ def merge_extra_fields(remote_extra: dict[str, Any] | None, managed_extra: dict[
 
 
 def encode_managed_extra_fields(managed_extra: dict[str, object]) -> dict[str, str]:
-    """Encode custom-field values as JSON strings required by Spoolman."""
+    """Encode values for Spoolman's managed text custom fields.
+
+    Spoolman requires every custom-field value to be JSON encoded, while a
+    field declared as ``text`` must decode to a string. Structured application
+    metadata therefore needs an inner compact JSON string before the outer
+    Spoolman field encoding is applied.
+    """
 
     return {
-        key: json.dumps(value, ensure_ascii=False, separators=(",", ":"))
+        key: json.dumps(
+            value if isinstance(value, str) else json.dumps(value, ensure_ascii=False, separators=(",", ":")),
+            ensure_ascii=False,
+            separators=(",", ":"),
+        )
         for key, value in managed_extra.items()
     }
 

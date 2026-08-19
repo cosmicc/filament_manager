@@ -1,5 +1,33 @@
 # Changelog
 
+## 0.2.5 - 08.18.2026
+
+### Added
+
+- Added automatic sanitized Cura configuration recovery points for printers, extruders, custom profiles, visibility, safe preferences, and semantic plugin inventory, retaining the ten newest distinct points per workstation installation and Cura version.
+- Added an Administrator review-and-confirm recovery workflow on Cura Workstations with exact-version enforcement, local pre-restore backup, atomic replacement, rollback, and Diagnostics readiness/error reporting.
+
+### Changed
+
+- Changed the managed Cura plugin to keep the Material Settings plugin's enabled-setting list aligned with the complete central catalog after Cura initialization and after a recovery restore.
+- Changed Cura product materials without a manufacturer to appear under the `Unknown` brand instead of a Filament Manager brand.
+- Changed active-spool reconciliation retries to remain within the configured real-time polling interval, keeping physical state recognition within one minute while Moonraker is reachable.
+- Changed filament cards to show vendor, material/color/display name, and filler/finish as three clear identity lines, and changed filament editing to select the current or another compatible current template.
+- Changed synchronized Cura material descriptions to show `Filament Filler` and `Filament Finish` on separate lines, using `None` for empty values.
+- Changed Cura workstation protection to preserve the last known-good recovery point when a reset, missing printer, or large configuration deletion is detected; managed materials remain canonical and synchronize separately after recovery.
+- Changed the workstation service sandbox to permit both discovered Cura data and configuration roots required for safe preference capture and restoration.
+- Changed the workstation deployment renderer revision to 4 so upgraded agents replace earlier generated material files.
+- Changed all server, frontend, and workstation-agent version surfaces to 0.2.5.
+
+### Fixed
+
+- Fixed a malformed historical Moonraker record preventing otherwise successful print-history scans from recording their synchronization checkpoint.
+- Fixed structured display palettes being rejected by Spoolman text custom fields, which left canonical filament projections newer than their acknowledgements.
+- Fixed manual material-type and color-name inputs losing focus to the modal close button after every keystroke.
+- Fixed filament editing referring to a superseded template revision and therefore omitting the current linked template and compatible alternatives.
+- Fixed the managed Cura plugin constructing Cura's machine manager during plugin registration, which could restore the active machine before Cura initialized its translation catalog and crash Cura 5.13 at startup; upgraded agents now also invalidate and replace the earlier plugin even when material settings are unchanged.
+- Fixed a reset Cura installation having no application-guided way to restore its printer, extruder, custom profile, visibility, and safe preference configuration after Cura account plugins are reinstalled.
+
 ## 0.2.4 - 08.18.2026
 
 ### Added

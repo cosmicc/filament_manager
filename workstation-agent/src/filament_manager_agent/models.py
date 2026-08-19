@@ -52,6 +52,7 @@ class CuraInstallation(BaseModel):
     version: str
     channel: str
     data_path: Path = Field(exclude=True)
+    config_path: Path | None = Field(default=None, exclude=True)
     setting_version: int | None = None
     machines: list[CuraMachine] = Field(default_factory=list)
 
@@ -96,5 +97,14 @@ class DeploymentClaim(BaseModel):
 
     deployment_id: UUID
     profile_checksum: str = Field(pattern=r"^[0-9a-f]{64}$")
+    payload: dict[str, object]
+    lease_expires_at: str
+
+
+class RecoveryRestoreClaim(BaseModel):
+    """A leased exact-version recovery snapshot from the server."""
+
+    restore_id: UUID
+    snapshot_checksum: str = Field(pattern=r"^[0-9a-f]{64}$")
     payload: dict[str, object]
     lease_expires_at: str

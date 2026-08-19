@@ -130,21 +130,35 @@ def cura_is_running() -> bool:
     return False
 
 
-def _candidate_roots() -> list[tuple[str, Path]]:
+def _candidate_roots() -> list[tuple[str, Path, Path]]:
     override = os.environ.get("FILAMENT_MANAGER_CURA_ROOTS")
     if override:
         return [
-            ("Configured Cura", Path(value).expanduser()) for value in override.split(os.pathsep) if value
+            ("Configured Cura", Path(value).expanduser(), Path(value).expanduser())
+            for value in override.split(os.pathsep)
+            if value
         ]
     home = Path.home()
     if sys.platform == "win32":
         appdata = Path(os.environ.get("APPDATA", home / "AppData" / "Roaming"))
-        return [("Windows Cura", appdata / "cura")]
+        return [("Windows Cura", appdata / "cura", appdata / "cura")]
     return [
-        ("Linux Cura", home / ".local" / "share" / "cura"),
-        ("Flatpak Cura", home / ".var" / "app" / "com.ultimaker.cura" / "data" / "cura"),
-        ("Snap Cura", home / "snap" / "cura-slicer" / "current" / ".local" / "share" / "cura"),
-        ("Snap Cura", home / "snap" / "cura" / "current" / ".local" / "share" / "cura"),
+        ("Linux Cura", home / ".local" / "share" / "cura", home / ".config" / "cura"),
+        (
+            "Flatpak Cura",
+            home / ".var" / "app" / "com.ultimaker.cura" / "data" / "cura",
+            home / ".var" / "app" / "com.ultimaker.cura" / "config" / "cura",
+        ),
+        (
+            "Snap Cura",
+            home / "snap" / "cura-slicer" / "current" / ".local" / "share" / "cura",
+            home / "snap" / "cura-slicer" / "current" / ".config" / "cura",
+        ),
+        (
+            "Snap Cura",
+            home / "snap" / "cura" / "current" / ".local" / "share" / "cura",
+            home / "snap" / "cura" / "current" / ".config" / "cura",
+        ),
     ]
 
 
@@ -244,7 +258,7 @@ def discover_installations() -> list[CuraInstallation]:
 
     installations: list[CuraInstallation] = []
     seen: set[Path] = set()
-    for channel, root in _candidate_roots():
+    for channel, root, config_root in _candidate_roots():
         if not root.is_dir():
             continue
         candidates = [root] if VERSION_PATTERN.match(root.name) else list(root.iterdir())
@@ -277,6 +291,15 @@ def discover_installations() -> list[CuraInstallation]:
                     version=candidate.name,
                     channel=channel,
                     data_path=resolved,
+                    config_path=(
+                        (
+                            config_root
+                            if VERSION_PATTERN.match(config_root.name)
+                            else config_root / candidate.name
+                        )
+                        .expanduser()
+                        .resolve(strict=False)
+                    ),
                     setting_version=_setting_version(resolved),
                     machines=machines,
                 )

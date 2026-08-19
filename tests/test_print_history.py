@@ -7,6 +7,7 @@ from uuid import UUID, uuid4
 import pytest
 
 from filament_manager.models.enums import PrintJobStatus
+from filament_manager.services import print_history
 from filament_manager.services.print_history import (
     _actual_weight_g,
     _history_status,
@@ -75,6 +76,68 @@ def test_terminal_usage_aggregates_reused_spools_from_immutable_segments() -> No
         first_spool: (Decimal("900"), Decimal("7.000")),
         second_spool: (Decimal("700"), Decimal("3.500")),
     }
+
+
+@pytest.mark.asyncio
+async def test_malformed_history_record_does_not_block_success_checkpoint(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """One malformed legacy row must not poison every later history pass."""
+
+    class NestedTransaction:
+        async def __aenter__(self) -> None:
+            return None
+
+        async def __aexit__(self, *_args: object) -> bool:
+            return False
+
+    class FakeSession:
+        committed = False
+
+        def begin_nested(self) -> NestedTransaction:
+            return NestedTransaction()
+
+        async def commit(self) -> None:
+            self.committed = True
+
+    class FakeClient:
+        async def history_jobs(
+            self, *, start: int, limit: int, since: float | None
+        ) -> tuple[dict[str, object], ...]:
+            del start, limit, since
+            return (
+                {"job_id": "bad", "filename": "bad.gcode", "end_time": 1_777_000_000},
+                {"job_id": "good", "filename": "good.gcode", "end_time": 1_777_000_001},
+            )
+
+    calls = 0
+
+    async def upsert(*_args: object, **_kwargs: object) -> object:
+        nonlocal calls
+        calls += 1
+        if calls == 1:
+            raise TypeError("malformed historical segment")
+        return object()
+
+    monkeypatch.setattr(print_history, "_upsert_history_job", upsert)
+    printer = SimpleNamespace(
+        printer_code="test-printer",
+        print_history_initialized_at=None,
+        last_print_history_sync_at=None,
+        last_print_history_end_at=None,
+    )
+    session = FakeSession()
+
+    imported = await print_history.synchronize_print_history(  # type: ignore[arg-type]
+        session,
+        printer=printer,
+        client=FakeClient(),  # type: ignore[arg-type]
+        correlation_id="test-history",
+    )
+
+    assert imported == 1
+    assert printer.last_print_history_sync_at is not None
+    assert session.committed is True
 
 
 @pytest.mark.asyncio

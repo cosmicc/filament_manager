@@ -6,13 +6,14 @@ from types import SimpleNamespace
 from uuid import UUID
 
 import pytest
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 from testcontainers.community.postgres import PostgresContainer
 
 from filament_manager.models import Base
 from filament_manager.models.enums import JobStatus
 from filament_manager.models.inventory import FilamentProduct, Spool, Vendor
-from filament_manager.models.operations import OutboxJob
+from filament_manager.models.operations import OutboxJob, ProjectionState
 from filament_manager.workers import dispatcher
 from filament_manager.workers.dispatcher import _converge_spoolman, claim_jobs
 
@@ -113,6 +114,7 @@ async def test_full_convergence_seeds_existing_inventory_and_then_updates_it(
             session.add(spool)
             await session.commit()
             spool_id: UUID = spool.id
+            product_id: UUID = product.id
 
         client = RecordingSpoolmanClient()
         async with factory() as session:
@@ -125,6 +127,16 @@ async def test_full_convergence_seeds_existing_inventory_and_then_updates_it(
             assert projected is not None
             assert projected.spoolman_id == 33
             assert projected.record_version == 2
+            product_projection = await session.scalar(
+                select(ProjectionState).where(
+                    ProjectionState.system == "spoolman",
+                    ProjectionState.object_type == "filament_product",
+                    ProjectionState.object_id == product_id,
+                )
+            )
+            assert product_projection is not None
+            assert product_projection.acknowledged_version == product.record_version
+            assert product_projection.last_success_at is not None
 
         async with factory() as session:
             await _converge_spoolman(session, client)  # type: ignore[arg-type]

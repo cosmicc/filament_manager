@@ -1017,6 +1017,10 @@ class WorkstationAgentResponse(ApiModel):
     capabilities: dict[str, Any]
     cura_installations: list[dict[str, Any]]
     cura_materials: list[dict[str, Any]]
+    cura_recovery_status: str
+    cura_recovery_message: str | None
+    last_recovery_snapshot_at: datetime | None
+    last_recovery_restore_at: datetime | None
     last_seen_at: datetime | None
     last_error: str | None
     record_version: int
@@ -1028,6 +1032,101 @@ class WorkstationAgentUpdate(ApiModel):
     display_name: str | None = Field(default=None, min_length=1, max_length=120)
     enabled: bool | None = None
     cura_management_enabled: bool | None = None
+
+
+class CuraRecoverySnapshotUpload(ApiModel):
+    """Sanitized exact-version Cura settings captured while Cura is closed."""
+
+    snapshot_checksum: str = Field(pattern=r"^[0-9a-f]{64}$")
+    payload: dict[str, Any]
+
+
+class CuraRecoverySnapshotUploadResponse(ApiModel):
+    """Idempotent acceptance or reset-protection result for an agent capture."""
+
+    accepted: bool
+    status: str
+    reason: str | None = None
+    snapshot_id: UUID | None = None
+    snapshot_checksum: str
+
+
+class CuraRecoverySnapshotResponse(ApiModel):
+    """Safe recovery-point metadata shown without raw configuration contents."""
+
+    id: UUID
+    agent_id: UUID
+    installation_id: str
+    cura_version: str
+    setting_version: int | None
+    snapshot_checksum: str
+    file_count: int
+    total_bytes: int
+    machine_count: int
+    quality_profile_count: int
+    plugin_count: int
+    plugins: list[dict[str, Any]]
+    captured_at: datetime
+    created_at: datetime
+
+
+class CuraRecoveryRestoreRequest(ApiModel):
+    """Explicit Administrator confirmation for one recovery point."""
+
+    snapshot_id: UUID
+    confirmed: bool
+
+
+class CuraRecoveryRestoreResponse(ApiModel):
+    """Sanitized lifecycle state for one queued Cura recovery operation."""
+
+    id: UUID
+    agent_id: UUID
+    snapshot_id: UUID | None
+    requested_by: UUID
+    installation_id: str
+    cura_version: str
+    snapshot_checksum: str
+    status: CuraDeploymentStatus
+    attempts: int
+    next_attempt_at: datetime
+    claimed_at: datetime | None
+    completed_at: datetime | None
+    result: dict[str, Any]
+    last_error_class: str | None
+    last_error_message: str | None
+    created_at: datetime
+    updated_at: datetime
+
+
+class CuraRecoveryRestoreClaimResponse(ApiModel):
+    """Leased immutable restore payload returned only to its paired agent."""
+
+    restore_id: UUID
+    snapshot_checksum: str
+    payload: dict[str, Any]
+    lease_expires_at: datetime
+
+
+class CuraRecoveryRestoreResult(ApiModel):
+    """Bounded path-free result from a workstation recovery operation."""
+
+    installation_id: str = Field(pattern=r"^[A-Za-z0-9_.-]+$", max_length=96)
+    version: str = Field(pattern=r"^\d+(?:\.\d+){1,3}$", max_length=32)
+    status: Literal["restored", "already_current"]
+    restored_files: int = Field(ge=0, le=500)
+    removed_files: int = Field(ge=0, le=500)
+    preferences_merged: bool
+    backup_id: str = Field(pattern=r"^[0-9a-f-]{36}/[A-Za-z0-9_.-]+$", max_length=160)
+    missing_plugins: list[str] = Field(default_factory=list, max_length=200)
+
+
+class CuraRecoveryRestoreCompletion(ApiModel):
+    """Safe recovery acknowledgement with no local paths or exception text."""
+
+    outcome: Literal["succeeded", "deferred", "failed"]
+    result: CuraRecoveryRestoreResult | None = None
+    retry_after_seconds: int = Field(default=60, ge=15, le=3600)
 
 
 class CuraDeploymentCreate(ApiModel):

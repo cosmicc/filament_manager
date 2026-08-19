@@ -94,7 +94,7 @@ The worker idempotently provisions these text fields through `POST /api/v1/field
 - filament: `filament_manager_product_uuid`, `filler`, `finish`, `color_name`, and `display_palette`
 - spool: `filament_manager_spool_uuid` and `sheet_spool_id`
 
-Spoolman stores every custom-field value as a JSON-encoded string. Encode managed values before create/update and decode them before UUID comparison. Managed UUID discovery makes retries duplicate-safe when a worker stops after remote creation but before saving the local remote ID.
+Spoolman stores every custom-field value as a JSON-encoded value, and every Filament Manager field above is declared as `text`. A plain managed string therefore receives the required outer JSON encoding. Structured `display_palette` data first becomes a compact inner JSON string and then receives the outer encoding so Spoolman still decodes the field to its declared string type. Encode before create/update and decode before UUID comparison. Managed UUID discovery makes retries duplicate-safe when a worker stops after remote creation but before saving the local remote ID. The next complete convergence repairs projections that were left unacknowledged by a rejected field payload.
 
 ## Extra-field safety
 

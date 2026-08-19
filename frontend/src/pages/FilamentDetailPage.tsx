@@ -49,6 +49,7 @@ export default function FilamentDetailPage() {
   const [colorMode, setColorMode] = useState<FilamentColorMode>('solid')
   const [colorHexes, setColorHexes] = useState(['808080'])
   const [materialType, setMaterialType] = useState('')
+  const [templateRevisionId, setTemplateRevisionId] = useState('')
   const [editingProduct, setEditingProduct] = useState(false)
   const [editingSettings, setEditingSettings] = useState(false)
   const [message, setMessage] = useState('')
@@ -92,7 +93,7 @@ export default function FilamentDetailPage() {
           filler: optional(data, 'filler'),
           finish: optional(data, 'finish'),
           notes: optional(data, 'notes'),
-          material_template_revision_id: String(data.get('material_template_revision_id')),
+          material_template_revision_id: templateRevisionId || currentTemplateRevisionId,
         }),
       })
     },
@@ -144,14 +145,34 @@ export default function FilamentDetailPage() {
   if (filament.isLoading) return <LoadingState label="Loading filament details" />
   if (!filament.data) return <div><Link className="button" to="/filaments"><ArrowLeft size={16} /> Filaments</Link><p className="form-error">{filament.error?.message ?? 'Filament not found'}</p></div>
   const item = filament.data
+  const compatibleTemplateOptions = (templates.data ?? []).flatMap((template) => {
+    const revision = template.revisions[0]
+    if (!revision || template.material_type.toLocaleLowerCase() !== materialType.trim().toLocaleLowerCase()) {
+      return []
+    }
+    if (latestProfile && (
+      template.printer_id !== latestProfile.printer_id
+      || Number(template.nozzle_diameter_mm) !== Number(latestProfile.nozzle_diameter_mm)
+    )) {
+      return []
+    }
+    return [{ template, revision }]
+  }).sort((left, right) => {
+    const leftCurrent = left.template.id === latestProfile?.base_template_id ? 0 : 1
+    const rightCurrent = right.template.id === latestProfile?.base_template_id ? 0 : 1
+    return leftCurrent - rightCurrent || left.template.name.localeCompare(right.template.name)
+  })
+  const currentTemplateRevisionId = compatibleTemplateOptions.find(
+    ({ template }) => template.id === latestProfile?.base_template_id,
+  )?.revision.id ?? item.material_template_revision_id ?? ''
   const closeProductEditor = () => {
     setColorName(item.color_name)
     setColorMode(item.color_mode)
     setColorHexes(item.color_hexes.length ? item.color_hexes : [item.color_hex ?? '808080'])
     setMaterialType(item.material_type)
+    setTemplateRevisionId(currentTemplateRevisionId)
     setEditingProduct(false)
   }
-  const compatibleTemplates = (templates.data ?? []).filter((template) => template.material_type.toLocaleLowerCase() === materialType.trim().toLocaleLowerCase())
 
   return <div>
     <PageHeader
@@ -163,7 +184,7 @@ export default function FilamentDetailPage() {
     {message && <div className="deployment-note" role="status">{message}</div>}
     <div className="detail-grid">
       <section className="card product-editor">
-        <header className="card__header"><div><p className="eyebrow">Canonical filament</p><h2>Product details</h2></div><div className="card-header-actions"><span className="filament-swatch" style={filamentSwatchStyle(item.color_mode, item.color_hexes, item.color_hex ?? '808080')} />{canEdit ? <><button className="button" onClick={() => setEditingProduct(true)}><Pencil size={16} /> Edit</button><button className="button button--danger" disabled={remove.isPending} onClick={() => { if (window.confirm('Delete this filament? It will be archived instead if retained history prevents safe deletion.')) remove.mutate() }}><Trash2 size={16} /> {remove.isPending ? 'Removing…' : 'Delete or archive'}</button></> : null}</div></header>
+        <header className="card__header"><div><p className="eyebrow">Canonical filament</p><h2>Product details</h2></div><div className="card-header-actions"><span className="filament-swatch" style={filamentSwatchStyle(item.color_mode, item.color_hexes, item.color_hex ?? '808080')} />{canEdit ? <><button className="button" onClick={() => { setTemplateRevisionId(currentTemplateRevisionId); setEditingProduct(true) }}><Pencil size={16} /> Edit</button><button className="button button--danger" disabled={remove.isPending} onClick={() => { if (window.confirm('Delete this filament? It will be archived instead if retained history prevents safe deletion.')) remove.mutate() }}><Trash2 size={16} /> {remove.isPending ? 'Removing…' : 'Delete or archive'}</button></> : null}</div></header>
         <dl className="definition-list">
           <div><dt>Vendor and product</dt><dd>{item.vendor_name ?? 'Unspecified vendor'} · {item.product_name ?? 'No product name'}</dd></div>
           <div><dt>Material</dt><dd>{item.material_type}{item.filler ? ` · ${item.filler}` : ''}{item.finish ? ` · ${item.finish}` : ''}</dd></div>
@@ -184,9 +205,9 @@ export default function FilamentDetailPage() {
         <EditorSection title="Product identity" description="Names and the shared screen color sample used throughout the application.">
           <div className="form-grid">
             <label>Vendor<select name="vendor_id" defaultValue={item.vendor_id ?? ''} autoFocus><option value="">Unspecified vendor</option>{vendors.data?.map((vendor) => <option key={vendor.id} value={vendor.id}>{vendor.name}</option>)}</select></label>
-            <label>Product name<input name="product_name" defaultValue={item.product_name ?? ''} maxLength={160} /></label>
+            <label>Display name<input name="product_name" defaultValue={item.product_name ?? ''} maxLength={160} /></label>
             <label>Material type<input name="material_type" value={materialType} onChange={(event) => setMaterialType(event.target.value)} maxLength={48} required /></label>
-            <label>Linked material template<select name="material_template_revision_id" defaultValue={item.material_template_revision_id ?? ''} required><option value="" disabled>Select a template</option>{compatibleTemplates.map((template) => { const revision = [...template.revisions].filter((entry) => entry.status === 'published').sort((left, right) => right.version - left.version)[0]; return revision ? <option key={revision.id} value={revision.id}>{template.name} · {compactNumber(template.nozzle_diameter_mm, 1)} mm</option> : null })}</select><small className="field-help">Changing this link immediately rebuilds inherited settings while preserving explicit filament customizations.</small></label>
+            <label>Linked material template<select name="material_template_revision_id" value={templateRevisionId || currentTemplateRevisionId} onChange={(event) => setTemplateRevisionId(event.target.value)} required><option value="" disabled>{compatibleTemplateOptions.length ? 'Select a template' : 'No compatible templates'}</option>{compatibleTemplateOptions.map(({ template, revision }) => <option key={revision.id} value={revision.id}>{template.name} · {compactNumber(template.nozzle_diameter_mm, 1)} mm{template.id === latestProfile?.base_template_id ? ' · Current' : ''}</option>)}</select><small className="field-help">Changing this link immediately rebuilds inherited settings while preserving explicit filament customizations.</small></label>
             <FilamentColorEditor name={colorName} mode={colorMode} colorHexes={colorHexes} rememberedColors={colors.data ?? []} onNameChange={setColorName} onModeChange={setColorMode} onColorsChange={setColorHexes} disabled={!item.color_editable} />
             {!item.color_editable ? <p className="security-note form-grid__wide">Color is locked because this filament already has recorded spool use or print history.</p> : null}
           </div>

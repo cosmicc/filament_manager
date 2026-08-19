@@ -43,6 +43,10 @@ class WorkstationAgent(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     capabilities: Mapped[dict[str, object]] = mapped_column(JSONB, nullable=False, default=dict)
     cura_installations: Mapped[list[dict[str, object]]] = mapped_column(JSONB, nullable=False, default=list)
     cura_materials: Mapped[list[dict[str, object]]] = mapped_column(JSONB, nullable=False, default=list)
+    cura_recovery_status: Mapped[str] = mapped_column(String(32), nullable=False, default="not_ready")
+    cura_recovery_message: Mapped[str | None] = mapped_column(String(500))
+    last_recovery_snapshot_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    last_recovery_restore_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     last_seen_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), index=True)
     last_error: Mapped[str | None] = mapped_column(String(500))
     created_by: Mapped[UUID] = mapped_column(ForeignKey("users.id", ondelete="RESTRICT"), nullable=False)
@@ -84,6 +88,86 @@ class CuraDeployment(UUIDPrimaryKeyMixin, Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     cancellation_reason: Mapped[str | None] = mapped_column(Text)
+
+
+class CuraRecoverySnapshot(UUIDPrimaryKeyMixin, Base):
+    """Immutable sanitized Cura configuration recovery point."""
+
+    __tablename__ = "cura_recovery_snapshots"
+    __table_args__ = (
+        UniqueConstraint(
+            "agent_id",
+            "installation_id",
+            "cura_version",
+            "snapshot_checksum",
+            name="uq_cura_recovery_snapshot_content",
+        ),
+        Index(
+            "ix_cura_recovery_snapshot_history",
+            "agent_id",
+            "installation_id",
+            "cura_version",
+            "captured_at",
+        ),
+    )
+
+    agent_id: Mapped[UUID] = mapped_column(
+        ForeignKey("workstation_agents.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    installation_id: Mapped[str] = mapped_column(String(96), nullable=False)
+    cura_version: Mapped[str] = mapped_column(String(32), nullable=False)
+    setting_version: Mapped[int | None] = mapped_column(Integer)
+    snapshot_checksum: Mapped[str] = mapped_column(String(64), nullable=False)
+    payload: Mapped[dict[str, object]] = mapped_column(JSONB, nullable=False)
+    file_count: Mapped[int] = mapped_column(Integer, nullable=False)
+    total_bytes: Mapped[int] = mapped_column(Integer, nullable=False)
+    machine_count: Mapped[int] = mapped_column(Integer, nullable=False)
+    quality_profile_count: Mapped[int] = mapped_column(Integer, nullable=False)
+    plugin_count: Mapped[int] = mapped_column(Integer, nullable=False)
+    captured_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+
+
+class CuraRecoveryRestore(UUIDPrimaryKeyMixin, Base):
+    """Leased request to restore one immutable sanitized Cura snapshot."""
+
+    __tablename__ = "cura_recovery_restores"
+    __table_args__ = (
+        Index(
+            "ix_cura_recovery_restore_claim",
+            "agent_id",
+            "status",
+            "next_attempt_at",
+            "created_at",
+        ),
+    )
+
+    agent_id: Mapped[UUID] = mapped_column(
+        ForeignKey("workstation_agents.id", ondelete="RESTRICT"), nullable=False, index=True
+    )
+    snapshot_id: Mapped[UUID | None] = mapped_column(
+        ForeignKey("cura_recovery_snapshots.id", ondelete="SET NULL"), index=True
+    )
+    requested_by: Mapped[UUID] = mapped_column(ForeignKey("users.id", ondelete="RESTRICT"))
+    installation_id: Mapped[str] = mapped_column(String(96), nullable=False)
+    cura_version: Mapped[str] = mapped_column(String(32), nullable=False)
+    snapshot_checksum: Mapped[str] = mapped_column(String(64), nullable=False)
+    payload: Mapped[dict[str, object]] = mapped_column(JSONB, nullable=False)
+    status: Mapped[CuraDeploymentStatus] = mapped_column(
+        Enum(CuraDeploymentStatus, name="cura_deployment_status"),
+        nullable=False,
+        default=CuraDeploymentStatus.PENDING,
+    )
+    attempts: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    next_attempt_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    claimed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    lease_expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    result: Mapped[dict[str, object]] = mapped_column(JSONB, nullable=False, default=dict)
+    last_error_class: Mapped[str | None] = mapped_column(String(160))
+    last_error_message: Mapped[str | None] = mapped_column(String(500))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
 
 
 class CuraManagedEditReceipt(UUIDPrimaryKeyMixin, Base):

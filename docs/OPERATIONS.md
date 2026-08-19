@@ -8,18 +8,18 @@
 - Diagnostics: running/latest Filament Manager version plus Spoolman, Moonraker, Google, Cura-agent, worker, and synchronization status without secret exposure; **Download log** saves the same bounded overview as text
 - Diagnostics queues: pending depth, attempts, dead jobs, and explicit Administrator retry
 - Activity: append-only operational and security audit history
-- Cura workstations: pairing, detected Cura versions/machines, pre-takeover source selection, and authoritative management controls
+- Cura workstations: pairing, detected Cura versions/machines, pre-takeover source selection, authoritative management controls, and exact-version recovery points
 - Build Plates: per-side Moonraker mesh checks, newly discovered physical plates/sides, unavailable mappings, and the active loaded side
 - Print History: current capture, supported Moonraker history progress, inspection status, unresolved legacy rows, M600 segments, and retained outcome history
 - Notifications: unread Moonraker, dead-job, low/empty spool, overdue plate, and failed Cura synchronization conditions
 
-Canonical inventory changes create supported-API Spoolman jobs in the same transaction and dispatch normally begins within one worker polling cycle. Every minute by default, a safety sweep imports printer-recorded usage first and then converges every canonical vendor, filament product, and spool. Every 15 seconds the worker reads Moonraker's supported active Spoolman ID, persistent physical-spool macro state, and exact P-number mesh state. A valid non-null direct selection in an idle/manual-selection phase opens a guarded Fluidd target, and the worker restores Spoolman to the last completed physical boundary until confirmation; other drift is repaired without target capture. The same pass refreshes the bounded Cura/manual-load spool catalog. Every 5 seconds it captures current print state and incrementally reconciles Moonraker history; every 5 minutes it refreshes sanitized printer information. Notification conditions converge every minute. These jobs also seed the configured printer, initial plates, and a missing recommended `Template ASA` for the configured printer/current-nozzle scope. Existing ASA templates are never overwritten. Google publication is scheduled when enabled. External outages create bounded retries and never roll back already committed canonical changes.
+Canonical inventory changes create supported-API Spoolman jobs in the same transaction and dispatch normally begins within one worker polling cycle. Every minute by default, a safety sweep imports printer-recorded usage first and then converges every canonical vendor, filament product, and spool. Every 15 seconds the worker reads Moonraker's supported active Spoolman ID, persistent physical-spool macro state, and exact P-number mesh state. A valid non-null direct selection in an idle/manual-selection phase opens a guarded Fluidd target, and the worker restores Spoolman to the last completed physical boundary until confirmation; other drift is repaired without target capture. The same pass refreshes the bounded Cura/manual-load spool catalog. A failed periodic pass retries no later than its configured interval, so active-spool recognition remains inside one minute while Moonraker is reachable. Every 5 seconds it captures current print state and incrementally reconciles Moonraker history; a malformed bounded legacy record is skipped without blocking valid records or the successful-pass checkpoint. Every 5 minutes it refreshes sanitized printer information. Notification conditions converge every minute. These jobs also seed the configured printer, initial plates, and a missing recommended `Template ASA` for the configured printer/current-nozzle scope. Existing ASA templates are never overwritten. Google publication is scheduled when enabled. External outages create bounded retries and never roll back already committed canonical changes.
 
 The web and worker emit structured console logs for request completion, stable API rejections, validation errors, scheduler and outbox activity, and Moonraker synchronization results. Browser API requests also log their method, path, status, and correlation ID. Error logs include safe messages and tracebacks but never credentials, connection URLs, request bodies, or external response bodies. The Diagnostics text download is a sanitized operational summary rather than a copy of raw process logs; it omits SQL, tracebacks, URLs, credentials, and upstream response content.
 
 ## Recovery validation and projection rebuild
 
-Use the **Diagnostics** page for the routine read-only validation report. It checks the current Alembic revision, measurement integrity, stored credential hashes, Spoolman projection consistency, Google publication state, and managed Cura synchronization state, then persists a sanitized result. This validates application recovery readiness; it does not create or restore a PostgreSQL backup.
+Use the **Diagnostics** page for the routine read-only validation report. It checks the current Alembic revision, measurement integrity, stored credential hashes, Spoolman projection consistency, Google publication state, managed Cura synchronization state, and Cura recovery readiness, then persists a sanitized result. This validates application recovery readiness; it does not create or restore a PostgreSQL backup.
 
 The same checks are available inside the application container:
 
@@ -35,7 +35,7 @@ filament-manager-cli rebuild-projections --confirm
 
 The rebuild only queues idempotent derived Spoolman, Google, and managed Cura work. It does not alter canonical spool, measurement, profile, plate, nozzle, or print-history records. Continue performing actual database backup and isolated restore through the PostgreSQL platform.
 
-The worker provisions Filament Manager's text custom fields through Spoolman's field API and JSON-encodes each value as required by Spoolman 0.23.1. It paginates complete collections, preserves custom fields owned by other integrations, uses managed UUIDs to avoid duplicate creates, and reclaims jobs abandoned by a terminated worker after `SYNC_OUTBOX_LOCK_TIMEOUT_SECONDS`.
+The worker provisions Filament Manager's text custom fields through Spoolman's field API and JSON-encodes each value as required by Spoolman 0.23.1. Structured display palettes are serialized to an inner compact JSON string before that outer encoding so the field still validates as text. It paginates complete collections, preserves custom fields owned by other integrations, uses managed UUIDs to avoid duplicate creates, and reclaims jobs abandoned by a terminated worker after `SYNC_OUTBOX_LOCK_TIMEOUT_SECONDS`.
 
 On the first reconciliation after the spool-location ownership migration, a legacy spool with no Filament Manager location adopts its existing non-empty Spoolman location. After that import, or after any location edit in Filament Manager, the canonical free-text value wins and later Spoolman-side edits are repaired automatically.
 
@@ -48,7 +48,7 @@ Back up independently:
 3. `docker-stack.yml` and any optional independent stack files in use;
 4. an encrypted, access-controlled copy of the private stack-variable inventory;
 5. `filament_manager_data` and `spoolman_data` when they contain retained artifacts or logs.
-6. workstation-agent backup directories when Cura profile rollback must survive workstation replacement.
+6. workstation-agent backup directories when local Cura deployment or pre-recovery rollback must survive workstation replacement.
 
 Prefer PostgreSQL-native, WAL-aware backups. Retain measurement, usage, audit, and calibration history indefinitely unless policy changes.
 
@@ -64,7 +64,7 @@ Quarterly, compare spool/product counts, effective weights, profile versions, pl
 
 Confirm `FILAMENT_MANAGER_DB_*` and `POSTGRES_*` stack variables assemble the intended non-SSL URL for `filament_user`, then inspect the web or worker logs for the automatic-migration result. Do not grant access to the `spoolman` database. Run `alembic current` and `alembic upgrade head` only with the application services stopped when following the recovery procedure below.
 
-The current 0.2.4 schema remains `e1f2a3b4c567`. If Diagnostics reports an older revision, first confirm web and worker use the same current image and let automatic migration finish. Never downgrade or manually edit `alembic_version`; use the documented stopped-service recovery procedure if an upgrade genuinely failed.
+The current 0.2.5 schema is `f2a3b4c5d678`. If Diagnostics reports an older revision, first confirm web and worker use the same current image and let automatic migration finish. Never downgrade or manually edit `alembic_version`; use the documented stopped-service recovery procedure if an upgrade genuinely failed.
 
 ### Web or worker tasks repeatedly restart after startup
 
@@ -74,7 +74,7 @@ Use the current stack file and image together. The web health check must send th
 
 Check that the worker service is running, then inspect worker logs, external DNS from the `filament-services` overlay, and the sanitized error class shown in Diagnostics. The Spoolman connection check verifies both API health and managed projection fields. Repair the external service, then allow automatic retry or use Administrator retry for unrelated dead jobs. The 0.1.5 repair migration automatically requeues Spoolman work affected by the former field contract, and the next one-minute sweep projects all existing canonical inventory even when no usable job remains. Corrected 0.2.2 workers normalize long fractional Spoolman weights before comparison and reload printer state after a failed live-print transaction, preventing the repeated `IntegrityError` and `MissingGreenlet` jobs caused by those conditions. Existing dead rows remain durable and require explicit Administrator retry; do not clear them directly in PostgreSQL.
 
-After redeployment, recent worker logs should show `spoolman.reconcile.full` completing. The Diagnostics queue should show new filament/spool upserts completing, and Spoolman should receive existing inventory no later than the next safety sweep when the internal API is reachable.
+After redeployment, recent worker logs should show `spoolman.reconcile.full` completing. The Diagnostics queue should show new filament/spool upserts completing, and Spoolman should receive existing inventory no later than the next safety sweep when the internal API is reachable. The projection-consistency check clears when the new acknowledgements are recorded. Previously dead rows remain durable; use Diagnostics **Retry dead jobs** once after the corrected worker is deployed if they should be retried.
 
 ### Spoolman is unavailable
 
@@ -134,6 +134,14 @@ The dry run is tied to the exact SHA-256 file. Resolve row errors or select the 
 
 Confirm the per-user systemd service or Windows logon task is running and its last-contact time is current. Close Cura; the agent deliberately defers all writes while any Cura process is open. Run `filament-manager-agent scan` under the Cura user and confirm the expected version, machine name, and nozzle are detected.
 
+### Cura was reset or must be rebuilt
+
+Deploy the updated server and allow schema `f2a3b4c5d678` to migrate before upgrading the workstation agent; an agent with recovery support requires the new authenticated recovery endpoints. For routine protection, leave the agent running and close Cura periodically. A healthy configuration containing at least one printer is captured automatically, and Cura Workstations retains the ten newest distinct points per installation/version. A missing-printer or large-deletion capture is blocked so it cannot displace the last known-good point.
+
+For recovery, install or reset the same Cura version, open it once, sign in to the Cura account, wait for the account-managed plugins to install, then close Cura completely. On **Cura Workstations**, choose **Restore Cura setup**, select and review the exact-version point, and confirm. Leave Cura closed until the workstation status returns to **Ready**. Re-enter any Moonraker, OctoPrint, or other excluded connection credentials afterward. Filament Manager restores printer/extruder and custom profile state plus safe preferences; canonical materials synchronize separately. It records plugin names and versions for verification but never installs plugin binaries.
+
+If recovery reports failure, inspect the workstation's local structured log. The agent restores its pre-recovery archive automatically after a write failure and reports only a generic path-free error to the server. Account sessions, credentials, URLs, paths, and plugin code are intentionally absent from server snapshots.
+
 ### A service stops during automatic database migration
 
 Inspect both web and worker logs for `database_migration_started`, `database_migration_completed`, a lock timeout, or an Alembic error. Do not disable automatic migration and start the application against an older schema. Keep the application stopped, correct the database or migration problem, take a fresh backup if appropriate, and run the documented one-shot recovery migration. The database URL is intentionally never included in migration logs.
@@ -152,7 +160,7 @@ Reload the filament detail and confirm whether that specific key is marked custo
 
 ### A workstation is paired but Cura profiles never appear
 
-Check the workstation's agent service log first. If it reports `CERTIFICATE_VERIFY_FAILED` even though the Filament Manager private CA is trusted by the operating system, upgrade the workstation agent to the current 0.2.4 package. The corrected agent uses the verified operating-system TLS context for pairing and every service request. Do not disable certificate verification. After restart, confirm that Diagnostics shows a current contact time, then reopen the takeover mapping dialog.
+Check the workstation's agent service log first. If it reports `CERTIFICATE_VERIFY_FAILED` even though the Filament Manager private CA is trusted by the operating system, upgrade the workstation agent to the current 0.2.5 package. The corrected agent uses the verified operating-system TLS context for pairing and every service request. Do not disable certificate verification. After restart, confirm that Diagnostics shows a current contact time, then reopen the takeover mapping dialog.
 
 ### Cura synchronization fails during file replacement
 

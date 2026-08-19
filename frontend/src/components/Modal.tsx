@@ -21,6 +21,11 @@ export function Modal({ title, description, children, onClose, footer, size = 's
   const titleId = useId()
   const descriptionId = useId()
   const dialogRef = useRef<HTMLElement>(null)
+  const onCloseRef = useRef(onClose)
+
+  useEffect(() => {
+    onCloseRef.current = onClose
+  }, [onClose])
 
   useEffect(() => {
     const previouslyFocused = document.activeElement instanceof HTMLElement ? document.activeElement : null
@@ -28,13 +33,14 @@ export function Modal({ title, description, children, onClose, footer, size = 's
     document.body.style.overflow = 'hidden'
 
     const dialog = dialogRef.current
-    const initialFocus = dialog?.querySelector<HTMLElement>('[autofocus], input, select, textarea, button')
+    const initialFocus = dialog?.querySelector<HTMLElement>('[autofocus]')
+      ?? dialog?.querySelector<HTMLElement>('input, select, textarea, button')
     initialFocus?.focus()
 
     const handleKeyDown = (event: KeyboardEvent) => {
       if (event.key === 'Escape') {
         event.preventDefault()
-        onClose()
+        onCloseRef.current()
         return
       }
       if (event.key !== 'Tab' || !dialog) return
@@ -60,7 +66,7 @@ export function Modal({ title, description, children, onClose, footer, size = 's
       document.body.style.overflow = previousOverflow
       previouslyFocused?.focus()
     }
-  }, [onClose])
+  }, [])
 
   return (
     <div className="modal-backdrop" role="presentation" onMouseDown={(event) => event.target === event.currentTarget && onClose()}>

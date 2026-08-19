@@ -13,10 +13,12 @@ Each Arch Linux or Windows 11 workstation runs one agent under the same user acc
 - installs official-format `.xml.fdm_material` files plus the managed plugin that hides bundled materials, favorites every Template, and enforces selected-material values over Cura's higher profile layers;
 - backs up every added, replaced, removed, repaired, or quarantined user material, managed-plugin, and affected custom-profile file, writes same-filesystem temporary files, and atomically replaces targets;
 - removes only centrally managed material keys from custom Cura profiles, repairs recoverable duplicate sections, and quarantines malformed bounded profiles so Cura no longer loads them;
-- records a complete-library checksum so repeated synchronizations are idempotent and heartbeat drift is repaired; and
-- restores the backup automatically if any write fails.
+- records a complete-library checksum so repeated synchronizations are idempotent and heartbeat drift is repaired;
+- restores the backup automatically if any write fails;
+- captures a sanitized exact-version Cura recovery point whenever Cura is closed and the installation still contains a printer; and
+- applies an Administrator-confirmed recovery only to the same workstation/version after making a separate local rollback archive.
 
-Install and enable the Cura **Material Settings** and **Klipper Settings** plugins. Filament Manager stores pressure advance as `klipper_pressure_advance_factor` and smooth time as the Klipper plugin's material settings. Cura main/custom profiles remain local and are not synchronized. The agent never creates a quality profile, changes bundled profiles, patches machine start G-code, or alters unrelated custom-profile settings.
+Install and enable the Cura **Material Settings** and **Klipper Settings** plugins. After Cura finishes initialization, Filament Manager's managed plugin replaces the Material Settings plugin's enabled-setting list with the complete central catalog in `docs/CURA_MATERIAL_PRINT_SETTINGS.txt`; this is also reapplied after a recovery. Filament Manager stores pressure advance as `klipper_pressure_advance_factor` and smooth time as the Klipper plugin's material settings. Cura main/custom profiles remain local and are not synchronized. The agent never creates a quality profile, changes bundled profiles, patches machine start G-code, or alters unrelated custom-profile settings.
 
 For physical-spool preflight, the operator must make the one-time Cura machine start-G-code change documented in [INSTALL.md](../INSTALL.md). The agent supplies each managed material's stable GUID but intentionally preserves the complete machine start/end G-code. Select a product material, not a `Template <material type>` entry, when sending a print that must resolve to physical inventory.
 
@@ -24,7 +26,7 @@ Existing Cura material files are parsed with a hardened XML parser. Saved print 
 
 On **Templates**, choose **Import from Cura**, or open **Cura workstations** directly. While the workstation says **Awaiting one-time takeover**, select **Map Cura profiles** to open the mapping dialog. Every reported material and saved print profile appears beside a Filament Manager template selector, including named profiles whose tracked values are all inherited expressions. Choose the existing template each source should update, or leave it as **Do not import**. Each source and template may be used once. Continue to the separate review, verify all mappings and the ignored count together, then select **Complete takeover** once. **Back to mappings** always returns to the selectors. Filament Manager applies the mapped literal settings, updates linked profiles through normal inheritance, records provenance, enables management, and queues synchronization atomically. Unmapped user sources are backed up and then replaced by the managed library. Bundled files in Cura's installation remain untouched; the managed plugin hides them in material selectors.
 
-After management is enabled, an edit to approved settings in an existing Filament Manager material is detected by its deterministic GUID and content checksum. The server saves that known template/profile directly and idempotently, preserves explicit filament customizations during template inheritance, and queues the current library for synchronization. Pre-takeover print-profile discovery does not continue as a source of canonical additions after management begins. New or copied Cura materials, changed identity metadata, unknown GUIDs, machine configuration, quality-profile changes, and start/end G-code are never imported. Add all new templates and filament products in Filament Manager.
+After management is enabled, an edit to approved settings in an existing Filament Manager material is detected by its deterministic GUID and content checksum. The server saves that known template/profile directly and idempotently, preserves explicit filament customizations during template inheritance, and queues the current library for synchronization. Product materials use their manufacturer as Cura brand and use `Unknown` when no manufacturer is recorded. Pre-takeover print-profile discovery does not continue as a source of canonical additions after management begins. New or copied Cura materials, changed identity metadata, unknown GUIDs, machine configuration, quality-profile changes, and start/end G-code are never imported. Add all new templates and filament products in Filament Manager.
 
 Cura's sidebar, custom profile, and built-in quality layers normally override material values. The managed plugin uses the central Filament Manager catalog to remove those keys from the active custom layer and mirror the selected material's explicit values into Cura's supported top user layer. Main profiles therefore remain useful for non-material choices, while temperatures, flow, filament-dependent speed/retraction/cooling, dimensional compensation, and Klipper material values come from the selected managed material. If Cura is closed and a saved custom profile reintroduces a managed key, checksum drift queues another backed-up cleanup.
 
@@ -92,7 +94,7 @@ Start-ScheduledTask -TaskName 'Filament Manager Cura Agent'
 
 ## Use
 
-Before takeover, open **Cura workstations** and wait for the agent to report existing material files and saved print profiles. If the selectable count is unexpectedly zero, upgrade or restart the agent, keep Cura closed, and wait for the next check-in. Version 0.2.4 uses Cura deployment schema 3, so every paired workstation must run the 0.2.4 agent before it can install the profile cleanup and material-enforcement plugin. Select **Map Cura profiles**, map any source you want to keep to an existing template, and leave all others as **Do not import**. A recommended `Template ASA` is seeded for the configured printer/nozzle when no ASA template already exists. Use **Review takeover**, verify the mappings and ignored count, then select **Complete takeover**. Routine agent check-ins do not invalidate the dialog; an actual source-content change requires a fresh review. A genuinely clean installation can complete with zero mappings. Cura shows and favorites bases as `Template PLA`, `Template PETG`, and so on under brand `Template`. Later template or product saves queue the complete library automatically. Close Cura when synchronization is pending; the agent retries without manual requeueing.
+Before takeover, open **Cura workstations** and wait for the agent to report existing material files and saved print profiles. If the selectable count is unexpectedly zero, upgrade or restart the agent, keep Cura closed, and wait for the next check-in. Version 0.2.5 uses Cura deployment schema 3, so every paired workstation must run the 0.2.5 agent before it can install the profile cleanup, current renderer, and material-enforcement plugin. Select **Map Cura profiles**, map any source you want to keep to an existing template, and leave all others as **Do not import**. A recommended `Template ASA` is seeded for the configured printer/nozzle when no ASA template already exists. Use **Review takeover**, verify the mappings and ignored count, then select **Complete takeover**. Routine agent check-ins do not invalidate the dialog; an actual source-content change requires a fresh review. A genuinely clean installation can complete with zero mappings. Cura shows and favorites bases as `Template PLA`, `Template PETG`, and so on under brand `Template`; manufacturer-less products appear under `Unknown`. Every generated material description lists its filler and finish on separate labeled lines, using `None` when a field is empty. Later template or product saves queue the complete library automatically. Close Cura when synchronization is pending; the agent retries without manual requeueing.
 
 Useful local commands:
 
@@ -104,6 +106,37 @@ filament-manager-agent rollback DEPLOYMENT_UUID
 ```
 
 Rollback restores the exact pre-synchronization user materials, managed plugin files, and affected user quality-change profiles captured by that deployment. Corrupt originals are also copied to the agent's `quarantine` data directory under the deployment identity before removal from Cura. Authoritative synchronization never changes Cura's machine, bundled quality, unrelated custom-profile settings, start-G-code, or installation files.
+
+## Full Cura configuration recovery
+
+This recovery protects the workstation-owned Cura configuration that ordinary material synchronization intentionally leaves alone. Whenever Cura is fully closed, the agent captures bounded printer/extruder definitions, user definitions and variants, intent and custom quality state, visibility settings, safe Cura preferences, and the installed plugin names, versions, and enabled state. Filament Manager retains the ten newest distinct recovery points for each discovered installation and Cura version. If the agent sees no printer or a large deletion compared with the latest point, the server blocks that capture and preserves the last known-good configuration.
+
+Account sessions, passwords, tokens, API keys, private connection URLs, local paths, and plugin executable files are removed or excluded before upload. Browser users can review metadata and plugin inventory, never the stored file contents. Plugin code still comes from Cura account synchronization.
+
+To recover from Cura defaults:
+
+1. Install or reset the same Cura version.
+2. Open Cura, sign in to the Cura account, and wait for account-managed plugins to install.
+3. Close Cura completely.
+4. In **Cura Workstations**, select **Restore Cura setup**, choose the matching recovery point, review it, and confirm.
+5. Leave Cura closed until the recovery status returns to **Ready**.
+6. Re-enter excluded Moonraker, OctoPrint, or other connection credentials if required.
+
+The agent first archives every allowlisted target it may replace, writes the selected configuration atomically, removes stale allowlisted files, merges safe preferences into the current `cura.cfg` without replacing excluded login/connection data, and rolls back automatically if any write fails. Normal authoritative synchronization then restores Filament Manager's current material library. The restore is never transferred to another agent identity or a different Cura version.
+
+## Cura startup recovery
+
+If Cura crashes immediately after synchronization and `cura.log` reports an active-machine startup failure involving `_i18n_catalog`, stop the workstation agent before retrying Cura. Close Cura and its crash dialog, then move the `FilamentManagerVisibility` directory outside that Cura version's `plugins` directory; moving it preserves a recoverable copy and leaves all material files untouched. Start Cura to confirm recovery, upgrade to an agent containing the startup-order fix, close Cura, and restart the agent so it can reinstall the corrected plugin. Do not restart an older agent while the plugin is moved because desired-state repair will restore that older plugin.
+
+For the standard Arch service:
+
+```bash
+systemctl --user stop filament-manager-agent.service
+mkdir -p ~/FilamentManager-Cura-Recovery
+mv ~/.local/share/cura/5.13/plugins/FilamentManagerVisibility ~/FilamentManager-Cura-Recovery/
+```
+
+Replace `5.13` if the affected Cura user-data version differs. On Windows, stop the **Filament Manager Cura Agent** scheduled task and move the same plugin directory outside `%APPDATA%\cura\<version>\plugins` before starting Cura.
 
 ## Security and removal
 
@@ -117,4 +150,4 @@ Pairing codes expire after ten minutes and work once. The server stores hashes o
 .\workstation-agent\installers\uninstall-windows.ps1
 ```
 
-The uninstaller stops and removes the per-user service/task, installed executable or virtual environment, pairing credential, local agent state, and rollback backups. These removals are not recoverable unless separately backed up. The currently deployed Cura material files and managed visibility plugin remain installed so removing the agent does not damage Cura's working material library; remove or replace those through Cura deliberately if they are no longer wanted.
+The uninstaller stops and removes the per-user service/task, installed executable or virtual environment, pairing credential, local state, deployment rollback backups, and pre-recovery archives. These removals are not recoverable unless separately backed up. The currently deployed Cura material files and managed visibility plugin remain installed so removing the agent does not damage Cura's working material library; remove or replace those through Cura deliberately if they are no longer wanted.

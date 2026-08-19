@@ -49,6 +49,21 @@ def _normalized(value: str) -> str:
     return "".join(character for character in value.casefold() if character.isalnum())
 
 
+def _description_value(value: object) -> str:
+    """Return one safe display line for optional filament identity metadata."""
+
+    if value is None:
+        return "None"
+    if not isinstance(value, str):
+        raise ValueError("Filament description metadata must be text or null.")
+    normalized = value.strip()
+    if not normalized:
+        return "None"
+    if len(normalized) > 96 or "\n" in normalized or "\r" in normalized:
+        raise ValueError("Filament description metadata contains invalid text.")
+    return normalized
+
+
 def match_machine(installation: CuraInstallation, printer: dict[str, Any]) -> CuraMachine:
     """Select one unambiguous machine using identity, name, and nozzle evidence."""
 
@@ -118,6 +133,10 @@ def _material_xml(payload: dict[str, Any]) -> bytes:
         )
     )
     ET.SubElement(metadata, f"{{{namespace}}}GUID").text = str(guid)
+    ET.SubElement(metadata, f"{{{namespace}}}description").text = (
+        f"Filament Filler: {_description_value(material.get('filler'))}\n"
+        f"Filament Finish: {_description_value(material.get('finish'))}"
+    )
     properties = ET.SubElement(root, f"{{{namespace}}}properties")
     ET.SubElement(properties, f"{{{namespace}}}density").text = str(material["density_g_cm3"])
     ET.SubElement(properties, f"{{{namespace}}}diameter").text = str(material["diameter_mm"])
@@ -148,13 +167,12 @@ def getMetaData():
     return {}
 
 def register(app):
-    return {"extension": FilamentManagerVisibility.FilamentManagerVisibility()}
+    return {"extension": FilamentManagerVisibility.FilamentManagerVisibility(app)}
 '''
 
 PLUGIN_MODULE_TEMPLATE = '''"""Enforce Filament Manager material ownership inside Cura."""
 
 from PyQt6.QtCore import QTimer
-from UM.Application import Application
 from UM.Extension import Extension
 from UM.Logger import Logger
 from cura.Machines.Models.BaseMaterialsModel import BaseMaterialsModel
@@ -163,10 +181,10 @@ MANAGED_PREFIX = "filament_manager_"
 MANAGED_SETTING_KEYS = frozenset(__MANAGED_SETTING_KEYS__)
 
 
-def _favorite_templates(model):
+def _favorite_templates(application, model):
     """Add every managed Template material to Cura's favorite-material set."""
 
-    preferences = Application.getInstance().getPreferences()
+    preferences = application.getPreferences()
     current = str(preferences.getValue("cura/favorite_materials") or "")
     favorites = {value for value in current.split(";") if value}
     for material_id, material in model._available_materials.items():
@@ -181,41 +199,74 @@ def _favorite_templates(model):
     if updated != current:
         preferences.setValue("cura/favorite_materials", updated)
 
+
+def _configure_material_settings_plugin(application):
+    """Expose the complete central setting catalog in Material Settings."""
+
+    preferences = application.getPreferences()
+    expected = ";".join(sorted(MANAGED_SETTING_KEYS))
+    current = str(preferences.getValue("material_settings/visible_settings") or "")
+    if current != expected:
+        preferences.setValue("material_settings/visible_settings", expected)
+
 class FilamentManagerVisibility(Extension):
-    def __init__(self):
+    def __init__(self, application):
         super().__init__()
+        self._application = application
+        self._initialized = False
         self._enforcing = False
         self._scheduled = False
         self._connected_containers = set()
-        application = Application.getInstance()
-        machine_manager = application.getMachineManager()
-        for signal_name in (
-            "activeMaterialChanged",
-            "activeQualityChanged",
-            "activeQualityChangesGroupChanged",
-            "activeStackChanged",
-            "globalContainerChanged",
-        ):
-            signal = getattr(machine_manager, signal_name, None)
-            if signal is not None:
-                signal.connect(self._schedule_enforcement)
+        self._install_material_filter()
+        application.initializationFinished.connect(self._initialize)
+        if getattr(application, "started", False):
+            QTimer.singleShot(0, self._initialize)
+
+    def _initialize(self):
+        """Connect to machine state only after Cura has completed initialization."""
+
+        if self._initialized:
+            return
+        try:
+            _configure_material_settings_plugin(self._application)
+            machine_manager = self._application.getMachineManager()
+            for signal_name in (
+                "activeMaterialChanged",
+                "activeQualityChanged",
+                "activeQualityChangesGroupChanged",
+                "activeStackChanged",
+                "globalContainerChanged",
+            ):
+                signal = getattr(machine_manager, signal_name, None)
+                if signal is not None:
+                    signal.connect(self._schedule_enforcement)
+        except Exception:
+            Logger.logException("e", "Filament Manager could not initialize material enforcement")
+            return
+        self._initialized = True
+        self._schedule_enforcement()
+
+    def _install_material_filter(self):
+        """Patch future selector updates without constructing Cura managers early."""
+
         if getattr(BaseMaterialsModel, "_filament_manager_patched", False):
-            self._schedule_enforcement()
             return
         original_update = BaseMaterialsModel._update
+        extension = self
 
         def managed_update(model):
             original_update(model)
+            if not extension._initialized:
+                return
             model._available_materials = {
                 key: material
                 for key, material in model._available_materials.items()
                 if key == "empty_material" or key.startswith(MANAGED_PREFIX)
             }
-            _favorite_templates(model)
+            _favorite_templates(extension._application, model)
 
         BaseMaterialsModel._update = managed_update
         BaseMaterialsModel._filament_manager_patched = True
-        self._schedule_enforcement()
 
     def _schedule_enforcement(self, *args):
         if self._scheduled:
@@ -244,7 +295,7 @@ class FilamentManagerVisibility(Extension):
             return
         self._enforcing = True
         try:
-            global_stack = Application.getInstance().getGlobalContainerStack()
+            global_stack = self._application.getGlobalContainerStack()
             if global_stack is None:
                 return
             extruders = list(global_stack.extruderList)
@@ -303,7 +354,7 @@ class FilamentManagerVisibility(Extension):
 PLUGIN_METADATA = b"""{
   "name": "Filament Manager Material Visibility",
   "author": "Filament Manager",
-  "version": "2.0.0",
+  "version": "2.0.2",
   "description": "Shows, favorites, and enforces the authoritative Filament Manager material library.",
   "api": 5,
   "supported_sdk_versions": ["8.0.0"]

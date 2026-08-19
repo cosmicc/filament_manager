@@ -482,10 +482,58 @@ export interface WorkstationAgent {
   capabilities: Record<string, unknown>
   cura_installations: CuraInstallationReport[]
   cura_materials: CuraMaterialReport[]
+  cura_recovery_status: 'not_ready' | 'ready' | 'capture_blocked' | 'restore_pending' | 'restoring' | 'restore_failed' | string
+  cura_recovery_message: string | null
+  last_recovery_snapshot_at: string | null
+  last_recovery_restore_at: string | null
   last_seen_at: string | null
   last_error: string | null
   record_version: number
   created_at: string
+}
+
+export interface CuraRecoveryPlugin {
+  package_id: string
+  display_name: string
+  version: string
+  enabled: boolean
+}
+
+export interface CuraRecoverySnapshot {
+  id: string
+  agent_id: string
+  installation_id: string
+  cura_version: string
+  setting_version: number | null
+  snapshot_checksum: string
+  file_count: number
+  total_bytes: number
+  machine_count: number
+  quality_profile_count: number
+  plugin_count: number
+  plugins: CuraRecoveryPlugin[]
+  captured_at: string
+  created_at: string
+}
+
+export interface CuraRecoveryRestore {
+  id: string
+  agent_id: string
+  snapshot_id: string | null
+  requested_by: string
+  installation_id: string
+  cura_version: string
+  snapshot_checksum: string
+  status: 'pending' | 'claimed' | 'succeeded' | 'failed' | 'cancelled'
+  attempts: number
+  next_attempt_at: string
+  claimed_at: string | null
+  completed_at: string | null
+  result: Record<string, unknown>
+  last_error_class: string | null
+  last_error_message: string | null
+  created_at: string
+  updated_at: string
 }
 
 export interface CuraDeployment {

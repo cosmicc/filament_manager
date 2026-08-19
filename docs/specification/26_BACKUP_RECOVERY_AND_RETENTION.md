@@ -9,6 +9,7 @@
 - Spoolman local data directory where operationally required
 - Google Sheet ID and template metadata
 - label and Cura export templates
+- sanitized versioned Cura recovery snapshots stored in canonical PostgreSQL
 
 ## Independent restore objectives
 
@@ -17,6 +18,8 @@ The stack boundary requires two restoration paths:
 ### Filament Manager restore
 
 Restore the canonical database, migrations, stack, and protected variable inventory. Spoolman may remain online while this occurs. After recovery, reconcile usage accumulated during the outage.
+
+Retained Cura recovery points return with the canonical database. They remain bound to their originating paired workstation and exact Cura version. Re-pairing a replacement workstation does not silently transfer that trust boundary.
 
 ### Spoolman restore
 
@@ -29,6 +32,8 @@ Restore the Spoolman database and stack independently. If the database cannot be
 - completed outbox jobs: retain for troubleshooting, then archive
 - calibration artifacts: retain with profile versions
 - Spoolman logs: retain according to centralized logging policy
+- sanitized Cura recovery snapshots: newest ten distinct points per workstation installation and Cura version
+- workstation-local pre-restore archives: retain according to workstation privacy/storage policy and remove deliberately when no longer required
 
 ## Quarterly recovery test
 
@@ -40,10 +45,11 @@ Restore the Spoolman database and stack independently. If the database cannot be
 6. compare counts, weights, profile versions, plates, and calibration status;
 7. simulate a Filament Manager outage while usage continues in Spoolman;
 8. document recovery time and discrepancies.
+9. verify retained Cura recovery metadata and exercise one exact-version workstation restore with non-production credentials.
 
 ## Application validation and derived-state rebuild
 
-The Diagnostics page and `filament-manager-cli verify` run the same read-only recovery checks against schema revision, measurement integrity, credential hashes, Spoolman consistency, Google publication state, and managed Cura synchronization state. Results are bounded, sanitized, and persisted for operator review. These checks supplement but never replace an isolated PostgreSQL restore test.
+The Diagnostics page and `filament-manager-cli verify` run the same read-only recovery checks against schema revision, measurement integrity, credential hashes, Spoolman consistency, Google publication state, managed Cura synchronization state, and Cura recovery readiness. Results are bounded, sanitized, and persisted for operator review. These checks supplement but never replace an isolated PostgreSQL restore test or an exact-version workstation recovery exercise.
 
 After a canonical restore or external projection loss, an Administrator may use Diagnostics or `filament-manager-cli rebuild-projections --confirm`. The operation queues idempotent Spoolman, Google, and managed Cura projection work from canonical data. It does not mutate canonical inventory/history and does not back up or restore either PostgreSQL database.
 

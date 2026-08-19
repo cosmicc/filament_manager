@@ -164,6 +164,8 @@ async def test_direct_template_save_updates_linked_product_profile(
                     "material_type": "PCTPE",
                     "color_name": "Natural",
                     "product_name": "Taulman PCTPE",
+                    "filler": None,
+                    "finish": "Silk",
                     "diameter_mm": "1.75",
                     "density_g_cm3": "1.21",
                     "nominal_net_mass_g": "500",
@@ -285,10 +287,13 @@ async def test_direct_template_save_updates_linked_product_profile(
             assert profile.setting_overrides == {"filament_density_g_cm3": "1.21"}
             library = await build_cura_library(session)
             assert library["schema_version"] == 3
-            assert library["hide_bundled_materials"] is True
-            assert "speed_print" in library["managed_material_setting_keys"]
             materials = library["materials"]
             assert isinstance(materials, list) and len(materials) == 3
+            product_material = next(item for item in materials if item["source_kind"] == "product")
+            assert product_material["material"]["filler"] is None
+            assert product_material["material"]["finish"] == "Silk"
+            assert library["hide_bundled_materials"] is True
+            assert "speed_print" in library["managed_material_setting_keys"]
             template_material = next(
                 item
                 for item in materials
@@ -296,6 +301,8 @@ async def test_direct_template_save_updates_linked_product_profile(
             )
             assert template_material["material"]["brand"] == "Template"
             assert template_material["material"]["product_name"] == "Template PCTPE"
+            product_material = next(item for item in materials if item["source_kind"] == "product")
+            assert product_material["material"]["brand"] == "Unknown"
             assert materials[0]["material"]["material_type"] == "PCTPE"
 
         await engine.dispose()

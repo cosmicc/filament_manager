@@ -1,5 +1,32 @@
 # User Changelog
 
+## 0.2.5 - 08.18.2026
+
+### Added
+
+- Added ten automatic safe Cura recovery points per workstation installation/version, including printers, extruders, custom profiles, visibility, approved preferences, and a plugin verification list.
+- Added a reviewed **Restore Cura setup** workflow that waits for Cura to close, backs up the current local state, restores the selected point, and rolls back automatically on failure.
+
+### Changed
+
+- Cura now automatically enables every material print setting managed by Filament Manager in the Material Settings plugin, including after a Cura recovery.
+- Materials without a known manufacturer now appear in Cura's `Unknown` group.
+- Active-spool changes now retry at the live polling rate instead of waiting through a long failure backoff.
+- Filament cards now show vendor, material/color/display name, and filler/finish on three consistent lines. Filament editing now lists the current linked template first and includes compatible alternatives.
+- Cura material descriptions now show `Filament Filler` and `Filament Finish` on separate lines, including `None` when a value is empty.
+- Cura recovery keeps account sessions, passwords, API keys, private URLs, local paths, and plugin program files on the workstation; account-installed plugins are restored through Cura before the saved settings are applied.
+- A reset or unexpectedly emptied Cura installation can no longer replace the last known-good recovery point.
+- Paired Cura workstations must be upgraded to the 0.2.5 agent before the updated material descriptions and recovery workflow are available.
+
+### Fixed
+
+- Fixed print history showing recent jobs while still reporting that synchronization had never succeeded.
+- Fixed filament projections remaining behind because Spoolman rejected multicolor/rainbow display metadata.
+- Fixed manual material-type and color-name entry jumping to the modal close button after each letter.
+- Fixed the linked-template selector being missing or stale while editing a filament.
+- Fixed Cura 5.13 crashing during startup immediately after Filament Manager synchronized its managed plugin; upgrading the workstation agent now automatically replaces the affected plugin.
+- Fixed there being no guided recovery path for printer, extruder, custom profile, visibility, and safe preference settings after Cura is reset to defaults.
+
 ## 0.2.4 - 08.18.2026
 
 ### Added

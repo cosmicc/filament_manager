@@ -18,6 +18,7 @@ from .discovery import (
     discover_print_profiles,
     unmanaged_material_count,
 )
+from .recovery import capture_recovery_snapshot, restore_recovery_snapshot
 from .render import render_deployment
 
 logger = structlog.get_logger()
@@ -26,6 +27,8 @@ logger = structlog.get_logger()
 def heartbeat_payload(
     installations: list[Any],
     last_error: str | None = None,
+    *,
+    recovery_capture_state: str = "waiting_for_cura_close",
 ) -> dict[str, Any]:
     """Build bounded capability and discovery metadata."""
 
@@ -59,6 +62,8 @@ def heartbeat_payload(
             "cura_print_profile_import": True,
             "unmanaged_print_profile_count": len(print_profiles),
             "unmanaged_import_source_count": len(import_sources),
+            "cura_recovery_snapshots": True,
+            "cura_recovery_capture_state": recovery_capture_state,
         },
         "cura_installations": installation_reports,
         "cura_materials": [source.report() for source in import_sources],
@@ -75,11 +80,91 @@ def run_once() -> bool:
     config = load_config()
     client = AgentClient(config)
     installations = discover_installations()
-    client.heartbeat(heartbeat_payload(installations))
+    running = cura_is_running()
+    recovery_snapshots: list[dict[str, object]] = []
+    recovery_error: str | None = None
+    if not running:
+        for installation in installations:
+            try:
+                recovery_snapshots.append(capture_recovery_snapshot(installation))
+            except (OSError, RuntimeError, ValueError) as error:
+                recovery_error = "Cura recovery capture failed; review the local agent log."
+                logger.warning(
+                    "recovery_capture_failed",
+                    installation_id=installation.installation_id,
+                    error_class=type(error).__name__,
+                    message=str(error)[:500],
+                )
+    capture_state = "error" if recovery_error else "ready" if not running else "waiting_for_cura_close"
+    client.heartbeat(
+        heartbeat_payload(
+            installations,
+            recovery_error,
+            recovery_capture_state=capture_state,
+        )
+    )
+    for snapshot in recovery_snapshots:
+        client.upload_recovery_snapshot(snapshot)
+
+    recovery_claim = client.claim_recovery_restore()
+    if recovery_claim is not None:
+        if running:
+            client.complete_recovery_restore(
+                recovery_claim.restore_id,
+                outcome="deferred",
+                retry_after_seconds=60,
+            )
+            logger.info(
+                "recovery_restore_deferred",
+                restore_id=recovery_claim.restore_id,
+                reason="cura_running",
+            )
+            return True
+        target = next(
+            (
+                installation
+                for installation in installations
+                if installation.installation_id == recovery_claim.payload.get("installation_id")
+                and installation.version == recovery_claim.payload.get("cura_version")
+            ),
+            None,
+        )
+        if target is None:
+            client.complete_recovery_restore(recovery_claim.restore_id, outcome="failed")
+            logger.error(
+                "recovery_restore_failed",
+                restore_id=recovery_claim.restore_id,
+                reason="exact_cura_installation_unavailable",
+            )
+            return True
+        try:
+            recovery_result = restore_recovery_snapshot(
+                target,
+                str(recovery_claim.restore_id),
+                recovery_claim.snapshot_checksum,
+                recovery_claim.payload,
+            )
+        except (OSError, RuntimeError, ValueError) as error:
+            client.complete_recovery_restore(recovery_claim.restore_id, outcome="failed")
+            logger.error(
+                "recovery_restore_failed",
+                restore_id=recovery_claim.restore_id,
+                error_class=type(error).__name__,
+                message=str(error)[:500],
+            )
+            return True
+        client.complete_recovery_restore(
+            recovery_claim.restore_id,
+            outcome="succeeded",
+            result=recovery_result,
+        )
+        logger.info("recovery_restore_succeeded", restore_id=recovery_claim.restore_id)
+        return True
+
     claim = client.claim()
     if claim is None:
         return False
-    if cura_is_running():
+    if running:
         client.complete(
             claim.deployment_id,
             outcome="deferred",

@@ -9,10 +9,16 @@ from urllib.parse import urlparse
 from uuid import UUID
 
 from fastapi import APIRouter, Request, Response, status
-from sqlalchemy import or_, select
+from sqlalchemy import delete, or_, select
 
 from filament_manager.config import get_settings
 from filament_manager.domain.cura_import import material_settings_from_cura, merge_cura_settings
+from filament_manager.domain.cura_recovery import (
+    RECOVERY_HISTORY_LIMIT,
+    recovery_checksum,
+    suspected_reset,
+    validate_recovery_payload,
+)
 from filament_manager.models.enums import CuraDeploymentStatus, ProfileStatus
 from filament_manager.models.inventory import (
     MaterialProfile,
@@ -21,6 +27,8 @@ from filament_manager.models.inventory import (
 )
 from filament_manager.models.workstations import (
     CuraDeployment,
+    CuraRecoveryRestore,
+    CuraRecoverySnapshot,
     CuraTakeoverMapping,
     WorkstationAgent,
     WorkstationPairingCode,
@@ -42,6 +50,13 @@ from ..schemas import (
     CuraDeploymentCompletion,
     CuraDeploymentCreate,
     CuraDeploymentResponse,
+    CuraRecoveryRestoreClaimResponse,
+    CuraRecoveryRestoreCompletion,
+    CuraRecoveryRestoreRequest,
+    CuraRecoveryRestoreResponse,
+    CuraRecoverySnapshotResponse,
+    CuraRecoverySnapshotUpload,
+    CuraRecoverySnapshotUploadResponse,
     CuraTakeoverRequest,
     MaterialSettingsInput,
     WorkstationAgentResponse,
@@ -56,6 +71,7 @@ router = APIRouter(tags=["Cura workstations"])
 PAIRING_LIFETIME = timedelta(minutes=10)
 CLAIM_LEASE = timedelta(minutes=5)
 MAX_AGENT_JSON_BYTES = 2 * 1024 * 1024
+MAX_RECOVERY_JSON_BYTES = 3 * 1024 * 1024
 
 
 class PairingRateLimiter:
@@ -80,10 +96,10 @@ class PairingRateLimiter:
 pairing_limiter = PairingRateLimiter()
 
 
-def _bounded_json(value: object) -> None:
+def _bounded_json(value: object, *, max_bytes: int = MAX_AGENT_JSON_BYTES) -> None:
     """Reject oversized agent metadata before it reaches PostgreSQL or audit logs."""
 
-    if len(json.dumps(value, separators=(",", ":"), default=str).encode("utf-8")) > MAX_AGENT_JSON_BYTES:
+    if len(json.dumps(value, separators=(",", ":"), default=str).encode("utf-8")) > max_bytes:
         raise ApiError(
             status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
             "agent_metadata_too_large",
@@ -108,6 +124,50 @@ def _unmanaged_cura_source_count(capabilities: dict[str, object]) -> int | None:
     if isinstance(materials, int) and not isinstance(materials, bool) and materials >= 0:
         return materials
     return None
+
+
+def _reported_cura_installation(
+    agent: WorkstationAgent,
+    installation_id: str,
+    cura_version: str,
+) -> dict[str, object] | None:
+    """Match a path-free recovery request to the agent's current exact Cura version."""
+
+    return next(
+        (
+            item
+            for item in agent.cura_installations
+            if isinstance(item, dict)
+            and item.get("installation_id") == installation_id
+            and item.get("version") == cura_version
+        ),
+        None,
+    )
+
+
+def _recovery_snapshot_response(snapshot: CuraRecoverySnapshot) -> CuraRecoverySnapshotResponse:
+    """Expose snapshot metadata and plugin inventory without raw configuration files."""
+
+    raw_plugins = snapshot.payload.get("plugins", [])
+    plugins = (
+        [item for item in raw_plugins if isinstance(item, dict)] if isinstance(raw_plugins, list) else []
+    )
+    return CuraRecoverySnapshotResponse(
+        id=snapshot.id,
+        agent_id=snapshot.agent_id,
+        installation_id=snapshot.installation_id,
+        cura_version=snapshot.cura_version,
+        setting_version=snapshot.setting_version,
+        snapshot_checksum=snapshot.snapshot_checksum,
+        file_count=snapshot.file_count,
+        total_bytes=snapshot.total_bytes,
+        machine_count=snapshot.machine_count,
+        quality_profile_count=snapshot.quality_profile_count,
+        plugin_count=snapshot.plugin_count,
+        plugins=plugins,
+        captured_at=snapshot.captured_at,
+        created_at=snapshot.created_at,
+    )
 
 
 @router.post(
@@ -294,6 +354,305 @@ async def list_workstation_agents(_: Viewer, session: DatabaseSession) -> list[W
 
     agents = await session.scalars(select(WorkstationAgent).order_by(WorkstationAgent.display_name))
     return [WorkstationAgentResponse.model_validate(agent) for agent in agents]
+
+
+@router.post(
+    "/workstation-agent/cura-recovery-snapshots",
+    response_model=CuraRecoverySnapshotUploadResponse,
+)
+async def upload_cura_recovery_snapshot(
+    payload: CuraRecoverySnapshotUpload,
+    request: Request,
+    agent: CurrentWorkstationAgent,
+    session: DatabaseSession,
+) -> CuraRecoverySnapshotUploadResponse:
+    """Accept one bounded sanitized snapshot unless it resembles a destructive reset."""
+
+    _bounded_json(payload.payload, max_bytes=MAX_RECOVERY_JSON_BYTES)
+    try:
+        file_count, total_bytes = validate_recovery_payload(payload.payload)
+        expected_checksum = recovery_checksum(payload.payload)
+    except ValueError as error:
+        raise ApiError(
+            status.HTTP_422_UNPROCESSABLE_ENTITY,
+            "cura_recovery_snapshot_invalid",
+            str(error),
+        ) from error
+    if payload.snapshot_checksum != expected_checksum:
+        raise ApiError(
+            status.HTTP_422_UNPROCESSABLE_ENTITY,
+            "cura_recovery_checksum_mismatch",
+            "Cura recovery snapshot checksum does not match its contents",
+        )
+    installation_id = payload.payload.get("installation_id")
+    cura_version = payload.payload.get("cura_version")
+    setting_version = payload.payload.get("setting_version")
+    if (
+        not isinstance(installation_id, str)
+        or not isinstance(cura_version, str)
+        or (
+            setting_version is not None
+            and (not isinstance(setting_version, int) or isinstance(setting_version, bool))
+        )
+        or _reported_cura_installation(agent, installation_id, cura_version) is None
+    ):
+        raise ApiError(
+            status.HTTP_409_CONFLICT,
+            "cura_recovery_installation_changed",
+            "The exact Cura installation is no longer reported by this workstation",
+        )
+    raw_files = payload.payload.get("files")
+    files = [item for item in raw_files if isinstance(item, dict)] if isinstance(raw_files, list) else []
+    machine_count = sum(
+        1
+        for item in files
+        if item.get("scope") == "data" and str(item.get("relative_path", "")).startswith("machine_instances/")
+    )
+    quality_profile_count = sum(
+        1
+        for item in files
+        if item.get("scope") == "data"
+        and str(item.get("relative_path", "")).split("/", 1)[0] in {"quality", "quality_changes"}
+    )
+    raw_plugins = payload.payload.get("plugins")
+    plugin_count = len(raw_plugins) if isinstance(raw_plugins, list) else 0
+    latest = await session.scalar(
+        select(CuraRecoverySnapshot)
+        .where(
+            CuraRecoverySnapshot.agent_id == agent.id,
+            CuraRecoverySnapshot.installation_id == installation_id,
+            CuraRecoverySnapshot.cura_version == cura_version,
+        )
+        .order_by(CuraRecoverySnapshot.captured_at.desc())
+        .limit(1)
+    )
+    if machine_count == 0:
+        agent.cura_recovery_status = "capture_blocked" if latest else "not_ready"
+        agent.cura_recovery_message = (
+            "No printer configuration was captured. Add a Cura printer or restore the last recovery point."
+        )
+        agent.record_version += 1
+        await session.commit()
+        return CuraRecoverySnapshotUploadResponse(
+            accepted=False,
+            status=agent.cura_recovery_status,
+            reason="no_printer_configuration",
+            snapshot_id=latest.id if latest else None,
+            snapshot_checksum=payload.snapshot_checksum,
+        )
+    if latest and suspected_reset(
+        previous_machine_count=latest.machine_count,
+        previous_file_count=latest.file_count,
+        previous_quality_profile_count=latest.quality_profile_count,
+        machine_count=machine_count,
+        file_count=file_count,
+        quality_profile_count=quality_profile_count,
+    ):
+        agent.cura_recovery_status = "capture_blocked"
+        agent.cura_recovery_message = (
+            "A large Cura configuration deletion was detected. "
+            "The last known-good recovery point was preserved."
+        )
+        agent.record_version += 1
+        await session.commit()
+        return CuraRecoverySnapshotUploadResponse(
+            accepted=False,
+            status="capture_blocked",
+            reason="suspected_reset",
+            snapshot_id=latest.id,
+            snapshot_checksum=payload.snapshot_checksum,
+        )
+    existing = await session.scalar(
+        select(CuraRecoverySnapshot).where(
+            CuraRecoverySnapshot.agent_id == agent.id,
+            CuraRecoverySnapshot.installation_id == installation_id,
+            CuraRecoverySnapshot.snapshot_checksum == payload.snapshot_checksum,
+        )
+    )
+    now = datetime.now(UTC)
+    if existing is None:
+        existing = CuraRecoverySnapshot(
+            agent_id=agent.id,
+            installation_id=installation_id,
+            cura_version=cura_version,
+            setting_version=setting_version,
+            snapshot_checksum=payload.snapshot_checksum,
+            payload=payload.payload,
+            file_count=file_count,
+            total_bytes=total_bytes,
+            machine_count=machine_count,
+            quality_profile_count=quality_profile_count,
+            plugin_count=plugin_count,
+            captured_at=now,
+            created_at=now,
+        )
+        session.add(existing)
+        await session.flush()
+        history_ids = list(
+            await session.scalars(
+                select(CuraRecoverySnapshot.id)
+                .where(
+                    CuraRecoverySnapshot.agent_id == agent.id,
+                    CuraRecoverySnapshot.installation_id == installation_id,
+                    CuraRecoverySnapshot.cura_version == cura_version,
+                )
+                .order_by(CuraRecoverySnapshot.captured_at.desc())
+                .offset(RECOVERY_HISTORY_LIMIT)
+            )
+        )
+        if history_ids:
+            await session.execute(
+                delete(CuraRecoverySnapshot).where(CuraRecoverySnapshot.id.in_(history_ids))
+            )
+        add_audit_event(
+            session,
+            actor_id=None,
+            source="workstation_agent",
+            action="cura.recovery_snapshot.capture",
+            object_type="cura_recovery_snapshot",
+            object_id=existing.id,
+            before=None,
+            after={
+                "agent_code": agent.agent_code,
+                "cura_version": cura_version,
+                "file_count": file_count,
+                "machine_count": machine_count,
+                "quality_profile_count": quality_profile_count,
+                "plugin_count": plugin_count,
+            },
+            correlation_id=request.state.correlation_id,
+        )
+    agent.cura_recovery_status = "ready"
+    agent.cura_recovery_message = None
+    agent.last_recovery_snapshot_at = existing.captured_at
+    agent.record_version += 1
+    await session.commit()
+    return CuraRecoverySnapshotUploadResponse(
+        accepted=True,
+        status="ready",
+        snapshot_id=existing.id,
+        snapshot_checksum=existing.snapshot_checksum,
+    )
+
+
+@router.get(
+    "/workstation-agents/{agent_id}/cura-recovery-snapshots",
+    response_model=list[CuraRecoverySnapshotResponse],
+)
+async def list_cura_recovery_snapshots(
+    agent_id: UUID,
+    _: Viewer,
+    session: DatabaseSession,
+) -> list[CuraRecoverySnapshotResponse]:
+    """List the retained recovery metadata for one paired workstation."""
+
+    agent = await session.get(WorkstationAgent, agent_id)
+    if agent is None:
+        raise ApiError(status.HTTP_404_NOT_FOUND, "workstation_unknown", "Workstation not found")
+    snapshots = await session.scalars(
+        select(CuraRecoverySnapshot)
+        .where(CuraRecoverySnapshot.agent_id == agent_id)
+        .order_by(CuraRecoverySnapshot.captured_at.desc())
+        .limit(RECOVERY_HISTORY_LIMIT * 20)
+    )
+    return [_recovery_snapshot_response(snapshot) for snapshot in snapshots]
+
+
+@router.post(
+    "/workstation-agents/{agent_id}/cura-recovery-restores",
+    response_model=CuraRecoveryRestoreResponse,
+    status_code=status.HTTP_201_CREATED,
+)
+async def create_cura_recovery_restore(
+    agent_id: UUID,
+    payload: CuraRecoveryRestoreRequest,
+    request: Request,
+    administrator: Administrator,
+    session: DatabaseSession,
+) -> CuraRecoveryRestoreResponse:
+    """Queue an exact-version restore after explicit Administrator confirmation."""
+
+    if not payload.confirmed:
+        raise ApiError(
+            status.HTTP_422_UNPROCESSABLE_ENTITY,
+            "cura_recovery_confirmation_required",
+            "Confirm the reviewed Cura recovery before continuing",
+        )
+    agent = await session.scalar(
+        select(WorkstationAgent).where(WorkstationAgent.id == agent_id).with_for_update()
+    )
+    if agent is None:
+        raise ApiError(status.HTTP_404_NOT_FOUND, "workstation_unknown", "Workstation not found")
+    if not agent.enabled:
+        raise ApiError(status.HTTP_409_CONFLICT, "workstation_disabled", "Enable the workstation first")
+    snapshot = await session.scalar(
+        select(CuraRecoverySnapshot).where(
+            CuraRecoverySnapshot.id == payload.snapshot_id,
+            CuraRecoverySnapshot.agent_id == agent.id,
+        )
+    )
+    if snapshot is None:
+        raise ApiError(
+            status.HTTP_404_NOT_FOUND,
+            "cura_recovery_snapshot_unknown",
+            "Cura recovery point not found",
+        )
+    if _reported_cura_installation(agent, snapshot.installation_id, snapshot.cura_version) is None:
+        raise ApiError(
+            status.HTTP_409_CONFLICT,
+            "cura_recovery_version_mismatch",
+            "The recovery point requires the same Cura version on this workstation",
+        )
+    active_restore = await session.scalar(
+        select(CuraRecoveryRestore.id).where(
+            CuraRecoveryRestore.agent_id == agent.id,
+            CuraRecoveryRestore.status.in_((CuraDeploymentStatus.PENDING, CuraDeploymentStatus.CLAIMED)),
+        )
+    )
+    if active_restore is not None:
+        raise ApiError(
+            status.HTTP_409_CONFLICT,
+            "cura_recovery_already_pending",
+            "A Cura recovery is already pending for this workstation",
+        )
+    now = datetime.now(UTC)
+    restore = CuraRecoveryRestore(
+        agent_id=agent.id,
+        snapshot_id=snapshot.id,
+        requested_by=administrator.id,
+        installation_id=snapshot.installation_id,
+        cura_version=snapshot.cura_version,
+        snapshot_checksum=snapshot.snapshot_checksum,
+        payload=snapshot.payload,
+        status=CuraDeploymentStatus.PENDING,
+        attempts=0,
+        next_attempt_at=now,
+        result={},
+        created_at=now,
+        updated_at=now,
+    )
+    session.add(restore)
+    await session.flush()
+    agent.cura_recovery_status = "restore_pending"
+    agent.cura_recovery_message = "Close Cura so the selected recovery point can be restored."
+    agent.record_version += 1
+    add_audit_event(
+        session,
+        actor_id=administrator.id,
+        source="web",
+        action="cura.recovery_restore.queue",
+        object_type="cura_recovery_restore",
+        object_id=restore.id,
+        before=None,
+        after={
+            "agent_code": agent.agent_code,
+            "snapshot_id": str(snapshot.id),
+            "cura_version": snapshot.cura_version,
+        },
+        correlation_id=request.state.correlation_id,
+    )
+    await session.commit()
+    return CuraRecoveryRestoreResponse.model_validate(restore)
 
 
 @router.post(
@@ -638,6 +997,137 @@ async def list_cura_deployments(_: Viewer, session: DatabaseSession) -> list[Cur
         select(CuraDeployment).order_by(CuraDeployment.created_at.desc()).limit(250)
     )
     return [CuraDeploymentResponse.model_validate(item) for item in items]
+
+
+@router.post(
+    "/workstation-agent/cura-recovery-restores/claim",
+    response_model=CuraRecoveryRestoreClaimResponse | None,
+)
+async def claim_cura_recovery_restore(
+    agent: CurrentWorkstationAgent,
+    session: DatabaseSession,
+) -> CuraRecoveryRestoreClaimResponse | None:
+    """Lease the oldest ready recovery operation to exactly its paired agent."""
+
+    now = datetime.now(UTC)
+    restore = await session.scalar(
+        select(CuraRecoveryRestore)
+        .where(
+            CuraRecoveryRestore.agent_id == agent.id,
+            CuraRecoveryRestore.next_attempt_at <= now,
+            or_(
+                CuraRecoveryRestore.status == CuraDeploymentStatus.PENDING,
+                (CuraRecoveryRestore.status == CuraDeploymentStatus.CLAIMED)
+                & (CuraRecoveryRestore.lease_expires_at < now),
+            ),
+        )
+        .order_by(CuraRecoveryRestore.created_at)
+        .with_for_update(skip_locked=True)
+        .limit(1)
+    )
+    agent.last_seen_at = now
+    if restore is None:
+        await session.commit()
+        return None
+    restore.status = CuraDeploymentStatus.CLAIMED
+    restore.claimed_at = now
+    restore.lease_expires_at = now + CLAIM_LEASE
+    restore.attempts += 1
+    restore.updated_at = now
+    agent.cura_recovery_status = "restoring"
+    agent.cura_recovery_message = "Cura recovery is being applied while Cura is closed."
+    await session.commit()
+    return CuraRecoveryRestoreClaimResponse(
+        restore_id=restore.id,
+        snapshot_checksum=restore.snapshot_checksum,
+        payload=restore.payload,
+        lease_expires_at=restore.lease_expires_at,
+    )
+
+
+@router.post(
+    "/workstation-agent/cura-recovery-restores/{restore_id}/complete",
+    status_code=status.HTTP_204_NO_CONTENT,
+)
+async def complete_cura_recovery_restore(
+    restore_id: UUID,
+    payload: CuraRecoveryRestoreCompletion,
+    request: Request,
+    agent: CurrentWorkstationAgent,
+    session: DatabaseSession,
+) -> Response:
+    """Acknowledge a restore without accepting paths or local exception text."""
+
+    restore = await session.scalar(
+        select(CuraRecoveryRestore).where(CuraRecoveryRestore.id == restore_id).with_for_update()
+    )
+    if restore is None or restore.agent_id != agent.id:
+        raise ApiError(status.HTTP_404_NOT_FOUND, "cura_recovery_unknown", "Cura recovery not found")
+    if restore.status != CuraDeploymentStatus.CLAIMED:
+        raise ApiError(
+            status.HTTP_409_CONFLICT,
+            "cura_recovery_not_claimed",
+            "Cura recovery is not currently claimed",
+        )
+    now = datetime.now(UTC)
+    restore.result = payload.result.model_dump(mode="json") if payload.result else {}
+    restore.lease_expires_at = None
+    restore.updated_at = now
+    if payload.outcome == "deferred":
+        restore.status = CuraDeploymentStatus.PENDING
+        restore.next_attempt_at = now + timedelta(seconds=payload.retry_after_seconds)
+        restore.last_error_class = "CuraRunning"
+        restore.last_error_message = "Cura is open; recovery will retry automatically after it closes."
+        agent.cura_recovery_status = "restore_pending"
+        agent.cura_recovery_message = "Close Cura so the selected recovery point can be restored."
+    elif payload.outcome == "succeeded":
+        if payload.result is None:
+            raise ApiError(
+                status.HTTP_422_UNPROCESSABLE_ENTITY,
+                "cura_recovery_result_required",
+                "A successful Cura recovery requires a bounded result",
+            )
+        restore.status = CuraDeploymentStatus.SUCCEEDED
+        restore.completed_at = now
+        restore.last_error_class = None
+        restore.last_error_message = None
+        agent.cura_recovery_status = "ready"
+        agent.cura_recovery_message = None
+        agent.last_recovery_restore_at = now
+        if agent.cura_management_enabled:
+            try:
+                await queue_cura_library(
+                    session,
+                    [agent],
+                    requested_by=restore.requested_by,
+                    force=True,
+                )
+            except ValueError:
+                pass
+    else:
+        restore.status = CuraDeploymentStatus.FAILED
+        restore.completed_at = now
+        restore.last_error_class = "CuraRecoveryFailed"
+        restore.last_error_message = (
+            "Cura recovery failed on the workstation. Review the local agent log and retry."
+        )
+        agent.cura_recovery_status = "restore_failed"
+        agent.cura_recovery_message = restore.last_error_message
+    agent.last_seen_at = now
+    agent.record_version += 1
+    add_audit_event(
+        session,
+        actor_id=None,
+        source="workstation_agent",
+        action=f"cura.recovery_restore.{payload.outcome}",
+        object_type="cura_recovery_restore",
+        object_id=restore.id,
+        before={"status": "claimed"},
+        after={"status": restore.status.value, "agent_code": agent.agent_code},
+        correlation_id=request.state.correlation_id,
+    )
+    await session.commit()
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 
 @router.post("/workstation-agent/deployments/claim", response_model=CuraDeploymentClaimResponse | None)
