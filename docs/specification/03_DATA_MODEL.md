@@ -21,7 +21,7 @@ A purchasable material definition: material, filler, finish, color, product/grad
 
 ### filament_color
 
-A remembered case-insensitive color name plus a solid, two/three-color, or fixed rainbow display palette. The first spelling is retained for display. Changing the palette updates every matching product mirror so current and future filaments with names such as `Red` or `Temp Sensitive` remain visually consistent. A product palette cannot change after retained spool use or print history exists.
+A remembered case-insensitive solid color name and display sample. The first spelling is retained for display. Changing a solid palette updates every matching product mirror so current and future filaments with names such as `Red` remain visually consistent. Rainbow is a color with one fixed spectrum. Multicolor products own one, two, or three samples directly so unrelated multicolor products never share a palette. A product color cannot change after retained spool use or print history exists.
 
 ### spool
 
@@ -50,11 +50,11 @@ Printer identity, server-only Moonraker endpoint, installed physical-nozzle refe
 
 ### nozzle and nozzle_lifecycle_event
 
-A physical nozzle has an immutable human code, diameter, construction material, manufacturer/product, optional purchase and installation metadata, lifecycle status, notes, and optimistic version. A printer has at most one installed nozzle. Append-only lifecycle events retain installation and removal boundaries. Completed-print count and total filament use derive from immutable print history captured while the nozzle was installed.
+A physical nozzle has an editable unique human code, diameter, construction material, manufacturer/product, optional purchase and installation metadata, lifecycle status, notes, and optimistic version. Code edits do not rewrite append-only lifecycle or print attribution. A printer has at most one installed nozzle. Append-only lifecycle events retain installation and removal boundaries. Completed-print count and total filament use derive from immutable print history captured while the nozzle was installed.
 
 ### build_plate
 
-Physical plate record. Business IDs are exact uppercase `P<number>` values; `P1` through `P5` are the initial seeds. Fields include display name, description, manufacturer/product, shape/dimensions, magnetic/flexible properties, preferred materials, temperature limit, physical condition/status, last clean, and notes.
+Physical plate record. Business IDs are exact uppercase `P<number>` values; `P1` through `P5` are the initial seeds. Fields include display name, description, manufacturer/product, shape/dimensions, magnetic/flexible properties, preferred materials, temperature limit, physical condition/status, last clean, notes, and bounded sanitized WebP picture bytes/media/checksum/version stored in PostgreSQL.
 
 ### build_plate_surface
 

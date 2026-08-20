@@ -399,18 +399,19 @@ def _apply_extracted(job: PrintJob, extracted: dict[str, object]) -> None:
 
 
 async def _inspection_result(
+    session: AsyncSession,
     client: MoonrakerClient,
     *,
     filename: str,
     profile: MaterialProfile | None,
     material_guid: str,
     printer: Printer,
-) -> tuple[InspectionResult | None, str | None, dict[str, Any]]:
+) -> tuple[InspectionResult | None, str | None, dict[str, Any], MaterialProfile | None, str]:
     metadata = await client.gcode_metadata(filename)
     try:
         gcode = await client.gcode_file(filename)
     except MoonrakerError:
-        return None, None, metadata
+        return None, None, metadata, profile, material_guid
     profile_snapshot = _json_safe(settings_snapshot_from_profile(profile)) if profile else None
     result = inspect_gcode(
         metadata,
@@ -423,7 +424,24 @@ async def _inspection_result(
         # enforcement remains the workstation deployment agent's responsibility.
         expected_machine_name=None,
     )
-    return result, gcode.sha256, metadata
+    extracted_guid = str(result.extracted.get("material_guid") or "").strip().casefold()
+    if profile is None and extracted_guid:
+        profile = await _profile_for_guid(
+            session,
+            printer_id=printer.id,
+            material_guid=extracted_guid,
+        )
+        if profile is not None:
+            material_guid = extracted_guid
+            result = inspect_gcode(
+                metadata,
+                gcode.header,
+                gcode.tail,
+                expected_profile=_json_safe(settings_snapshot_from_profile(profile)),
+                expected_material_guid=material_guid,
+                expected_machine_name=None,
+            )
+    return result, gcode.sha256, metadata, profile, material_guid
 
 
 async def synchronize_live_print(
@@ -537,7 +555,8 @@ async def synchronize_live_print(
                 )
             )
         try:
-            result, sha256, metadata = await _inspection_result(
+            result, sha256, metadata, inspected_profile, inspected_guid = await _inspection_result(
+                session,
                 client,
                 filename=print_state.filename,
                 profile=profile,
@@ -545,7 +564,36 @@ async def synchronize_live_print(
                 printer=printer,
             )
         except MoonrakerError:
-            result, sha256, metadata = None, None, {}
+            result, sha256, metadata, inspected_profile, inspected_guid = (
+                None,
+                None,
+                {},
+                profile,
+                material_guid,
+            )
+        if profile is None and inspected_profile is not None:
+            profile = inspected_profile
+            requested_product = await session.get(FilamentProduct, profile.filament_product_id)
+            job.material_profile_id = profile.id
+            job.material_profile_version = profile.version
+            job.filament_product_id = profile.filament_product_id
+            job.material_guid = inspected_guid
+            job.material_name = requested_product.product_name if requested_product else None
+            job.material_type = requested_product.material_type if requested_product else None
+            job.profile_snapshot = _json_safe(settings_snapshot_from_profile(profile))
+            if isinstance(job.state_snapshot, dict):
+                job.state_snapshot = {
+                    **job.state_snapshot,
+                    "profile": {
+                        "id": str(profile.id),
+                        "version": profile.version,
+                        "status": profile.status.value,
+                    },
+                }
+            for segment in job.segments:
+                if segment.filament_product_id == profile.filament_product_id:
+                    segment.material_profile_id = profile.id
+                    segment.material_profile_version = profile.version
         job.gcode_sha256 = sha256
         job.moonraker_file_uuid = _bounded(metadata.get("uuid"), 96)
         if result is None:

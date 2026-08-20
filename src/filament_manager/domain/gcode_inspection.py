@@ -146,6 +146,9 @@ def extract_gcode_metadata(metadata: dict[str, Any], header: str, tail: str) -> 
         "flow_percent": settings.get("material_flow"),
         "retraction_distance_mm": settings.get("retraction_amount"),
         "retraction_speed_mm_s": settings.get("retraction_retract_speed") or settings.get("retraction_speed"),
+        "retraction_prime_speed_mm_s": settings.get("retraction_prime_speed")
+        or settings.get("retraction_retract_speed")
+        or settings.get("retraction_speed"),
         "pressure_advance": settings.get("pressure_advance")
         or _first_match(header, r"^SET_PRESSURE_ADVANCE\s+[^\r\n]*ADVANCE=([0-9.]+)\b"),
     }
@@ -195,7 +198,8 @@ def inspect_gcode(
         ("print_speed_mm_s", "print speed", Decimal("0.01")),
         ("flow_percent", "flow", Decimal("0.01")),
         ("retraction_distance_mm", "retraction distance", Decimal("0.001")),
-        ("retraction_speed_mm_s", "retraction speed", Decimal("0.01")),
+        ("retraction_speed_mm_s", "retraction retract speed", Decimal("0.01")),
+        ("retraction_prime_speed_mm_s", "retraction prime speed", Decimal("0.01")),
         ("pressure_advance", "pressure advance", Decimal("0.0001")),
     )
     for key, label, tolerance in comparisons:

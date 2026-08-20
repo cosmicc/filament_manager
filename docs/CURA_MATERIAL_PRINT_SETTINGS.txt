@@ -61,19 +61,17 @@ speed_travel | Travel Speed | number, mm/s | primary travel speed
 speed_print_layer_0 | Initial Layer Print Speed | number, mm/s | synchronized from the primary initial-layer speed
 skirt_brim_speed | Skirt/Brim Speed | number, mm/s | independently tracked material setting
 speed_support | Support Speed | number, mm/s | primary support speed
-cool_min_speed | Minimum Print Speed | number, mm/s | independently tracked cooling setting
 speed_wall | Wall Speed | number, mm/s | independently tracked material setting
 
 
 RETRACTION
 ----------
 retraction_enable | Enable Retraction | boolean | independently tracked material setting
-retraction_retract_speed | Retraction Retract Speed | number, mm/s | synchronized alias of the primary retraction speed
+retraction_retract_speed | Retraction Retract Speed | number, mm/s | primary retraction retract speed
 retraction_amount | Retraction Distance | number, mm | primary retraction distance
-retraction_prime_speed | Retraction Prime Speed | number, mm/s | synchronized alias of the primary retraction speed
+retraction_prime_speed | Retraction Prime Speed | number, mm/s | primary retraction prime speed
 limit_support_retractions | Limit Support Retractions | boolean | independently tracked material setting
 retraction_min_travel | Retraction Minimum Travel | number, mm | independently tracked material setting
-retraction_speed | Retraction Speed | number, mm/s | primary retraction speed
 retract_at_layer_change | Retract at Layer Change | boolean | independently tracked material setting
 
 
@@ -86,7 +84,7 @@ cool_fan_speed_max | Maximum Fan Speed | number, percent | synchronized alias of
 cool_fan_full_layer | Regular Fan Speed at Layer | number | independently tracked material setting
 cool_min_layer_time | Minimum Layer Time | number, s | independently tracked material setting
 cool_min_layer_time_fan_speed_max | Minimum Layer Time at Maximum Fan | number, s | independently tracked material setting
-cool_fan_speed_0 | Initial Fan Speed | number, percent | independently tracked material setting
+cool_min_speed | Minimum Speed | number, mm/s | independently tracked cooling setting
 
 
 SUPPORT

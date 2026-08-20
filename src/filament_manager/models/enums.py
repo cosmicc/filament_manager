@@ -89,6 +89,7 @@ class JobStatus(StrEnum):
     COMPLETED = "completed"
     FAILED = "failed"
     DEAD = "dead"
+    SUPERSEDED = "superseded"
 
 
 class CuraDeploymentStatus(StrEnum):

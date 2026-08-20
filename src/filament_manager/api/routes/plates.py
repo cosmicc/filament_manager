@@ -1,9 +1,14 @@
 """Physical build-plate inventory, side metadata, maintenance, and selection routes."""
 
+import hashlib
+import warnings
 from datetime import UTC, datetime
+from io import BytesIO
+from typing import Annotated
 from uuid import UUID
 
-from fastapi import APIRouter, Request, status
+from fastapi import APIRouter, File, Request, Response, UploadFile, status
+from PIL import Image, ImageOps, UnidentifiedImageError
 from sqlalchemy import select
 from sqlalchemy.orm import selectinload
 
@@ -35,6 +40,9 @@ from ..schemas import (
 )
 
 router = APIRouter(prefix="/build-plates", tags=["build plates"])
+MAX_PLATE_IMAGE_UPLOAD_BYTES = 5 * 1024 * 1024
+MAX_PLATE_IMAGE_PIXELS = 16_000_000
+MAX_PLATE_IMAGE_SIDE = 1024
 
 
 async def _get_plate(session: DatabaseSession, plate_id: UUID) -> BuildPlate:
@@ -64,12 +72,17 @@ async def build_plate_response(
     response = BuildPlateResponse.model_validate(plate)
     return response.model_copy(
         update={
+            "image_url": (
+                f"/api/v1/build-plates/{plate.id}/image?v={plate.image_version}"
+                if plate.image_data is not None
+                else None
+            ),
             "surfaces": [
                 BuildPlateSurfaceResponse.model_validate(surface).model_copy(
                     update={"completed_print_count": counts.get(surface.id, 0)}
                 )
                 for surface in plate.surfaces
-            ]
+            ],
         }
     )
 
@@ -232,6 +245,124 @@ async def get_build_plate(
     """Return one physical build plate and its sides."""
 
     return await build_plate_response(session, await _get_plate(session, plate_id))
+
+
+def _sanitize_plate_image(payload: bytes) -> bytes:
+    """Decode, bound, orient, and re-encode an untrusted plate image as WebP."""
+
+    try:
+        with warnings.catch_warnings():
+            warnings.simplefilter("error", Image.DecompressionBombWarning)
+            with Image.open(BytesIO(payload)) as source:
+                if source.width * source.height > MAX_PLATE_IMAGE_PIXELS:
+                    raise ValueError("Build plate image dimensions are too large")
+                source.load()
+                image = ImageOps.exif_transpose(source).convert("RGB")
+    except (Image.DecompressionBombError, Image.DecompressionBombWarning, UnidentifiedImageError) as exc:
+        raise ValueError("Upload a valid PNG, JPEG, or WebP image") from exc
+    image.thumbnail((MAX_PLATE_IMAGE_SIDE, MAX_PLATE_IMAGE_SIDE), Image.Resampling.LANCZOS)
+    output = BytesIO()
+    image.save(output, format="WEBP", quality=86, method=6)
+    return output.getvalue()
+
+
+@router.get("/{plate_id}/image")
+async def get_build_plate_image(
+    plate_id: UUID,
+    _: Viewer,
+    session: DatabaseSession,
+) -> Response:
+    """Return an authenticated sanitized image without exposing database metadata."""
+
+    plate = await session.get(BuildPlate, plate_id)
+    if plate is None or plate.image_data is None:
+        raise ApiError(status.HTTP_404_NOT_FOUND, "build_plate_image_missing", "Build plate image not found")
+    return Response(
+        content=plate.image_data,
+        media_type=plate.image_media_type or "image/webp",
+        headers={
+            "Cache-Control": "private, max-age=86400",
+            "ETag": f'"{plate.image_sha256}"',
+        },
+    )
+
+
+@router.put("/{plate_id}/image", response_model=BuildPlateResponse)
+async def upload_build_plate_image(
+    plate_id: UUID,
+    request: Request,
+    operator: Operator,
+    session: DatabaseSession,
+    image: Annotated[UploadFile, File()],
+) -> BuildPlateResponse:
+    """Replace a plate image with one bounded server-sanitized WebP file."""
+
+    plate = await session.scalar(select(BuildPlate).where(BuildPlate.id == plate_id).with_for_update())
+    if plate is None:
+        raise ApiError(status.HTTP_404_NOT_FOUND, "unknown_build_plate", "Build plate not found")
+    payload = await image.read(MAX_PLATE_IMAGE_UPLOAD_BYTES + 1)
+    if not payload or len(payload) > MAX_PLATE_IMAGE_UPLOAD_BYTES:
+        raise ApiError(
+            status.HTTP_422_UNPROCESSABLE_ENTITY,
+            "build_plate_image_size",
+            "Build plate images must be between 1 byte and 5 MB",
+        )
+    try:
+        sanitized = _sanitize_plate_image(payload)
+    except ValueError as exc:
+        raise ApiError(status.HTTP_422_UNPROCESSABLE_ENTITY, "build_plate_image_invalid", str(exc)) from exc
+    before_sha = plate.image_sha256
+    plate.image_data = sanitized
+    plate.image_media_type = "image/webp"
+    plate.image_sha256 = hashlib.sha256(sanitized).hexdigest()
+    plate.image_version += 1
+    plate.record_version += 1
+    add_audit_event(
+        session,
+        actor_id=operator.id,
+        source="web",
+        action="build_plate.image.update",
+        object_type="build_plate",
+        object_id=plate.id,
+        before={"image_sha256": before_sha},
+        after={"image_sha256": plate.image_sha256, "media_type": plate.image_media_type},
+        correlation_id=request.state.correlation_id,
+    )
+    await session.commit()
+    return await build_plate_response(session, await _get_plate(session, plate.id))
+
+
+@router.delete("/{plate_id}/image", response_model=BuildPlateResponse)
+async def delete_build_plate_image(
+    plate_id: UUID,
+    request: Request,
+    operator: Operator,
+    session: DatabaseSession,
+) -> BuildPlateResponse:
+    """Remove a plate image while retaining the canonical physical plate."""
+
+    plate = await session.scalar(select(BuildPlate).where(BuildPlate.id == plate_id).with_for_update())
+    if plate is None:
+        raise ApiError(status.HTTP_404_NOT_FOUND, "unknown_build_plate", "Build plate not found")
+    before_sha = plate.image_sha256
+    plate.image_data = None
+    plate.image_media_type = None
+    plate.image_sha256 = None
+    plate.image_version += 1
+    plate.record_version += 1
+    add_audit_event(
+        session,
+        actor_id=operator.id,
+        source="web",
+        action="build_plate.image.delete",
+        object_type="build_plate",
+        object_id=plate.id,
+        before={"image_sha256": before_sha},
+        after={"image_sha256": None},
+        correlation_id=request.state.correlation_id,
+    )
+    await session.commit()
+    return await build_plate_response(session, await _get_plate(session, plate.id))
 
 
 @router.patch("/{plate_id}", response_model=BuildPlateResponse)

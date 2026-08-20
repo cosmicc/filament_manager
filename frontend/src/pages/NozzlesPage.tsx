@@ -34,7 +34,8 @@ function NozzleEditor({ nozzle, pending, error, onClose, onSave }: {
       event.preventDefault()
       const data = new FormData(event.currentTarget)
       onSave({
-        ...nozzle ? { expected_version: nozzle.record_version } : { nozzle_code: String(data.get('nozzle_code') ?? '').trim() },
+        ...(nozzle ? { expected_version: nozzle.record_version } : {}),
+        nozzle_code: String(data.get('nozzle_code') ?? '').trim(),
         diameter_mm: String(data.get('diameter_mm') ?? ''),
         material: String(data.get('material') ?? '').trim(),
         manufacturer: optional(data, 'manufacturer'),
@@ -46,7 +47,7 @@ function NozzleEditor({ nozzle, pending, error, onClose, onSave }: {
     }}>
       <EditorSection title="Identity" description="Use a durable label attached to or stored with this nozzle.">
         <div className="form-grid">
-          <label>Nozzle code<input name="nozzle_code" defaultValue={nozzle?.nozzle_code ?? ''} required maxLength={64} pattern={'[A-Za-z0-9][A-Za-z0-9._\\-]*'} disabled={Boolean(nozzle)} autoFocus /></label>
+          <label>Nozzle code<input name="nozzle_code" defaultValue={nozzle?.nozzle_code ?? ''} required maxLength={64} pattern={'[A-Za-z0-9][A-Za-z0-9._\\-]*'} autoFocus /></label>
           <label>Diameter (mm)<input name="diameter_mm" defaultValue={inputNumber(nozzle?.diameter_mm, 1)} required type="number" min="0.1" max="10" step="0.1" /></label>
           <label>Material<input name="material" defaultValue={nozzle?.material ?? ''} required maxLength={96} placeholder="Brass, hardened steel…" /></label>
           <label>Coating<input name="coating" defaultValue={nozzle?.coating ?? ''} maxLength={96} placeholder="Nickel plated, DLC…" /></label>
@@ -108,7 +109,7 @@ export default function NozzlesPage() {
       {nozzles.data.map((nozzle) => {
         const installedPrinter = printers.data?.find((printer) => printer.id === nozzle.installed_printer_id)
         const selectedPrinterId = printerSelection[nozzle.id] ?? printers.data?.[0]?.id ?? ''
-        return <article className="integration-card nozzle-card" key={nozzle.id}>
+        return <article className={`integration-card nozzle-card${nozzle.installed_printer_id ? ' nozzle-card--installed' : ''}`} key={nozzle.id}>
           <span className="integration-card__icon"><Wrench size={23} /></span>
           <div><p className="eyebrow">{nozzle.nozzle_code}</p><h2>{compactNumber(nozzle.diameter_mm, 1)} mm {nozzle.material}</h2><p>{[nozzle.manufacturer, nozzle.product_name, nozzle.coating].filter(Boolean).join(' · ') || 'No product details recorded'}</p></div>
           <StatusPill status={nozzle.status} />

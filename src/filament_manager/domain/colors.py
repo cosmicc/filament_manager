@@ -29,7 +29,7 @@ def normalize_color_palette(
     color_hex: str | None,
     color_hexes: list[str] | None,
 ) -> tuple[str, list[str]]:
-    """Validate one solid, two/three-color, or rainbow display palette."""
+    """Validate one solid, one/two/three-sample multicolor, or rainbow palette."""
 
     normalized_mode = mode.strip().casefold()
     supplied = [normalize_color_hex(value) for value in (color_hexes or [])]
@@ -40,6 +40,6 @@ def normalize_color_palette(
     unique = list(dict.fromkeys(supplied))
     if normalized_mode == "solid" and len(unique) == 1:
         return "solid", unique
-    if normalized_mode == "multicolor" and 2 <= len(unique) <= 3:
+    if normalized_mode == "multicolor" and 1 <= len(unique) <= 3:
         return "multicolor", unique
-    raise ValueError("Solid colors require one sample; multicolor filaments require two or three samples")
+    raise ValueError("Solid colors require one sample; multicolor filaments require one to three samples")

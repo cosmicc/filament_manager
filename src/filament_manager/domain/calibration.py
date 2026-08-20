@@ -25,7 +25,11 @@ CALIBRATION_STEPS: tuple[StepDefinition, ...] = (
         "retraction",
         "Retraction Tower",
         True,
-        ("retraction_distance_mm", "retraction_speed_mm_s"),
+        (
+            "retraction_distance_mm",
+            "retraction_speed_mm_s",
+            "retraction_prime_speed_mm_s",
+        ),
     ),
     StepDefinition(
         5,

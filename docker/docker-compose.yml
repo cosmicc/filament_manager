@@ -101,26 +101,6 @@ services:
       postgres:
         condition: service_healthy
 
-  bootstrap-admin:
-    build:
-      context: ..
-    command:
-      - filament-manager-cli
-      - bootstrap-admin
-      - --username
-      - ${BOOTSTRAP_ADMIN_USERNAME:?Set BOOTSTRAP_ADMIN_USERNAME}
-      - --display-name
-      - ${BOOTSTRAP_ADMIN_DISPLAY_NAME:?Set BOOTSTRAP_ADMIN_DISPLAY_NAME}
-    environment:
-      FILAMENT_MANAGER_DATABASE_URL: "postgresql+psycopg://${FILAMENT_MANAGER_DB_USERNAME:-filament_user}:${FILAMENT_MANAGER_DB_PASSWORD:?Set FILAMENT_MANAGER_DB_PASSWORD}@postgres:5432/${FILAMENT_MANAGER_DB_NAME:-filament_manager}?sslmode=${FILAMENT_MANAGER_DB_SSLMODE:-disable}"
-      FILAMENT_MANAGER_BOOTSTRAP_ADMIN_PASSWORD: ${BOOTSTRAP_ADMIN_PASSWORD:?Set BOOTSTRAP_ADMIN_PASSWORD}
-    depends_on:
-      postgres:
-        condition: service_healthy
-    healthcheck:
-      disable: true
-    profiles: [tools]
-
   worker:
     build:
       context: ..

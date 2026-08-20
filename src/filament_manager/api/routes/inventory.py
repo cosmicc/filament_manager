@@ -1,5 +1,6 @@
 """Canonical vendor, filament, spool, measurement, and label routes."""
 
+from dataclasses import dataclass
 from datetime import UTC, datetime
 from decimal import Decimal
 from io import BytesIO
@@ -76,6 +77,27 @@ from ..schemas import (
 router = APIRouter(tags=["inventory"])
 
 
+@dataclass(frozen=True)
+class ResolvedFilamentColor:
+    """A validated product palette, independent of remembered-color storage."""
+
+    name: str
+    color_hex: str
+    color_mode: str
+    color_hexes: list[str]
+
+
+def _resolved_color(mapping: FilamentColor) -> ResolvedFilamentColor:
+    """Copy a persisted remembered color into the product-facing value shape."""
+
+    return ResolvedFilamentColor(
+        name=mapping.name,
+        color_hex=mapping.color_hex,
+        color_mode=mapping.color_mode,
+        color_hexes=mapping.color_hexes,
+    )
+
+
 @router.post("/printer-context/active-spool/clear", status_code=status.HTTP_202_ACCEPTED)
 async def request_active_spool_unload(
     request: Request,
@@ -125,18 +147,40 @@ async def _remember_color(
     actor_id: UUID,
     correlation_id: str,
     exclude_product_id: UUID | None = None,
-) -> FilamentColor:
-    """Resolve a color name and propagate an explicitly changed screen sample."""
+) -> ResolvedFilamentColor:
+    """Resolve a product palette and remember only shared solid/rainbow colors."""
 
     display_name = color_name.strip()
     normalized_name = normalize_color_name(display_name)
+    if normalized_name == "rainbow":
+        color_mode = "rainbow"
+        color_hexes = []
+    if color_mode.strip().casefold() == "multicolor":
+        try:
+            selected_mode, selected_palette = normalize_color_palette(
+                color_mode,
+                color_hex,
+                color_hexes,
+            )
+        except ValueError as exc:
+            raise ApiError(
+                status.HTTP_422_UNPROCESSABLE_ENTITY,
+                "invalid_color_palette",
+                str(exc),
+            ) from exc
+        return ResolvedFilamentColor(
+            name=display_name,
+            color_hex=selected_palette[0],
+            color_mode=selected_mode,
+            color_hexes=selected_palette,
+        )
     mapping = await session.scalar(
         select(FilamentColor).where(FilamentColor.normalized_name == normalized_name).with_for_update()
     )
-    if mapping is not None and color_hex is None and not color_hexes:
+    if mapping is not None and normalized_name != "rainbow" and color_hex is None and not color_hexes:
         # Selecting an existing remembered name without resubmitting a sample
         # means "reuse it", preserving backward-compatible API behavior.
-        return mapping
+        return _resolved_color(mapping)
     try:
         selected_mode, selected_palette = normalize_color_palette(
             color_mode,
@@ -176,13 +220,13 @@ async def _remember_color(
             },
             correlation_id=correlation_id,
         )
-        return mapping
+        return _resolved_color(mapping)
     if (
         selected_hex == mapping.color_hex
         and selected_mode == mapping.color_mode
         and selected_palette == mapping.color_hexes
     ):
-        return mapping
+        return _resolved_color(mapping)
 
     previous: dict[str, object] = {
         "color_hex": mapping.color_hex,
@@ -190,11 +234,20 @@ async def _remember_color(
         "color_hexes": mapping.color_hexes,
     }
     products = list(await session.scalars(select(FilamentProduct).with_for_update()))
-    affected_products = [
-        product
-        for product in products
-        if product.id != exclude_product_id and normalize_color_name(product.color_name) == normalized_name
-    ]
+    # Solid named colors remain shared screen samples. Multicolor palettes are
+    # product-owned so two filaments with the same descriptive name can retain
+    # different physical segment colors. Rainbow is a fixed special color.
+    affected_products = (
+        [
+            product
+            for product in products
+            if product.id != exclude_product_id
+            and normalize_color_name(product.color_name) == normalized_name
+            and product.color_mode == "solid"
+        ]
+        if selected_mode == "solid" and mapping.color_mode == "solid"
+        else []
+    )
     if affected_products and await _filaments_have_recorded_use(
         session, [product.id for product in affected_products]
     ):
@@ -238,7 +291,7 @@ async def _remember_color(
         },
         correlation_id=correlation_id,
     )
-    return mapping
+    return _resolved_color(mapping)
 
 
 async def _filaments_have_recorded_use(
@@ -480,9 +533,13 @@ async def list_filaments(
 
 @router.get("/filament-colors", response_model=list[FilamentColorResponse])
 async def list_filament_colors(_: Viewer, session: DatabaseSession) -> list[FilamentColor]:
-    """List remembered color samples for autocomplete and color pickers."""
+    """List shared solid and fixed-rainbow samples for color pickers."""
 
-    return list(await session.scalars(select(FilamentColor).order_by(FilamentColor.name)))
+    return list(
+        await session.scalars(
+            select(FilamentColor).where(FilamentColor.color_mode != "multicolor").order_by(FilamentColor.name)
+        )
+    )
 
 
 @router.get("/filaments/{filament_id}", response_model=FilamentResponse)

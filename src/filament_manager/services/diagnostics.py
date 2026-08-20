@@ -32,7 +32,7 @@ from filament_manager.models.workstations import CuraDeployment, CuraRecoveryRes
 from filament_manager.services.cura_library import build_cura_library, queue_cura_library
 from filament_manager.services.events import add_audit_event, add_outbox_job
 
-EXPECTED_SCHEMA_VERSION = "f2a3b4c5d678"
+EXPECTED_SCHEMA_VERSION = "a3b4c5d6e789"
 SYSTEM_AGGREGATE_ID = UUID("00000000-0000-0000-0000-000000000001")
 
 DATABASE_ERROR_CLASSES = {
@@ -243,10 +243,20 @@ async def operational_overview(session: AsyncSession) -> dict[str, object]:
         )
     )
 
+    actionable_statuses = (
+        JobStatus.PENDING,
+        JobStatus.RUNNING,
+        JobStatus.FAILED,
+        JobStatus.DEAD,
+    )
     queue_rows = await session.execute(
-        select(OutboxJob.status, func.count(OutboxJob.id)).group_by(OutboxJob.status)
+        select(OutboxJob.status, func.count(OutboxJob.id))
+        .where(OutboxJob.status.in_(actionable_statuses))
+        .group_by(OutboxJob.status)
     )
     queue_counts = {status.value: int(count) for status, count in queue_rows}
+    for actionable_status in actionable_statuses:
+        queue_counts.setdefault(actionable_status.value, 0)
     job_rows = await session.execute(
         select(OutboxJob.job_type, func.count(OutboxJob.id))
         .where(OutboxJob.status.in_((JobStatus.PENDING, JobStatus.RUNNING, JobStatus.DEAD)))

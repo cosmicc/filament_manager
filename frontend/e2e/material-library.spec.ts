@@ -18,7 +18,7 @@ const settings = {
   print_speed_mm_s: '120', outer_wall_speed_mm_s: '60', inner_wall_speed_mm_s: '90',
   infill_speed_mm_s: '110', top_bottom_speed_mm_s: '70', initial_layer_speed_mm_s: '30',
   travel_speed_mm_s: '200', support_speed_mm_s: '80', retraction_distance_mm: '0.8',
-  retraction_speed_mm_s: '40', cooling_enabled: true, cooling_min_percent: '30',
+  retraction_speed_mm_s: '40', retraction_prime_speed_mm_s: '36', cooling_enabled: true, cooling_min_percent: '30',
   cooling_max_percent: '100', support_overhang_angle_deg: '55',
   tree_max_branch_angle_deg: '40', pressure_advance: '0.035',
   filament_density_g_cm3: '1.24', preferred_build_plate_surface_id: null,
@@ -261,9 +261,11 @@ test('filament details remember colors and save Cura settings directly', async (
   await page.getByRole('button', { name: 'Edit settings' }).click()
   await expect(page.getByText('Customized · Template: 210')).toBeVisible()
   await expect(page.locator('.setting-field--customized')).toHaveCount(2)
-  await expect(page.getByLabel('Retraction Retract Speed (mm/s)')).toHaveCount(0)
-  await expect(page.getByLabel('Retraction Prime Speed (mm/s)')).toHaveCount(0)
-  await expect(page.getByLabel('Maximum Fan Speed (%)')).toHaveCount(0)
+  await expect(page.getByLabel('Retraction Retract Speed (mm/s)')).toHaveCount(1)
+  await expect(page.getByLabel('Retraction Prime Speed (mm/s)')).toHaveCount(1)
+  await expect(page.getByLabel('Maximum Fan Speed (%)')).toHaveCount(1)
+  await expect(page.getByLabel(/^Retraction Speed/)).toHaveCount(0)
+  await expect(page.getByLabel(/^Initial Fan Speed/)).toHaveCount(0)
   await page.getByLabel('Build plate temperature (°C)').fill('61')
   await expect(page.locator('.setting-field--customized')).toHaveCount(3)
   await page.getByLabel('Build plate temperature (°C)').fill('60')

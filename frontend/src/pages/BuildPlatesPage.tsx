@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { Check, Eraser, History, Layers3, Pencil, Plus, Save, Sparkles } from 'lucide-react'
+import { Check, Eraser, History, ImageUp, Layers3, Pencil, Plus, Save, Sparkles, Trash2 } from 'lucide-react'
 import { useState } from 'react'
 import { apiFetch } from '../api/client'
 import type { BuildPlate, BuildPlateMaintenanceEvent, BuildPlateMaintenanceStatus, BuildPlateSurface, Printer } from '../api/types'
@@ -273,8 +273,20 @@ export default function BuildPlatesPage() {
     mutationFn: ({ plateId, maintenanceType, surfaceId }: { plateId: string; maintenanceType: 'cleaned' | 'mesh_calibrated'; surfaceId?: string }) => apiFetch(`/build-plates/${plateId}/maintenance-events`, { method: 'POST', body: JSON.stringify({ maintenance_type: maintenanceType, surface_id: surfaceId ?? null, notes: null }) }),
     onSuccess: refreshCanonicalState,
   })
+  const uploadImage = useMutation({
+    mutationFn: ({ plate, image }: { plate: BuildPlate; image: File }) => {
+      const form = new FormData()
+      form.append('image', image)
+      return apiFetch<BuildPlate>(`/build-plates/${plate.id}/image`, { method: 'PUT', body: form })
+    },
+    onSuccess: refreshCanonicalState,
+  })
+  const deleteImage = useMutation({
+    mutationFn: (plate: BuildPlate) => apiFetch<BuildPlate>(`/build-plates/${plate.id}/image`, { method: 'DELETE' }),
+    onSuccess: refreshCanonicalState,
+  })
   const clearActive = useMutation({ mutationFn: () => apiFetch<{ printer_name: string }>('/build-plates/active/clear', { method: 'POST' }), onSuccess: refreshCanonicalState })
-  const mutationError = selectSurface.error ?? updatePlate.error ?? updateSurface.error ?? addSideB.error ?? recordMaintenance.error ?? clearActive.error
+  const mutationError = selectSurface.error ?? updatePlate.error ?? updateSurface.error ?? addSideB.error ?? recordMaintenance.error ?? uploadImage.error ?? deleteImage.error ?? clearActive.error
   return (
     <div>
       <PageHeader
@@ -299,7 +311,7 @@ export default function BuildPlatesPage() {
             return (
               <article className={`build-plate-card${activePlate ? ' build-plate-card--active' : ''}`} key={plate.id}>
                 <div className="build-plate-card__summary">
-                  <div className="plate-illustration plate-illustration--summary"><span>{plate.plate_code}</span>{activePlate ? <i><Check size={16} /></i> : null}</div>
+                  <div className={`plate-illustration plate-illustration--summary${plate.image_url ? ' plate-illustration--photo' : ''}`}>{plate.image_url ? <img src={plate.image_url} alt={`${plate.display_name} build plate`} /> : null}<span>{plate.plate_code}</span>{activePlate ? <i><Check size={16} /></i> : null}</div>
                   <div className="build-plate-card__identity">
                     <p className="eyebrow">Physical plate {plate.plate_code}</p>
                     <div className="build-plate-card__title"><h2>{plate.display_name}</h2><StatusPill status={activePlate ? 'active' : plate.status} /></div>
@@ -314,7 +326,7 @@ export default function BuildPlatesPage() {
                       <div><dt>Last cleaned</dt><dd>{dateTime(plate.last_cleaned_at)}</dd></div>
                       <div><dt>Cleaning state</dt><dd>{due?.cleaning_due ? 'Due now' : `${due?.cleaning_prints_since ?? 0} prints since cleaning`}</dd></div>
                     </dl>
-                    {user?.role !== 'viewer' ? <div className="detail-actions"><button className="button build-plate-card__edit" onClick={() => setEditingPlate(plate)}><Pencil size={16} /> Edit physical plate</button><button className="button" disabled={recordMaintenance.isPending} onClick={() => recordMaintenance.mutate({ plateId: plate.id, maintenanceType: 'cleaned' })}><Check size={16} /> Mark cleaned</button></div> : null}
+                    {user?.role !== 'viewer' ? <div className="detail-actions"><button className="button build-plate-card__edit" onClick={() => setEditingPlate(plate)}><Pencil size={16} /> Edit physical plate</button><label className="button file-button"><ImageUp size={16} /> {plate.image_url ? 'Replace picture' : 'Upload picture'}<input type="file" accept="image/png,image/jpeg,image/webp" disabled={uploadImage.isPending} onChange={(event) => { const image = event.target.files?.[0]; if (image) uploadImage.mutate({ plate, image }); event.currentTarget.value = '' }} /></label>{plate.image_url ? <button className="button" disabled={deleteImage.isPending} onClick={() => { if (window.confirm(`Remove the picture for ${plate.display_name}?`)) deleteImage.mutate(plate) }}><Trash2 size={16} /> Remove picture</button> : null}<button className="button" disabled={recordMaintenance.isPending} onClick={() => recordMaintenance.mutate({ plateId: plate.id, maintenanceType: 'cleaned' })}><Check size={16} /> Mark cleaned</button></div> : null}
                   </div>
                 </div>
                 <div className="plate-surfaces">

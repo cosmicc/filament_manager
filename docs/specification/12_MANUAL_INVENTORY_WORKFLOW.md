@@ -39,7 +39,7 @@ A setup-only mistake may be corrected or deleted. After a later measurement, rem
 
 - large human spool ID
 - QR code containing only a stable application URL or spool UUID, generated with high error correction and a standard quiet zone
-- conservative centered spool icon using the filament's canonical solid, two/three-color, or rainbow palette; the icon is visual only and does not add mutable data to the QR payload
+- largest independently decodable centered spool icon using the filament's canonical solid, one/two/three-sample multicolor, or rainbow palette; the icon is visual only and does not add mutable data to the QR payload
 - material and color
 - vendor/product
 - tare mass when useful

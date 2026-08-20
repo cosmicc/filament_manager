@@ -24,7 +24,7 @@ def merge_cura_settings(
         {"material_bed_temperature", "default_material_bed_temperature"},
         {"cool_fan_speed_max", "cool_fan_speed"},
         {"speed_print_layer_0", "speed_layer_0"},
-        {"retraction_speed", "retraction_retract_speed", "retraction_prime_speed"},
+        {"retraction_speed", "retraction_retract_speed"},
     )
     for keys in synonymous_groups:
         if keys.intersection(source_settings):
@@ -120,9 +120,14 @@ def material_settings_from_cura(
         "retraction_distance_mm": _decimal(settings, "retraction_amount"),
         "retraction_speed_mm_s": _decimal(
             settings,
-            "retraction_speed",
             "retraction_retract_speed",
+            "retraction_speed",
+        ),
+        "retraction_prime_speed_mm_s": _decimal(
+            settings,
             "retraction_prime_speed",
+            "retraction_retract_speed",
+            "retraction_speed",
         ),
         "cooling_enabled": _boolean(settings, "cool_fan_enabled", default=True),
         "cooling_min_percent": cooling_min,

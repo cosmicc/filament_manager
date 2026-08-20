@@ -1,0 +1,100 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="820" viewBox="0 0 1200 820" role="img" aria-labelledby="title description">
+  <title id="title">Filament Manager GUI color profiles</title>
+  <desc id="description">Three light and five dark application palettes with representative background, surface, primary, accent, and text colors.</desc>
+  <rect width="1200" height="820" fill="#E8EDF3"/>
+  <text x="60" y="62" fill="#16324F" font-family="Inter, system-ui, sans-serif" font-size="32" font-weight="700">Filament Manager GUI color profiles</text>
+  <text x="60" y="94" fill="#536579" font-family="Inter, system-ui, sans-serif" font-size="16">Three light profiles and five dark profiles</text>
+
+  <g font-family="Inter, system-ui, sans-serif">
+    <g transform="translate(60 130)">
+      <rect width="340" height="180" rx="18" fill="#F7FAFC" stroke="#C6D3DF"/>
+      <text x="20" y="34" fill="#16324F" font-size="20" font-weight="700">Workshop Navy</text>
+      <text x="20" y="58" fill="#536579" font-size="13">Light</text>
+      <rect x="20" y="82" width="56" height="56" rx="10" fill="#F7FAFC" stroke="#C6D3DF"/>
+      <rect x="82" y="82" width="56" height="56" rx="10" fill="#FFFFFF" stroke="#C6D3DF"/>
+      <rect x="144" y="82" width="56" height="56" rx="10" fill="#16324F"/>
+      <rect x="206" y="82" width="56" height="56" rx="10" fill="#2F80A5"/>
+      <rect x="268" y="82" width="52" height="56" rx="10" fill="#17212B"/>
+      <text x="20" y="160" fill="#536579" font-size="12">#F7FAFC · #FFFFFF · #16324F · #2F80A5</text>
+    </g>
+    <g transform="translate(430 130)">
+      <rect width="340" height="180" rx="18" fill="#F4F8F2" stroke="#C8D8CE"/>
+      <text x="20" y="34" fill="#1E4D4A" font-size="20" font-weight="700">Coastal Sage</text>
+      <text x="20" y="58" fill="#587069" font-size="13">Light</text>
+      <rect x="20" y="82" width="56" height="56" rx="10" fill="#F4F8F2" stroke="#C8D8CE"/>
+      <rect x="82" y="82" width="56" height="56" rx="10" fill="#FFFFFF" stroke="#C8D8CE"/>
+      <rect x="144" y="82" width="56" height="56" rx="10" fill="#1E4D4A"/>
+      <rect x="206" y="82" width="56" height="56" rx="10" fill="#4F8A78"/>
+      <rect x="268" y="82" width="52" height="56" rx="10" fill="#19312E"/>
+      <text x="20" y="160" fill="#587069" font-size="12">#F4F8F2 · #FFFFFF · #1E4D4A · #4F8A78</text>
+    </g>
+    <g transform="translate(800 130)">
+      <rect width="340" height="180" rx="18" fill="#FBF6ED" stroke="#DECDBE"/>
+      <text x="20" y="34" fill="#563B2F" font-size="20" font-weight="700">Warm Sand</text>
+      <text x="20" y="58" fill="#765E52" font-size="13">Light</text>
+      <rect x="20" y="82" width="56" height="56" rx="10" fill="#FBF6ED" stroke="#DECDBE"/>
+      <rect x="82" y="82" width="56" height="56" rx="10" fill="#FFFDF9" stroke="#DECDBE"/>
+      <rect x="144" y="82" width="56" height="56" rx="10" fill="#563B2F"/>
+      <rect x="206" y="82" width="56" height="56" rx="10" fill="#B85C38"/>
+      <rect x="268" y="82" width="52" height="56" rx="10" fill="#31231D"/>
+      <text x="20" y="160" fill="#765E52" font-size="12">#FBF6ED · #FFFDF9 · #563B2F · #B85C38</text>
+    </g>
+
+    <g transform="translate(60 340)">
+      <rect width="340" height="180" rx="18" fill="#081524" stroke="#244361"/>
+      <text x="20" y="34" fill="#E8F3FA" font-size="20" font-weight="700">Workshop Navy Dark</text>
+      <text x="20" y="58" fill="#9CB3C6" font-size="13">Dark</text>
+      <rect x="20" y="82" width="56" height="56" rx="10" fill="#081524" stroke="#244361"/>
+      <rect x="82" y="82" width="56" height="56" rx="10" fill="#182D46"/>
+      <rect x="144" y="82" width="56" height="56" rx="10" fill="#55A9CF"/>
+      <rect x="206" y="82" width="56" height="56" rx="10" fill="#D58A45"/>
+      <rect x="268" y="82" width="52" height="56" rx="10" fill="#E8F3FA"/>
+      <text x="20" y="160" fill="#9CB3C6" font-size="12">#081524 · #182D46 · #55A9CF · #D58A45</text>
+    </g>
+    <g transform="translate(430 340)">
+      <rect width="340" height="180" rx="18" fill="#111126" stroke="#353464"/>
+      <text x="20" y="34" fill="#F0EFFF" font-size="20" font-weight="700">Midnight Indigo</text>
+      <text x="20" y="58" fill="#AAA7D0" font-size="13">Dark</text>
+      <rect x="20" y="82" width="56" height="56" rx="10" fill="#111126" stroke="#353464"/>
+      <rect x="82" y="82" width="56" height="56" rx="10" fill="#24244A"/>
+      <rect x="144" y="82" width="56" height="56" rx="10" fill="#8478E8"/>
+      <rect x="206" y="82" width="56" height="56" rx="10" fill="#40B7AA"/>
+      <rect x="268" y="82" width="52" height="56" rx="10" fill="#F0EFFF"/>
+      <text x="20" y="160" fill="#AAA7D0" font-size="12">#111126 · #24244A · #8478E8 · #40B7AA</text>
+    </g>
+    <g transform="translate(800 340)">
+      <rect width="340" height="180" rx="18" fill="#151515" stroke="#44413B"/>
+      <text x="20" y="34" fill="#F3F0E8" font-size="20" font-weight="700">Graphite Amber</text>
+      <text x="20" y="58" fill="#B6AEA0" font-size="13">Dark</text>
+      <rect x="20" y="82" width="56" height="56" rx="10" fill="#151515" stroke="#44413B"/>
+      <rect x="82" y="82" width="56" height="56" rx="10" fill="#2A2927"/>
+      <rect x="144" y="82" width="56" height="56" rx="10" fill="#E5A63B"/>
+      <rect x="206" y="82" width="56" height="56" rx="10" fill="#6FA58B"/>
+      <rect x="268" y="82" width="52" height="56" rx="10" fill="#F3F0E8"/>
+      <text x="20" y="160" fill="#B6AEA0" font-size="12">#151515 · #2A2927 · #E5A63B · #6FA58B</text>
+    </g>
+
+    <g transform="translate(245 550)">
+      <rect width="340" height="180" rx="18" fill="#0C1B18" stroke="#285248"/>
+      <text x="20" y="34" fill="#EBF5F0" font-size="20" font-weight="700">Forest Ember</text>
+      <text x="20" y="58" fill="#9DB8AD" font-size="13">Dark</text>
+      <rect x="20" y="82" width="56" height="56" rx="10" fill="#0C1B18" stroke="#285248"/>
+      <rect x="82" y="82" width="56" height="56" rx="10" fill="#17352E"/>
+      <rect x="144" y="82" width="56" height="56" rx="10" fill="#E27A42"/>
+      <rect x="206" y="82" width="56" height="56" rx="10" fill="#55AA89"/>
+      <rect x="268" y="82" width="52" height="56" rx="10" fill="#EBF5F0"/>
+      <text x="20" y="160" fill="#9DB8AD" font-size="12">#0C1B18 · #17352E · #E27A42 · #55AA89</text>
+    </g>
+    <g transform="translate(615 550)">
+      <rect width="340" height="180" rx="18" fill="#1C1020" stroke="#56305E"/>
+      <text x="20" y="34" fill="#F8ECFA" font-size="20" font-weight="700">Plum Neon</text>
+      <text x="20" y="58" fill="#C5A5C9" font-size="13">Dark</text>
+      <rect x="20" y="82" width="56" height="56" rx="10" fill="#1C1020" stroke="#56305E"/>
+      <rect x="82" y="82" width="56" height="56" rx="10" fill="#3B2142"/>
+      <rect x="144" y="82" width="56" height="56" rx="10" fill="#D56BD8"/>
+      <rect x="206" y="82" width="56" height="56" rx="10" fill="#5CC8C3"/>
+      <rect x="268" y="82" width="52" height="56" rx="10" fill="#F8ECFA"/>
+      <text x="20" y="160" fill="#C5A5C9" font-size="12">#1C1020 · #3B2142 · #D56BD8 · #5CC8C3</text>
+    </g>
+  </g>
+</svg>

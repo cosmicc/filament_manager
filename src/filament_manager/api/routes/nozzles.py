@@ -169,11 +169,23 @@ async def update_nozzle(
             "Remove the nozzle from its printer before retiring it",
         )
     before: dict[str, object] = {
+        "nozzle_code": nozzle.nozzle_code,
         "diameter_mm": str(nozzle.diameter_mm),
         "material": nozzle.material,
         "status": nozzle.status.value,
         "record_version": nozzle.record_version,
     }
+    if payload.nozzle_code is not None:
+        code = payload.nozzle_code.strip().upper()
+        conflict = await session.scalar(
+            select(Nozzle.id).where(
+                Nozzle.id != nozzle.id,
+                func.lower(Nozzle.nozzle_code) == code.casefold(),
+            )
+        )
+        if conflict is not None:
+            raise ApiError(status.HTTP_409_CONFLICT, "nozzle_code_exists", "Nozzle code already exists")
+        nozzle.nozzle_code = code
     for field in ("diameter_mm", "manufacturer", "product_name", "coating", "purchase_date", "notes"):
         if field in payload.model_fields_set:
             value = getattr(payload, field)
@@ -224,7 +236,11 @@ async def update_nozzle(
         object_type="nozzle",
         object_id=nozzle.id,
         before=before,
-        after={"status": nozzle.status.value, "record_version": nozzle.record_version},
+        after={
+            "nozzle_code": nozzle.nozzle_code,
+            "status": nozzle.status.value,
+            "record_version": nozzle.record_version,
+        },
         correlation_id=request.state.correlation_id,
     )
     await session.commit()

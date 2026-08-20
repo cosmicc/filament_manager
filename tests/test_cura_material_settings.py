@@ -20,12 +20,14 @@ def test_operator_material_settings_catalog_is_exact_and_unique() -> None:
 
     assert len(keys) == 56
     assert len(set(keys)) == 56
-    assert len(CURA_EDITABLE_SETTING_KEYS) == 54
-    assert len(CURA_TYPED_SETTING_KEYS) == 22
-    assert len(CURA_EXTENSION_SETTING_KEYS) == 32
+    assert len(CURA_EDITABLE_SETTING_KEYS) == 52
+    assert len(CURA_TYPED_SETTING_KEYS) == 24
+    assert len(CURA_EXTENSION_SETTING_KEYS) == 29
     assert {setting.key for setting in CURA_MATERIAL_SETTINGS if not setting.editable} == {
         "material_brand",
         "material_type",
+        "cool_fan_speed_0",
+        "retraction_speed",
     }
     assert {
         "klipper_pressure_advance_factor",
@@ -52,6 +54,7 @@ def test_profile_mapping_places_klipper_values_in_the_material_settings() -> Non
         support_speed_mm_s=None,
         retraction_distance_mm=Decimal("0.8"),
         retraction_speed_mm_s=Decimal("35"),
+        retraction_prime_speed_mm_s=Decimal("32"),
         cooling_enabled=True,
         cooling_min_percent=Decimal("30"),
         cooling_max_percent=Decimal("70"),
@@ -71,7 +74,8 @@ def test_profile_mapping_places_klipper_values_in_the_material_settings() -> Non
     assert settings["material_print_temperature"] == "225"
     assert settings["retraction_speed"] == "35"
     assert settings["retraction_retract_speed"] == "35"
-    assert settings["retraction_prime_speed"] == "35"
+    assert settings["retraction_prime_speed"] == "32"
+    assert settings["cool_fan_speed_0"] == "0"
     assert settings["cool_fan_speed"] == "70"
     assert settings["cool_fan_speed_max"] == "70"
 
@@ -92,7 +96,22 @@ def test_cura_aliases_resolve_to_one_canonical_setting_without_extension_overlap
     )
 
     assert settings["retraction_speed_mm_s"] == Decimal("42")
+    assert settings["retraction_prime_speed_mm_s"] == Decimal("38")
     assert settings["cooling_max_percent"] == Decimal("80")
     assert "retraction_retract_speed" not in settings["cura_extensions"]
     assert "retraction_prime_speed" not in settings["cura_extensions"]
     assert "cool_fan_speed_max" not in settings["cura_extensions"]
+
+
+def test_prime_speed_import_does_not_remove_the_existing_retract_speed() -> None:
+    """Retract and prime speeds remain independent while merging Cura edits."""
+
+    from filament_manager.domain.cura_import import merge_cura_settings
+
+    merged = merge_cura_settings(
+        {"retraction_retract_speed": "42", "retraction_prime_speed": "42"},
+        {"retraction_prime_speed": "37"},
+    )
+
+    assert merged["retraction_retract_speed"] == "42"
+    assert merged["retraction_prime_speed"] == "37"

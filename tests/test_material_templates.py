@@ -264,6 +264,13 @@ async def test_direct_template_save_updates_linked_product_profile(
             assert Decimal(inherited_profile["extruder_temp_c"]) == Decimal("250")
             assert Decimal(inherited_profile["filament_density_g_cm3"]) == Decimal("1.21")
             assert inherited_profile["override_keys"] == ["filament_density_g_cm3"]
+            exported = await client.get(f"/api/v1/profiles/{inherited_profile['id']}/exports/cura")
+            assert exported.status_code == 200, exported.text
+            assert exported.headers["content-disposition"].startswith(
+                'attachment; filename="filament-manager-cura-profile-'
+            )
+            assert exported.headers["content-type"].startswith("application/json")
+            assert exported.json()["cura"]["cool_fan_speed_0"] == "0"
 
         async with factory() as session:
             template_row = await session.scalar(

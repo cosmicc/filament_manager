@@ -36,5 +36,9 @@ def test_solid_multicolor_and_rainbow_palettes_are_bounded() -> None:
         "rainbow",
         list(RAINBOW_COLOR_HEXES),
     )
-    with pytest.raises(ValueError, match="two or three"):
-        normalize_color_palette("multicolor", None, ["FF0000"])
+    assert normalize_color_palette("multicolor", None, ["FF0000"]) == (
+        "multicolor",
+        ["FF0000"],
+    )
+    with pytest.raises(ValueError, match="one to three"):
+        normalize_color_palette("multicolor", None, [])

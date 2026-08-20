@@ -13,6 +13,7 @@ from sqlalchemy import (
     ForeignKey,
     Index,
     Integer,
+    LargeBinary,
     Numeric,
     String,
     Text,
@@ -53,7 +54,7 @@ class Vendor(UUIDPrimaryKeyMixin, TimestampMixin, Base):
 
 
 class FilamentColor(UUIDPrimaryKeyMixin, TimestampMixin, Base):
-    """A remembered, case-insensitive color name and its canonical screen sample."""
+    """A remembered shared solid color or fixed rainbow screen sample."""
 
     __tablename__ = "filament_colors"
 
@@ -309,6 +310,10 @@ class BuildPlate(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     mesh_due_after_prints: Mapped[int] = mapped_column(Integer, nullable=False, default=30)
     mesh_due_after_days: Mapped[int] = mapped_column(Integer, nullable=False, default=30)
     notes: Mapped[str | None] = mapped_column(Text)
+    image_data: Mapped[bytes | None] = mapped_column(LargeBinary)
+    image_media_type: Mapped[str | None] = mapped_column(String(32))
+    image_sha256: Mapped[str | None] = mapped_column(String(64))
+    image_version: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     record_version: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
     surfaces: Mapped[list["BuildPlateSurface"]] = relationship(
         back_populates="plate",
@@ -394,6 +399,7 @@ class MaterialProfile(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     bridge_speed_mm_s: Mapped[Decimal | None] = mapped_column(MEASUREMENT)
     retraction_distance_mm: Mapped[Decimal | None] = mapped_column(MEASUREMENT)
     retraction_speed_mm_s: Mapped[Decimal | None] = mapped_column(MEASUREMENT)
+    retraction_prime_speed_mm_s: Mapped[Decimal | None] = mapped_column(MEASUREMENT)
     cooling_enabled: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
     cooling_min_percent: Mapped[Decimal] = mapped_column(MEASUREMENT, nullable=False)
     cooling_max_percent: Mapped[Decimal] = mapped_column(MEASUREMENT, nullable=False)

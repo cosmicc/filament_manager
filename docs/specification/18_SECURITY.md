@@ -50,7 +50,9 @@ Environment variables are intentionally transitional and are visible to authoriz
 ## API safety
 
 - authenticate Filament Manager writes
-- enforce role-based authorization
+- support exactly one active local Administrator account
+- on an empty database create `admin` / `admin`, store only its Argon2id hash, and restrict it to password replacement/logout until it chooses a normal 10-256 character password
+- preserve an existing single account on upgrade, revoke other sessions after identity/password edits, and fail startup instead of silently choosing among multiple legacy accounts
 - use request IDs and audit logs
 - validate all Spoolman payloads
 - preserve unknown Spoolman `extra` fields
@@ -61,6 +63,8 @@ Environment variables are intentionally transitional and are visible to authoriz
 - accept managed Cura setting edits only for deterministic known GUIDs and approved bounded keys; derive the idempotency checksum server-side, save the known current settings directly, and reject new Cura-created materials as canonical input
 - accept Cura recovery snapshots only from the paired agent for its exact currently reported installation/version; enforce fixed target allowlists, bounded content, semantic checksums, reset detection, and conservative credential/endpoint/path filtering
 - expose only recovery metadata to authenticated browser users, require Administrator confirmation to queue a restore, and lease the copied restore payload only to its originating agent
+
+The exact first-install password is intentionally weak at the owner's request for this single-user self-hosted deployment. Mandatory first-login replacement, normal Argon2id storage, login throttling, and no deployment-variable credential exposure limit that accepted bootstrap risk. Do not broaden this exception to replacement passwords or remove the forced-change gate.
 
 ## Future device security
 

@@ -1,17 +1,16 @@
 # Security and Authentication Skill
 
-- Filament Manager uses local accounts with `administrator`, `operator`, and `viewer` roles.
+- Filament Manager supports exactly one active local Administrator account. Legacy role values remain only for database compatibility and must not be exposed as an account-management workflow.
 - Store passwords with Argon2id. Never log passwords, session tokens, CSRF tokens, database URLs, API keys, or service-account documents.
-- Local usernames contain 2-80 normalized characters. Passwords contain 10-256 characters; retain Argon2id and do not add brittle composition rules.
+- Local usernames contain 2-80 normalized characters. Replacement passwords contain 10-256 characters; retain Argon2id and do not add brittle composition rules. The exact first-install `admin` password is the sole accepted short-password exception and must be changed before any other application route is accessible.
 - Docker credentials currently use ordinary scoped environment variables by explicit deployment policy. Treat them as inspectable by authorized Docker/Portainer operators, restrict that access, protect `.env` with mode `0600`, and migrate to a dedicated secret store when approved.
 - PostgreSQL transport is intentionally unencrypted on the dedicated isolated database network. Credentials and queries are visible to any party that can observe that network, so never route it through shared, public, or otherwise untrusted infrastructure.
 - Derive production allowed hosts from `FILAMENT_MANAGER_BASE_URL` unless the deployer supplies the exact comma-separated `FILAMENT_MANAGER_ALLOWED_HOSTS`; never introduce wildcard host or CORS variables.
 - Browser authentication uses random server-side sessions in HttpOnly cookies. State-changing requests require a matching CSRF header.
 - Session cookies are `Secure` in production, `SameSite=Strict`, path `/`, and have bounded absolute and idle expiration.
-- Administrator-created and reset passwords are temporary. Set `must_change_password`, revoke prior sessions on reset/deactivation, and permit a forced account only to read itself, change its password, or log out. Keep last-active-Administrator and current-account deactivation safeguards.
-- Administrator: user management, settings, overrides, retries, and all operator actions.
-- Operator: inventory, measurement, labels, confirmed physical spool-load/plate workflows, profiles, and calibration workflows.
-- Viewer: authenticated read-only access.
+- On an empty database, create `admin` / `admin`, immediately retain only its Argon2id hash, and set `must_change_password`. Permit that forced account only to read itself, change its password, or log out. Preserve an existing single account during upgrade, but fail startup when more than one legacy account exists so the operator can resolve it before migration to this contract.
+- Settings permits the Administrator to change its username, display name, and password. Identity or password changes revoke every other session and never reveal a password or hash. Do not restore account creation, role, reset, or deactivation endpoints while the singleton contract remains in force.
+- The Administrator owns settings, overrides, retries, inventory, measurements, labels, confirmed physical spool-load/plate workflows, profiles, and calibration workflows.
 - Validate proxy headers only when trusted-proxy mode is explicitly configured.
 - Use exact allowed origins and hosts; wildcard production CORS is prohibited.
 - Constrain outbound integration URLs to configured endpoints to reduce SSRF risk.

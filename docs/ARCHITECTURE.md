@@ -25,7 +25,7 @@ Docker services build their validated runtime configuration directly from stack 
 
 ## Canonical domains
 
-- local Users, revocable sessions, and Administrator/Operator/Viewer roles
+- one local Administrator identity and revocable sessions
 - Vendors, globally remembered named color samples, Filament Products, uniquely labeled Spools, and immutable physical Measurements
 - immutable Spool Usage Events imported from supported Spoolman state
 - Printers, installable physical Nozzles with lifecycle history, physical Build Plates, and printable sides; `P4` is Side A and `P4b` is Side B of physical plate P4
@@ -50,7 +50,7 @@ The persisted Klipper spool macro records the last completed physical unload/loa
 
 The five-second print observer reads only supported Moonraker live/history and file APIs. Before spool selection it streams bounded G-code, hashes the complete accepted file, parses bounded Cura metadata without evaluation, and records mismatches. Warning mode retains evidence and continues; Administrator-enabled blocking pauses on missing profile state, unavailable inspection, or supported mismatches. Exact printer, physical nozzle, spool, product, profile, plate, and profile-setting state is captured only after preflight completes. Historical state is immutable, M600 changes append segments, and legacy records remain unresolved when evidence is unavailable. Each imported history row is isolated so malformed bounded legacy data cannot block valid records or the successful synchronization checkpoint. Completed-print statistics derive from these snapshots: a plate side and nozzle count once, and every distinct start/M600 spool counts once even if reused in more than one segment.
 
-Notification detection runs server-side and deduplicates persistent operational conditions while maintaining per-user read state. Recurring conditions become unread again. Account creation and password reset establish temporary credentials, revoke affected sessions when required, and restrict the account to password replacement until complete.
+Notification detection runs server-side and deduplicates persistent operational conditions while maintaining per-user read state. Recurring conditions become unread again. An empty database creates the exact `admin` / `admin` Administrator and restricts it to password replacement until complete. Existing single-account credentials remain unchanged during upgrade; identity or password edits revoke other sessions, and startup fails if incompatible legacy data contains more than one account.
 
 Administrator-triggered build-plate synchronization reads Moonraker's supported `bed_mesh` printer object before opening its short canonical transaction. Exact bounded `P<number>` and `P<number>b` profiles create physical plates and sides, missing meshes update side availability without deleting metadata, and a loaded matching mesh updates the printer's active physical plate and side. `SELECT_BUILD_PLATE` without a parameter builds its Fluidd prompt live from the same saved mesh dictionary. An Operator may create the sole canonical Side B from an existing plate; its server-derived `P<number>b` side starts unavailable until that exact mesh is discovered. All other profile names are ignored.
 
@@ -62,7 +62,7 @@ While Cura is closed, the workstation agent captures a bounded exact-version ope
 
 ## Security boundaries
 
-- Local passwords use Argon2id; no default user exists.
+- Local passwords use Argon2id. The accepted first-install `admin` / `admin` default exists only on an empty database and is forced through password replacement before other access.
 - Browser sessions are random, hashed server-side, revocable, HttpOnly, SameSite Strict, CSRF-bound, and time-limited.
 - Role checks are server-side on every route.
 - Configuration rejects credentials embedded in integration URLs.

@@ -28,7 +28,7 @@ The stack creates its overlay and volumes. For a multi-node Swarm, use shared st
 3. Web and worker entry points each request the stable PostgreSQL advisory lock, apply `alembic upgrade head`, and start only after success.
 4. Confirm both service logs report migration completion; keep the documented one-shot migration only for stopped-service recovery.
 5. Seed the configured printer and initial physical P1-P5 plates with Side A once.
-6. Create the first Administrator through a short-lived bootstrap job.
+6. Sign in with the automatically created first-install `admin` / `admin` account and complete the mandatory password change. An existing single account is retained during upgrade.
 7. Install the Klipper plate-side macro; the worker automatically discovers later exact `P<number>` or `P<number>b` meshes and current active state.
 8. Verify all health endpoints, service logs, and remote database connections.
 9. Confirm Spoolman's managed projection fields are ready and a one-minute full convergence job projects existing canonical inventory.

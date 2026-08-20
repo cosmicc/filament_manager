@@ -12,7 +12,7 @@ from filament_manager.domain.colors import normalize_color_palette
 
 QR_BOX_SIZE: Final = 10
 QR_BORDER_MODULES: Final = 4
-SPOOL_ICON_MODULE_FRACTION: Final = 0.18
+SPOOL_ICON_MODULE_FRACTION: Final = 0.30
 SPOOL_ICON_MINIMUM_MODULES: Final = 7
 SPOOL_ICON_BACKING_MODULES: Final = 1
 SPOOL_ICON_SUPERSAMPLING: Final = 4

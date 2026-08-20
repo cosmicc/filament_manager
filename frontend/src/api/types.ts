@@ -101,6 +101,8 @@ export interface BuildPlate {
   mesh_due_after_prints: number
   mesh_due_after_days: number
   notes: string | null
+  image_url: string | null
+  image_version: number
   record_version: number
   surfaces: BuildPlateSurface[]
 }
@@ -185,6 +187,7 @@ export interface MaterialSettings {
   support_speed_mm_s: string | null
   retraction_distance_mm: string | null
   retraction_speed_mm_s: string | null
+  retraction_prime_speed_mm_s: string | null
   cooling_enabled: boolean
   cooling_min_percent: string
   cooling_max_percent: string
@@ -357,6 +360,13 @@ export interface Calibration {
   override_reason: string | null
   record_version: number
   steps: CalibrationStep[]
+}
+
+export interface CalibrationSuggestions {
+  settings: MaterialSettings
+  suggestions: Record<string, unknown>
+  template_id: string
+  template_name: string
 }
 
 export interface AuditEvent {

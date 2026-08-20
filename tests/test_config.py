@@ -1,11 +1,7 @@
 """Configuration credential-source and masking tests."""
 
-from pathlib import Path
-
 import pytest
-import typer
 
-from filament_manager.cli import _resolve_bootstrap_password
 from filament_manager.config import get_settings
 
 
@@ -96,26 +92,3 @@ def test_environment_configuration_rejects_invalid_boolean(
         get_settings()
 
     get_settings.cache_clear()
-
-
-def test_bootstrap_password_uses_environment_variable(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    """The one-shot bootstrap can use its scoped stack environment value."""
-
-    monkeypatch.setenv("FILAMENT_MANAGER_BOOTSTRAP_ADMIN_PASSWORD", "temporary-password")
-
-    assert _resolve_bootstrap_password(None) == "temporary-password"
-
-
-def test_bootstrap_password_rejects_ambiguous_sources(
-    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
-) -> None:
-    """A file and environment value cannot silently compete."""
-
-    password_file = tmp_path / "password.txt"
-    password_file.write_text("file-password\n", encoding="utf-8")
-    monkeypatch.setenv("FILAMENT_MANAGER_BOOTSTRAP_ADMIN_PASSWORD", "environment-password")
-
-    with pytest.raises(typer.BadParameter, match="set only one"):
-        _resolve_bootstrap_password(password_file)

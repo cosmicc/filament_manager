@@ -23,6 +23,7 @@ def test_cura_metadata_is_extracted_without_evaluating_content() -> None:
         cura_tail(
             "material_print_temperature = 225\nmaterial_bed_temperature = 70\n"
             "material_flow = 98.000\nlayer_height = 0.20\nline_width = 0.44\n"
+            "retraction_retract_speed = 35\nretraction_prime_speed = 31\n"
             "support_enable = true\nquality_definition = Test Printer\n"
             "unsafe = __import__('os').system('false')\n"
         ),
@@ -34,6 +35,8 @@ def test_cura_metadata_is_extracted_without_evaluating_content() -> None:
     assert result["extruder_temp_c"] == "225"
     assert result["flow_percent"] == "98.000"
     assert result["pressure_advance"] == "0.035"
+    assert result["retraction_speed_mm_s"] == "35"
+    assert result["retraction_prime_speed_mm_s"] == "31"
     assert result["support_configuration"] == {
         "enabled": True,
         "structure": None,
@@ -50,12 +53,15 @@ def test_profile_mismatches_are_structured_and_decimal_tolerant() -> None:
         cura_tail(
             "material_print_temperature = 240\nmaterial_bed_temperature = 70.0\n"
             "material_flow = 98.000\nmachine_nozzle_size = 0.400\n"
+            "retraction_retract_speed = 35\nretraction_prime_speed = 30\n"
         ),
         expected_profile={
             "extruder_temp_c": "225",
             "bed_temp_c": "70",
             "flow_percent": "98",
             "nozzle_diameter_mm": "0.4",
+            "retraction_speed_mm_s": "35",
+            "retraction_prime_speed_mm_s": "32",
         },
         expected_material_guid="12345678-1234-1234-1234-123456789abc",
         expected_machine_name=None,
@@ -67,6 +73,12 @@ def test_profile_mismatches_are_structured_and_decimal_tolerant() -> None:
             "label": "printing temperature",
             "gcode_value": "240",
             "profile_value": "225",
+        },
+        {
+            "field": "retraction_prime_speed_mm_s",
+            "label": "retraction prime speed",
+            "gcode_value": "30",
+            "profile_value": "32",
         },
     )
     assert result.warnings == ()

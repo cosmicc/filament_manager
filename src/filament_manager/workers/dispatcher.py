@@ -10,7 +10,7 @@ from typing import cast
 from uuid import UUID
 
 import structlog
-from sqlalchemy import and_, or_, select, text
+from sqlalchemy import and_, or_, select, text, update
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import joinedload
 
@@ -754,7 +754,7 @@ async def _configured_printer_bindings(
 async def _reconcile_moonraker_state(session: AsyncSession, job: OutboxJob) -> None:
     """Poll active spool and build-plate state without one surface blocking the other."""
 
-    failures: list[Exception] = []
+    failures: list[tuple[str, Exception]] = []
     for printer, configured in await _configured_printer_bindings(session):
         client = MoonrakerClient(configured)
         active_result, mesh_result, preflight_result = await asyncio.gather(
@@ -767,7 +767,7 @@ async def _reconcile_moonraker_state(session: AsyncSession, job: OutboxJob) -> N
         if isinstance(active_result, BaseException):
             if not isinstance(active_result, Exception):
                 raise active_result
-            failures.append(active_result)
+            failures.append(("active spool read", active_result))
             logger.error(
                 "moonraker_active_spool_sync_failed",
                 printer_code=printer.printer_code,
@@ -855,7 +855,7 @@ async def _reconcile_moonraker_state(session: AsyncSession, job: OutboxJob) -> N
                         physically_loaded_spoolman_id=preflight_result.loaded_spool_id,
                     )
                 except Exception as exc:
-                    failures.append(exc)
+                    failures.append(("active spool drift repair", exc))
                     logger.exception(
                         "moonraker_active_spool_drift_repair_failed",
                         printer_code=printer.printer_code,
@@ -914,7 +914,7 @@ async def _reconcile_moonraker_state(session: AsyncSession, job: OutboxJob) -> N
                                 spoolman_id=effective_active_spool_id,
                             )
                     except Exception as exc:
-                        failures.append(exc)
+                        failures.append(("spool preflight catalog", exc))
                         logger.exception(
                             "moonraker_spool_preflight_synchronization_failed",
                             printer_code=printer.printer_code,
@@ -924,7 +924,7 @@ async def _reconcile_moonraker_state(session: AsyncSession, job: OutboxJob) -> N
         if isinstance(mesh_result, BaseException):
             if not isinstance(mesh_result, Exception):
                 raise mesh_result
-            failures.append(mesh_result)
+            failures.append(("build plate mesh", mesh_result))
             logger.error(
                 "moonraker_build_plate_sync_failed",
                 printer_code=printer.printer_code,
@@ -949,10 +949,10 @@ async def _reconcile_moonraker_state(session: AsyncSession, job: OutboxJob) -> N
                 active_surface_code=plate_sync.active_surface_code,
             )
     if failures:
+        summary = ", ".join(f"{operation} ({type(exc).__name__})" for operation, exc in failures[:6])
         raise RuntimeError(
-            f"Moonraker state synchronization had {len(failures)} failure(s): "
-            f"{_failure_class_summary(failures)}"
-        ) from failures[0]
+            f"Moonraker state synchronization had {len(failures)} failure(s): {summary}"
+        ) from failures[0][1]
 
 
 async def _reconcile_moonraker_printer_information(session: AsyncSession, job: OutboxJob) -> None:
@@ -1203,6 +1203,17 @@ async def complete_job(session: AsyncSession, job: OutboxJob) -> None:
         persisted.completed_at = datetime.now(UTC)
         persisted.locked_by = None
         persisted.locked_at = None
+        if persisted.idempotency_key.startswith("periodic:"):
+            await session.execute(
+                update(OutboxJob)
+                .where(
+                    OutboxJob.id != persisted.id,
+                    OutboxJob.job_type == persisted.job_type,
+                    OutboxJob.status == JobStatus.DEAD,
+                    OutboxJob.idempotency_key.like("periodic:%"),
+                )
+                .values(status=JobStatus.SUPERSEDED, completed_at=datetime.now(UTC))
+            )
     await session.commit()
 
 

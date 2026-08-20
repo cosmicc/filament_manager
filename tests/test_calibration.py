@@ -2,6 +2,7 @@
 
 from decimal import Decimal
 
+from filament_manager.api.routes.calibrations import _template_settings_with_suggestions
 from filament_manager.domain.calibration import CALIBRATION_STEPS, invalidated_statuses, ready_to_publish
 from filament_manager.domain.dimensional_calibration import calculate_dimensional_compensation
 from filament_manager.models.enums import CalibrationStepStatus
@@ -98,3 +99,33 @@ def test_dimensional_calibration_warns_when_axis_corrections_diverge() -> None:
     assert result.axis_difference == Decimal("0.2")
     assert result.axis_warning is True
     assert result.correction_classification == "printer_geometry_review"
+
+
+def test_template_calibration_applies_only_supported_suggestions() -> None:
+    """Template application must not copy product overrides or optional ironing."""
+
+    settings = _template_settings_with_suggestions(
+        {
+            "extruder_temp_c": "240",
+            "bed_temp_c": "80",
+            "flow_percent": "100",
+            "cooling_enabled": True,
+            "cooling_min_percent": "20",
+            "cooling_max_percent": "70",
+            "filament_density_g_cm3": "1.20",
+            "cura_extensions": {"xy_offset": "0.05", "retraction_enable": True},
+        },
+        {
+            "extruder_temp_c": Decimal("245"),
+            "flow_percent": Decimal("97.5"),
+            "cura_extensions.xy_offset": "0.10",
+            "ironing_enabled": True,
+            "ironing_flow_percent": "12",
+        },
+    )
+
+    assert settings.extruder_temp_c == Decimal("245")
+    assert settings.flow_percent == Decimal("97.5")
+    assert settings.filament_density_g_cm3 == Decimal("1.20")
+    assert settings.cura_extensions == {"xy_offset": "0.10", "retraction_enable": True}
+    assert "ironing_enabled" not in settings.model_dump()
