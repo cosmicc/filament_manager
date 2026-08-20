@@ -1,5 +1,22 @@
 # Changelog
 
+## 0.2.6 - 08.19.2026
+
+### Added
+
+- Added an easy-to-find, full-color 128 x 128 app icon for Pushover and other notification services.
+
+### Changed
+
+- Documented the reusable notification icon in the main README.
+- Changed spool-label QR codes to use high error correction and embed each filament's solid, multicolor, or rainbow spool icon directly in the center while retaining only the stable spool URL as QR data.
+- Changed all server, frontend, and workstation-agent version surfaces to 0.2.6.
+
+### Fixed
+
+- Fixed the repository lacking an exact-size, opaque app icon suitable for notification-service uploads.
+- Fixed label previews showing the color indicator separately from the downloaded and printed QR image.
+
 ## 0.2.5 - 08.18.2026
 
 ### Added

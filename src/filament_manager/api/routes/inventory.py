@@ -3,10 +3,9 @@
 from datetime import UTC, datetime
 from decimal import Decimal
 from io import BytesIO
-from typing import Annotated, Any, cast
+from typing import Annotated, cast
 from uuid import UUID
 
-import qrcode
 from fastapi import APIRouter, Header, Query, Request, status
 from fastapi.responses import StreamingResponse
 from sqlalchemy import delete, func, or_, select
@@ -54,6 +53,7 @@ from filament_manager.services.material_settings import (
     queue_managed_cura_library,
 )
 from filament_manager.services.print_statistics import completed_spool_print_counts
+from filament_manager.services.spool_labels import render_spool_label_png
 from filament_manager.services.spool_preflight import spool_change_target
 
 from ..dependencies import DatabaseSession, Operator, Viewer
@@ -1596,13 +1596,18 @@ async def request_spool_load(
 
 @router.get("/spools/{spool_id}/label")
 async def spool_label(spool_id: UUID, _: Viewer, session: DatabaseSession) -> StreamingResponse:
-    """Generate a QR code containing only a stable spool URL."""
+    """Generate a stable spool URL QR code with the filament's colored spool icon."""
 
     spool = await _get_spool(session, spool_id)
     url = f"{str(get_settings().app.base_url).rstrip('/')}/spools/{spool.id}"
-    image: Any = qrcode.make(url)
-    buffer = BytesIO()
-    image.save(buffer, format="PNG")
+    product = spool.filament_product
+    image = render_spool_label_png(
+        url,
+        color_mode=product.color_mode,
+        color_hex=product.color_hex,
+        color_hexes=product.color_hexes,
+    )
+    buffer = BytesIO(image)
     buffer.seek(0)
     headers = {"Content-Disposition": f'inline; filename="spool-{spool.spool_code}.png"'}
     return StreamingResponse(buffer, media_type="image/png", headers=headers)

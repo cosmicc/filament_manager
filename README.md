@@ -12,6 +12,7 @@ PostgreSQL is the canonical data store. A distinct Spoolman service remains the 
 - Directly saved and automatically favorited `Template <material type>` Cura entries whose complete effective values flow to linked filament profiles except for visibly highlighted sparse customizations, with exact inline validation and overlapping Cura aliases represented by one editor control
 - Difference-only comparison of two to four current profiles/templates with printer/nozzle scope warnings and exact-profile print success rates
 - Simple new-spool entry from filament amount plus optional full scale weight, automatic empty-spool calculation, correction editors, safe delete-or-archive behavior, and later gross-weight measurements with variance confirmation
+- Color-aware QR spool labels with a centered solid, multicolor, or rainbow spool icon and high error correction for reliable scanning
 - Immutable audit history and transactional projection outbox
 - Immediate Spoolman REST projection plus one-minute complete convergence and usage reconciliation, including Filament Manager-owned free-text bucket locations, plus Moonraker control clients with active-spool polling and retry inside one minute
 - Exact completed-print counts per physical nozzle, build-plate side, and each distinct spool used by a print
@@ -38,6 +39,7 @@ The newest CI-passing `main` image is published as `ghcr.io/cosmicc/filament-man
 
 ## Documentation
 
+- [Full-color 128 x 128 app icon for notification services](frontend/public/assets/filament-manager-icon-128.png)
 - [Architecture](docs/ARCHITECTURE.md)
 - [Security](SECURITY.md)
 - [Testing](docs/TESTING.md)
