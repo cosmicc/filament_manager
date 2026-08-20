@@ -1,5 +1,26 @@
 # Changelog
 
+## 0.3.1 - 08.20.2026
+
+### Added
+
+- Added optional Bugsnag reporting for React failures, browser performance, sanitized FastAPI request failures, and terminal worker/job failures.
+- Added an application-level React error boundary, a safe reload screen, runtime browser monitoring configuration, and release-aware source-map upload support for authorized CI builds.
+- Added privacy and failure-isolation tests covering disabled monitoring, configuration validation, event sanitization, polling suppression, exact Content Security Policy destinations, duplicate throttling, and source-map removal from the runtime image.
+
+### Changed
+
+- Changed all server, frontend, and workstation-agent version surfaces to 0.3.1.
+- Changed browser monitoring to load only when explicitly enabled, normalize application routes, omit page attributes and user identifiers, disable error-session reporting, replace the private origin, suppress high-frequency polling spans, and prevent distributed tracing.
+- Changed server monitoring to report generic exception classes plus a small allowlist of operational context without raw messages, request data, credentials, URLs, hostnames, or external response bodies. Repeating worker reports are throttled, and only terminal outbox failures are reported.
+- Changed production frontend builds to create hidden source maps, upload them only on an authorized direct push with the separate `BUGSNAG_UPLOAD_API_KEY` repository secret, and remove them before the runtime image is assembled.
+
+### Fixed
+
+- Fixed browser render failures presenting a blank application with no recovery action.
+- Fixed production browser, API, and worker failures depending solely on local logs for actionable error visibility.
+- Fixed optional external monitoring being able to expand the default network policy when it is disabled; Bugsnag destinations are added to the Content Security Policy only while their matching feature is enabled.
+
 ## 0.3.0 - 08.20.2026
 
 ### Added

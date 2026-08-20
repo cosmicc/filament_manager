@@ -132,7 +132,7 @@ The Docker deployment is environment-only and does not mount an application conf
 - remote PostgreSQL host, database names, roles, explicit non-SSL mode, and passwords;
 - `SPOOLMAN_PUBLIC_URL` and the exact `SPOOLMAN_CORS_ORIGIN`;
 - the one supported printer's `MOONRAKER_PRINTER_ID`, `MOONRAKER_PRINTER_NAME`, `MOONRAKER_BASE_URL`, and `MOONRAKER_NOZZLE_DIAMETER_MM`;
-- optional Moonraker API key and Google publication values;
+- optional Moonraker API key, Google publication values, and Bugsnag monitoring values;
 - image tags, published ports, and any tuning values that differ from the documented defaults.
 
 Leave `MOONRAKER_WEBSOCKET_URL` empty to derive `ws://.../websocket` or `wss://.../websocket` from `MOONRAKER_BASE_URL`. Pin Filament Manager to an immutable version tag or digest. `POSTGRES_HOST` must identify the remote server provisioned above. Keep `FILAMENT_MANAGER_DB_SSLMODE=disable` for psycopg and `SPOOLMAN_DB_QUERY=ssl=disable` for Spoolman's async PostgreSQL driver so neither application attempts TLS.
@@ -142,6 +142,19 @@ For initial testing, `ghcr.io/cosmicc/filament-manager:latest` tracks the newest
 Keep `SPOOLMAN_RECONCILE_INTERVAL_MINUTES=1` so immediate event-driven projections have a frequent complete-rebuild safety net. `MOONRAKER_STATE_INTERVAL_SECONDS=15` aligns the active spool and build-plate side automatically, while `MOONRAKER_INFO_INTERVAL_SECONDS=300` refreshes sanitized printer details. `SYNC_OUTBOX_WORKERS=2` runs two fair dispatchers, and `SYNC_OUTBOX_LOCK_TIMEOUT_SECONDS=300` allows work abandoned by a terminated worker to be reclaimed without racing a normal bounded API request.
 
 When Google publication is enabled, set `GOOGLE_ENABLED=true`, `GOOGLE_SPREADSHEET_ID`, and `GOOGLE_SERVICE_ACCOUNT_JSON`. The JSON must be compact and one line. When sourcing `.env` in a shell, surround the complete JSON value with single quotes.
+
+Optional Bugsnag monitoring is disabled by default. To enable sanitized browser, FastAPI, and worker error reports, set:
+
+```dotenv
+BUGSNAG_ENABLED=true
+BUGSNAG_API_KEY=<32-character SDK API key>
+BUGSNAG_RELEASE_STAGE=production
+BUGSNAG_BROWSER_PERFORMANCE_ENABLED=true
+```
+
+Leave browser performance disabled if only error reporting is wanted. The SDK API key is intentionally delivered to the browser when monitoring is enabled and therefore must not be treated as an account credential; never put a Bugsnag personal authentication token in this variable. Error reports use `notify.bugsnag.com`, and performance data uses the key-specific `<key>.otlp.bugsnag.com` host. Browser error-session reporting is disabled. Filament Manager continues operating if those outbound services are unavailable. Reports omit raw exception messages, private origins, queries, request bodies and headers, submitted values, users, sessions, hostnames, and credentials; frequent background-polling spans are discarded.
+
+For readable production browser stack traces, add the separate Bugsnag Upload API key as the protected GitHub Actions repository secret `BUGSNAG_UPLOAD_API_KEY`. Direct pushes can then upload hidden source maps during the frontend build. Pull requests do not receive the secret or upload maps, and the runtime container never includes source-map files. The Upload API key is used only by CI; it is not delivered to the application or browser. Configure both the deployment SDK key and repository Upload API key when using browser monitoring from published images.
 
 The current deployment intentionally uses ordinary environment variables instead of Docker secrets. Anyone with sufficient Portainer or Docker service-inspection access can read these values. Restrict that access, protect `.env` with mode `0600`, never commit it, and avoid printing `docker stack config` or service specifications into logs.
 

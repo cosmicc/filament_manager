@@ -16,6 +16,7 @@ def test_docker_configuration_comes_from_environment_without_exposing_credential
     )
     moonraker_key = "moonraker-api-key"
     google_document = '{"type":"service_account","client_email":"agent@example.invalid"}'
+    bugsnag_key = "b" * 32
     monkeypatch.delenv("FILAMENT_MANAGER_CONFIG", raising=False)
     monkeypatch.setenv("FILAMENT_MANAGER_BASE_URL", "https://filament.example")
     monkeypatch.setenv("FILAMENT_MANAGER_ALLOWED_HOSTS", "filament.example,filament.lan")
@@ -37,6 +38,10 @@ def test_docker_configuration_comes_from_environment_without_exposing_credential
     monkeypatch.setenv("FILAMENT_MANAGER_GOOGLE_SPREADSHEET_ID", "sheet-id")
     monkeypatch.setenv("FILAMENT_MANAGER_GOOGLE_SERVICE_ACCOUNT_JSON", google_document)
     monkeypatch.setenv("FILAMENT_MANAGER_LOW_SPOOL_THRESHOLD_PERCENT", "20")
+    monkeypatch.setenv("FILAMENT_MANAGER_BUGSNAG_ENABLED", "true")
+    monkeypatch.setenv("FILAMENT_MANAGER_BUGSNAG_API_KEY", bugsnag_key)
+    monkeypatch.setenv("FILAMENT_MANAGER_BUGSNAG_RELEASE_STAGE", "testing")
+    monkeypatch.setenv("FILAMENT_MANAGER_BUGSNAG_BROWSER_PERFORMANCE_ENABLED", "true")
 
     get_settings.cache_clear()
     settings = get_settings()
@@ -68,10 +73,15 @@ def test_docker_configuration_comes_from_environment_without_exposing_credential
         "type": "service_account",
         "client_email": "agent@example.invalid",
     }
+    assert settings.bugsnag.enabled is True
+    assert settings.bugsnag.resolved_api_key() == bugsnag_key
+    assert settings.bugsnag.release_stage == "testing"
+    assert settings.bugsnag.browser_performance_enabled is True
     rendered = repr(settings)
     assert "database-password" not in rendered
     assert moonraker_key not in rendered
     assert "agent@example.invalid" not in rendered
+    assert bugsnag_key not in rendered
     get_settings.cache_clear()
 
 

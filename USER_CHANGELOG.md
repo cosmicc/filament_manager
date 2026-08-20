@@ -1,5 +1,22 @@
 # User Changelog
 
+## 0.3.1 - 08.20.2026
+
+### Added
+
+- Added optional Bugsnag error monitoring for the browser, application server, and worker, plus optional browser performance monitoring.
+- Added a clear reload screen when an unexpected browser rendering failure prevents the normal interface from opening.
+
+### Changed
+
+- Monitoring is disabled by default and can be enabled through deployment variables. Reports remove private URLs, submitted values, credentials, user identity, hostnames, and raw error messages before leaving Filament Manager.
+- Browser performance reports use normalized routes and ignore frequent background polling so the dashboard focuses on meaningful navigation and application work.
+
+### Fixed
+
+- Fixed unexpected browser, server, and terminal worker failures being visible only through local logs.
+- Fixed repeat worker failures being able to create excessive duplicate external reports.
+
 ## 0.3.0 - 08.20.2026
 
 ### Added

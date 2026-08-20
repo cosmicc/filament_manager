@@ -25,6 +25,7 @@ PostgreSQL is the canonical data store. A distinct Spoolman service remains the 
 - Outbound-only Cura workstation agents with clearly identified fresh-install/upgrade paths and uninstallers, an explicit map-then-review source-to-existing-template takeover, direct intake of edits to known managed materials, authoritative synchronization including visible filler/finish descriptions and the Material Settings plugin selection, and ten versioned safe Cura recovery points per installation on Arch Linux and Windows 11
 - Three light and five dark browser-local color profiles under Settings, with the running version in the application shell
 - Health, readiness, and Prometheus metrics endpoints
+- Optional privacy-sanitized Bugsnag browser/server/worker error reporting and browser performance monitoring, disabled by default
 - A dedicated Diagnostics page with connection, synchronization, worker, queue, recent-error, running/latest-version, read-only recovery-validation, safe projection-rebuild controls, and a sanitized plain-text log download
 
 ## Start locally

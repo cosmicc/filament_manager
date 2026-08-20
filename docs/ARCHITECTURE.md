@@ -23,6 +23,10 @@ The default production deployment operates Spoolman and Filament Manager as sepa
 
 Docker services build their validated runtime configuration directly from stack environment variables. No application configuration file is mounted. The current Docker contract accepts one Moonraker printer and derives its WebSocket endpoint from its HTTP base URL unless an explicit override is supplied.
 
+Optional Bugsnag monitoring is a non-canonical outbound observability path. When enabled, FastAPI and worker processes use an isolated reporter and the browser receives a minimal non-cacheable runtime configuration before the React application loads. The browser reporter, React error boundary, and performance instrumentation are loaded dynamically only in enabled deployments. A final delivery filter strips private application data; route names and a narrow operational metadata allowlist provide grouping without URLs, raw messages, request data, user identity, or hostname. Diagnostics and local structured logs remain the full operational record.
+
+Production frontend builds create hidden source maps for authorized CI upload and remove every map before the runtime image is assembled. The browser rewrites private asset origins while preserving asset paths, and the upload uses a wildcard asset base so one self-hosted build remains symbolizable across operator-selected hostnames.
+
 ## Canonical domains
 
 - one local Administrator identity and revocable sessions
@@ -66,6 +70,7 @@ While Cura is closed, the workstation agent captures a bounded exact-version ope
 - Browser sessions are random, hashed server-side, revocable, HttpOnly, SameSite Strict, CSRF-bound, and time-limited.
 - Role checks are server-side on every route.
 - Configuration rejects credentials embedded in integration URLs.
+- Optional Bugsnag reporting is default-off, uses only the SDK API key at runtime, confines the separate Upload API key to source-map CI, permits exact delivery hosts in the Content Security Policy only while enabled, and removes raw/private values again in a final delivery callback. Browser trace propagation is disabled and high-frequency polling spans are discarded.
 - Database URLs, API keys, and service-account documents currently enter Docker services through scoped environment variables. Values remain masked in application models and must never be logged; populated `.env` files and Docker/Portainer operator access are tightly restricted.
 - PostgreSQL connections explicitly disable TLS on the dedicated isolated database network. This exposes credentials and queries to network observers and must never be extended onto a shared or untrusted network.
 - Trusted hosts, exact CORS origins, security headers, sanitized API errors, login throttling, and least-privilege containers are enabled.

@@ -64,7 +64,7 @@ Quarterly, compare spool/product counts, effective weights, profile versions, pl
 
 Confirm `FILAMENT_MANAGER_DB_*` and `POSTGRES_*` stack variables assemble the intended non-SSL URL for `filament_user`, then inspect the web or worker logs for the automatic-migration result. Do not grant access to the `spoolman` database. Run `alembic current` and `alembic upgrade head` only with the application services stopped when following the recovery procedure below.
 
-The current 0.3.0 schema is `a3b4c5d6e789`. If Diagnostics reports an older revision, first confirm web and worker use the same current image and let automatic migration finish. Never downgrade or manually edit `alembic_version`; use the documented stopped-service recovery procedure if an upgrade genuinely failed.
+The current 0.3.1 schema is `a3b4c5d6e789`. If Diagnostics reports an older revision, first confirm web and worker use the same current image and let automatic migration finish. Never downgrade or manually edit `alembic_version`; use the documented stopped-service recovery procedure if an upgrade genuinely failed.
 
 ### Web or worker tasks repeatedly restart after startup
 
@@ -75,6 +75,12 @@ Use the current stack file and image together. The web health check must send th
 Check that the worker service is running, then inspect worker logs, external DNS from the `filament-services` overlay, and the sanitized error class shown in Diagnostics. The Spoolman connection check verifies both API health and managed projection fields. Repair the external service, then allow automatic retry or use Administrator retry for unrelated dead jobs. The 0.1.5 repair migration automatically requeues Spoolman work affected by the former field contract, and the next one-minute sweep projects all existing canonical inventory even when no usable job remains. Corrected 0.2.2 workers normalize long fractional Spoolman weights before comparison and reload printer state after a failed live-print transaction, preventing the repeated `IntegrityError` and `MissingGreenlet` jobs caused by those conditions. Version 0.3.0 marks older dead rows for a recurring job type as superseded as soon as that recurring job succeeds; the upgrade migration also converts the prior accumulated periodic dead rows. Superseded rows remain durable history but are excluded from actionable Diagnostics counts. Do not delete queue history directly in PostgreSQL.
 
 After redeployment, recent worker logs should show `spoolman.reconcile.full` completing. The Diagnostics queue should show new filament/spool upserts completing, and Spoolman should receive existing inventory no later than the next safety sweep when the internal API is reachable. The projection-consistency check clears when the new acknowledgements are recorded. A current `moonraker.state.reconcile` failure names the bounded sub-operation—active spool read, direct-selection drift repair, preflight catalog refresh, or build-plate mesh alignment—so the failing integration can be corrected without exposing an upstream response body.
+
+### Bugsnag receives no reports or performance spans
+
+Confirm `BUGSNAG_ENABLED=true`, the deployment `BUGSNAG_API_KEY` is the 32-character SDK API key, and the same variables reach both web and worker. Browser performance also requires `BUGSNAG_BROWSER_PERFORMANCE_ENABLED=true`. Inspect `/runtime-config.js` only from the authenticated deployment network and confirm the enabled flags; the SDK key is expected to be browser-visible. Permit outbound HTTPS to `notify.bugsnag.com` and the key-specific `<key>.otlp.bugsnag.com` performance host. Browser error-session reporting is intentionally disabled. A delivery outage must not make Filament Manager unhealthy.
+
+Readable minified browser frames additionally require the separate Upload API key in the protected GitHub Actions repository secret `BUGSNAG_UPLOAD_API_KEY` before a direct `main` push builds the image. Pull requests and non-`main` pushes intentionally skip source-map upload. Do not trigger a real production exception merely to test reporting; use a controlled testing deployment and then confirm that the Bugsnag event contains only generic messages, normalized paths, and the documented bounded metadata.
 
 ### Spoolman is unavailable
 
@@ -136,7 +142,7 @@ Confirm the per-user systemd service or Windows logon task is running and its la
 
 ### Cura was reset or must be rebuilt
 
-Deploy the updated server and allow the current schema `a3b4c5d6e789` to migrate before upgrading the workstation agent; a 0.3.0 agent requires the current material-setting and recovery endpoints. For routine protection, leave the agent running and close Cura periodically. A healthy configuration containing at least one printer is captured automatically, and Cura Workstations retains the ten newest distinct points per installation/version. A missing-printer or large-deletion capture is blocked so it cannot displace the last known-good point.
+Deploy the updated server and allow the current schema `a3b4c5d6e789` to migrate before upgrading the workstation agent; a 0.3.1 agent requires the current material-setting and recovery endpoints. For routine protection, leave the agent running and close Cura periodically. A healthy configuration containing at least one printer is captured automatically, and Cura Workstations retains the ten newest distinct points per installation/version. A missing-printer or large-deletion capture is blocked so it cannot displace the last known-good point.
 
 For recovery, install or reset the same Cura version, open it once, sign in to the Cura account, wait for the account-managed plugins to install, then close Cura completely. On **Cura Workstations**, choose **Restore Cura setup**, select and review the exact-version point, and confirm. Leave Cura closed until the workstation status returns to **Ready**. Re-enter any Moonraker, OctoPrint, or other excluded connection credentials afterward. Filament Manager restores printer/extruder and custom profile state plus safe preferences; canonical materials synchronize separately. It records plugin names and versions for verification but never installs plugin binaries.
 
@@ -160,7 +166,7 @@ Reload the filament detail and confirm whether that specific key is marked custo
 
 ### A workstation is paired but Cura profiles never appear
 
-Check the workstation's agent service log first. If it reports `CERTIFICATE_VERIFY_FAILED` even though the Filament Manager private CA is trusted by the operating system, upgrade the workstation agent to the current 0.3.0 package. The corrected agent uses the verified operating-system TLS context for pairing and every service request. Do not disable certificate verification. After restart, confirm that Diagnostics shows a current contact time, then reopen the takeover mapping dialog.
+Check the workstation's agent service log first. If it reports `CERTIFICATE_VERIFY_FAILED` even though the Filament Manager private CA is trusted by the operating system, upgrade the workstation agent to the current 0.3.1 package. The corrected agent uses the verified operating-system TLS context for pairing and every service request. Do not disable certificate verification. After restart, confirm that Diagnostics shows a current contact time, then reopen the takeover mapping dialog.
 
 ### Cura synchronization fails during file replacement
 

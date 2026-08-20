@@ -2,6 +2,7 @@
 
 import json
 import os
+import re
 from functools import lru_cache
 from pathlib import Path
 from typing import Any, Literal
@@ -206,6 +207,49 @@ class SecurityConfig(BaseModel):
     lockout_minutes: int = Field(default=15, ge=1, le=1440)
 
 
+class BugsnagConfig(BaseModel):
+    """Optional privacy-hardened Bugsnag error and browser-performance reporting."""
+
+    enabled: bool = False
+    api_key: SecretStr | None = None
+    release_stage: str = Field(
+        default="production",
+        min_length=1,
+        max_length=64,
+        pattern=r"^[A-Za-z0-9._-]+$",
+    )
+    browser_performance_enabled: bool = False
+
+    @field_validator("api_key")
+    @classmethod
+    def validate_api_key(cls, value: SecretStr | None) -> SecretStr | None:
+        """Accept only the documented 32-character hexadecimal SDK API key."""
+
+        if value is None:
+            return None
+        normalized = value.get_secret_value().strip()
+        if not normalized:
+            return None
+        if re.fullmatch(r"[0-9a-fA-F]{32}", normalized) is None:
+            raise ValueError("Bugsnag API key must be 32 hexadecimal characters")
+        return SecretStr(normalized.lower())
+
+    @model_validator(mode="after")
+    def require_enabled_configuration(self) -> "BugsnagConfig":
+        """Fail closed when monitoring flags cannot produce a valid integration."""
+
+        if self.enabled and self.api_key is None:
+            raise ValueError("enabled Bugsnag reporting requires an API key")
+        if self.browser_performance_enabled and not self.enabled:
+            raise ValueError("Bugsnag browser performance requires Bugsnag reporting to be enabled")
+        return self
+
+    def resolved_api_key(self) -> str | None:
+        """Return the SDK API key only to the telemetry boundary."""
+
+        return self.api_key.get_secret_value() if self.api_key is not None else None
+
+
 class Settings(BaseSettings):
     """Complete validated runtime configuration."""
 
@@ -222,6 +266,7 @@ class Settings(BaseSettings):
     plates: PlateConfig
     devices: DeviceConfig
     security: SecurityConfig = Field(default_factory=SecurityConfig)
+    bugsnag: BugsnagConfig = Field(default_factory=BugsnagConfig)
 
 
 @lru_cache
@@ -397,6 +442,14 @@ def _deployment_environment_config() -> dict[str, Any]:
             "max_failed_logins": os.environ.get("FILAMENT_MANAGER_MAX_FAILED_LOGINS", "5"),
             "lockout_minutes": os.environ.get("FILAMENT_MANAGER_LOCKOUT_MINUTES", "15"),
         },
+        "bugsnag": {
+            "enabled": _environment_boolean("FILAMENT_MANAGER_BUGSNAG_ENABLED", False),
+            "api_key": os.environ.get("FILAMENT_MANAGER_BUGSNAG_API_KEY") or None,
+            "release_stage": os.environ.get("FILAMENT_MANAGER_BUGSNAG_RELEASE_STAGE", "production"),
+            "browser_performance_enabled": _environment_boolean(
+                "FILAMENT_MANAGER_BUGSNAG_BROWSER_PERFORMANCE_ENABLED", False
+            ),
+        },
     }
 
 
@@ -435,3 +488,10 @@ def _apply_credential_environment(raw: dict[str, Any]) -> None:
             raise ValueError("google configuration must be a mapping")
         google.pop("service_account_file", None)
         google["service_account_json"] = google_service_account_json
+
+    bugsnag_api_key = os.environ.get("FILAMENT_MANAGER_BUGSNAG_API_KEY")
+    if bugsnag_api_key:
+        bugsnag = raw.setdefault("bugsnag", {})
+        if not isinstance(bugsnag, dict):
+            raise ValueError("bugsnag configuration must be a mapping")
+        bugsnag["api_key"] = bugsnag_api_key

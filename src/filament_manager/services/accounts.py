@@ -22,7 +22,7 @@ async def ensure_single_administrator(session: AsyncSession) -> bool:
     count = int(await session.scalar(select(func.count(User.id))) or 0)
     if count > 1:
         raise RuntimeError(
-            "Filament Manager 0.3.0 supports exactly one account; remove extra accounts "
+            "Filament Manager supports exactly one account; remove extra accounts "
             "with an older release before upgrading"
         )
     if count == 1:

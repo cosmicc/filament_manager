@@ -73,6 +73,10 @@ const plate = {
 }
 
 test.beforeEach(async ({ page }) => {
+  await page.route('**/runtime-config.js', (route) => route.fulfill({
+    contentType: 'application/javascript',
+    body: 'window.__FILAMENT_MANAGER_RUNTIME_CONFIG__={bugsnag:{enabled:false}};',
+  }))
   await page.route('**/api/v1/auth/me', (route) => route.fulfill({ json: user }))
   await page.route('**/api/v1/build-plates', (route) => route.fulfill({ json: [plate] }))
   await page.route('**/api/v1/build-plates/maintenance/status', (route) => route.fulfill({ json: [{ build_plate_id: plate.id, cleaning_due: false, cleaning_prints_since: 2, cleaning_due_at: null, surfaces: [] }] }))
