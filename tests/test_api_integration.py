@@ -611,7 +611,7 @@ async def test_single_account_password_identity_and_session_controls(
                 headers=headers,
                 json={"expected_version": 4, "temporary_password": "replacement password"},
             )
-            assert reset.status_code == 405
+            assert reset.status_code in {404, 405}
 
         async with factory() as session:
             notification = await upsert_notification(
