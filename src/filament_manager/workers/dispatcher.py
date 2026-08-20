@@ -1217,13 +1217,13 @@ async def complete_job(session: AsyncSession, job: OutboxJob) -> None:
     await session.commit()
 
 
-async def fail_job(session: AsyncSession, job: OutboxJob, exc: Exception) -> None:
-    """Schedule a bounded exponential retry without logging sensitive payloads."""
+async def fail_job(session: AsyncSession, job: OutboxJob, exc: Exception) -> JobStatus | None:
+    """Schedule a bounded retry and return the persisted state for safe reporting."""
 
     persisted = await session.get(OutboxJob, job.id, with_for_update=True)
     if persisted is None or persisted.status != JobStatus.RUNNING or persisted.locked_by != job.locked_by:
         await session.rollback()
-        return
+        return None
     persisted.attempts += 1
     persisted.last_error_class = type(exc).__name__[:160]
     persisted.last_error_message = str(exc)[:500]
@@ -1249,3 +1249,4 @@ async def fail_job(session: AsyncSession, job: OutboxJob, exc: Exception) -> Non
             delay_seconds = min(delay_seconds, retry_cap)
         persisted.next_attempt_at = datetime.now(UTC) + timedelta(seconds=delay_seconds)
     await session.commit()
+    return persisted.status

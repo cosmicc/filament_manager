@@ -1,9 +1,11 @@
 """FastAPI application factory and production entrypoint."""
 
+import json
 import re
 import time
 from collections.abc import AsyncIterator, Awaitable, Callable
 from contextlib import asynccontextmanager
+from hashlib import sha256
 from uuid import uuid4
 
 import structlog
@@ -20,17 +22,49 @@ from sqlalchemy import text
 from filament_manager import __version__
 from filament_manager.api.errors import ApiError, api_error_handler
 from filament_manager.api.router import api_router
-from filament_manager.config import get_settings
+from filament_manager.config import Settings, get_settings
 from filament_manager.database import database_ready, get_engine, get_session_factory
 from filament_manager.domain.cura_material_settings import CURA_EXTENSION_SETTING_KEYS
 from filament_manager.logging import configure_logging
 from filament_manager.services.accounts import ensure_single_administrator
+from filament_manager.telemetry import ServerTelemetry
 
 REQUESTS = Counter("filament_manager_http_requests_total", "HTTP request count", ["method", "path", "status"])
 LATENCY = Histogram(
     "filament_manager_http_request_duration_seconds", "HTTP request duration", ["method", "path"]
 )
 logger = structlog.get_logger()
+
+
+def _browser_runtime_config(settings: Settings) -> dict[str, object]:
+    """Return the small public configuration needed before the browser bundle starts."""
+
+    bugsnag = settings.bugsnag
+    return {
+        "bugsnag": {
+            "enabled": bugsnag.enabled,
+            "apiKey": bugsnag.resolved_api_key() if bugsnag.enabled else None,
+            "releaseStage": bugsnag.release_stage,
+            "browserPerformanceEnabled": bugsnag.browser_performance_enabled,
+        }
+    }
+
+
+def _content_security_policy(settings: Settings) -> str:
+    """Build the restrictive browser policy with optional exact Bugsnag endpoints."""
+
+    connect_sources = ["'self'", "ws:", "wss:"]
+    bugsnag = settings.bugsnag
+    if bugsnag.enabled:
+        connect_sources.append("https://notify.bugsnag.com")
+        api_key = bugsnag.resolved_api_key()
+        if bugsnag.browser_performance_enabled and api_key is not None:
+            connect_sources.append(f"https://{api_key}.otlp.bugsnag.com")
+    return (
+        "default-src 'self'; img-src 'self' data:; style-src 'self' 'unsafe-inline'; "
+        f"script-src 'self'; connect-src {' '.join(connect_sources)}; "
+        "frame-ancestors 'none'; base-uri 'self'"
+    )
 
 
 def _safe_validation_errors(exc: RequestValidationError) -> list[dict[str, str]]:
@@ -69,26 +103,42 @@ def _safe_validation_errors(exc: RequestValidationError) -> list[dict[str, str]]
 
 
 @asynccontextmanager
-async def lifespan(_: FastAPI) -> AsyncIterator[None]:
+async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     """Configure logging and dispose pooled connections on shutdown."""
 
     settings = get_settings()
     configure_logging(settings.app.log_level)
-    settings.app.data_dir.mkdir(parents=True, exist_ok=True)
-    async with get_session_factory()() as session:
-        created = await ensure_single_administrator(session)
-        if created:
-            logger.warning("default_administrator_created", username="admin", password_change_required=True)
-    logger.info("application_started", version=__version__)
-    yield
-    await get_engine().dispose()
-    logger.info("application_stopped")
+    telemetry: ServerTelemetry = app.state.telemetry
+    try:
+        settings.app.data_dir.mkdir(parents=True, exist_ok=True)
+        async with get_session_factory()() as session:
+            created = await ensure_single_administrator(session)
+            if created:
+                logger.warning(
+                    "default_administrator_created",
+                    username="admin",
+                    password_change_required=True,
+                )
+        logger.info("application_started", version=__version__)
+        yield
+    except Exception as exc:
+        telemetry.notify(
+            exc,
+            context="web.lifecycle",
+            metadata={"phase": "startup_or_shutdown"},
+            synchronous=True,
+        )
+        raise
+    finally:
+        await get_engine().dispose()
+        logger.info("application_stopped")
 
 
 def create_app() -> FastAPI:
     """Create the configured ASGI application."""
 
     settings = get_settings()
+    telemetry = ServerTelemetry(settings.bugsnag, app_type="web")
     app = FastAPI(
         title="Filament Manager API",
         version=__version__,
@@ -97,6 +147,7 @@ def create_app() -> FastAPI:
         openapi_url="/api/openapi.json",
         lifespan=lifespan,
     )
+    app.state.telemetry = telemetry
     app.add_exception_handler(ApiError, api_error_handler)  # type: ignore[arg-type]
     app.add_middleware(TrustedHostMiddleware, allowed_hosts=settings.app.allowed_hosts)
     if settings.app.cors_origins:
@@ -119,7 +170,19 @@ def create_app() -> FastAPI:
         start = time.monotonic()
         try:
             response = await call_next(request)
-        except Exception:
+        except Exception as exc:
+            failed_route = request.scope.get("route")
+            failed_path_label = getattr(failed_route, "path", "unmatched")
+            telemetry.notify(
+                exc,
+                context=f"{request.method} {failed_path_label}",
+                metadata={
+                    "correlation_hash": sha256(correlation_id.encode("utf-8")).hexdigest()[:16],
+                    "http_method": request.method,
+                    "route": failed_path_label,
+                    "status_code": status.HTTP_500_INTERNAL_SERVER_ERROR,
+                },
+            )
             logger.exception("request_failed", method=request.method, path=request.url.path)
             response = JSONResponse(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
@@ -146,10 +209,7 @@ def create_app() -> FastAPI:
         response.headers["X-Content-Type-Options"] = "nosniff"
         response.headers["Referrer-Policy"] = "same-origin"
         response.headers["Permissions-Policy"] = "camera=(self), microphone=(), geolocation=()"
-        response.headers["Content-Security-Policy"] = (
-            "default-src 'self'; img-src 'self' data:; style-src 'self' 'unsafe-inline'; "
-            "script-src 'self'; connect-src 'self' ws: wss:; frame-ancestors 'none'; base-uri 'self'"
-        )
+        response.headers["Content-Security-Policy"] = _content_security_policy(settings)
         return response
 
     @app.exception_handler(RequestValidationError)
@@ -189,6 +249,17 @@ def create_app() -> FastAPI:
     @app.get("/metrics", include_in_schema=False)
     async def metrics() -> Response:
         return Response(generate_latest(), media_type=CONTENT_TYPE_LATEST)
+
+    @app.get("/runtime-config.js", include_in_schema=False)
+    async def runtime_config() -> Response:
+        """Serve non-secret browser telemetry flags without baking them into the image."""
+
+        document = json.dumps(_browser_runtime_config(settings), separators=(",", ":"), sort_keys=True)
+        return Response(
+            f"window.__FILAMENT_MANAGER_RUNTIME_CONFIG__=Object.freeze({document});\n",
+            media_type="application/javascript",
+            headers={"Cache-Control": "no-store"},
+        )
 
     app.include_router(api_router)
 

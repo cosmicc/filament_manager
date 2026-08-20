@@ -15,6 +15,13 @@ Security fixes are applied to the current development release shown in `VERSION`
 - Use HTTPS so session cookies can be marked Secure.
 - Expose no workstation-agent port. Pair each agent only through the ten-minute single-use code flow over HTTPS, then revoke it from the web interface before decommissioning the workstation.
 - Run the agent as the normal Cura desktop user, never root or Windows Administrator. Preserve its private per-user configuration permissions and automatic Cura backups.
+- Leave optional Bugsnag reporting disabled unless outbound SaaS monitoring is accepted. When enabled, use only the project SDK API key at runtime, keep the Upload API key and account-access tokens out of the application, and allow outbound HTTPS only to the exact Bugsnag notifier and key-specific performance hosts documented in `INSTALL.md`.
+
+## Optional external monitoring
+
+Bugsnag is an additional outbound trust boundary, not a replacement for Diagnostics or local structured logs. Its browser SDK key is necessarily visible to browser users and identifies the receiving project; it does not authorize account administration. The separate Upload API key remains confined to GitHub Actions source-map uploads. Deployment variables and the GitHub Actions secret must still be protected from casual disclosure and must never contain a personal authentication token.
+
+Before delivery, Filament Manager replaces exception messages with generic class-based summaries, removes private origins and query strings, strips request/response bodies and headers, omits users, sessions, page attributes, hostnames, submitted values, credentials, and external response bodies, and limits metadata to an explicit operational allowlist. Browser routes are normalized, trace propagation is disabled, frequent polling performance spans are dropped, and recurring worker failures are throttled. Keep this sanitization and the default-disabled behavior intact when upgrading any Bugsnag package.
 
 ## Reporting
 

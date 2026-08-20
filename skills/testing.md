@@ -20,6 +20,7 @@ pytest workstation-agent/tests
 ```
 
 - Unit tests cover mass calculations, calibration invalidation, Spoolman extra-field merging, authentication policy, workbook integrity, and presentation formatting.
+- Bugsnag tests cover default-off and malformed configuration, lazy browser loading, React fallback behavior, final-delivery sanitization, normalized routes, private-origin removal, polling-span suppression, terminal-worker throttling, exact Content Security Policy destinations, authorized source-map configuration, and absence of source maps from runtime images. Never send a real test event from routine automated tests.
 - PostgreSQL integration tests cover the unknown-tare measurement, immutable history, audit, and outbox transaction.
 - Print tests cover bounded Cura/Moonraker parsing, decimal-tolerant mismatch evidence, warn/block release behavior, `complete`/`completed` convergence, exact snapshot timing after preflight, live/history deduplication, M600 segment usage, append-only assessments, legacy unresolved imports, and success-statistics latest revisions.
 - Terminal print-use tests cover completed, failed, and cancelled outcomes, actual-only segment weight, recurring M600 spools aggregated once, idempotent repeat polling, and protection against double subtraction after Spoolman usage import.

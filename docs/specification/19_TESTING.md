@@ -14,6 +14,7 @@
 - derived completed-print counts for one plate side, captured physical nozzle, and each distinct start/M600 spool
 - manual Side B creation, duplicate rejection, and mesh-unavailable initial state
 - Cura recovery path/setting allowlists, credential/endpoint/path removal, deterministic checksums, semantic plugin inventory, exact-version enforcement, reset detection, retention, local rollback, and preference merging
+- Bugsnag opt-in validation, final-delivery sanitization, lazy browser loading, route normalization, polling suppression, exact Content Security Policy destinations, and duplicate worker throttling
 
 ## PostgreSQL integration tests
 
@@ -67,6 +68,7 @@ Mock or containerize:
 - published 7912 reaches Spoolman target 8000
 - service restart does not duplicate jobs
 - rolling update does not run conflicting migrations
+- optional Bugsnag variables reach web and worker only, source-map upload remains direct-push/secret-gated, and runtime images contain no source maps
 
 ## Restore test
 

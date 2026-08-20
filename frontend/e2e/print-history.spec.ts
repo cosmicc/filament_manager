@@ -82,6 +82,10 @@ const printJob = {
 }
 
 test.beforeEach(async ({ page }) => {
+  await page.route('**/runtime-config.js', (route) => route.fulfill({
+    contentType: 'application/javascript',
+    body: 'window.__FILAMENT_MANAGER_RUNTIME_CONFIG__={bugsnag:{enabled:false}};',
+  }))
   await page.route('**/api/v1/auth/me', (route) => route.fulfill({ json: user }))
   await page.route('**/api/v1/notifications**', (route) => route.fulfill({ json: [{
     id: 'b0000000-0000-0000-0000-000000000001', category: 'spool_low', severity: 'warning',

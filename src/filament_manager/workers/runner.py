@@ -12,6 +12,8 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 from filament_manager.config import get_settings
 from filament_manager.database import get_session_factory
 from filament_manager.logging import configure_logging
+from filament_manager.models.enums import JobStatus
+from filament_manager.telemetry import ServerTelemetry
 
 from .dispatcher import claim_jobs, complete_job, dispatch_job, fail_job
 from .heartbeat import record_worker_heartbeat
@@ -55,7 +57,7 @@ async def _report_heartbeat(
         )
 
 
-async def scheduler_loop() -> None:
+async def scheduler_loop(telemetry: ServerTelemetry) -> None:
     """Continuously schedule singleton reconciliation and publication work."""
 
     session_factory = get_session_factory()
@@ -80,6 +82,13 @@ async def scheduler_loop() -> None:
                 )
                 last_heartbeat = time.monotonic()
         except Exception as exc:
+            telemetry.notify(
+                exc,
+                context="worker.scheduler",
+                metadata={"worker_type": "scheduler"},
+                severity="warning",
+                throttle_seconds=300,
+            )
             await _report_heartbeat(
                 session_factory,
                 worker_id=worker_id,
@@ -97,7 +106,7 @@ async def scheduler_loop() -> None:
         await asyncio.sleep(1)
 
 
-async def dispatcher_loop(worker_number: int) -> None:
+async def dispatcher_loop(worker_number: int, telemetry: ServerTelemetry) -> None:
     """Continuously claim and dispatch one job at a time for fair concurrency."""
 
     hostname = socket.gethostname()
@@ -120,6 +129,13 @@ async def dispatcher_loop(worker_number: int) -> None:
                 )
                 last_heartbeat = time.monotonic()
         except Exception as exc:
+            telemetry.notify(
+                exc,
+                context="worker.dispatcher.claim",
+                metadata={"worker_number": worker_number, "worker_type": "dispatcher"},
+                severity="warning",
+                throttle_seconds=300,
+            )
             await _report_heartbeat(
                 session_factory,
                 worker_id=worker_id,
@@ -172,7 +188,20 @@ async def dispatcher_loop(worker_number: int) -> None:
                 logger.info("outbox_job_completed", job_id=str(claimed.id), job_type=claimed.job_type)
             except Exception as exc:
                 await session.rollback()
-                await fail_job(session, claimed, exc)
+                persisted_status = await fail_job(session, claimed, exc)
+                if persisted_status == JobStatus.DEAD:
+                    telemetry.notify(
+                        exc,
+                        context=f"worker.outbox.{claimed.job_type}",
+                        metadata={
+                            "attempt": claimed.attempts + 1,
+                            "job_id": str(claimed.id),
+                            "job_type": claimed.job_type,
+                            "max_attempts": claimed.max_attempts,
+                            "terminal": True,
+                        },
+                        throttle_seconds=300,
+                    )
                 await _report_heartbeat(
                     session_factory,
                     worker_id=worker_id,
@@ -193,18 +222,29 @@ async def dispatcher_loop(worker_number: int) -> None:
                 )
 
 
-async def worker_loop() -> None:
+async def worker_loop(telemetry: ServerTelemetry) -> None:
     """Run the scheduler and configured concurrent outbox dispatchers."""
 
     worker_count = get_settings().sync.outbox_workers
     await asyncio.gather(
-        scheduler_loop(),
-        *(dispatcher_loop(worker_number) for worker_number in range(1, worker_count + 1)),
+        scheduler_loop(telemetry),
+        *(dispatcher_loop(worker_number, telemetry) for worker_number in range(1, worker_count + 1)),
     )
 
 
 def run() -> None:
     """Configure logging and start the async worker."""
 
-    configure_logging(get_settings().app.log_level)
-    asyncio.run(worker_loop())
+    settings = get_settings()
+    configure_logging(settings.app.log_level)
+    telemetry = ServerTelemetry(settings.bugsnag, app_type="worker")
+    try:
+        asyncio.run(worker_loop(telemetry))
+    except Exception as exc:
+        telemetry.notify(
+            exc,
+            context="worker.process",
+            metadata={"phase": "unhandled_exit"},
+            synchronous=True,
+        )
+        raise

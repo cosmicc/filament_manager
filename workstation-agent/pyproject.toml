@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "filament-manager-workstation-agent"
-version = "0.3.0"
+version = "0.3.1"
 description = "Outbound-only Cura profile deployment agent for Filament Manager"
 readme = "README.md"
 requires-python = ">=3.12"

@@ -8,6 +8,7 @@
 - Spoolman to its PostgreSQL database
 - Moonraker/Fluidd to Spoolman
 - Filament Manager to Google APIs
+- Filament Manager browser, API, and worker to optional Bugsnag SaaS endpoints
 - outbound-only Cura workstation agents to Filament Manager
 - future scale/NFC devices to Filament Manager
 
@@ -44,8 +45,15 @@ Spoolman has no built-in authentication. Therefore:
 - never hardcode passwords directly in stack YAML or print rendered stack/service specifications into logs
 - rotate Spoolman and Filament Manager database credentials independently
 - prevent secrets from appearing in logs, exceptions, metrics, or Google Sheet output
+- keep Bugsnag default-off, accept only its SDK API key at runtime, confine its separate Upload API key to authorized CI, and never place a personal authentication token in either location
 
 Environment variables are intentionally transitional and are visible to authorized Docker/Portainer operators. Move them to an approved secret store when the deployment policy changes.
+
+## External error and performance reporting
+
+Optional Bugsnag reporting preserves a strict minimum-disclosure boundary. A final delivery callback replaces raw exception messages and removes private origins, query strings, request/response bodies and headers, user/session identity, page attributes, hostnames, submitted values, arbitrary metadata, credentials, and external response bodies. Browser routes are normalized, distributed trace propagation is disabled, high-frequency polling spans are discarded, and repeating worker failures are throttled. Only terminal outbox failures are externally reported. Exact Bugsnag delivery hosts enter the browser Content Security Policy only for enabled features; local Diagnostics and structured logs remain canonical.
+
+Hidden browser source maps may leave CI only during an authorized direct push with the `BUGSNAG_UPLOAD_API_KEY` repository secret configured. Pull requests do not upload maps, and runtime images never contain them.
 
 ## API safety
 

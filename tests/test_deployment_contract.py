@@ -80,6 +80,10 @@ def test_example_environment_matches_the_database_contract() -> None:
     assert values["MOONRAKER_STATE_INTERVAL_SECONDS"] == "15"
     assert values["MOONRAKER_PRINT_INTERVAL_SECONDS"] == "5"
     assert values["MOONRAKER_INFO_INTERVAL_SECONDS"] == "300"
+    assert values["BUGSNAG_ENABLED"] == "false"
+    assert values["BUGSNAG_API_KEY"] == ""
+    assert values["BUGSNAG_RELEASE_STAGE"] == "production"
+    assert values["BUGSNAG_BROWSER_PERFORMANCE_ENABLED"] == "false"
 
     for relative_path in (
         "docker-stack.yml",
@@ -92,6 +96,26 @@ def test_example_environment_matches_the_database_contract() -> None:
         assert "${MOONRAKER_STATE_INTERVAL_SECONDS:-15}" in content
         assert "${MOONRAKER_PRINT_INTERVAL_SECONDS:-5}" in content
         assert "${MOONRAKER_INFO_INTERVAL_SECONDS:-300}" in content
+        assert "${BUGSNAG_ENABLED:-false}" in content
+        assert "${BUGSNAG_API_KEY:-}" in content
+        assert "${BUGSNAG_RELEASE_STAGE:-production}" in content
+        assert "${BUGSNAG_BROWSER_PERFORMANCE_ENABLED:-false}" in content
+
+
+def test_source_maps_are_uploaded_only_by_authorized_ci_and_not_shipped() -> None:
+    """Hidden source maps use the Actions secret and never remain in the runtime image."""
+
+    workflow = _read(".github/workflows/ci.yml")
+    dockerfile = _read("Dockerfile")
+    vite_config = _read("frontend/vite.config.ts")
+
+    assert "secrets.BUGSNAG_UPLOAD_API_KEY" in workflow
+    assert "github.event_name == 'push'" in workflow
+    assert "github.ref == 'refs/heads/main'" in workflow
+    assert "BugsnagSourceMapUploaderPlugin" in vite_config
+    assert "BugsnagBuildReporterPlugin" not in vite_config
+    assert "sourcemap: 'hidden'" in vite_config
+    assert "find dist -type f -name '*.map' -delete" in dockerfile
 
 
 def test_image_healthcheck_uses_the_trusted_host_aware_probe() -> None:

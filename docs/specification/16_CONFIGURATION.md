@@ -12,6 +12,7 @@ Docker builds the complete validated runtime configuration directly from scoped 
 - Spoolman API base URL
 - one Moonraker printer's identifier, display name, HTTP URL, optional WebSocket URL and API key, and nozzle diameter
 - Google publication
+- optional Bugsnag error reporting, release stage, and browser performance monitoring
 - synchronization policies
 - build plates
 - future hardware adapters
@@ -37,6 +38,7 @@ Filament Manager service credential variables:
 - `FILAMENT_MANAGER_DATABASE_URL`, assembled inside the stack from `FILAMENT_MANAGER_DB_*` and `POSTGRES_*`
 - `FILAMENT_MANAGER_GOOGLE_SERVICE_ACCOUNT_JSON`
 - `FILAMENT_MANAGER_MOONRAKER_API_KEY`
+- `FILAMENT_MANAGER_BUGSNAG_API_KEY` when optional monitoring is enabled
 
 Spoolman service credential variable:
 
@@ -60,6 +62,7 @@ At startup, Filament Manager must verify:
 - Moonraker URLs
 - exactly one environment-configured Moonraker printer
 - Google Sheet and service-account configuration
+- Bugsnag enabled/performance dependencies and 32-character hexadecimal SDK-key format
 - valid plate codes and mesh names
 
 ## Local development

@@ -73,12 +73,13 @@ async def test_realtime_state_retry_never_waits_longer_than_its_poll_interval(
     )
     before = datetime.now(UTC)
 
-    await dispatcher.fail_job(  # type: ignore[arg-type]
+    status = await dispatcher.fail_job(  # type: ignore[arg-type]
         session,
         SimpleNamespace(id=persisted.id, locked_by="worker-1"),
         RuntimeError("temporary failure"),
     )
 
+    assert status == JobStatus.PENDING
     assert persisted.status == JobStatus.PENDING
     assert persisted.next_attempt_at <= before.replace(microsecond=0) + dispatcher.timedelta(seconds=16)
     session.commit.assert_awaited_once()

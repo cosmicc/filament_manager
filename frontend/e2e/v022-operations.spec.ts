@@ -12,6 +12,10 @@ const user = {
 const checkedAt = '2026-08-14T12:00:00Z'
 
 test.beforeEach(async ({ page }) => {
+  await page.route('**/runtime-config.js', (route) => route.fulfill({
+    contentType: 'application/javascript',
+    body: 'window.__FILAMENT_MANAGER_RUNTIME_CONFIG__={bugsnag:{enabled:false}};',
+  }))
   await page.route('**/api/v1/auth/me', (route) => route.fulfill({ json: user }))
   await page.route('**/api/v1/notifications**', (route) => route.fulfill({ json: [] }))
 })
@@ -26,8 +30,8 @@ test('diagnostics consolidates operational status and recovery controls', async 
     body: 'Filament Manager diagnostics\nGenerated: 2026-08-14T12:00:00Z\n',
   }))
   await page.route('**/api/v1/diagnostics/version', (route) => route.fulfill({ json: {
-    running_version: '0.3.0', latest_version: '0.3.0', status: 'current',
-    release_url: 'https://github.com/cosmicc/filament_manager/releases/tag/v0.3.0',
+    running_version: '0.3.1', latest_version: '0.3.1', status: 'current',
+    release_url: 'https://github.com/cosmicc/filament_manager/releases/tag/v0.3.1',
     detail: 'This installation matches the newest published GitHub release.',
   } }))
   await page.route('**/api/v1/diagnostics', (route) => route.fulfill({ json: {
@@ -48,9 +52,9 @@ test('diagnostics consolidates operational status and recovery controls', async 
   await page.goto('/diagnostics')
 
   await expect(page.getByRole('heading', { name: 'Diagnostics' })).toBeVisible()
-  await expect(page.getByRole('heading', { name: 'Filament Manager v0.3.0' })).toBeVisible()
-  await expect(page.getByText('Latest: v0.3.0')).toBeVisible()
-  await expect(page.getByText('v0.3.0', { exact: true }).first()).toBeVisible()
+  await expect(page.getByRole('heading', { name: 'Filament Manager v0.3.1' })).toBeVisible()
+  await expect(page.getByText('Latest: v0.3.1')).toBeVisible()
+  await expect(page.getByText('v0.3.1', { exact: true }).first()).toBeVisible()
   await expect(page.getByRole('button', { name: 'Logout' })).toBeVisible()
   await expect(page.getByRole('button', { name: 'Collapse navigation' })).toBeVisible()
   await expect(page.getByRole('heading', { name: 'Connections' })).toBeVisible()
@@ -86,7 +90,7 @@ test('theme control lives in Settings instead of the navigation', async ({ page 
   await page.getByRole('button', { name: 'Open navigation' }).click()
   await expect(page.locator('.app-shell')).not.toHaveClass(/app-shell--collapsed/)
   await expect.poll(() => page.locator('.sidebar').evaluate((element) => getComputedStyle(element).width)).toBe('310px')
-  await expect(page.locator('.sidebar').getByText('v0.3.0', { exact: true })).toBeVisible()
+  await expect(page.locator('.sidebar').getByText('v0.3.1', { exact: true })).toBeVisible()
   await expect(page.locator('.sidebar').getByRole('button', { name: 'Logout' })).toBeVisible()
   await expect(page.locator('.sidebar').getByRole('button', { name: /navigation/ })).toHaveCount(1)
   await page.waitForTimeout(250)

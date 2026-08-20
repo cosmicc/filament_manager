@@ -14,7 +14,7 @@ PostgreSQL is always remote. The `filament_manager` and `spoolman` databases hav
 
 1. Provision the remote databases and roles with `docker/provision-databases.sql`.
 2. Restrict PostgreSQL network access to approved Swarm nodes. Both clients explicitly disable TLS, so the database network must be dedicated and isolated from untrusted systems.
-3. Populate all Filament Manager, Spoolman, one-printer Moonraker, Google, database, and tuning variables in a protected, ignored `.env` or Portainer variable set.
+3. Populate all Filament Manager, Spoolman, one-printer Moonraker, Google, database, optional Bugsnag, and tuning variables in a protected, ignored `.env` or Portainer variable set.
 4. Pin immutable application images and export the variables from `.env`.
 
 No Filament Manager Docker config or Docker secret object is required. Fixed application invariants remain code defaults; all deployment-specific values are stack variables.
@@ -72,8 +72,11 @@ Filament Manager:
 - active-spool and build-plate reconciliation freshness
 - sanitized printer-information synchronization freshness
 - Google publication lag
+- optional sanitized Bugsnag error delivery and browser performance visibility
 
 The image readiness probe connects to the web process over loopback and sends the hostname from `FILAMENT_MANAGER_BASE_URL`, preserving trusted-host validation. Worker and one-shot services must disable this web-only HTTP health check because they do not listen on port 8080.
+
+Bugsnag remains default-off. When enabled, web and worker use the same SDK API key, the browser receives a minimal runtime configuration, and application availability never depends on successful delivery. The separate Upload API key is confined to authorized direct-push CI; hidden source maps are deleted before runtime assembly.
 
 ## Local development
 
