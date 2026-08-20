@@ -46,9 +46,30 @@ def test_previous_schema_automatically_upgrades_to_metadata_head(
                 )
             )
 
+        command.upgrade(alembic_config, "f2a3b4c5d678")
+        with engine.begin() as connection:
+            connection.execute(
+                text(
+                    """
+                    INSERT INTO outbox_jobs (
+                        id, job_type, idempotency_key, aggregate_type,
+                        aggregate_id, aggregate_version, payload, status,
+                        attempts, max_attempts, next_attempt_at, created_at
+                    ) VALUES (
+                        '10000000-0000-0000-0000-000000000003',
+                        'moonraker.state.reconcile',
+                        'periodic:moonraker.state.reconcile:123', 'system',
+                        '20000000-0000-0000-0000-000000000004', 123,
+                        '{}'::jsonb, 'DEAD'::job_status, 12, 12,
+                        CURRENT_TIMESTAMP, CURRENT_TIMESTAMP
+                    )
+                    """
+                )
+            )
+
         upgrade_database(DatabaseConfig(url=database_url))
         with engine.connect() as connection:
-            assert connection.scalar(text("SELECT version_num FROM alembic_version")) == "f2a3b4c5d678"
+            assert connection.scalar(text("SELECT version_num FROM alembic_version")) == "a3b4c5d6e789"
             recovered = connection.execute(
                 text(
                     """
@@ -59,6 +80,15 @@ def test_previous_schema_automatically_upgrades_to_metadata_head(
                 )
             ).one()
             assert recovered == ("PENDING", 0)
+            periodic_status = connection.scalar(
+                text(
+                    """
+                    SELECT status::text FROM outbox_jobs
+                    WHERE id = '10000000-0000-0000-0000-000000000003'
+                    """
+                )
+            )
+            assert periodic_status == "SUPERSEDED"
         inspector = inspect(engine)
         assert "material_templates" in inspector.get_table_names()
         assert "material_template_revisions" in inspector.get_table_names()
@@ -67,6 +97,7 @@ def test_previous_schema_automatically_upgrades_to_metadata_head(
         }
         profile_columns = {column["name"]: column for column in inspector.get_columns("material_profiles")}
         assert "setting_overrides" in profile_columns
+        assert "retraction_prime_speed_mm_s" in profile_columns
         assert profile_columns["source_template_revision_id"]["nullable"] is False
         assert "cura_managed_edit_receipts" in inspector.get_table_names()
         assert "cura_takeover_mappings" in inspector.get_table_names()
@@ -88,6 +119,9 @@ def test_previous_schema_automatically_upgrades_to_metadata_head(
         assert "worker_heartbeats" in inspector.get_table_names()
         assert "cura_recovery_snapshots" in inspector.get_table_names()
         assert "cura_recovery_restores" in inspector.get_table_names()
+        assert {"image_data", "image_media_type", "image_sha256", "image_version"} <= {
+            column["name"] for column in inspector.get_columns("build_plates")
+        }
         assert {
             "cura_recovery_status",
             "cura_recovery_message",

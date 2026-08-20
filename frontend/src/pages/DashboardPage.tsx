@@ -1,5 +1,5 @@
 import { useQuery } from '@tanstack/react-query'
-import { Activity, AlertTriangle, ArrowRight, Boxes, FlaskConical, Layers3, Scale } from 'lucide-react'
+import { AlertTriangle, ArrowRight, Boxes, FlaskConical, Layers3, PackageOpen, Plus, Scale } from 'lucide-react'
 import { apiFetch } from '../api/client'
 import type { DashboardData } from '../api/types'
 import { EmptyState } from '../components/EmptyState'
@@ -54,18 +54,12 @@ export default function DashboardPage() {
 
         <article className="card plate-card">
           <header className="card__header"><div><p className="eyebrow">Printer surface</p><h2>Active build plate</h2></div><Layers3 size={21} /></header>
-          {data.active_plate ? <div className="plate-summary"><div className="plate-illustration"><span>{data.active_plate_surface?.surface_code ?? data.active_plate.plate_code}</span></div><strong>{data.active_plate.display_name}</strong><span>{data.active_plate_surface ? `Side ${data.active_plate_surface.side.toUpperCase()} · ${data.active_plate_surface.surface_material ?? 'Surface not specified'}` : 'Side not selected'}</span><StatusPill status={data.active_plate.condition} /></div> : <EmptyState icon={Layers3} title="No plate selected" description="Select a synchronized P-number plate side for a configured printer." action={<Link className="button" to="/plates">Open plates</Link>} />}
-        </article>
-
-        <article className="card integrations-card">
-          <header className="card__header"><div><p className="eyebrow">Workshop operations</p><h2>Diagnostics</h2></div><Activity size={21} /></header>
-          <p>Review connections, synchronization freshness, workers, projection queues, recovery validation, and bounded recent errors on the dedicated Diagnostics page.</p>
-          <Link to="/diagnostics" className="text-link">Open diagnostics <ArrowRight size={15} /></Link>
+          {data.active_plate ? <div className="plate-summary"><div className={`plate-illustration${data.active_plate.image_url ? ' plate-illustration--photo' : ''}`}>{data.active_plate.image_url ? <img src={data.active_plate.image_url} alt={`${data.active_plate.display_name} build plate`} /> : null}<span>{data.active_plate_surface?.surface_code ?? data.active_plate.plate_code}</span></div><strong>{data.active_plate.display_name}</strong><span>{data.active_plate_surface ? `Side ${data.active_plate_surface.side.toUpperCase()} · ${data.active_plate_surface.surface_material ?? 'Surface not specified'}` : 'Side not selected'}</span><StatusPill status={data.active_plate.condition} /></div> : <EmptyState icon={Layers3} title="No plate selected" description="Select a synchronized P-number plate side for a configured printer." action={<Link className="button" to="/plates">Open plates</Link>} />}
         </article>
 
         <article className="card quick-card">
           <header className="card__header"><div><p className="eyebrow">Keep moving</p><h2>Quick actions</h2></div></header>
-          <div className="quick-actions"><Link to="/spools"><Scale size={19} /><span><strong>Weigh a spool</strong><small>Record a trusted manual measurement</small></span><ArrowRight size={17} /></Link><Link to="/calibration"><FlaskConical size={19} /><span><strong>Resume calibration</strong><small>Continue the seven-step workflow</small></span><ArrowRight size={17} /></Link><Link to="/plates"><Layers3 size={19} /><span><strong>Select build plate</strong><small>Update the active Moonraker surface</small></span><ArrowRight size={17} /></Link></div>
+          <div className="quick-actions"><Link to="/spools"><Scale size={19} /><span><strong>Weigh a spool</strong><small>Record a trusted manual measurement</small></span><ArrowRight size={17} /></Link><Link to="/calibration"><FlaskConical size={19} /><span><strong>Resume calibration</strong><small>Continue the seven-step workflow</small></span><ArrowRight size={17} /></Link><Link to="/plates"><Layers3 size={19} /><span><strong>Select build plate</strong><small>Update the active Moonraker surface</small></span><ArrowRight size={17} /></Link><Link to="/filaments"><PackageOpen size={19} /><span><strong>Select a filament</strong><small>Open the filament catalog</small></span><ArrowRight size={17} /></Link><Link to="/filaments/new"><Plus size={19} /><span><strong>Add a filament</strong><small>Create a template-linked product</small></span><ArrowRight size={17} /></Link></div>
         </article>
       </section>
     </div>

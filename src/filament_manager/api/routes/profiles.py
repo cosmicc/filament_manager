@@ -762,6 +762,9 @@ def _profile_payload(profile: MaterialProfile) -> dict[str, object]:
         "retraction_speed_mm_s": str(profile.retraction_speed_mm_s)
         if profile.retraction_speed_mm_s is not None
         else None,
+        "retraction_prime_speed_mm_s": str(profile.retraction_prime_speed_mm_s)
+        if profile.retraction_prime_speed_mm_s is not None
+        else None,
         "cooling_enabled": profile.cooling_enabled,
         "cooling_min_percent": str(profile.cooling_min_percent),
         "cooling_max_percent": str(profile.cooling_max_percent),
@@ -1342,4 +1345,9 @@ async def export_cura_profile(profile_id: UUID, _: Viewer, session: DatabaseSess
     data = _profile_payload(profile)
     data["checksum"] = profile.checksum
     data["cura"] = cura_settings_for_profile(profile)
-    return JSONResponse(data)
+    return JSONResponse(
+        data,
+        headers={
+            "Content-Disposition": (f'attachment; filename="filament-manager-cura-profile-{profile.id}.json"')
+        },
+    )

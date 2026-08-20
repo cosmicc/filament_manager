@@ -1,6 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { PackageOpen, Plus, Search } from 'lucide-react'
-import { type FormEvent, useState } from 'react'
+import { type FormEvent, useEffect, useState } from 'react'
 import { apiFetch } from '../api/client'
 import type { Filament, FilamentColor, MaterialTemplate, Vendor } from '../api/types'
 import { EditorSection } from '../components/EditorSection'
@@ -10,15 +10,16 @@ import { LoadingState } from '../components/LoadingState'
 import { Modal } from '../components/Modal'
 import { PageHeader } from '../components/PageHeader'
 import { useAuth } from '../context/AuthContext'
-import { Link } from '../context/RouterContext'
+import { Link, useRouter } from '../context/RouterContext'
 import { filamentSwatchStyle } from '../lib/colors'
 import { compactNumber, grams } from '../lib/format'
 
 export default function FilamentsPage() {
+  const { path, navigate } = useRouter()
   const { user } = useAuth()
   const queryClient = useQueryClient()
   const [search, setSearch] = useState('')
-  const [showCreate, setShowCreate] = useState(false)
+  const [showCreate, setShowCreate] = useState(path === '/filaments/new')
   const [message, setMessage] = useState('')
   const [colorName, setColorName] = useState('')
   const [colorMode, setColorMode] = useState<FilamentColorMode>('solid')
@@ -27,6 +28,13 @@ export default function FilamentsPage() {
   const templates = useQuery({ queryKey: ['material-templates'], queryFn: () => apiFetch<MaterialTemplate[]>('/profiles/templates') })
   const vendors = useQuery({ queryKey: ['vendors'], queryFn: () => apiFetch<Vendor[]>('/vendors') })
   const colors = useQuery({ queryKey: ['filament-colors'], queryFn: () => apiFetch<FilamentColor[]>('/filament-colors') })
+  useEffect(() => {
+    if (path === '/filaments/new') setShowCreate(true)
+  }, [path])
+  const closeCreate = () => {
+    setShowCreate(false)
+    if (path === '/filaments/new') navigate('/filaments', true)
+  }
   const currentTemplates = (templates.data ?? []).flatMap((template) => {
     const settingsSnapshot = template.revisions[0]
     return settingsSnapshot ? [{ template, settingsSnapshot }] : []
@@ -59,7 +67,7 @@ export default function FilamentsPage() {
     },
     onSuccess: async () => {
       setMessage('Filament created with current settings linked to its template. Future template changes inherit automatically except for explicit customizations.')
-      setShowCreate(false)
+      closeCreate()
       setColorName('')
       setColorMode('solid')
       setColorHexes(['808080'])
@@ -78,7 +86,7 @@ export default function FilamentsPage() {
   return <div><PageHeader eyebrow="Product catalog" title="Filaments" description="Real filament products linked to material templates with only their customized settings stored independently." actions={user?.role !== 'viewer' ? <button className="button button--primary" onClick={() => setShowCreate(true)}><Plus size={17} /> Add filament</button> : undefined} />
     {message && <div className="deployment-note" role="status">{message}</div>}
     <section className="toolbar"><label className="search-field"><Search size={18} /><input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Search material, product, or color" aria-label="Search filaments" /></label><span className="toolbar__summary">{query.data?.length ?? 0} products</span></section>{query.isLoading ? <LoadingState /> : !query.data?.length ? <EmptyState icon={PackageOpen} title="No filament products" description="Add a material template, then add the first filament product here." /> : <section className="catalog-grid">{query.data.map((filament) => <Link className="catalog-card catalog-card--link" to={`/filaments/${filament.id}`} key={filament.id}><span className="filament-swatch filament-swatch--hero" style={filamentSwatchStyle(filament.color_mode, filament.color_hexes, filament.color_hex ?? '2F80A5')} /><div><p className="eyebrow">{filament.vendor_name ?? 'Unspecified vendor'}</p><h2>{filament.material_type} · {filament.color_name}{filament.product_name ? ` · ${filament.product_name}` : ''}</h2><p>{filament.filler ?? 'No filler'} / {filament.finish ?? 'Standard finish'}</p></div><dl className="catalog-meta"><div><dt>Color</dt><dd>{filament.color_name}</dd></div><div><dt>Diameter</dt><dd>{compactNumber(filament.diameter_mm, 2)} mm</dd></div><div><dt>Density</dt><dd>{compactNumber(filament.density_g_cm3, 2)} g/cm³</dd></div><div><dt>Nominal</dt><dd>{grams(filament.nominal_net_mass_g)}</dd></div></dl>{filament.material_template_revision_id && <p className="success-note">Template-linked profile ready to tune</p>}</Link>)}</section>}
-    {showCreate ? <Modal title="Add a filament" description="Link the canonical product to a template. It inherits current and future template changes while retaining explicit customizations." onClose={() => setShowCreate(false)} size="wide" footer={<><button className="button" type="button" onClick={() => setShowCreate(false)}>Cancel</button><button className="button button--primary" form="create-filament" disabled={create.isPending || !currentTemplates.length}><Plus size={17} />{create.isPending ? 'Creating…' : 'Create filament'}</button></>}>
+    {showCreate ? <Modal title="Add a filament" description="Link the canonical product to a template. It inherits current and future template changes while retaining explicit customizations." onClose={closeCreate} size="wide" footer={<><button className="button" type="button" onClick={closeCreate}>Cancel</button><button className="button button--primary" form="create-filament" disabled={create.isPending || !currentTemplates.length}><Plus size={17} />{create.isPending ? 'Creating…' : 'Create filament'}</button></>}>
       {currentTemplates.length ? <form id="create-filament" className="editor-form" onSubmit={submit}>
         <EditorSection title="Product identity" description="Choose the starting profile and the labels operators see throughout inventory.">
           <div className="form-grid">

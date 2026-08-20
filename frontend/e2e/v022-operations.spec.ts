@@ -26,8 +26,8 @@ test('diagnostics consolidates operational status and recovery controls', async 
     body: 'Filament Manager diagnostics\nGenerated: 2026-08-14T12:00:00Z\n',
   }))
   await page.route('**/api/v1/diagnostics/version', (route) => route.fulfill({ json: {
-    running_version: '0.2.6', latest_version: '0.2.6', status: 'current',
-    release_url: 'https://github.com/cosmicc/filament_manager/releases/tag/v0.2.6',
+    running_version: '0.3.0', latest_version: '0.3.0', status: 'current',
+    release_url: 'https://github.com/cosmicc/filament_manager/releases/tag/v0.3.0',
     detail: 'This installation matches the newest published GitHub release.',
   } }))
   await page.route('**/api/v1/diagnostics', (route) => route.fulfill({ json: {
@@ -48,9 +48,9 @@ test('diagnostics consolidates operational status and recovery controls', async 
   await page.goto('/diagnostics')
 
   await expect(page.getByRole('heading', { name: 'Diagnostics' })).toBeVisible()
-  await expect(page.getByRole('heading', { name: 'Filament Manager v0.2.6' })).toBeVisible()
-  await expect(page.getByText('Latest: v0.2.6')).toBeVisible()
-  await expect(page.getByText('v0.2.6', { exact: true }).first()).toBeVisible()
+  await expect(page.getByRole('heading', { name: 'Filament Manager v0.3.0' })).toBeVisible()
+  await expect(page.getByText('Latest: v0.3.0')).toBeVisible()
+  await expect(page.getByText('v0.3.0', { exact: true }).first()).toBeVisible()
   await expect(page.getByRole('button', { name: 'Logout' })).toBeVisible()
   await expect(page.getByRole('button', { name: 'Collapse navigation' })).toBeVisible()
   await expect(page.getByRole('heading', { name: 'Connections' })).toBeVisible()
@@ -77,15 +77,16 @@ test('theme control lives in Settings instead of the navigation', async ({ page 
 
   await page.goto('/settings')
 
-  await expect(page.getByRole('heading', { name: 'Color theme' })).toBeVisible()
-  await expect(page.getByRole('button', { name: 'Light theme' })).toBeVisible()
-  await expect(page.getByRole('button', { name: 'Dark theme' })).toBeVisible()
+  await expect(page.getByRole('heading', { name: 'Color profile' })).toBeVisible()
+  await expect(page.locator('.theme-profile')).toHaveCount(8)
+  await expect(page.locator('.theme-profile').filter({ hasText: 'Workshop Navy' }).first()).toBeVisible()
+  await expect(page.locator('.theme-profile').filter({ hasText: 'Plum Neon' })).toBeVisible()
   await expect(page.locator('.sidebar').getByRole('button', { name: /theme/i })).toHaveCount(0)
   await page.setViewportSize({ width: 390, height: 844 })
   await page.getByRole('button', { name: 'Open navigation' }).click()
   await expect(page.locator('.app-shell')).not.toHaveClass(/app-shell--collapsed/)
   await expect.poll(() => page.locator('.sidebar').evaluate((element) => getComputedStyle(element).width)).toBe('310px')
-  await expect(page.locator('.sidebar').getByText('v0.2.6', { exact: true })).toBeVisible()
+  await expect(page.locator('.sidebar').getByText('v0.3.0', { exact: true })).toBeVisible()
   await expect(page.locator('.sidebar').getByRole('button', { name: 'Logout' })).toBeVisible()
   await expect(page.locator('.sidebar').getByRole('button', { name: /navigation/ })).toHaveCount(1)
   await page.waitForTimeout(250)

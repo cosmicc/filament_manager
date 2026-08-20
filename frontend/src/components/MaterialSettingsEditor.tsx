@@ -38,9 +38,10 @@ const coreFields: Array<{
   { key: 'travel_speed_mm_s', label: 'Travel speed', unit: 'mm/s', precision: 0 },
   { key: 'support_speed_mm_s', label: 'Support speed', unit: 'mm/s', precision: 0 },
   { key: 'retraction_distance_mm', label: 'Retraction distance', unit: 'mm', precision: 1 },
-  { key: 'retraction_speed_mm_s', label: 'Retraction speed', unit: 'mm/s', precision: 0 },
-  { key: 'cooling_min_percent', label: 'Minimum fan', unit: '%', required: true, defaultValue: '0', precision: 0 },
-  { key: 'cooling_max_percent', label: 'Maximum fan', unit: '%', required: true, defaultValue: '100', precision: 0 },
+  { key: 'retraction_speed_mm_s', label: 'Retraction retract speed', unit: 'mm/s', precision: 0 },
+  { key: 'retraction_prime_speed_mm_s', label: 'Retraction prime speed', unit: 'mm/s', precision: 0 },
+  { key: 'cooling_min_percent', label: 'Regular fan speed', unit: '%', required: true, defaultValue: '0', precision: 0 },
+  { key: 'cooling_max_percent', label: 'Maximum fan speed', unit: '%', required: true, defaultValue: '100', precision: 0 },
   { key: 'support_overhang_angle_deg', label: 'Support overhang angle', unit: '°', precision: 0 },
   { key: 'tree_max_branch_angle_deg', label: 'Tree maximum branch angle', unit: '°', precision: 0 },
   { key: 'pressure_advance', label: 'Klipper pressure advance', unit: 's', precision: 2 },
@@ -63,13 +64,13 @@ type MaterialSettingGroup =
 
 function curaSettingGroup(key: string): MaterialSettingGroup {
   if (key.includes('flow')) return 'flow'
+  if (key.startsWith('cool_')) return 'cooling'
   if (key.startsWith('speed_') || key.endsWith('_speed')) return 'speed'
   if (
     key.startsWith('retraction_')
     || key.startsWith('retract_')
     || key === 'limit_support_retractions'
   ) return 'retraction'
-  if (key.startsWith('cool_')) return 'cooling'
   if (key.startsWith('support_') || key.startsWith('tree_')) return 'support'
   if (key.startsWith('xy_offset') || key.startsWith('hole_xy_offset')) return 'dimensional'
   if (key.startsWith('klipper_')) return 'klipper'
@@ -136,6 +137,7 @@ export function settingsFromForm(
     support_speed_mm_s: nullable(preservedNumericValue(form, 'support_speed_mm_s', data.get('support_speed_mm_s'))),
     retraction_distance_mm: nullable(preservedNumericValue(form, 'retraction_distance_mm', data.get('retraction_distance_mm'))),
     retraction_speed_mm_s: nullable(preservedNumericValue(form, 'retraction_speed_mm_s', data.get('retraction_speed_mm_s'))),
+    retraction_prime_speed_mm_s: nullable(preservedNumericValue(form, 'retraction_prime_speed_mm_s', data.get('retraction_prime_speed_mm_s'))),
     cooling_enabled: data.get('cooling_enabled') === 'on',
     cooling_min_percent: String(preservedNumericValue(form, 'cooling_min_percent', data.get('cooling_min_percent'))),
     cooling_max_percent: String(preservedNumericValue(form, 'cooling_max_percent', data.get('cooling_max_percent'))),
@@ -259,7 +261,7 @@ export function MaterialSettingsEditor({
       id: 'retraction',
       title: 'Retraction',
       description: 'Retraction distance, speeds, travel limits, and layer-change behavior.',
-      keys: ['retraction_distance_mm', 'retraction_speed_mm_s'],
+      keys: ['retraction_distance_mm', 'retraction_speed_mm_s', 'retraction_prime_speed_mm_s'],
     },
     {
       id: 'cooling',

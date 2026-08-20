@@ -17,7 +17,7 @@ from .quality_profiles import plan_quality_profile_cleanup, quality_profiles_are
 from .render import RenderedDeployment
 
 MANIFEST_PATH = Path(".filament-manager") / "manifest.json"
-DEPLOYMENT_RENDERER_REVISION = 4
+DEPLOYMENT_RENDERER_REVISION = 5
 
 
 def _sha256(data: bytes) -> str:

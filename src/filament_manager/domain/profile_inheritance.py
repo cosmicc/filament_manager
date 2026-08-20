@@ -27,6 +27,7 @@ PROFILE_SETTING_KEYS = (
     "support_speed_mm_s",
     "retraction_distance_mm",
     "retraction_speed_mm_s",
+    "retraction_prime_speed_mm_s",
     "cooling_enabled",
     "cooling_min_percent",
     "cooling_max_percent",

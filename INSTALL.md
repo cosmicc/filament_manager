@@ -12,10 +12,9 @@ Requirements: Docker Engine with Compose, `openssl`, and ports `8080` and `7912`
    cp .env.example .env
    chmod 600 .env
    openssl rand -hex 32       # Generate each database password separately.
-   openssl rand -base64 36    # Generate the bootstrap Administrator password.
    ```
 
-   Replace every `replace_with_...` value in `.env`. Use a different generated value for `POSTGRES_ADMIN_PASSWORD`, `FILAMENT_MANAGER_DB_PASSWORD`, and `SPOOLMAN_DB_PASSWORD`. For local HTTP access, set `FILAMENT_MANAGER_BASE_URL=http://localhost:8080`, `FILAMENT_MANAGER_ALLOWED_HOSTS=localhost,127.0.0.1`, `FILAMENT_MANAGER_SECURE_COOKIES=false`, and `SPOOLMAN_PUBLIC_URL=http://localhost:7912`. Set the one printer's Moonraker ID, name, URL, and nozzle diameter, plus the initial Administrator username and display name. The ignored `.env` file contains credentials; never commit it.
+   Replace every `replace_with_...` value in `.env`. Use a different generated value for `POSTGRES_ADMIN_PASSWORD`, `FILAMENT_MANAGER_DB_PASSWORD`, and `SPOOLMAN_DB_PASSWORD`. For local HTTP access, set `FILAMENT_MANAGER_BASE_URL=http://localhost:8080`, `FILAMENT_MANAGER_ALLOWED_HOSTS=localhost,127.0.0.1`, `FILAMENT_MANAGER_SECURE_COOKIES=false`, and `SPOOLMAN_PUBLIC_URL=http://localhost:7912`. Set the one printer's Moonraker ID, name, URL, and nozzle diameter. The ignored `.env` file contains credentials; never commit it.
 
 2. Build and start PostgreSQL, Spoolman, Filament Manager, and its worker:
 
@@ -38,19 +37,13 @@ Requirements: Docker Engine with Compose, `openssl`, and ports `8080` and `7912`
    docker compose --env-file .env -f docker/docker-compose.yml run --rm filament-manager filament-manager-cli seed-system
    ```
 
-4. Create the first local Administrator. No default account is created:
-
-   ```bash
-   docker compose --env-file .env -f docker/docker-compose.yml run --rm bootstrap-admin
-   ```
-
-5. Verify all services:
+4. Verify all services:
 
    ```bash
    docker compose --env-file .env -f docker/docker-compose.yml ps
    ```
 
-6. Open `http://localhost:8080`, sign in as an Administrator, and use **Settings** > **Workbook import** to upload the `.xlsx` master workbook. Validate the workbook, review any row findings, then commit the validated run only if this is a new empty inventory.
+5. Open `http://localhost:8080` and sign in with username `admin` and password `admin`. A new installation requires a password change before any other page is available. Then use **Settings** > **Workbook import** to upload the `.xlsx` master workbook. Validate the workbook, review any row findings, then commit the validated run only if this is a new empty inventory.
 
    The CLI remains available for headless recovery or automation. Bind-mount the workbook for the dry run, review every error and warning, then commit the exact unchanged file with the returned dry-run ID:
 
@@ -154,13 +147,13 @@ The current deployment intentionally uses ordinary environment variables instead
 
 When converting an existing deployment, place the current database passwords, API key, and Google document into the matching variables before redeploying. Ensure the canonical database is owned by `filament_user` before changing `FILAMENT_MANAGER_DB_USERNAME`; do not silently point the application at an empty replacement database. Do not generate replacement database passwords unless the corresponding PostgreSQL roles are rotated in the same maintenance window. After all services are healthy on variables, obsolete Docker secret objects can be removed manually.
 
-For the migration, seed, and bootstrap jobs, assemble the same canonical database URL used by the stack:
+For migration and seed jobs, assemble the same canonical database URL used by the stack:
 
 ```bash
 export FILAMENT_MANAGER_DATABASE_URL="postgresql+psycopg://${FILAMENT_MANAGER_DB_USERNAME}:${FILAMENT_MANAGER_DB_PASSWORD}@${POSTGRES_HOST}:${POSTGRES_PORT}/${FILAMENT_MANAGER_DB_NAME}?sslmode=${FILAMENT_MANAGER_DB_SSLMODE}"
 ```
 
-For Portainer Git-stack deployment, select the repository's root `docker-stack.yml` and enter the variables from `.env.example` in the stack environment-variable section. `POSTGRES_ADMIN_PASSWORD` is local-Compose-only, and the bootstrap variables belong only on the one-shot bootstrap job. No Docker config or Docker secret objects are required.
+For Portainer Git-stack deployment, select the repository's root `docker-stack.yml` and enter the variables from `.env.example` in the stack environment-variable section. `POSTGRES_ADMIN_PASSWORD` is local-Compose-only. No account username or password variables are required, and no Docker config or Docker secret objects are used.
 
 ### 3. Deploy the stack and let it migrate automatically
 
@@ -179,7 +172,7 @@ docker service logs filament-manager_web
 docker service logs filament-manager_worker
 ```
 
-The 0.1.5 synchronization repair automatically requeues Spoolman jobs that previously became failed, dead, or stranded. Within one minute of the worker starting, it provisions the required Spoolman custom fields and projects every existing canonical vendor, filament, and spool. Confirm a `spoolman.reconcile.full` job completes on the **Integrations** page.
+The 0.1.5 synchronization repair automatically requeues Spoolman jobs that previously became failed, dead, or stranded. Version 0.3.0 converts accumulated dead periodic jobs to retained `superseded` history, and later successful recurring runs automatically supersede older dead rows of the same type. Within one minute of the worker starting, it provisions the required Spoolman custom fields and projects every existing canonical vendor, filament, and spool. Confirm a `spoolman.reconcile.full` job completes in **Diagnostics**.
 
 `FILAMENT_MANAGER_DATABASE_AUTO_MIGRATE` defaults to `true`. Disable it only for a controlled recovery. A separate migration job remains available for diagnosing a failed upgrade while the application services are stopped:
 
@@ -197,7 +190,7 @@ docker service rm filament-manager-migrate-recovery
 
 The stack creates its `filament-services` overlay plus `filament_manager_data` and `spoolman_data` volumes. On a multi-node Swarm, use shared storage or placement constraints so stateful volume paths cannot move to an empty node.
 
-### 4. Seed the system and create the first Administrator
+### 4. Seed the system and sign in
 
 After the web and worker services are running, Administrators can open **Printers** and choose **Seed configured printer** to seed the configured printer and initial physical P1-P5 plates with Side A. Browser workbook import also seeds missing records automatically. If you need to perform setup without the browser, use a short-lived job:
 
@@ -219,25 +212,7 @@ docker service logs --follow filament-manager-seed
 docker service rm filament-manager-seed
 ```
 
-Create the first Administrator with the bootstrap password variable scoped only to a short-lived job. Replace the example username and display name before running the job:
-
-```bash
-docker service create \
-  --name filament-manager-bootstrap-admin \
-  --mode replicated-job \
-  --no-healthcheck \
-  --env "FILAMENT_MANAGER_DATABASE_URL=$FILAMENT_MANAGER_DATABASE_URL" \
-  --env "FILAMENT_MANAGER_BOOTSTRAP_ADMIN_PASSWORD=$BOOTSTRAP_ADMIN_PASSWORD" \
-  "$FILAMENT_MANAGER_IMAGE" \
-  filament-manager-cli bootstrap-admin \
-  --username "$BOOTSTRAP_ADMIN_USERNAME" \
-  --display-name "$BOOTSTRAP_ADMIN_DISPLAY_NAME"
-docker service logs --follow filament-manager-bootstrap-admin
-docker service rm filament-manager-bootstrap-admin
-unset BOOTSTRAP_ADMIN_PASSWORD
-```
-
-No default account is created. The bootstrap job refuses to run after any user already exists. Clear `BOOTSTRAP_ADMIN_PASSWORD` from `.env` and Portainer after success; the long-running web and worker services never receive it.
+On an empty database, web startup creates the only local account as `admin` with password `admin`. Sign in and replace that password when prompted; all other routes remain blocked until the change succeeds. Username, display name, and password remain editable under **Settings → Account**. Existing one-account installations retain their current username and password during upgrade. A legacy database with more than one account must be reduced to the intended Administrator before upgrading because 0.3.0 fails startup instead of choosing or deleting an account. Version 0.3.0 intentionally does not accept Docker account-credential variables or provide account creation/reset endpoints.
 
 ### 5. Import the initial workbook on Swarm
 

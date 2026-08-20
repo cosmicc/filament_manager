@@ -25,6 +25,7 @@ from filament_manager.models.inventory import (
     BuildPlateSurface,
     FilamentProduct,
     MaterialProfile,
+    MaterialTemplate,
     MaterialTemplateRevision,
     Printer,
 )
@@ -32,6 +33,7 @@ from filament_manager.services.events import add_audit_event, add_outbox_job
 from filament_manager.services.material_settings import (
     profile_snapshot_checksum,
     queue_managed_cura_library,
+    save_template_settings,
 )
 
 from ..dependencies import DatabaseSession, Operator, Viewer
@@ -40,6 +42,8 @@ from ..schemas import (
     CalibrationCreate,
     CalibrationResponse,
     CalibrationStepUpdate,
+    CalibrationSuggestionsResponse,
+    CalibrationTemplateApplyRequest,
     MaterialSettingsInput,
     ProfileResponse,
 )
@@ -340,6 +344,130 @@ def _decimal_result(results: dict[str, object], key: str, default: Decimal | Non
     return Decimal(str(value))
 
 
+async def _calibration_suggestion(
+    session: DatabaseSession,
+    calibration: CalibrationSession,
+) -> tuple[MaterialSettingsInput, dict[str, object], MaterialTemplateRevision]:
+    """Resolve a complete profile and identify every calibration-derived suggestion."""
+
+    results = _combined_results(calibration)
+    product = await session.get(FilamentProduct, calibration.filament_product_id)
+    assert product is not None
+    baseline = (
+        await session.get(MaterialProfile, calibration.baseline_profile_id)
+        if calibration.baseline_profile_id
+        else None
+    )
+    base_revision_id = (
+        baseline.base_template_revision_id if baseline is not None else product.source_template_revision_id
+    )
+    base_revision = (
+        await session.get(MaterialTemplateRevision, base_revision_id) if base_revision_id else None
+    )
+    if base_revision is None or base_revision.status != ProfileStatus.PUBLISHED:
+        raise ApiError(
+            status.HTTP_409_CONFLICT,
+            "profile_template_required",
+            "Link this filament to a material template before reviewing calibration results",
+        )
+    settings = settings_snapshot_from_profile(baseline) if baseline else dict(base_revision.settings)
+    suggestions: dict[str, object] = {}
+    for key in (
+        "chamber_temp_c",
+        "extruder_temp_c",
+        "bed_temp_c",
+        "flow_percent",
+        "retraction_distance_mm",
+        "retraction_speed_mm_s",
+        "retraction_prime_speed_mm_s",
+        "cooling_min_percent",
+        "cooling_max_percent",
+        "support_overhang_angle_deg",
+        "tree_max_branch_angle_deg",
+        "pressure_advance",
+    ):
+        if key in results:
+            value = _decimal_result(results, key)
+            settings[key] = value
+            suggestions[key] = value
+    if "cooling_enabled" in results:
+        settings["cooling_enabled"] = bool(results["cooling_enabled"])
+        suggestions["cooling_enabled"] = bool(results["cooling_enabled"])
+    raw_extensions = settings.get("cura_extensions", {})
+    extensions = dict(raw_extensions) if isinstance(raw_extensions, dict) else {}
+    for key in ("xy_offset", "hole_xy_offset"):
+        if key in results:
+            extension_value = format(Decimal(str(results[key])), "f")
+            extensions[key] = extension_value
+            suggestions[f"cura_extensions.{key}"] = extension_value
+    settings["cura_extensions"] = extensions
+    settings["filament_density_g_cm3"] = product.density_g_cm3
+    if calibration.build_plate_surface_id is not None:
+        settings["preferred_build_plate_surface_id"] = calibration.build_plate_surface_id
+        suggestions["preferred_build_plate_surface_id"] = calibration.build_plate_surface_id
+    for key in (
+        "ironing_enabled",
+        "ironing_flow_percent",
+        "ironing_speed_mm_s",
+        "ironing_line_spacing_mm",
+    ):
+        if key in results:
+            suggestions[key] = results[key]
+    return MaterialSettingsInput.model_validate(settings), suggestions, base_revision
+
+
+def _template_settings_with_suggestions(
+    current_settings: dict[str, object],
+    suggestions: dict[str, object],
+) -> MaterialSettingsInput:
+    """Overlay only template-compatible calibration suggestions on current settings.
+
+    A filament baseline can contain product-specific overrides such as density.
+    Those values must not become defaults for every filament linked to the
+    template. Optional ironing results remain profile-only because ironing is
+    not part of the centrally managed material-template setting catalog.
+    """
+
+    settings = dict(current_settings)
+    raw_extensions = settings.get("cura_extensions", {})
+    extensions = dict(raw_extensions) if isinstance(raw_extensions, dict) else {}
+    supported_fields = set(MaterialSettingsInput.model_fields)
+    for key, value in suggestions.items():
+        extension_prefix = "cura_extensions."
+        if key.startswith(extension_prefix):
+            extensions[key.removeprefix(extension_prefix)] = value
+        elif key in supported_fields and key != "cura_extensions":
+            settings[key] = value
+    settings["cura_extensions"] = extensions
+    return MaterialSettingsInput.model_validate(settings)
+
+
+@router.get("/{calibration_id}/suggestions", response_model=CalibrationSuggestionsResponse)
+async def get_calibration_suggestions(
+    calibration_id: UUID,
+    _: Viewer,
+    session: DatabaseSession,
+) -> CalibrationSuggestionsResponse:
+    """Preview every resulting Cura setting before applying a completed calibration."""
+
+    calibration = await _get_calibration(session, calibration_id)
+    if calibration.status != CalibrationStatus.READY_TO_PUBLISH:
+        raise ApiError(
+            status.HTTP_409_CONFLICT,
+            "calibration_not_ready",
+            "Complete all mandatory calibration steps before reviewing suggestions",
+        )
+    settings, suggestions, revision = await _calibration_suggestion(session, calibration)
+    template = await session.get(MaterialTemplate, revision.material_template_id)
+    assert template is not None
+    return CalibrationSuggestionsResponse(
+        settings=settings,
+        suggestions=suggestions,
+        template_id=template.id,
+        template_name=template.name,
+    )
+
+
 @router.post("/{calibration_id}/publish-profile", response_model=ProfileResponse, include_in_schema=False)
 @router.post("/{calibration_id}/apply-profile-settings", response_model=ProfileResponse)
 async def apply_calibration_profile_settings(
@@ -365,6 +493,7 @@ async def apply_calibration_profile_settings(
         "flow_percent",
         "retraction_distance_mm",
         "retraction_speed_mm_s",
+        "retraction_prime_speed_mm_s",
         "support_overhang_angle_deg",
         "tree_max_branch_angle_deg",
         "pressure_advance",
@@ -413,6 +542,7 @@ async def apply_calibration_profile_settings(
         "flow_percent",
         "retraction_distance_mm",
         "retraction_speed_mm_s",
+        "retraction_prime_speed_mm_s",
         "cooling_min_percent",
         "cooling_max_percent",
         "support_overhang_angle_deg",
@@ -506,3 +636,120 @@ async def apply_calibration_profile_settings(
     await queue_managed_cura_library(session, requested_by=operator.id)
     await session.commit()
     return ProfileResponse.model_validate(profile)
+
+
+@router.post("/{calibration_id}/apply-template-settings", response_model=CalibrationResponse)
+async def apply_calibration_template_settings(
+    calibration_id: UUID,
+    payload: CalibrationTemplateApplyRequest,
+    request: Request,
+    operator: Operator,
+    session: DatabaseSession,
+) -> CalibrationResponse:
+    """Apply reviewed results to the linked template and cascade its profiles."""
+
+    calibration = await _get_calibration(session, calibration_id, lock=True)
+    if calibration.record_version != payload.expected_version:
+        raise ApiError(status.HTTP_409_CONFLICT, "record_version_conflict", "Calibration changed; reload")
+    if calibration.status != CalibrationStatus.READY_TO_PUBLISH:
+        raise ApiError(status.HTTP_409_CONFLICT, "calibration_not_ready", "Calibration is not ready")
+    _, suggestions, base_revision = await _calibration_suggestion(session, calibration)
+    template = await session.scalar(
+        select(MaterialTemplate)
+        .where(MaterialTemplate.id == base_revision.material_template_id)
+        .with_for_update()
+    )
+    assert template is not None
+    if payload.confirm_template_name.strip() != template.name:
+        raise ApiError(
+            status.HTTP_422_UNPROCESSABLE_ENTITY,
+            "template_confirmation_mismatch",
+            f"Type {template.name} exactly to confirm this template-wide change",
+        )
+    current_revision = await session.scalar(
+        select(MaterialTemplateRevision)
+        .where(
+            MaterialTemplateRevision.material_template_id == template.id,
+            MaterialTemplateRevision.status == ProfileStatus.PUBLISHED,
+        )
+        .order_by(MaterialTemplateRevision.version.desc())
+        .limit(1)
+    )
+    if current_revision is None:
+        raise ApiError(
+            status.HTTP_409_CONFLICT,
+            "profile_template_required",
+            "The linked material template has no current settings",
+        )
+    template_settings = _template_settings_with_suggestions(current_revision.settings, suggestions)
+    revision, inherited_profiles = await save_template_settings(
+        session,
+        template=template,
+        settings=template_settings.model_dump(mode="json"),
+    )
+    applied_profile = next(
+        (
+            profile
+            for profile in inherited_profiles
+            if profile.filament_product_id == calibration.filament_product_id
+        ),
+        None,
+    )
+    calibration.status = CalibrationStatus.PUBLISHED
+    calibration.published_profile_id = applied_profile.id if applied_profile else None
+    calibration.completed_at = datetime.now(UTC)
+    calibration.record_version += 1
+    add_audit_event(
+        session,
+        actor_id=operator.id,
+        source="web",
+        action="calibration.apply_template_settings",
+        object_type="calibration_session",
+        object_id=calibration.id,
+        before={"status": "ready_to_publish"},
+        after={
+            "status": "applied",
+            "template_id": str(template.id),
+            "template_revision_id": str(revision.id),
+            "linked_profiles_updated": len(inherited_profiles),
+            "suggestion_count": len(suggestions),
+        },
+        correlation_id=request.state.correlation_id,
+    )
+    await queue_managed_cura_library(session, requested_by=operator.id)
+    await session.commit()
+    return CalibrationResponse.model_validate(await _get_calibration(session, calibration.id))
+
+
+@router.delete("/{calibration_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_calibration(
+    calibration_id: UUID,
+    expected_version: int,
+    request: Request,
+    operator: Operator,
+    session: DatabaseSession,
+) -> None:
+    """Delete only an unapplied calibration after an optimistic confirmation."""
+
+    calibration = await _get_calibration(session, calibration_id, lock=True)
+    if calibration.record_version != expected_version:
+        raise ApiError(status.HTTP_409_CONFLICT, "record_version_conflict", "Calibration changed; reload")
+    if calibration.status == CalibrationStatus.PUBLISHED:
+        raise ApiError(
+            status.HTTP_409_CONFLICT,
+            "calibration_history_immutable",
+            "Applied calibration history cannot be deleted",
+        )
+    add_audit_event(
+        session,
+        actor_id=operator.id,
+        source="web",
+        action="calibration.delete",
+        object_type="calibration_session",
+        object_id=calibration.id,
+        before={"status": calibration.status.value, "step_count": len(calibration.steps)},
+        after=None,
+        correlation_id=request.state.correlation_id,
+    )
+    await session.delete(calibration)
+    await session.commit()

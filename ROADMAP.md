@@ -728,7 +728,7 @@ After those, add G-code preflight, material environmental tracking, nozzle/compo
 GUI audit follow-ups
 
 - ~~**Account lifecycle controls**~~
-  Add secure Administrator workflows to edit roles and display names, deactivate or reactivate accounts, and reset passwords without recreating users.
+  Superseded in 0.3.0 by the permanent singleton **Account** editor. Multi-user roles, deactivation, and reset workflows will not be implemented while the application supports exactly one Administrator.
 
 - ~~**Build-plate maintenance history**~~
   Add explicit Mark Cleaned and Mark Mesh Calibrated actions, immutable maintenance records, due-state reminders, and filterable plate history.

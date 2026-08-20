@@ -21,9 +21,10 @@ from filament_manager import __version__
 from filament_manager.api.errors import ApiError, api_error_handler
 from filament_manager.api.router import api_router
 from filament_manager.config import get_settings
-from filament_manager.database import database_ready, get_engine
+from filament_manager.database import database_ready, get_engine, get_session_factory
 from filament_manager.domain.cura_material_settings import CURA_EXTENSION_SETTING_KEYS
 from filament_manager.logging import configure_logging
+from filament_manager.services.accounts import ensure_single_administrator
 
 REQUESTS = Counter("filament_manager_http_requests_total", "HTTP request count", ["method", "path", "status"])
 LATENCY = Histogram(
@@ -74,6 +75,10 @@ async def lifespan(_: FastAPI) -> AsyncIterator[None]:
     settings = get_settings()
     configure_logging(settings.app.log_level)
     settings.app.data_dir.mkdir(parents=True, exist_ok=True)
+    async with get_session_factory()() as session:
+        created = await ensure_single_administrator(session)
+        if created:
+            logger.warning("default_administrator_created", username="admin", password_change_required=True)
     logger.info("application_started", version=__version__)
     yield
     await get_engine().dispose()

@@ -46,13 +46,16 @@ Spool responses include a derived completed-print count. Every completed job cou
 - `PUT /profiles/templates/{id}/settings`
 - `PATCH /profiles/templates/{id}`
 
-`POST /filaments` selects a current template snapshot and atomically creates the product plus its current inherited profile. `PATCH /filaments/{id}` corrects product setup and can relink a compatible current template while preserving sparse overrides. `DELETE /filaments/{id}` deletes only dependency-free setup mistakes and otherwise archives. Direct profile/template saves append hidden immutable snapshots, immediately become current, and queue projections. A template save also writes the next current profile snapshot for every linked filament while retaining each sparse explicit customization. Filament create/update resolves a case-insensitive solid, two/three-color, or rainbow remembered palette and propagates a changed palette to matching products with their projection jobs in the same transaction. Palette changes are rejected after retained spool use or print history. Configured-system seeding reports counts for printers, plates, and newly created recommended ASA templates.
+`POST /filaments` selects a current template snapshot and atomically creates the product plus its current inherited profile. `PATCH /filaments/{id}` corrects product setup and can relink a compatible current template while preserving sparse overrides. `DELETE /filaments/{id}` deletes only dependency-free setup mistakes and otherwise archives. Direct profile/template saves append hidden immutable snapshots, immediately become current, and queue projections. A template save also writes the next current profile snapshot for every linked filament while retaining each sparse explicit customization. Filament create/update resolves a shared case-insensitive solid palette, fixed Rainbow color, or one-to-three-sample product-specific multicolor palette. Only solid palette changes propagate to matching products. Color changes are rejected after retained spool use or print history. Configured-system seeding reports counts for printers, plates, and newly created recommended ASA templates.
 
 ### Build plates
 
 - `GET /build-plates`
 - `POST /build-plates/synchronize` (Administrator only; imports exact P-number A/B side meshes)
 - `PATCH /build-plates/{id}`
+- `GET /build-plates/{id}/image`
+- `PUT /build-plates/{id}/image` (bounded image upload)
+- `DELETE /build-plates/{id}/image`
 - `POST /build-plates/{id}/surfaces` (Operator; creates the sole canonical Side B)
 - `PATCH /build-plates/{id}/surfaces/{surface_id}`
 - `POST /build-plates/{id}/select` (requires `surface_id`)
@@ -61,7 +64,7 @@ Spool responses include a derived completed-print count. Every completed job cou
 - `POST /build-plates/{id}/maintenance-events`
 - `POST /build-plates/active/clear`
 
-Maintenance events are append-only. Clearing the active plate first clears the loaded Moonraker mesh and then lets state reconciliation clear canonical context.
+Maintenance events are append-only. Image uploads are decoded, dimension-bounded, metadata-stripped, normalized to WebP, and stored in PostgreSQL. Clearing the active plate first clears the loaded Moonraker mesh and then lets state reconciliation clear canonical context.
 
 The Side B route derives `P<number>b` from the parent plate, rejects duplicates, and returns a mesh-unavailable side until Moonraker discovers that exact profile. Side responses include a derived completed-print count.
 
@@ -81,7 +84,10 @@ The takeover request contains the complete reviewed source-ID set, explicit conf
 - `GET /calibrations/{id}`
 - `POST /calibrations/{id}/steps/{step}/start`
 - `POST /calibrations/{id}/steps/{step}/result`
+- `GET /calibrations/{id}/suggestions`
 - `POST /calibrations/{id}/apply-profile-settings`
+- `POST /calibrations/{id}/apply-template-settings` (exact template-name confirmation)
+- `DELETE /calibrations/{id}` (unapplied only)
 
 ### Print history and inspection
 
@@ -102,15 +108,13 @@ Print responses preserve exact start-state snapshots, bounded G-code inspection 
 
 The settings update requires optimistic concurrency and supports `warn` or `block` G-code inspection policy. Notifications are persistent conditions with per-user read state.
 
-### Accounts
+### Account
 
-- `GET /auth/users` (Administrator only)
-- `POST /auth/users` (Administrator only)
-- `PATCH /auth/users/{id}` (Administrator only)
-- `POST /auth/users/{id}/reset-password` (Administrator only)
+- `GET /auth/users` (returns the one Administrator)
+- `PATCH /auth/users/{id}` (edits the singleton username/display name)
 - `POST /auth/change-password`
 
-New and reset accounts must replace their temporary password before using other application routes. Deactivation and reset revoke prior sessions; last-Administrator and self-deactivation safeguards apply.
+An empty database creates `admin` / `admin` and requires password replacement before other application routes are available. Existing single-account credentials survive upgrades. Identity or password changes revoke other sessions. Account creation, role, reset, and deactivation routes do not exist under the singleton contract.
 
 ### Integrations
 
@@ -136,7 +140,7 @@ Printer responses omit Moonraker addresses and credentials. Synchronization retu
 - `POST /nozzles/{id}/remove`
 - `GET /nozzles/{id}/events`
 
-Only one physical nozzle may be installed on a printer. Responses derive completed-print and total-filament-use values from immutable print history; lifecycle events are append-only.
+Only one physical nozzle may be installed on a printer. `PATCH` may edit its unique code, including while installed, without rewriting lifecycle or print history. Responses derive completed-print and total-filament-use values from immutable print history; lifecycle events are append-only.
 
 ### Devices
 

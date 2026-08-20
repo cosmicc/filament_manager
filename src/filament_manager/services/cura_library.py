@@ -51,12 +51,14 @@ def settings_from_template(snapshot: dict[str, object]) -> dict[str, object]:
         "support_speed_mm_s",
         "retraction_distance_mm",
         "retraction_speed_mm_s",
+        "retraction_prime_speed_mm_s",
         "cooling_min_percent",
         "cooling_max_percent",
         "support_overhang_angle_deg",
         "pressure_advance",
     }
     values = dict(snapshot)
+    values.setdefault("retraction_prime_speed_mm_s", values.get("retraction_speed_mm_s"))
     for field in decimal_fields:
         raw = values.get(field)
         values[field] = Decimal(str(raw)) if raw is not None else None

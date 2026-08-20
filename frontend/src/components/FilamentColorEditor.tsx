@@ -1,5 +1,7 @@
 import type { FilamentColor } from '../api/types'
 import { filamentSwatchStyle } from '../lib/colors'
+import { ChevronDown } from 'lucide-react'
+import { useId, useState } from 'react'
 
 export type FilamentColorMode = 'solid' | 'multicolor' | 'rainbow'
 
@@ -22,11 +24,22 @@ export function FilamentColorEditor({
   onColorsChange: (value: string[]) => void
   disabled?: boolean
 }) {
+  const [open, setOpen] = useState(false)
+  const listId = useId()
+  const colorOptions = rememberedColors.some((color) => color.normalized_name === 'rainbow')
+    ? rememberedColors
+    : [...rememberedColors, { id: 'rainbow', name: 'Rainbow', normalized_name: 'rainbow', color_hex: 'E53935', color_mode: 'rainbow' as const, color_hexes: [], record_version: 1 }]
   const selectRemembered = (nextName: string) => {
     onNameChange(nextName)
     const normalized = nextName.normalize('NFKC').trim().toLocaleLowerCase()
-    const remembered = rememberedColors.find((color) => color.normalized_name === normalized)
-    if (!remembered) return
+    const remembered = colorOptions.find((color) => color.normalized_name === normalized)
+    if (!remembered) {
+      if (mode === 'rainbow') {
+        onModeChange('solid')
+        onColorsChange(['808080'])
+      }
+      return
+    }
     onModeChange(remembered.color_mode ?? 'solid')
     onColorsChange(
       remembered.color_hexes?.length ? remembered.color_hexes : [remembered.color_hex],
@@ -37,7 +50,7 @@ export function FilamentColorEditor({
     if (nextMode === 'solid') onColorsChange([colorHexes[0] ?? '808080'])
     if (nextMode === 'multicolor') {
       const next = colorHexes.slice(0, 3)
-      while (next.length < 2) next.push(next.length === 0 ? '808080' : 'FFFFFF')
+      while (next.length < 1) next.push('808080')
       onColorsChange(next)
     }
   }
@@ -51,30 +64,38 @@ export function FilamentColorEditor({
   return <>
     <label>
       Color name
-      <input
-        list="filament-color-library"
-        value={name}
-        onChange={(event) => selectRemembered(event.target.value)}
-        maxLength={96}
-        required
-        disabled={disabled}
-        placeholder="Choose one or type a custom name"
-      />
-      <datalist id="filament-color-library">{rememberedColors.map((color) => <option key={color.id} value={color.name} />)}</datalist>
+      <div className="color-combobox">
+        <input
+          value={name}
+          onChange={(event) => { selectRemembered(event.target.value); setOpen(true) }}
+          onFocus={() => setOpen(true)}
+          maxLength={96}
+          required
+          disabled={disabled}
+          placeholder="Choose one or type a custom name"
+          role="combobox"
+          aria-controls={listId}
+          aria-expanded={open}
+          aria-autocomplete="list"
+        />
+        <button type="button" aria-label="Show color choices" disabled={disabled} onClick={() => setOpen((current) => !current)}><ChevronDown size={17} /></button>
+        {open ? <div className="color-combobox__menu" id={listId} role="listbox">
+          {colorOptions.map((color) => <button type="button" role="option" aria-selected={color.normalized_name === name.normalize('NFKC').trim().toLocaleLowerCase()} key={color.id} onClick={() => { selectRemembered(color.name); setOpen(false) }}><span className="filament-swatch" style={filamentSwatchStyle(color.color_mode, color.color_hexes, color.color_hex)} />{color.name}</button>)}
+        </div> : null}
+      </div>
       <small className="field-help">Choose a remembered color or type any custom color name.</small>
     </label>
     <label>
       Display type
-      <select value={mode} onChange={(event) => changeMode(event.target.value as FilamentColorMode)} disabled={disabled}>
+      <select value={mode === 'rainbow' ? 'solid' : mode} onChange={(event) => changeMode(event.target.value as FilamentColorMode)} disabled={disabled || mode === 'rainbow'}>
         <option value="solid">Solid</option>
-        <option value="multicolor">Multicolor (2 or 3 colors)</option>
-        <option value="rainbow">Rainbow</option>
+        <option value="multicolor">Multicolor (1 to 3 colors)</option>
       </select>
     </label>
     {mode === 'multicolor' ? <label>
       Number of colors
       <select
-        value={Math.max(2, visibleColors.length)}
+        value={Math.max(1, visibleColors.length)}
         onChange={(event) => {
           const count = Number(event.target.value)
           const next = [...visibleColors]
@@ -83,6 +104,7 @@ export function FilamentColorEditor({
         }}
         disabled={disabled}
       >
+        <option value="1">1 color</option>
         <option value="2">2 colors</option>
         <option value="3">3 colors</option>
       </select>

@@ -30,6 +30,7 @@ DEFAULT_ASA_SETTINGS: dict[str, object] = {
     "support_speed_mm_s": None,
     "retraction_distance_mm": None,
     "retraction_speed_mm_s": None,
+    "retraction_prime_speed_mm_s": None,
     "cooling_enabled": False,
     "cooling_min_percent": "0",
     "cooling_max_percent": "0",

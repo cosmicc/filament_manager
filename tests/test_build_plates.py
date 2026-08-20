@@ -3,13 +3,16 @@
 import json
 from collections.abc import AsyncIterator
 from decimal import Decimal
+from io import BytesIO
 from typing import Any
 
 import httpx
 import pytest
 import respx
+from PIL import Image
 
 from filament_manager.api import dependencies
+from filament_manager.api.routes.plates import _sanitize_plate_image
 from filament_manager.clients.moonraker import MoonrakerClient, MoonrakerError
 from filament_manager.config import PrinterConfig, Settings
 from filament_manager.domain.build_plates import (
@@ -64,6 +67,22 @@ def test_discovery_rejects_an_excessive_number_of_plate_meshes() -> None:
         discover_build_plate_surface_codes(
             f"P{number}" for number in range(1, MAX_DISCOVERED_PLATE_SURFACES + 2)
         )
+
+
+def test_uploaded_plate_images_are_sanitized_and_bounded() -> None:
+    """Plate pictures are decoded and re-encoded instead of storing uploads verbatim."""
+
+    source = BytesIO()
+    Image.new("RGB", (1800, 900), "#2F80A5").save(source, format="PNG")
+
+    sanitized = _sanitize_plate_image(source.getvalue())
+
+    assert sanitized[:4] == b"RIFF"
+    with Image.open(BytesIO(sanitized)) as image:
+        assert image.format == "WEBP"
+        assert image.size == (1024, 512)
+    with pytest.raises(ValueError, match="valid PNG, JPEG, or WebP"):
+        _sanitize_plate_image(b"not an image")
 
 
 @respx.mock

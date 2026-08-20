@@ -28,6 +28,7 @@ const pages: Record<string, LazyExoticComponent<ComponentType>> = {
   '/': DashboardPage,
   '/spools': SpoolsPage,
   '/filaments': FilamentsPage,
+  '/filaments/new': FilamentsPage,
   '/profiles': ProfilesPage,
   '/prints': PrintHistoryPage,
   '/templates': TemplatesPage,

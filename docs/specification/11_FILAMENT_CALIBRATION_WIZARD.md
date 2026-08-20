@@ -53,7 +53,7 @@ Record:
 - selected pressure advance factor
 - calculation notes
 
-## Step 4 - Retraction Speed and Distance Tower
+## Step 4 - Retraction Retract/Prime Speed and Distance Tower
 
 Purpose: reduce stringing without causing jams, under-extrusion, or excessive wear.
 
@@ -62,7 +62,8 @@ Record:
 - distance range
 - speed range
 - selected retraction distance
-- selected retraction speed
+- selected retraction retract speed
+- selected retraction prime speed
 - travel/cooling conditions
 
 ## Step 5 - Size and Hole Calibration
@@ -134,13 +135,16 @@ The MVP can provide instructions and track user-sliced test files. Automated tow
 
 When mandatory steps are complete:
 
-1. show a consolidated comparison;
+1. show every derived Cura setting recommendation in a consolidated review;
 2. validate settings against printer limits;
 3. select preferred build-plate side;
-4. apply the results directly to the current profile;
-5. queue Spoolman and Google projections;
-6. offer Cura export;
-7. store pressure advance for the Cura Klipper Settings plugin in the material profile.
+4. apply the results directly to the current filament profile, including optional ironing;
+5. offer a rare, exact-name-confirmed action that overlays only template-supported recommendations on the latest linked template and cascades its linked profiles;
+6. queue the supported Spoolman, Google, and managed Cura projections;
+7. offer Cura export;
+8. store pressure advance for the Cura Klipper Settings plugin in the material profile.
+
+An unapplied calibration may be deleted only after confirmation. Applied calibration history is immutable. Product-specific baseline overrides must never be copied into a template, and optional ironing remains profile-only.
 
 ## Overrides
 

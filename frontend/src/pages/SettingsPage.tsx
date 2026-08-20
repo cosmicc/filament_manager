@@ -6,13 +6,12 @@ import {
   KeyRound,
   Moon,
   Pencil,
-  Plus,
   ShieldCheck,
   Smartphone,
   SlidersHorizontal,
   Sun,
   Upload,
-  Users,
+  UserRound,
 } from 'lucide-react'
 import { type ChangeEvent, type FormEvent, useMemo, useState } from 'react'
 import { apiFetch } from '../api/client'
@@ -20,7 +19,6 @@ import type {
   Device,
   OperationalSettings,
   User,
-  UserRole,
   WorkbookImportCounts,
   WorkbookImportRun,
 } from '../api/types'
@@ -31,90 +29,32 @@ import { Modal } from '../components/Modal'
 import { PageHeader } from '../components/PageHeader'
 import { StatusPill } from '../components/StatusPill'
 import { useAuth } from '../context/AuthContext'
-import { useTheme } from '../context/ThemeContext'
+import { THEME_OPTIONS, useTheme } from '../context/ThemeContext'
 import { dateTime, titleCase } from '../lib/format'
 
-function CreateUserModal({ onClose }: { onClose: () => void }) {
+function AccountEditorModal({ account, onClose }: { account: User; onClose: () => void }) {
   const client = useQueryClient()
-  const [username, setUsername] = useState('')
-  const [displayName, setDisplayName] = useState('')
-  const [password, setPassword] = useState('')
-  const [role, setRole] = useState<UserRole>('operator')
-  const [error, setError] = useState('')
-
-  const mutation = useMutation({
-    mutationFn: () => apiFetch<User>('/auth/users', {
-      method: 'POST',
-      body: JSON.stringify({ username, display_name: displayName, password, role }),
-    }),
-    onSuccess: async () => {
-      await client.invalidateQueries({ queryKey: ['users'] })
-      onClose()
-    },
-    onError: (caught) => setError(caught instanceof Error ? caught.message : 'Could not create user'),
-  })
-
-  function submit(event: FormEvent) {
-    event.preventDefault()
-    setError('')
-    mutation.mutate()
-  }
-
-  return (
-    <Modal
-      title="Create local account"
-      description="Assign only the access this person needs. Passwords are stored as Argon2id hashes."
-      onClose={onClose}
-      footer={(
-        <>
-          <button className="button" onClick={onClose}>Cancel</button>
-          <button className="button button--primary" form="create-user" disabled={mutation.isPending}>
-            Create account
-          </button>
-        </>
-      )}
-    >
-      <form id="create-user" className="form-stack" onSubmit={submit}>
-        <EditorSection title="Account identity" description="Names used for sign-in and attribution in the audit trail.">
-          <div className="form-grid">
-            <label>Username<input value={username} onChange={(event) => setUsername(event.target.value)} minLength={2} maxLength={80} autoComplete="off" required autoFocus /></label>
-            <label>Display name<input value={displayName} onChange={(event) => setDisplayName(event.target.value)} maxLength={120} required /></label>
-          </div>
-        </EditorSection>
-        <EditorSection title="Access and sign-in" description="Assign the least-privileged role and a securely shared temporary password.">
-          <div className="form-stack">
-            <label>Role<select value={role} onChange={(event) => setRole(event.target.value as UserRole)}><option value="administrator">Administrator</option><option value="operator">Operator</option><option value="viewer">Viewer</option></select><small className="field-help">Administrators manage users and overrides. Operators update workshop data. Viewers are read-only.</small></label>
-            <label>Temporary password<input type="password" value={password} onChange={(event) => setPassword(event.target.value)} minLength={10} maxLength={256} autoComplete="new-password" required /><small className="field-help">Use at least 10 characters. Share it through a secure channel.</small></label>
-          </div>
-        </EditorSection>
-        {error && <p className="form-error">{error}</p>}
-      </form>
-    </Modal>
-  )
-}
-
-function AccountEditorModal({ account, currentUserId, onClose }: { account: User; currentUserId: string; onClose: () => void }) {
-  const client = useQueryClient()
+  const { changePassword, refreshUser } = useAuth()
+  const [username, setUsername] = useState(account.username)
   const [displayName, setDisplayName] = useState(account.display_name)
-  const [role, setRole] = useState<UserRole>(account.role)
-  const [active, setActive] = useState(account.is_active)
-  const [temporaryPassword, setTemporaryPassword] = useState('')
+  const [currentPassword, setCurrentPassword] = useState('')
+  const [newPassword, setNewPassword] = useState('')
   const [error, setError] = useState('')
   const refresh = async () => { await client.invalidateQueries({ queryKey: ['users'] }) }
   const update = useMutation({
-    mutationFn: () => apiFetch<User>(`/auth/users/${account.id}`, { method: 'PATCH', body: JSON.stringify({ expected_version: account.record_version, display_name: displayName, role, is_active: active }) }),
-    onSuccess: async () => { await refresh(); onClose() },
+    mutationFn: () => apiFetch<User>(`/auth/users/${account.id}`, { method: 'PATCH', body: JSON.stringify({ expected_version: account.record_version, username, display_name: displayName }) }),
+    onSuccess: async () => { await Promise.all([refresh(), refreshUser()]); onClose() },
     onError: (caught) => setError(caught instanceof Error ? caught.message : 'Account could not be updated'),
   })
-  const reset = useMutation({
-    mutationFn: () => apiFetch<User>(`/auth/users/${account.id}/reset-password`, { method: 'POST', body: JSON.stringify({ expected_version: account.record_version, temporary_password: temporaryPassword }) }),
-    onSuccess: async () => { setTemporaryPassword(''); await refresh(); onClose() },
-    onError: (caught) => setError(caught instanceof Error ? caught.message : 'Password could not be reset'),
+  const password = useMutation({
+    mutationFn: () => changePassword(currentPassword, newPassword),
+    onSuccess: () => { setCurrentPassword(''); setNewPassword(''); onClose() },
+    onError: (caught) => setError(caught instanceof Error ? caught.message : 'Password could not be changed'),
   })
-  return <Modal title={`Manage ${account.display_name}`} description="Role, activation, and password operations are audited and revoke sessions when required." onClose={onClose} footer={<><button className="button" onClick={onClose}>Cancel</button><button className="button button--primary" onClick={() => update.mutate()} disabled={update.isPending}>Save account</button></>}>
+  return <Modal title="Edit account" description="Update the only local administrator identity or replace its password." onClose={onClose} footer={<><button className="button" onClick={onClose}>Cancel</button><button className="button button--primary" onClick={() => update.mutate()} disabled={update.isPending}>Save identity</button></>}>
     <div className="form-stack">
-      <EditorSection title="Identity and access" description="Use the least-privileged role that still permits the person's work."><div className="form-grid"><label>Display name<input value={displayName} onChange={(event) => setDisplayName(event.target.value)} maxLength={120} /></label><label>Role<select value={role} onChange={(event) => setRole(event.target.value as UserRole)}><option value="administrator">Administrator</option><option value="operator">Operator</option><option value="viewer">Viewer</option></select></label></div><label className="check-row"><input type="checkbox" checked={active} disabled={account.id === currentUserId} onChange={(event) => setActive(event.target.checked)} /><span><strong>Account active</strong><small>Deactivation immediately revokes this account's sessions.</small></span></label></EditorSection>
-      {account.id !== currentUserId ? <EditorSection title="Temporary password" description="Resetting revokes every session and requires the person to choose a new password at next sign-in."><label>Temporary password<input type="password" minLength={10} maxLength={256} value={temporaryPassword} onChange={(event) => setTemporaryPassword(event.target.value)} autoComplete="new-password" /></label><button className="button" disabled={temporaryPassword.length < 10 || reset.isPending} onClick={() => reset.mutate()}><KeyRound size={17} /> Reset password</button></EditorSection> : null}
+      <EditorSection title="Identity" description="The username is used at sign-in; the display name appears in activity records."><div className="form-grid"><label>Username<input value={username} onChange={(event) => setUsername(event.target.value)} minLength={2} maxLength={80} /></label><label>Display name<input value={displayName} onChange={(event) => setDisplayName(event.target.value)} maxLength={120} /></label></div></EditorSection>
+      <EditorSection title="Change password" description="Changing the password revokes every other browser session."><div className="form-grid"><label>Current password<input type="password" value={currentPassword} onChange={(event) => setCurrentPassword(event.target.value)} autoComplete="current-password" /></label><label>New password<input type="password" minLength={10} maxLength={256} value={newPassword} onChange={(event) => setNewPassword(event.target.value)} autoComplete="new-password" /></label></div><button className="button" disabled={!currentPassword || newPassword.length < 10 || password.isPending} onClick={() => password.mutate()}><KeyRound size={17} /> Change password</button></EditorSection>
       {account.must_change_password ? <p className="warning-note"><KeyRound size={17} /> Password replacement is required at next sign-in.</p> : null}
       {error ? <p className="form-error" role="alert">{error}</p> : null}
     </div>
@@ -135,13 +75,8 @@ function OperationalPolicyPanel({ administrator }: { administrator: boolean }) {
 }
 
 function AppearancePanel() {
-  const { theme, toggleTheme } = useTheme()
-
-  function chooseTheme(nextTheme: 'light' | 'dark') {
-    if (nextTheme !== theme) toggleTheme()
-  }
-
-  return <article className="card settings-section settings-section--wide"><header className="card__header"><div><p className="eyebrow">Appearance</p><h2>{theme === 'light' ? <Sun size={20} /> : <Moon size={20} />} Color theme</h2></div></header><p>Choose the appearance used by this browser.</p><div className="segmented-control" role="group" aria-label="Color theme"><button className={theme === 'light' ? 'active' : ''} aria-pressed={theme === 'light'} onClick={() => chooseTheme('light')}><Sun size={17} /> Light theme</button><button className={theme === 'dark' ? 'active' : ''} aria-pressed={theme === 'dark'} onClick={() => chooseTheme('dark')}><Moon size={17} /> Dark theme</button></div></article>
+  const { theme, setTheme } = useTheme()
+  return <article className="card settings-section settings-section--wide"><header className="card__header"><div><p className="eyebrow">Appearance</p><h2>{theme.startsWith('light-') ? <Sun size={20} /> : <Moon size={20} />} Color profile</h2></div></header><p>Choose one of three light or five dark palettes for this browser.</p><div className="theme-profile-grid">{THEME_OPTIONS.map((option) => <button key={option.id} className={`theme-profile${theme === option.id ? ' theme-profile--active' : ''}`} aria-pressed={theme === option.id} onClick={() => setTheme(option.id)}><span className="theme-profile__swatches">{option.swatches.map((color) => <i key={color} style={{ background: color }} />)}</span><span><strong>{option.label}</strong><small>{option.mode === 'light' ? 'Light' : 'Dark'} · {option.description}</small></span></button>)}</div></article>
 }
 
 function WorkbookImportPanel({ administrator }: { administrator: boolean }) {
@@ -358,7 +293,6 @@ export default function SettingsPage() {
     enabled: administrator,
   })
   const devices = useQuery({ queryKey: ['devices'], queryFn: () => apiFetch<Device[]>('/devices') })
-  const [creating, setCreating] = useState(false)
   const [editingAccount, setEditingAccount] = useState<User | null>(null)
 
   return (
@@ -366,12 +300,7 @@ export default function SettingsPage() {
       <PageHeader
         eyebrow="Local administration"
         title="Settings"
-        description="Appearance, accounts, workshop adapters, and the security posture of this installation."
-        actions={administrator ? (
-          <button className="button button--primary" onClick={() => setCreating(true)}>
-            <Plus size={17} /> Add account
-          </button>
-        ) : undefined}
+        description="Appearance, the local account, workshop adapters, and print-safety preferences."
       />
 
       <section className="settings-grid">
@@ -384,67 +313,32 @@ export default function SettingsPage() {
         <article className="card settings-section settings-section--wide">
           <header className="card__header">
             <div>
-              <p className="eyebrow">Local roles</p>
-              <h2><Users size={20} /> Accounts</h2>
+              <p className="eyebrow">Local administrator</p>
+              <h2><UserRound size={20} /> Account</h2>
             </div>
           </header>
           {!administrator ? (
             <p className="permission-note">
-              <ShieldCheck size={18} /> Only administrators can inspect or create local accounts.
+              <ShieldCheck size={18} /> Only the administrator can edit this account.
             </p>
           ) : users.isLoading ? (
             <LoadingState />
           ) : (
             <div className="user-list">
-              {users.data?.map((account) => (
+              {users.data?.slice(0, 1).map((account) => (
                 <div className="user-row" key={account.id}>
                   <span className="account__avatar">{account.display_name.slice(0, 1).toUpperCase()}</span>
                   <div>
                     <strong>{account.display_name}</strong>
                     <small>@{account.username}</small>
                   </div>
-                  <StatusPill
-                    status={account.is_active ? 'active' : 'disabled'}
-                    label={titleCase(account.role)}
-                  />
-                  {account.id === user?.id && <span className="you-label">You</span>}
-                  <button className="icon-button" onClick={() => setEditingAccount(account)} aria-label={`Manage ${account.display_name}`}><Pencil size={17} /></button>
+                  <StatusPill status="active" label="Administrator" />
+                  <span className="you-label">Only account</span>
+                  <button className="icon-button" onClick={() => setEditingAccount(account)} aria-label="Edit account"><Pencil size={17} /></button>
                 </div>
               ))}
             </div>
           )}
-        </article>
-
-        <article className="card settings-section">
-          <header className="card__header">
-            <div>
-              <p className="eyebrow">Security defaults</p>
-              <h2><ShieldCheck size={20} /> Protected by design</h2>
-            </div>
-          </header>
-          <ul className="feature-list">
-            <li>
-              <KeyRound size={17} />
-              <span>
-                <strong>Argon2id credentials</strong>
-                <small>Local password hashes; no default account.</small>
-              </span>
-            </li>
-            <li>
-              <ShieldCheck size={17} />
-              <span>
-                <strong>Revocable sessions</strong>
-                <small>HttpOnly cookies, CSRF binding, idle expiry.</small>
-              </span>
-            </li>
-            <li>
-              <ShieldCheck size={17} />
-              <span>
-                <strong>Least privilege</strong>
-                <small>Administrator, Operator, and Viewer enforcement.</small>
-              </span>
-            </li>
-          </ul>
         </article>
 
         <article className="card settings-section settings-section--wide">
@@ -493,8 +387,7 @@ export default function SettingsPage() {
         </article>
       </section>
 
-      {creating && <CreateUserModal onClose={() => setCreating(false)} />}
-      {editingAccount && user ? <AccountEditorModal account={editingAccount} currentUserId={user.id} onClose={() => setEditingAccount(null)} /> : null}
+      {editingAccount ? <AccountEditorModal account={editingAccount} onClose={() => setEditingAccount(null)} /> : null}
     </div>
   )
 }

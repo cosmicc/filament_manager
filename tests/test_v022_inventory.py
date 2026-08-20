@@ -229,6 +229,16 @@ async def test_physical_nozzle_side_b_and_distinct_completed_print_counts(
             )
             assert installed.status_code == 200, installed.text
             assert installed.json()["installed_printer_id"] == str(printer_id)
+            renamed_nozzle = await client.patch(
+                f"/api/v1/nozzles/{nozzle_id}",
+                json={
+                    "expected_version": installed.json()["record_version"],
+                    "nozzle_code": "NZ-040-HS-PRIMARY",
+                },
+            )
+            assert renamed_nozzle.status_code == 200, renamed_nozzle.text
+            assert renamed_nozzle.json()["nozzle_code"] == "NZ-040-HS-PRIMARY"
+            assert renamed_nozzle.json()["installed_printer_id"] == str(printer_id)
 
             side_b = await client.post(f"/api/v1/build-plates/{plate_id}/surfaces", json={})
             assert side_b.status_code == 201, side_b.text

@@ -68,19 +68,13 @@ class UserCreate(ApiModel):
 
 
 class UserUpdate(ApiModel):
-    """Administrator-managed account identity, role, and activation state."""
+    """Editable identity for the installation's single administrator."""
+
+    model_config = ConfigDict(from_attributes=True, extra="forbid")
 
     expected_version: int = Field(ge=1)
+    username: str | None = Field(default=None, min_length=2, max_length=80)
     display_name: str | None = Field(default=None, min_length=1, max_length=120)
-    role: UserRole | None = None
-    is_active: bool | None = None
-
-
-class UserPasswordReset(ApiModel):
-    """Administrator-set temporary password requiring replacement at sign-in."""
-
-    expected_version: int = Field(ge=1)
-    temporary_password: str = Field(min_length=10, max_length=256)
 
 
 class PasswordChange(ApiModel):
@@ -105,7 +99,7 @@ class FilamentCreate(ApiModel):
     color_name: str = Field(min_length=1, max_length=96)
     color_hex: str | None = Field(default=None, pattern=r"^[0-9A-Fa-f]{6}$")
     color_mode: Literal["solid", "multicolor", "rainbow"] = "solid"
-    color_hexes: list[ColorHex] = Field(default_factory=list, max_length=6)
+    color_hexes: list[ColorHex] = Field(default_factory=list, max_length=3)
     product_name: str | None = Field(default=None, max_length=160)
     diameter_mm: Decimal = Field(gt=0)
     tolerance_mm: Decimal | None = Field(default=None, ge=0)
@@ -134,7 +128,7 @@ class FilamentUpdate(ApiModel):
     color_name: str | None = Field(default=None, min_length=1, max_length=96)
     color_hex: str | None = Field(default=None, pattern=r"^[0-9A-Fa-f]{6}$")
     color_mode: Literal["solid", "multicolor", "rainbow"] | None = None
-    color_hexes: list[ColorHex] | None = Field(default=None, max_length=6)
+    color_hexes: list[ColorHex] | None = Field(default=None, max_length=3)
     product_name: str | None = Field(default=None, max_length=160)
     diameter_mm: Decimal | None = Field(default=None, gt=0)
     tolerance_mm: Decimal | None = Field(default=None, ge=0)
@@ -336,6 +330,8 @@ class BuildPlateResponse(ApiModel):
     mesh_due_after_prints: int
     mesh_due_after_days: int
     notes: str | None
+    image_url: str | None = None
+    image_version: int = 0
     record_version: int
     surfaces: list[BuildPlateSurfaceResponse]
 
@@ -491,6 +487,7 @@ class MaterialSettingsInput(ApiModel):
     support_speed_mm_s: Decimal | None = Field(default=None, gt=0)
     retraction_distance_mm: Decimal | None = Field(default=None, ge=0)
     retraction_speed_mm_s: Decimal | None = Field(default=None, ge=0)
+    retraction_prime_speed_mm_s: Decimal | None = Field(default=None, ge=0)
     cooling_enabled: bool = True
     cooling_min_percent: Decimal = Field(ge=0, le=100)
     cooling_max_percent: Decimal = Field(ge=0, le=100)
@@ -555,6 +552,22 @@ class MaterialSettingsInput(ApiModel):
         if isinstance(minimum, Decimal) and minimum > value:
             raise ValueError("Maximum fan must be at least the minimum fan")
         return value
+
+
+class CalibrationSuggestionsResponse(ApiModel):
+    """Complete reviewed settings plus the values derived by calibration."""
+
+    settings: MaterialSettingsInput
+    suggestions: dict[str, Any]
+    template_id: UUID
+    template_name: str
+
+
+class CalibrationTemplateApplyRequest(ApiModel):
+    """Explicit high-impact confirmation for cascading calibration to a template."""
+
+    expected_version: int = Field(ge=1)
+    confirm_template_name: str = Field(min_length=1, max_length=160)
 
 
 class ProfileCreate(MaterialSettingsInput):
@@ -753,6 +766,12 @@ class NozzleUpdate(ApiModel):
     """Edit physical nozzle metadata with optimistic concurrency."""
 
     expected_version: int = Field(ge=1)
+    nozzle_code: str | None = Field(
+        default=None,
+        min_length=1,
+        max_length=64,
+        pattern=r"^[A-Za-z0-9][A-Za-z0-9._-]*$",
+    )
     diameter_mm: Decimal | None = Field(default=None, gt=0, le=10)
     material: str | None = Field(default=None, min_length=1, max_length=96)
     manufacturer: str | None = Field(default=None, max_length=160)

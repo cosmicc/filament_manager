@@ -82,3 +82,32 @@ async def test_realtime_state_retry_never_waits_longer_than_its_poll_interval(
     assert persisted.status == JobStatus.PENDING
     assert persisted.next_attempt_at <= before.replace(microsecond=0) + dispatcher.timedelta(seconds=16)
     session.commit.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_successful_periodic_job_supersedes_older_dead_runs() -> None:
+    """Recovered periodic services no longer leave stale dead counts in diagnostics."""
+
+    persisted = SimpleNamespace(
+        id=uuid4(),
+        job_type="moonraker.state.reconcile",
+        idempotency_key="periodic:moonraker.state.reconcile:123",
+        status=JobStatus.RUNNING,
+        locked_by="worker-1",
+        locked_at=datetime.now(UTC),
+        completed_at=None,
+    )
+    session = SimpleNamespace(
+        get=AsyncMock(return_value=persisted),
+        execute=AsyncMock(),
+        commit=AsyncMock(),
+    )
+
+    await dispatcher.complete_job(  # type: ignore[arg-type]
+        session,
+        SimpleNamespace(id=persisted.id, locked_by="worker-1"),
+    )
+
+    assert persisted.status == JobStatus.COMPLETED
+    session.execute.assert_awaited_once()
+    session.commit.assert_awaited_once()

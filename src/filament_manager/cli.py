@@ -2,72 +2,20 @@
 
 import asyncio
 import json
-import os
 import time
 from pathlib import Path
 from typing import Annotated
 from uuid import UUID
 
 import typer
-from sqlalchemy import func, select
 
 from filament_manager.config import get_settings
 from filament_manager.database import get_session_factory
-from filament_manager.models.auth import User
-from filament_manager.models.enums import UserRole
-from filament_manager.security import hash_password, normalize_username
 from filament_manager.services.diagnostics import queue_projection_rebuild, run_recovery_validation
 from filament_manager.services.seed import seed_configured_system
 from filament_manager.services.workbook_import import commit_approved_run, save_dry_run
 
 app = typer.Typer(no_args_is_help=True, help="Filament Manager administrative commands")
-
-
-def _resolve_bootstrap_password(password_file: Path | None) -> str:
-    """Resolve the first-user password from one explicit credential source."""
-
-    environment_password = os.environ.get("FILAMENT_MANAGER_BOOTSTRAP_ADMIN_PASSWORD")
-    if password_file is not None and environment_password:
-        raise typer.BadParameter(
-            "set only one of --password-file or FILAMENT_MANAGER_BOOTSTRAP_ADMIN_PASSWORD"
-        )
-    if password_file is not None:
-        password = password_file.read_text(encoding="utf-8").rstrip("\r\n")
-    elif environment_password:
-        password = environment_password
-    else:
-        raise typer.BadParameter("provide --password-file or FILAMENT_MANAGER_BOOTSTRAP_ADMIN_PASSWORD")
-    if not password:
-        raise typer.BadParameter("bootstrap password cannot be empty")
-    return password
-
-
-@app.command("bootstrap-admin")
-def bootstrap_admin(
-    username: Annotated[str, typer.Option()],
-    display_name: Annotated[str, typer.Option()],
-    password_file: Annotated[Path | None, typer.Option(exists=True, readable=True)] = None,
-) -> None:
-    """Create the first administrator from an environment value or local file."""
-
-    password = _resolve_bootstrap_password(password_file)
-
-    async def command() -> None:
-        async with get_session_factory()() as session:
-            if await session.scalar(select(func.count(User.id))):
-                raise typer.BadParameter("users already exist; use authenticated user management")
-            user = User(
-                username=username.strip(),
-                normalized_username=normalize_username(username),
-                display_name=display_name.strip(),
-                password_hash=hash_password(password),
-                role=UserRole.ADMINISTRATOR,
-            )
-            session.add(user)
-            await session.commit()
-            typer.echo(f"Created administrator {user.username}")
-
-    asyncio.run(command())
 
 
 @app.command("seed-system")

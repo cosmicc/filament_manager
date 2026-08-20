@@ -1,5 +1,32 @@
 # Changelog
 
+## 0.3.0 - 08.20.2026
+
+### Added
+
+- Added separate Retraction Retract Speed and Retraction Prime Speed tracking plus Cooling controls for Regular Fan Speed, Maximum Fan Speed, Regular Fan Speed at Layer, Minimum Layer Time, and Minimum Speed across templates, profiles, imports, exports, comparison, G-code inspection, migrations, and Cura synchronization.
+- Added a completed-calibration recommendation review with direct filament-profile application, exact-name-confirmed linked-template application/cascade, and confirmed deletion for unapplied calibrations.
+- Added bounded build-plate picture upload, secure metadata-stripped WebP normalization in PostgreSQL, plate-card imagery, editable unique nozzle codes, and an installed-nozzle card highlight.
+- Added eight distinct GUI color profiles—three light and five dark—under Settings, plus semantic Activity card colors and quick actions for selecting and adding filament.
+- Added single-account username, display-name, and password editing with other-session revocation.
+
+### Changed
+
+- Changed the application to exactly one Administrator account. An empty database creates `admin` / `admin` and forces a first-login password change; existing single-account credentials remain unchanged, and Docker username/password variables plus the bootstrap service were removed.
+- Changed Rainbow from a display type to a fixed color and changed Multicolor to one, two, or three product-specific samples so unrelated multicolor filaments no longer share one palette.
+- Changed profile Cura exports to download JSON attachments, enlarged the independently decodable centered spool icon in QR labels, and advanced the workstation renderer revision to 5.
+- Changed Dashboard Quick Actions to a full-width horizontal card and removed the Workshop Operations diagnostics card. Simplified Integrations by removing duplicated operational status and the top Diagnostics action.
+- Changed Initial Fan Speed to a silent deterministic zero, hid the legacy Retraction Speed alias, and kept the requested canonical retract and prime speeds independent during Cura edits.
+- Changed all server, frontend, and workstation-agent version surfaces to 0.3.0.
+
+### Fixed
+
+- Fixed 1,125 recovered recurring projection failures remaining reported as actionable dead queue debt; successful recurring work now supersedes older dead rows and the migration converts accumulated periodic failures.
+- Fixed Moonraker state failures lacking enough sanitized context by identifying the failing active-spool, drift-repair, catalog, or build-plate sub-operation.
+- Fixed completed-print G-code inspection warning that no exact managed profile could be resolved even when the file contained a known deterministic managed material GUID.
+- Fixed the filament color dropdown not reopening the known-color list while retaining support for a newly typed color.
+- Fixed a prime-speed-only Cura change clearing the independent retraction retract speed during settings merge.
+
 ## 0.2.6 - 08.19.2026
 
 ### Added

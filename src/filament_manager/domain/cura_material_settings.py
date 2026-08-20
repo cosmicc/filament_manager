@@ -78,11 +78,17 @@ CURA_MATERIAL_SETTINGS: tuple[CuraMaterialSetting, ...] = (
     _number("roofing_material_flow", "Top Surface Skin Flow", "%"),
     _number("skirt_brim_material_flow", "Skirt/Brim Flow", "%"),
     _number("cool_min_layer_time_fan_speed_max", "Minimum Layer Time at Maximum Fan", "s"),
-    _number("retraction_speed", "Retraction Speed", "mm/s"),
+    CuraMaterialSetting(
+        "retraction_speed",
+        "Legacy Retraction Speed Alias",
+        "number",
+        "mm/s",
+        editable=False,
+    ),
     _boolean("retract_at_layer_change", "Retract at Layer Change"),
-    _number("cool_min_speed", "Minimum Print Speed", "mm/s"),
+    _number("cool_min_speed", "Minimum Speed", "mm/s"),
     _number("speed_wall", "Wall Speed", "mm/s"),
-    _number("cool_fan_speed_0", "Initial Fan Speed", "%"),
+    CuraMaterialSetting("cool_fan_speed_0", "Initial Fan Speed", "number", "%", editable=False),
 )
 
 CURA_MATERIAL_SETTING_KEYS = frozenset(setting.key for setting in CURA_MATERIAL_SETTINGS)
@@ -96,8 +102,7 @@ CURA_EDITABLE_SETTING_KEYS = frozenset(setting.key for setting in CURA_MATERIAL_
 CURA_PROFILE_ALIAS_SETTING_KEYS = frozenset(
     {
         "cool_fan_speed_max",
-        "retraction_prime_speed",
-        "retraction_retract_speed",
+        "retraction_speed",
     }
 )
 
@@ -116,6 +121,8 @@ CURA_TYPED_SETTING_KEYS = frozenset(
         "material_flow",
         "material_print_temperature",
         "retraction_amount",
+        "retraction_prime_speed",
+        "retraction_retract_speed",
         "retraction_speed",
         "speed_infill",
         "speed_layer_0",
@@ -149,6 +156,7 @@ class MaterialProfileValues(Protocol):
     support_speed_mm_s: Decimal | None
     retraction_distance_mm: Decimal | None
     retraction_speed_mm_s: Decimal | None
+    retraction_prime_speed_mm_s: Decimal | None
     cooling_enabled: bool
     cooling_min_percent: Decimal
     cooling_max_percent: Decimal
@@ -184,9 +192,10 @@ def cura_settings_for_profile(profile: MaterialProfileValues) -> dict[str, objec
         "material_flow": _decimal(profile.flow_percent),
         "material_print_temperature": _decimal(profile.extruder_temp_c),
         "retraction_amount": _decimal(profile.retraction_distance_mm),
-        "retraction_prime_speed": _decimal(profile.retraction_speed_mm_s),
+        "retraction_prime_speed": _decimal(profile.retraction_prime_speed_mm_s),
         "retraction_retract_speed": _decimal(profile.retraction_speed_mm_s),
         "retraction_speed": _decimal(profile.retraction_speed_mm_s),
+        "cool_fan_speed_0": "0",
         "speed_infill": _decimal(profile.infill_speed_mm_s),
         "speed_layer_0": _decimal(profile.initial_layer_speed_mm_s),
         "speed_print": _decimal(profile.print_speed_mm_s),

@@ -131,7 +131,7 @@ def test_non_http_services_disable_the_image_healthcheck() -> None:
         assert services["worker"]["healthcheck"] == {"disable": True}
 
     local_services = _read_yaml("docker/docker-compose.yml")["services"]
-    assert local_services["bootstrap-admin"]["healthcheck"] == {"disable": True}
+    assert "bootstrap-admin" not in local_services
 
 
 def test_klipper_macro_variables_are_valid_python_literals() -> None:

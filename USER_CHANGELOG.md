@@ -1,5 +1,29 @@
 # User Changelog
 
+## 0.3.0 - 08.20.2026
+
+### Added
+
+- Added separate Retraction Retract Speed and Retraction Prime Speed values and the requested five Cooling settings for every filament and template. Initial Fan Speed is always zero without adding another visible option.
+- Added a final calibration-results review that can apply recommendations to the filament or, after a strong confirmation, to its linked material template. Unapplied calibrations can now be deleted with confirmation.
+- Added build-plate picture uploads, editable nozzle codes, and a visual highlight on the currently installed nozzle.
+- Added three light and five dark GUI color profiles in Settings, clearer color-coded Activity cards, and full-width horizontal Dashboard Quick Actions with Select Filament and Add Filament.
+- Added one Account editor for changing the Administrator username, display name, and password.
+
+### Changed
+
+- New installations now use `admin` / `admin` and require the password to be changed on first login. Existing single-account credentials are retained, and Docker account variables are no longer used.
+- Rainbow is now a filament color. Multicolor filaments can use one, two, or three individual colors, and each multicolor filament keeps its own spool palette.
+- Downloading Cura settings now saves a JSON file. QR labels use a larger centered colored spool icon while remaining scannable.
+- Dashboard and Integrations no longer duplicate Diagnostics information, and the Settings Security Defaults card was removed.
+
+### Fixed
+
+- Fixed Diagnostics reporting 1,125 old recurring jobs as dead even after later runs recovered; recovered history no longer counts as active queue debt.
+- Fixed completed prints warning that no exact managed material profile could be resolved when their G-code contained a valid Filament Manager material ID.
+- Fixed the filament color selector not reopening its list when choosing a different known color.
+- Fixed a Cura prime-speed edit being able to clear the independently tracked retraction retract speed.
+
 ## 0.2.6 - 08.19.2026
 
 ### Added

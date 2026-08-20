@@ -40,6 +40,7 @@ from filament_manager.models.operations import (
 )
 from filament_manager.security import hash_password
 from filament_manager.services import events
+from filament_manager.services.accounts import ensure_single_administrator
 from filament_manager.services.notifications import upsert_notification
 
 WORKBOOK = Path(__file__).parents[1] / "reference" / "Filament Inventory Master.xlsx"
@@ -250,6 +251,32 @@ async def test_seed_system_route_creates_configured_resources(monkeypatch: pytes
                     "nominal_net_mass_g": "1000",
                 },
             )
+            multicolor_one = await client.post(
+                "/api/v1/filaments",
+                json={
+                    "material_type": "PLA",
+                    "product_name": "Blend A",
+                    "color_name": "Galaxy",
+                    "color_mode": "multicolor",
+                    "color_hexes": ["FF0000", "0000FF"],
+                    "diameter_mm": "1.75",
+                    "density_g_cm3": "1.24",
+                    "nominal_net_mass_g": "1000",
+                },
+            )
+            multicolor_two = await client.post(
+                "/api/v1/filaments",
+                json={
+                    "material_type": "PETG",
+                    "product_name": "Blend B",
+                    "color_name": "Galaxy",
+                    "color_mode": "multicolor",
+                    "color_hexes": ["00FF00", "FFFF00", "800080"],
+                    "diameter_mm": "1.75",
+                    "density_g_cm3": "1.27",
+                    "nominal_net_mass_g": "1000",
+                },
+            )
             recolored = await client.patch(
                 f"/api/v1/filaments/{red_one.json()['id']}",
                 json={"expected_version": 1, "color_hex": "A00000"},
@@ -358,6 +385,10 @@ async def test_seed_system_route_creates_configured_resources(monkeypatch: pytes
         assert seeded_again.json() == {"plates": 0, "printers": 0, "templates": 0}
         assert red_one.status_code == 201, red_one.text
         assert red_two.status_code == 201, red_two.text
+        assert multicolor_one.status_code == 201, multicolor_one.text
+        assert multicolor_two.status_code == 201, multicolor_two.text
+        assert multicolor_one.json()["color_hexes"] == ["FF0000", "0000FF"]
+        assert multicolor_two.json()["color_hexes"] == ["00FF00", "FFFF00", "800080"]
         assert recolored.status_code == 200, recolored.text
         assert recolored.json()["color_name"] == "Red"
         assert recolored.json()["color_hex"] == "A00000"
@@ -403,8 +434,17 @@ async def test_seed_system_route_creates_configured_resources(monkeypatch: pytes
             products = list(
                 await session.scalars(select(FilamentProduct).order_by(FilamentProduct.material_type))
             )
-            assert [product.color_hex for product in products] == ["A00000", "A00000"]
-            assert [product.color_name for product in products] == ["Red", "Red"]
+            red_products = [product for product in products if product.color_name.casefold() == "red"]
+            galaxy_products = {
+                product.product_name: product.color_hexes
+                for product in products
+                if product.color_name == "Galaxy"
+            }
+            assert [product.color_hex for product in red_products] == ["A00000", "A00000"]
+            assert galaxy_products == {
+                "Blend A": ["FF0000", "0000FF"],
+                "Blend B": ["00FF00", "FFFF00", "800080"],
+            }
             audit = await session.scalar(select(AuditEvent).where(AuditEvent.action == "system.seed.web"))
             assert audit is not None
             assert audit.after == {"plates": 5, "printers": 1, "templates": 1}
@@ -414,10 +454,10 @@ async def test_seed_system_route_creates_configured_resources(monkeypatch: pytes
 
 @pytest.mark.integration
 @pytest.mark.asyncio
-async def test_temporary_password_and_account_lifecycle_controls(
+async def test_single_account_password_identity_and_session_controls(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """Enforce password replacement, session revocation, and Administrator safeguards."""
+    """Enforce first-login replacement and singleton account editing."""
 
     with PostgresContainer("postgres:17-alpine", driver="psycopg") as postgres:
         database_url = postgres.get_connection_url().replace(
@@ -430,23 +470,11 @@ async def test_temporary_password_and_account_lifecycle_controls(
             await connection.run_sync(Base.metadata.create_all)
 
         async with factory() as session:
-            administrator = User(
-                username="account-admin",
-                normalized_username="account-admin",
-                display_name="Account Administrator",
-                password_hash=hash_password("administrator password"),
-                role=UserRole.ADMINISTRATOR,
-            )
-            temporary_operator = User(
-                username="temporary-operator",
-                normalized_username="temporary-operator",
-                display_name="Temporary Operator",
-                password_hash=hash_password("temporary password"),
-                role=UserRole.OPERATOR,
-                must_change_password=True,
-            )
+            assert await ensure_single_administrator(session) is True
+            administrator = await session.scalar(select(User))
+            assert administrator is not None
             plate = BuildPlate(plate_code="P1", display_name="Test Plate")
-            session.add_all([administrator, temporary_operator, plate])
+            session.add(plate)
             await session.flush()
             plate_surface = BuildPlateSurface(
                 build_plate_id=plate.id,
@@ -456,7 +484,6 @@ async def test_temporary_password_and_account_lifecycle_controls(
             )
             session.add(plate_surface)
             await session.commit()
-            temporary_operator_id = temporary_operator.id
             administrator_id = administrator.id
             plate_id = plate.id
             plate_surface_id = plate_surface.id
@@ -478,115 +505,113 @@ async def test_temporary_password_and_account_lifecycle_controls(
         app.dependency_overrides[dependencies.session_dependency] = session_override
         transport = httpx.ASGITransport(app=app)
 
-        async with httpx.AsyncClient(transport=transport, base_url="http://testserver") as temporary:
-            login = await temporary.post(
+        async with httpx.AsyncClient(transport=transport, base_url="http://testserver") as admin:
+            login = await admin.post(
                 "/api/v1/auth/login",
-                json={"username": "temporary-operator", "password": "temporary password"},
+                json={"username": "admin", "password": "admin"},
             )
             assert login.status_code == 200, login.text
             assert login.json()["user"]["must_change_password"] is True
-            blocked = await temporary.get("/api/v1/settings/operational")
+            blocked = await admin.get("/api/v1/settings/operational")
             assert blocked.status_code == 403
             assert blocked.json()["code"] == "password_change_required"
-            assert (await temporary.get("/api/v1/auth/me")).status_code == 200
-            csrf = temporary.cookies[dependencies.CSRF_COOKIE]
-            changed = await temporary.post(
+            assert (await admin.get("/api/v1/auth/me")).status_code == 200
+            csrf = admin.cookies[dependencies.CSRF_COOKIE]
+            headers = {"X-CSRF-Token": csrf}
+            changed = await admin.post(
                 "/api/v1/auth/change-password",
-                headers={"X-CSRF-Token": csrf},
+                headers=headers,
                 json={
-                    "current_password": "temporary password",
-                    "new_password": "permanent operator password",
+                    "current_password": "admin",
+                    "new_password": "permanent administrator password",
                 },
             )
             assert changed.status_code == 200, changed.text
             assert changed.json()["must_change_password"] is False
-            assert (await temporary.get("/api/v1/settings/operational")).status_code == 200
+            assert (await admin.get("/api/v1/settings/operational")).status_code == 200
+            accounts = await admin.get("/api/v1/auth/users")
+            assert accounts.status_code == 200
+            assert [account["username"] for account in accounts.json()] == ["admin"]
+            rejected_role = await admin.patch(
+                f"/api/v1/auth/users/{administrator_id}",
+                headers=headers,
+                json={"expected_version": 2, "role": "operator"},
+            )
+            assert rejected_role.status_code == 422
+            created = await admin.post(
+                "/api/v1/auth/users",
+                headers=headers,
+                json={
+                    "username": "managed-viewer",
+                    "display_name": "Managed Viewer",
+                    "password": "temporary viewer password",
+                    "role": "viewer",
+                },
+            )
+            assert created.status_code == 405
+            renamed = await admin.patch(
+                f"/api/v1/auth/users/{administrator_id}",
+                headers=headers,
+                json={
+                    "expected_version": 2,
+                    "username": "owner",
+                    "display_name": "Printer Owner",
+                },
+            )
+            assert renamed.status_code == 200, renamed.text
+            assert renamed.json()["username"] == "owner"
 
-            async with httpx.AsyncClient(transport=transport, base_url="http://testserver") as admin:
-                login = await admin.post(
+            async with httpx.AsyncClient(transport=transport, base_url="http://testserver") as other:
+                other_login = await other.post(
                     "/api/v1/auth/login",
-                    json={"username": "account-admin", "password": "administrator password"},
-                )
-                assert login.status_code == 200, login.text
-                admin_csrf = admin.cookies[dependencies.CSRF_COOKIE]
-                headers = {"X-CSRF-Token": admin_csrf}
-                self_deactivation = await admin.patch(
-                    f"/api/v1/auth/users/{administrator_id}",
-                    headers=headers,
-                    json={"expected_version": 1, "is_active": False},
-                )
-                assert self_deactivation.status_code == 409
-                last_administrator = await admin.patch(
-                    f"/api/v1/auth/users/{administrator_id}",
-                    headers=headers,
-                    json={"expected_version": 1, "role": "operator"},
-                )
-                assert last_administrator.status_code == 409
-                created = await admin.post(
-                    "/api/v1/auth/users",
-                    headers=headers,
                     json={
-                        "username": "managed-viewer",
-                        "display_name": "Managed Viewer",
-                        "password": "temporary viewer password",
-                        "role": "viewer",
+                        "username": "owner",
+                        "password": "permanent administrator password",
                     },
                 )
-                assert created.status_code == 201, created.text
-                assert created.json()["must_change_password"] is True
-                managed_user_id = created.json()["id"]
-                deactivated = await admin.patch(
-                    f"/api/v1/auth/users/{managed_user_id}",
-                    headers=headers,
-                    json={"expected_version": 1, "is_active": False},
-                )
-                assert deactivated.status_code == 200, deactivated.text
-                reactivated = await admin.patch(
-                    f"/api/v1/auth/users/{managed_user_id}",
+                assert other_login.status_code == 200, other_login.text
+                changed_again = await admin.post(
+                    "/api/v1/auth/change-password",
                     headers=headers,
                     json={
-                        "expected_version": 2,
-                        "is_active": True,
-                        "display_name": "Restored Viewer",
+                        "current_password": "permanent administrator password",
+                        "new_password": "replacement administrator password",
                     },
                 )
-                assert reactivated.status_code == 200, reactivated.text
-                assert reactivated.json()["display_name"] == "Restored Viewer"
-                cleaned = await admin.post(
-                    f"/api/v1/build-plates/{plate_id}/maintenance-events",
-                    headers=headers,
-                    json={"maintenance_type": "cleaned", "notes": "Routine cleaning"},
-                )
-                assert cleaned.status_code == 201, cleaned.text
-                mesh_calibrated = await admin.post(
-                    f"/api/v1/build-plates/{plate_id}/maintenance-events",
-                    headers=headers,
-                    json={
-                        "maintenance_type": "mesh_calibrated",
-                        "surface_id": str(plate_surface_id),
-                    },
-                )
-                assert mesh_calibrated.status_code == 201, mesh_calibrated.text
-                maintenance = await admin.get(f"/api/v1/build-plates/maintenance/events?plate_id={plate_id}")
-                assert maintenance.status_code == 200
-                assert [item["maintenance_type"] for item in maintenance.json()] == [
-                    "mesh_calibrated",
-                    "cleaned",
-                ]
-                due_status = await admin.get("/api/v1/build-plates/maintenance/status")
-                assert due_status.status_code == 200
-                assert due_status.json()[0]["cleaning_due"] is False
-                assert due_status.json()[0]["surfaces"][0]["mesh_due"] is False
-                reset = await admin.post(
-                    f"/api/v1/auth/users/{temporary_operator_id}/reset-password",
-                    headers=headers,
-                    json={"expected_version": 2, "temporary_password": "replacement password"},
-                )
-                assert reset.status_code == 200, reset.text
-                assert reset.json()["must_change_password"] is True
+                assert changed_again.status_code == 200, changed_again.text
+                assert (await other.get("/api/v1/settings/operational")).status_code == 401
 
-            revoked = await temporary.get("/api/v1/settings/operational")
-            assert revoked.status_code == 401
+            cleaned = await admin.post(
+                f"/api/v1/build-plates/{plate_id}/maintenance-events",
+                headers=headers,
+                json={"maintenance_type": "cleaned", "notes": "Routine cleaning"},
+            )
+            assert cleaned.status_code == 201, cleaned.text
+            mesh_calibrated = await admin.post(
+                f"/api/v1/build-plates/{plate_id}/maintenance-events",
+                headers=headers,
+                json={
+                    "maintenance_type": "mesh_calibrated",
+                    "surface_id": str(plate_surface_id),
+                },
+            )
+            assert mesh_calibrated.status_code == 201, mesh_calibrated.text
+            maintenance = await admin.get(f"/api/v1/build-plates/maintenance/events?plate_id={plate_id}")
+            assert maintenance.status_code == 200
+            assert [item["maintenance_type"] for item in maintenance.json()] == [
+                "mesh_calibrated",
+                "cleaned",
+            ]
+            due_status = await admin.get("/api/v1/build-plates/maintenance/status")
+            assert due_status.status_code == 200
+            assert due_status.json()[0]["cleaning_due"] is False
+            assert due_status.json()[0]["surfaces"][0]["mesh_due"] is False
+            reset = await admin.post(
+                f"/api/v1/auth/users/{administrator_id}/reset-password",
+                headers=headers,
+                json={"expected_version": 4, "temporary_password": "replacement password"},
+            )
+            assert reset.status_code in {404, 405}
 
         async with factory() as session:
             notification = await upsert_notification(
