@@ -259,9 +259,8 @@ svg { flex: 0 0 auto; }
 .profile-version-list > div { display: flex; align-items: center; justify-content: space-between; gap: 12px; border-top: 1px solid var(--border); padding: 10px 0; }
 .profile-version-list > div > div { display: flex; align-items: center; gap: 7px; }
 .label-card { display: grid; grid-template-columns: 100px 1fr; gap: 15px; }
-.label-card__preview { position: relative; width: 100px; height: 100px; padding: 7px; background: white; }
+.label-card__preview { width: 100px; height: 100px; padding: 7px; background: white; }
 .label-card__preview img { width: 100%; height: 100%; }
-.label-card__preview .filament-swatch { position: absolute; right: -5px; bottom: -5px; }
 .label-card h2 { margin-bottom: 4px; font-size: 1.45rem; }
 .label-card p:last-child { color: var(--text-muted); }
 .label-card__actions { grid-column: 1 / -1; display: flex; gap: 8px; }

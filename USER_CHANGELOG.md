@@ -1,5 +1,19 @@
 # User Changelog
 
+## 0.2.6 - 08.19.2026
+
+### Added
+
+- Added a reusable full-color 128 x 128 Filament Manager icon for Pushover and other notification services.
+
+### Changed
+
+- Spool QR labels now place each filament's colored spool icon in the center of the code, including solid, multicolor, and rainbow palettes.
+
+### Fixed
+
+- Fixed the label preview showing a color badge that was missing from the saved and printed QR image.
+
 ## 0.2.5 - 08.18.2026
 
 ### Added
