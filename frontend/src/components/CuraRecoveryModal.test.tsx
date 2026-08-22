@@ -45,6 +45,10 @@ const snapshot: CuraRecoverySnapshot = {
   machine_count: 1,
   quality_profile_count: 3,
   plugin_count: 1,
+  capture_kind: 'automatic',
+  name: null,
+  description: null,
+  record_version: 1,
   plugins: [{
     package_id: 'MaterialSettingsPlugin',
     display_name: 'Material Settings',

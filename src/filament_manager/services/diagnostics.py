@@ -32,7 +32,7 @@ from filament_manager.models.workstations import CuraDeployment, CuraRecoveryRes
 from filament_manager.services.cura_library import build_cura_library, queue_cura_library
 from filament_manager.services.events import add_audit_event, add_outbox_job
 
-EXPECTED_SCHEMA_VERSION = "a3b4c5d6e789"
+EXPECTED_SCHEMA_VERSION = "b4c5d6e7f890"
 SYSTEM_AGGREGATE_ID = UUID("00000000-0000-0000-0000-000000000001")
 
 DATABASE_ERROR_CLASSES = {
@@ -88,6 +88,7 @@ def diagnostics_text(overview: dict[str, object]) -> str:
     checks = cast(list[dict[str, object]], overview["checks"])
     queue_counts = cast(dict[str, int], overview["queue_counts"])
     job_type_counts = cast(dict[str, int], overview["job_type_counts"])
+    failure_groups = cast(list[dict[str, object]], overview.get("failure_groups", []))
     error_log = cast(list[dict[str, object]], overview["error_log"])
     lines = [
         "Filament Manager diagnostics",
@@ -116,7 +117,24 @@ def diagnostics_text(overview: dict[str, object]) -> str:
     if job_type_counts:
         lines.extend(f"{key}: {value}" for key, value in sorted(job_type_counts.items()))
     else:
-        lines.append("No pending, running, or dead job types.")
+        lines.append("No pending, running, failed, or dead job types.")
+    lines.extend(["", "Active projection failures", "--------------------------"])
+    if failure_groups:
+        for failure in failure_groups:
+            occurred_at = cast(datetime, failure["occurred_at"])
+            lines.extend(
+                [
+                    f"{failure['job_type']}: {failure['count']} actionable failure(s)",
+                    (
+                        f"  Latest: {failure['status']} after {failure['attempts']}/"
+                        f"{failure['max_attempts']} attempts · {failure['error_class']}"
+                    ),
+                    f"  Occurred: {occurred_at.isoformat()}",
+                    f"  Detail: {failure.get('detail') or 'No additional detail retained.'}",
+                ]
+            )
+    else:
+        lines.append("No active projection failures.")
     lines.extend(["", "Recent errors", "-------------"])
     if error_log:
         for entry in error_log:
@@ -259,7 +277,7 @@ async def operational_overview(session: AsyncSession) -> dict[str, object]:
         queue_counts.setdefault(actionable_status.value, 0)
     job_rows = await session.execute(
         select(OutboxJob.job_type, func.count(OutboxJob.id))
-        .where(OutboxJob.status.in_((JobStatus.PENDING, JobStatus.RUNNING, JobStatus.DEAD)))
+        .where(OutboxJob.status.in_(actionable_statuses))
         .group_by(OutboxJob.job_type)
     )
     job_type_counts = {job_type: int(count) for job_type, count in job_rows}
@@ -376,6 +394,24 @@ async def operational_overview(session: AsyncSession) -> dict[str, object]:
                     ),
                     checked_at,
                 ),
+                _check(
+                    f"printer.{printer.id}.spool_preflight",
+                    f"{printer.name} spool preflight catalog",
+                    "synchronization",
+                    (
+                        "healthy"
+                        if printer.spool_preflight_status == "healthy"
+                        else "warning"
+                        if printer.spool_preflight_status in {"unknown", "not_installed", "restoring"}
+                        else "error"
+                    ),
+                    printer.spool_preflight_message
+                    or (
+                        "Last successful catalog synchronization: "
+                        f"{printer.last_spool_preflight_sync_at or 'never'}"
+                    ),
+                    checked_at,
+                ),
             ]
         )
 
@@ -439,12 +475,71 @@ async def operational_overview(session: AsyncSession) -> dict[str, object]:
             )
         )
 
+    failure_statuses = (
+        JobStatus.PENDING,
+        JobStatus.RUNNING,
+        JobStatus.FAILED,
+        JobStatus.DEAD,
+    )
+    failure_count_rows = await session.execute(
+        select(OutboxJob.job_type, func.count(OutboxJob.id))
+        .where(
+            OutboxJob.status.in_(failure_statuses),
+            OutboxJob.last_error_class.is_not(None),
+        )
+        .group_by(OutboxJob.job_type)
+    )
+    failure_counts = {job_type: int(count) for job_type, count in failure_count_rows}
+    ranked_failures = (
+        select(
+            OutboxJob.id.label("job_id"),
+            func.row_number()
+            .over(
+                partition_by=OutboxJob.job_type,
+                order_by=(
+                    OutboxJob.last_error_at.desc().nullslast(),
+                    OutboxJob.created_at.desc(),
+                ),
+            )
+            .label("failure_rank"),
+        )
+        .where(
+            OutboxJob.status.in_(failure_statuses),
+            OutboxJob.last_error_class.is_not(None),
+        )
+        .subquery()
+    )
+    latest_failures = list(
+        await session.scalars(
+            select(OutboxJob)
+            .join(ranked_failures, ranked_failures.c.job_id == OutboxJob.id)
+            .where(ranked_failures.c.failure_rank == 1)
+            .order_by(OutboxJob.job_type)
+        )
+    )
+    failure_groups = [
+        {
+            "job_type": job.job_type,
+            "count": failure_counts[job.job_type],
+            "status": job.status.value,
+            "attempts": job.attempts,
+            "max_attempts": job.max_attempts,
+            "error_class": job.last_error_class or "UnknownError",
+            "detail": _sanitized_error_detail(job.last_error_class, job.last_error_message),
+            "occurred_at": job.last_error_at or job.created_at,
+        }
+        for job in latest_failures
+    ]
+
     error_log: list[dict[str, object]] = []
     failed_jobs = list(
         await session.scalars(
             select(OutboxJob)
-            .where(OutboxJob.last_error_class.is_not(None))
-            .order_by(OutboxJob.created_at.desc())
+            .where(
+                OutboxJob.status.in_(failure_statuses),
+                OutboxJob.last_error_class.is_not(None),
+            )
+            .order_by(OutboxJob.last_error_at.desc().nullslast(), OutboxJob.created_at.desc())
             .limit(15)
         )
     )
@@ -455,7 +550,7 @@ async def operational_overview(session: AsyncSession) -> dict[str, object]:
                 "severity": "error" if job.status == JobStatus.DEAD else "warning",
                 "summary": f"{job.job_type} · {job.last_error_class}",
                 "detail": _sanitized_error_detail(job.last_error_class, job.last_error_message),
-                "occurred_at": job.locked_at or job.created_at,
+                "occurred_at": job.last_error_at or job.created_at,
                 "correlation_id": None,
             }
         )
@@ -531,6 +626,7 @@ async def operational_overview(session: AsyncSession) -> dict[str, object]:
         "checks": checks,
         "queue_counts": queue_counts,
         "job_type_counts": job_type_counts,
+        "failure_groups": failure_groups,
         "error_log": error_log[:25],
     }
 

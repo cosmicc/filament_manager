@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { ArrowLeft, Pencil, Save, Trash2 } from 'lucide-react'
+import { ArrowLeft, Copy, Pencil, Save, Trash2 } from 'lucide-react'
 import { useEffect, useMemo, useState } from 'react'
 import { apiFetch, validationMessagesFor } from '../api/client'
 import type {
@@ -179,7 +179,7 @@ export default function FilamentDetailPage() {
       eyebrow={`${item.vendor_name ?? 'Unspecified vendor'} · ${item.material_type}`}
       title={item.product_name ?? `${item.material_type} ${item.color_name}`}
       description="Edit canonical product details and every Cura material setting stored for this filament."
-      actions={<Link className="button" to="/filaments"><ArrowLeft size={16} /> All filaments</Link>}
+      actions={<><Link className="button" to="/filaments"><ArrowLeft size={16} /> All filaments</Link>{canEdit ? <Link className="button button--primary" to={`/filaments/duplicate/${item.id}`}><Copy size={16} /> Duplicate</Link> : null}</>}
     />
     {message && <div className="deployment-note" role="status">{message}</div>}
     <div className="detail-grid">

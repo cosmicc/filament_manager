@@ -3,7 +3,18 @@
 from datetime import datetime
 from uuid import UUID
 
-from sqlalchemy import Boolean, DateTime, Enum, ForeignKey, Index, Integer, String, Text, UniqueConstraint
+from sqlalchemy import (
+    Boolean,
+    DateTime,
+    Enum,
+    ForeignKey,
+    Index,
+    Integer,
+    String,
+    Text,
+    UniqueConstraint,
+    text,
+)
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -44,6 +55,9 @@ class WorkstationAgent(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     cura_installations: Mapped[list[dict[str, object]]] = mapped_column(JSONB, nullable=False, default=list)
     cura_materials: Mapped[list[dict[str, object]]] = mapped_column(JSONB, nullable=False, default=list)
     cura_recovery_status: Mapped[str] = mapped_column(String(32), nullable=False, default="not_ready")
+    suppressed_recovery_snapshots: Mapped[list[str]] = mapped_column(
+        JSONB, nullable=False, default=list, server_default=text("'[]'::jsonb")
+    )
     cura_recovery_message: Mapped[str | None] = mapped_column(String(500))
     last_recovery_snapshot_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     last_recovery_restore_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
@@ -91,16 +105,22 @@ class CuraDeployment(UUIDPrimaryKeyMixin, Base):
 
 
 class CuraRecoverySnapshot(UUIDPrimaryKeyMixin, Base):
-    """Immutable sanitized Cura configuration recovery point."""
+    """Sanitized Cura backup with immutable content and editable display metadata."""
 
     __tablename__ = "cura_recovery_snapshots"
     __table_args__ = (
-        UniqueConstraint(
+        Index(
+            "uq_cura_recovery_snapshot_automatic_content",
             "agent_id",
             "installation_id",
             "cura_version",
             "snapshot_checksum",
-            name="uq_cura_recovery_snapshot_content",
+            unique=True,
+            postgresql_where=text("capture_request_id IS NULL"),
+        ),
+        UniqueConstraint(
+            "capture_request_id",
+            name="uq_cura_recovery_snapshot_capture_request",
         ),
         Index(
             "ix_cura_recovery_snapshot_history",
@@ -114,6 +134,13 @@ class CuraRecoverySnapshot(UUIDPrimaryKeyMixin, Base):
     agent_id: Mapped[UUID] = mapped_column(
         ForeignKey("workstation_agents.id", ondelete="CASCADE"), nullable=False, index=True
     )
+    capture_request_id: Mapped[UUID | None] = mapped_column(
+        ForeignKey("cura_deployments.id", ondelete="SET NULL")
+    )
+    created_by: Mapped[UUID | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"))
+    capture_kind: Mapped[str] = mapped_column(String(16), nullable=False, default="automatic")
+    name: Mapped[str | None] = mapped_column(String(120))
+    description: Mapped[str | None] = mapped_column(Text)
     installation_id: Mapped[str] = mapped_column(String(96), nullable=False)
     cura_version: Mapped[str] = mapped_column(String(32), nullable=False)
     setting_version: Mapped[int | None] = mapped_column(Integer)
@@ -126,6 +153,7 @@ class CuraRecoverySnapshot(UUIDPrimaryKeyMixin, Base):
     plugin_count: Mapped[int] = mapped_column(Integer, nullable=False)
     captured_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    record_version: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
 
 
 class CuraRecoveryRestore(UUIDPrimaryKeyMixin, Base):

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { dateTime, grams, percent, titleCase } from './format'
+import { costPerGram, currencyAmount, dateTime, grams, percent, titleCase } from './format'
 
 describe('presentation formatting', () => {
   it('formats mass and percentage values without changing source data', () => {
@@ -14,5 +14,11 @@ describe('presentation formatting', () => {
 
   it('uses an explicit empty timestamp label', () => {
     expect(dateTime(null)).toBe('Never')
+  })
+
+  it('shows precise USD material cost in cents per gram', () => {
+    expect(currencyAmount('15', 'USD')).toBe('$15.00')
+    expect(costPerGram('0.015', 'USD')).toBe('1.5¢/g')
+    expect(costPerGram(null, 'USD')).toBe('—')
   })
 })

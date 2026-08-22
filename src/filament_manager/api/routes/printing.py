@@ -1,14 +1,21 @@
 """Canonical print history, G-code inspection, and quality-assessment routes."""
 
+from collections.abc import AsyncIterator
 from datetime import UTC, datetime
 from typing import Annotated
+from urllib.parse import quote
 from uuid import UUID
 
+import httpx
 from fastapi import APIRouter, Query, Request, status
+from fastapi.responses import StreamingResponse
 from sqlalchemy import Select, select
 from sqlalchemy.orm import selectinload
 
+from filament_manager.clients.moonraker import MoonrakerClient
+from filament_manager.config import get_settings
 from filament_manager.models.enums import PrintJobStatus
+from filament_manager.models.inventory import Printer
 from filament_manager.models.printing import PrintAssessment, PrintJob
 from filament_manager.services.events import add_audit_event
 from filament_manager.services.print_history import profile_success_statistics
@@ -22,6 +29,15 @@ router = APIRouter(prefix="/prints", tags=["print history"])
 
 def _print_query() -> Select[tuple[PrintJob]]:
     return select(PrintJob).options(selectinload(PrintJob.segments), selectinload(PrintJob.assessments))
+
+
+def _print_response(job: PrintJob) -> PrintJobResponse:
+    """Expose an authenticated application link instead of a private Moonraker path."""
+
+    response = PrintJobResponse.model_validate(job)
+    return response.model_copy(
+        update={"timelapse_url": f"/api/v1/prints/{job.id}/timelapse" if job.timelapse_url else None}
+    )
 
 
 @router.get("", response_model=list[PrintJobResponse])
@@ -42,7 +58,7 @@ async def list_prints(
         query = query.where(PrintJob.material_profile_id == profile_id)
     query = query.offset(min(max(offset, 0), 100_000)).limit(min(max(limit, 1), 250))
     result = await session.execute(query)
-    return [PrintJobResponse.model_validate(job) for job in result.scalars().unique()]
+    return [_print_response(job) for job in result.scalars().unique()]
 
 
 @router.get("/profile-statistics")
@@ -71,7 +87,88 @@ async def get_print(print_id: UUID, _: Viewer, session: DatabaseSession) -> Prin
     job = await session.scalar(_print_query().where(PrintJob.id == print_id))
     if job is None:
         raise ApiError(status.HTTP_404_NOT_FOUND, "unknown_print", "Print not found")
-    return PrintJobResponse.model_validate(job)
+    return _print_response(job)
+
+
+@router.get("/{print_id}/timelapse")
+async def stream_print_timelapse(
+    print_id: UUID,
+    request: Request,
+    _: Viewer,
+    session: DatabaseSession,
+) -> StreamingResponse:
+    """Stream one associated MP4 through the authenticated application boundary."""
+
+    job = await session.get(PrintJob, print_id)
+    if job is None or job.timelapse_url is None:
+        raise ApiError(status.HTTP_404_NOT_FOUND, "timelapse_unknown", "Timelapse not found")
+    printer = await session.get(Printer, job.printer_id)
+    configured = next(
+        (
+            item
+            for item in get_settings().moonraker.printers
+            if printer is not None and item.id == printer.printer_code
+        ),
+        None,
+    )
+    if configured is None:
+        raise ApiError(status.HTTP_404_NOT_FOUND, "timelapse_unknown", "Timelapse not found")
+    try:
+        filename = MoonrakerClient.validated_timelapse_filename(job.timelapse_url)
+    except ValueError as error:
+        raise ApiError(status.HTTP_404_NOT_FOUND, "timelapse_unknown", "Timelapse not found") from error
+    range_header = request.headers.get("range")
+    if range_header is not None and (
+        len(range_header) > 80
+        or not range_header.startswith("bytes=")
+        or any(ord(char) < 32 for char in range_header)
+    ):
+        raise ApiError(
+            status.HTTP_416_REQUESTED_RANGE_NOT_SATISFIABLE, "invalid_range", "Invalid video range"
+        )
+    api_key = configured.resolved_api_key()
+    upstream_client = httpx.AsyncClient(
+        timeout=httpx.Timeout(30, read=None),
+        headers={"X-Api-Key": api_key} if api_key is not None else {},
+    )
+    headers = {"Range": range_header} if range_header is not None else {}
+    try:
+        upstream = await upstream_client.send(
+            upstream_client.build_request(
+                "GET",
+                f"{str(configured.base_url).rstrip('/')}/server/files/timelapse/{quote(filename, safe='/')}",
+                headers=headers,
+            ),
+            stream=True,
+        )
+    except httpx.HTTPError as error:
+        await upstream_client.aclose()
+        raise ApiError(
+            status.HTTP_502_BAD_GATEWAY, "timelapse_unavailable", "Timelapse is unavailable"
+        ) from error
+    if upstream.status_code not in {status.HTTP_200_OK, status.HTTP_206_PARTIAL_CONTENT}:
+        await upstream.aclose()
+        await upstream_client.aclose()
+        raise ApiError(status.HTTP_404_NOT_FOUND, "timelapse_unknown", "Timelapse not found")
+
+    async def body() -> AsyncIterator[bytes]:
+        try:
+            async for chunk in upstream.aiter_bytes():
+                yield chunk
+        finally:
+            await upstream.aclose()
+            await upstream_client.aclose()
+
+    safe_headers = {"Accept-Ranges": "bytes", "Content-Disposition": "inline"}
+    for header in ("content-length", "content-range"):
+        if value := upstream.headers.get(header):
+            safe_headers[header.title()] = value
+    return StreamingResponse(
+        body(),
+        status_code=upstream.status_code,
+        media_type="video/mp4",
+        headers=safe_headers,
+    )
 
 
 @router.post(

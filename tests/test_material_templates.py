@@ -174,6 +174,18 @@ async def test_direct_template_save_updates_linked_product_profile(
             )
             assert product_response.status_code == 201, product_response.text
             product_id = product_response.json()["id"]
+            spool_response = await client.post(
+                "/api/v1/spools",
+                json={
+                    "spool_code": "PCTPE-001",
+                    "filament_product_id": product_id,
+                    "nominal_net_mass_g": "500",
+                    "purchase_cost": "12.50",
+                    "currency": "USD",
+                },
+            )
+            assert spool_response.status_code == 201, spool_response.text
+            assert Decimal(spool_response.json()["cost_per_gram"]) == Decimal("0.025000")
 
             product_profiles = await client.get("/api/v1/profiles")
             assert product_profiles.status_code == 200, product_profiles.text
@@ -264,6 +276,31 @@ async def test_direct_template_save_updates_linked_product_profile(
             assert Decimal(inherited_profile["extruder_temp_c"]) == Decimal("250")
             assert Decimal(inherited_profile["filament_density_g_cm3"]) == Decimal("1.21")
             assert inherited_profile["override_keys"] == ["filament_density_g_cm3"]
+            duplicate = await client.post(
+                "/api/v1/filaments",
+                json={
+                    "material_type": "PCTPE",
+                    "color_name": "Natural Copy",
+                    "product_name": "Taulman PCTPE Copy",
+                    "filler": None,
+                    "finish": "Silk",
+                    "diameter_mm": "1.75",
+                    "density_g_cm3": "1.21",
+                    "nominal_net_mass_g": "500",
+                    "material_template_revision_id": next_revision_id,
+                    "duplicate_source_filament_id": product_id,
+                },
+            )
+            assert duplicate.status_code == 201, duplicate.text
+            profiles_after_duplicate = await client.get("/api/v1/profiles")
+            duplicate_profile = next(
+                item
+                for item in profiles_after_duplicate.json()
+                if item["filament_product_id"] == duplicate.json()["id"]
+            )
+            assert duplicate_profile["override_keys"] == inherited_profile["override_keys"]
+            assert Decimal(duplicate_profile["extruder_temp_c"]) == Decimal("250")
+            assert Decimal(duplicate_profile["filament_density_g_cm3"]) == Decimal("1.21")
             exported = await client.get(f"/api/v1/profiles/{inherited_profile['id']}/exports/cura")
             assert exported.status_code == 200, exported.text
             assert exported.headers["content-disposition"].startswith(
@@ -295,10 +332,20 @@ async def test_direct_template_save_updates_linked_product_profile(
             library = await build_cura_library(session)
             assert library["schema_version"] == 3
             materials = library["materials"]
-            assert isinstance(materials, list) and len(materials) == 3
-            product_material = next(item for item in materials if item["source_kind"] == "product")
+            assert isinstance(materials, list) and len(materials) == 4
+            product_material = next(
+                item
+                for item in materials
+                if item["source_kind"] == "product" and item["material"]["product_id"] == product_id
+            )
             assert product_material["material"]["filler"] is None
             assert product_material["material"]["finish"] == "Silk"
+            assert product_material["material"]["cura_cost_basis"] == {
+                "spool_weight_g": "1000",
+                "spool_cost": "25.00",
+                "currency": "USD",
+                "source_spool_count": "1",
+            }
             assert library["hide_bundled_materials"] is True
             assert "speed_print" in library["managed_material_setting_keys"]
             template_material = next(

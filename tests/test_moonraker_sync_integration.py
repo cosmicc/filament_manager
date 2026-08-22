@@ -12,6 +12,7 @@ from testcontainers.community.postgres import PostgresContainer
 
 from filament_manager.clients.moonraker import (
     MoonrakerBedMeshState,
+    MoonrakerError,
     MoonrakerGcodeFile,
     MoonrakerPrintState,
     MoonrakerSpoolPreflightState,
@@ -286,6 +287,40 @@ async def test_active_spool_selection_and_clear_follow_moonraker(
             assert restored_spool_ids == [10]
             assert (await session.get(Spool, first.id)).active_printer_id == printer.id  # type: ignore[union-attr]
             assert (await session.get(Spool, second.id)).active_printer_id is None  # type: ignore[union-attr]
+
+            class CatalogFailureClient(DirectSelectionClient):
+                """Reject only the optional catalog write while other state remains usable."""
+
+                async def spool_preflight_state(self) -> MoonrakerSpoolPreflightState:
+                    return MoonrakerSpoolPreflightState(
+                        restored=True,
+                        initialized=True,
+                        phase="idle",
+                        loaded_spool_id=10,
+                        catalog_revision="outdated",
+                        material_guid="",
+                        start_bed_temp=Decimal("0"),
+                        start_extruder_temp=Decimal("0"),
+                        start_chamber_temp=Decimal("0"),
+                        inspection_policy="warn",
+                        start_pending=False,
+                    )
+
+                async def synchronize_spool_preflight_catalog(
+                    self, _catalog: object, *, inspection_policy: str
+                ) -> dict[str, object]:
+                    del inspection_policy
+                    raise MoonrakerError("catalog rejected")
+
+            monkeypatch.setattr(dispatcher, "MoonrakerClient", CatalogFailureClient)
+            await dispatcher._reconcile_moonraker_state(
+                session,
+                SimpleNamespace(id=uuid4()),  # type: ignore[arg-type]
+            )
+            refreshed_printer = await session.get(Printer, printer.id)
+            assert refreshed_printer is not None
+            assert refreshed_printer.spool_preflight_status == "error"
+            assert "save_variables" in (refreshed_printer.spool_preflight_message or "")
             baseline_audit_count = await session.scalar(select(func.count(AuditEvent.id)))
 
             selected = await synchronize_active_spool(
@@ -360,6 +395,15 @@ async def test_active_spool_selection_and_clear_follow_moonraker(
                             "print_duration": 50,
                             "total_duration": 60,
                             "metadata": {},
+                        },
+                    )
+
+                async def timelapse_files(self) -> tuple[dict[str, object], ...]:
+                    return (
+                        {
+                            "path": "repeatable_2026-04-24.mp4",
+                            "modified": 1_777_000_061,
+                            "size": 1_048_576,
                         },
                     )
 
@@ -439,6 +483,9 @@ async def test_active_spool_selection_and_clear_follow_moonraker(
                 client=client,  # type: ignore[arg-type]
                 correlation_id="history-after-live-completion",
             )
+            repeated_job = await session.get(PrintJob, repeat_job_id)
+            assert repeated_job is not None
+            assert repeated_job.timelapse_url == "repeatable_2026-04-24.mp4"
             assert printer.last_print_history_sync_at is not None
 
             material_change_start = MoonrakerPrintState(

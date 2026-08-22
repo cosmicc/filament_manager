@@ -1,5 +1,6 @@
 """Secure workstation enrollment and leased Cura profile deployment APIs."""
 
+import hashlib
 import json
 import secrets
 import time
@@ -50,11 +51,14 @@ from ..schemas import (
     CuraDeploymentCompletion,
     CuraDeploymentCreate,
     CuraDeploymentResponse,
+    CuraRecoveryCaptureRequest,
     CuraRecoveryRestoreClaimResponse,
     CuraRecoveryRestoreCompletion,
     CuraRecoveryRestoreRequest,
     CuraRecoveryRestoreResponse,
+    CuraRecoverySnapshotDelete,
     CuraRecoverySnapshotResponse,
+    CuraRecoverySnapshotUpdate,
     CuraRecoverySnapshotUpload,
     CuraRecoverySnapshotUploadResponse,
     CuraTakeoverRequest,
@@ -165,9 +169,19 @@ def _recovery_snapshot_response(snapshot: CuraRecoverySnapshot) -> CuraRecoveryS
         quality_profile_count=snapshot.quality_profile_count,
         plugin_count=snapshot.plugin_count,
         plugins=plugins,
+        capture_kind=snapshot.capture_kind,
+        name=snapshot.name,
+        description=snapshot.description,
+        record_version=snapshot.record_version,
         captured_at=snapshot.captured_at,
         created_at=snapshot.created_at,
     )
+
+
+def _recovery_suppression_key(installation_id: str, cura_version: str, checksum: str) -> str:
+    """Identify one operator-deleted automatic snapshot without retaining its payload."""
+
+    return f"{installation_id}:{cura_version}:{checksum}"
 
 
 @router.post(
@@ -416,6 +430,37 @@ async def upload_cura_recovery_snapshot(
     )
     raw_plugins = payload.payload.get("plugins")
     plugin_count = len(raw_plugins) if isinstance(raw_plugins, list) else 0
+    capture_request: CuraDeployment | None = None
+    if payload.capture_request_id is not None:
+        capture_request = await session.scalar(
+            select(CuraDeployment).where(CuraDeployment.id == payload.capture_request_id).with_for_update()
+        )
+        capture_payload = capture_request.payload if capture_request is not None else {}
+        if (
+            capture_request is None
+            or capture_request.agent_id != agent.id
+            or capture_request.status != CuraDeploymentStatus.CLAIMED
+            or capture_payload.get("operation") != "recovery_capture"
+            or capture_payload.get("installation_id") != installation_id
+            or capture_payload.get("cura_version") != cura_version
+        ):
+            raise ApiError(
+                status.HTTP_409_CONFLICT,
+                "cura_recovery_capture_request_invalid",
+                "The manual Cura backup request is no longer valid",
+            )
+    suppression_key = _recovery_suppression_key(
+        installation_id,
+        cura_version,
+        payload.snapshot_checksum,
+    )
+    if capture_request is None and suppression_key in agent.suppressed_recovery_snapshots:
+        return CuraRecoverySnapshotUploadResponse(
+            accepted=False,
+            status=agent.cura_recovery_status,
+            reason="deleted_by_administrator",
+            snapshot_checksum=payload.snapshot_checksum,
+        )
     latest = await session.scalar(
         select(CuraRecoverySnapshot)
         .where(
@@ -464,15 +509,30 @@ async def upload_cura_recovery_snapshot(
         )
     existing = await session.scalar(
         select(CuraRecoverySnapshot).where(
-            CuraRecoverySnapshot.agent_id == agent.id,
-            CuraRecoverySnapshot.installation_id == installation_id,
-            CuraRecoverySnapshot.snapshot_checksum == payload.snapshot_checksum,
+            CuraRecoverySnapshot.capture_request_id == payload.capture_request_id
+            if payload.capture_request_id is not None
+            else (
+                (CuraRecoverySnapshot.agent_id == agent.id)
+                & (CuraRecoverySnapshot.installation_id == installation_id)
+                & (CuraRecoverySnapshot.cura_version == cura_version)
+                & (CuraRecoverySnapshot.snapshot_checksum == payload.snapshot_checksum)
+                & (CuraRecoverySnapshot.capture_request_id.is_(None))
+            )
         )
     )
     now = datetime.now(UTC)
     if existing is None:
         existing = CuraRecoverySnapshot(
             agent_id=agent.id,
+            capture_request_id=payload.capture_request_id,
+            created_by=capture_request.requested_by if capture_request is not None else None,
+            capture_kind="manual" if capture_request is not None else "automatic",
+            name=(str(capture_request.payload.get("name")) if capture_request is not None else None),
+            description=(
+                str(capture_request.payload["description"])
+                if capture_request is not None and capture_request.payload.get("description")
+                else None
+            ),
             installation_id=installation_id,
             cura_version=cura_version,
             setting_version=setting_version,
@@ -508,7 +568,9 @@ async def upload_cura_recovery_snapshot(
             session,
             actor_id=None,
             source="workstation_agent",
-            action="cura.recovery_snapshot.capture",
+            action="cura.recovery_snapshot.capture_manual"
+            if capture_request
+            else "cura.recovery_snapshot.capture",
             object_type="cura_recovery_snapshot",
             object_id=existing.id,
             before=None,
@@ -519,6 +581,7 @@ async def upload_cura_recovery_snapshot(
                 "machine_count": machine_count,
                 "quality_profile_count": quality_profile_count,
                 "plugin_count": plugin_count,
+                "capture_kind": existing.capture_kind,
             },
             correlation_id=request.state.correlation_id,
         )
@@ -556,6 +619,218 @@ async def list_cura_recovery_snapshots(
         .limit(RECOVERY_HISTORY_LIMIT * 20)
     )
     return [_recovery_snapshot_response(snapshot) for snapshot in snapshots]
+
+
+@router.post(
+    "/workstation-agents/{agent_id}/cura-recovery-captures",
+    response_model=CuraDeploymentResponse,
+    status_code=status.HTTP_202_ACCEPTED,
+)
+async def create_cura_recovery_capture(
+    agent_id: UUID,
+    payload: CuraRecoveryCaptureRequest,
+    request: Request,
+    administrator: Administrator,
+    session: DatabaseSession,
+) -> CuraDeploymentResponse:
+    """Queue one named full Cura backup while retaining the closed-Cura safety gate."""
+
+    agent = await session.scalar(
+        select(WorkstationAgent).where(WorkstationAgent.id == agent_id).with_for_update()
+    )
+    if agent is None:
+        raise ApiError(status.HTTP_404_NOT_FOUND, "workstation_unknown", "Workstation not found")
+    if not agent.enabled or agent.capabilities.get("cura_recovery_snapshots") is not True:
+        raise ApiError(
+            status.HTTP_409_CONFLICT,
+            "cura_recovery_unavailable",
+            "Enable or upgrade the workstation agent before creating a backup",
+        )
+    installation = next(
+        (
+            item
+            for item in agent.cura_installations
+            if isinstance(item, dict) and item.get("installation_id") == payload.installation_id
+        ),
+        None,
+    )
+    cura_version = installation.get("version") if installation is not None else None
+    if not isinstance(cura_version, str):
+        raise ApiError(
+            status.HTTP_422_UNPROCESSABLE_ENTITY,
+            "cura_recovery_installation_unknown",
+            "Select a currently reported Cura installation",
+        )
+    now = datetime.now(UTC)
+    operation = {
+        "operation": "recovery_capture",
+        "installation_id": payload.installation_id,
+        "cura_version": cura_version,
+        "name": payload.name.strip(),
+        "description": payload.description.strip() if payload.description else None,
+    }
+    digest = hashlib.sha256(
+        json.dumps(operation, sort_keys=True, separators=(",", ":")).encode("utf-8") + secrets.token_bytes(16)
+    ).hexdigest()
+    deployment = CuraDeployment(
+        agent_id=agent.id,
+        material_profile_id=None,
+        requested_by=administrator.id,
+        status=CuraDeploymentStatus.PENDING,
+        payload=operation,
+        profile_checksum=digest,
+        idempotency_key=f"recovery-capture:{agent.id}:{digest}",
+        attempts=0,
+        next_attempt_at=now,
+        result={},
+        created_at=now,
+        updated_at=now,
+    )
+    session.add(deployment)
+    await session.flush()
+    add_audit_event(
+        session,
+        actor_id=administrator.id,
+        source="web",
+        action="cura.recovery_snapshot.request",
+        object_type="cura_deployment",
+        object_id=deployment.id,
+        before=None,
+        after={"agent_code": agent.agent_code, "cura_version": cura_version},
+        correlation_id=request.state.correlation_id,
+    )
+    await session.commit()
+    return CuraDeploymentResponse.model_validate(deployment)
+
+
+@router.patch(
+    "/workstation-agents/{agent_id}/cura-recovery-snapshots/{snapshot_id}",
+    response_model=CuraRecoverySnapshotResponse,
+)
+async def update_cura_recovery_snapshot(
+    agent_id: UUID,
+    snapshot_id: UUID,
+    payload: CuraRecoverySnapshotUpdate,
+    request: Request,
+    administrator: Administrator,
+    session: DatabaseSession,
+) -> CuraRecoverySnapshotResponse:
+    """Update the operator-facing name and description of one backup."""
+
+    snapshot = await session.scalar(
+        select(CuraRecoverySnapshot)
+        .where(CuraRecoverySnapshot.id == snapshot_id, CuraRecoverySnapshot.agent_id == agent_id)
+        .with_for_update()
+    )
+    if snapshot is None:
+        raise ApiError(
+            status.HTTP_404_NOT_FOUND, "cura_recovery_snapshot_unknown", "Cura recovery point not found"
+        )
+    if snapshot.record_version != payload.expected_version:
+        raise ApiError(status.HTTP_409_CONFLICT, "record_version_conflict", "Recovery point changed; reload")
+    before: dict[str, object] = {"name": snapshot.name, "description": snapshot.description}
+    if "name" in payload.model_fields_set:
+        snapshot.name = payload.name.strip() if payload.name and payload.name.strip() else None
+    if "description" in payload.model_fields_set:
+        snapshot.description = (
+            payload.description.strip() if payload.description and payload.description.strip() else None
+        )
+    snapshot.record_version += 1
+    add_audit_event(
+        session,
+        actor_id=administrator.id,
+        source="web",
+        action="cura.recovery_snapshot.update",
+        object_type="cura_recovery_snapshot",
+        object_id=snapshot.id,
+        before=before,
+        after={"name": snapshot.name, "description": snapshot.description},
+        correlation_id=request.state.correlation_id,
+    )
+    await session.commit()
+    return _recovery_snapshot_response(snapshot)
+
+
+@router.delete(
+    "/workstation-agents/{agent_id}/cura-recovery-snapshots/{snapshot_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+)
+async def delete_cura_recovery_snapshot(
+    agent_id: UUID,
+    snapshot_id: UUID,
+    payload: CuraRecoverySnapshotDelete,
+    request: Request,
+    administrator: Administrator,
+    session: DatabaseSession,
+) -> Response:
+    """Delete one explicitly confirmed backup unless a restore still references it."""
+
+    if not payload.confirmed:
+        raise ApiError(
+            status.HTTP_422_UNPROCESSABLE_ENTITY, "confirmation_required", "Confirm backup deletion"
+        )
+    snapshot = await session.scalar(
+        select(CuraRecoverySnapshot)
+        .where(CuraRecoverySnapshot.id == snapshot_id, CuraRecoverySnapshot.agent_id == agent_id)
+        .with_for_update()
+    )
+    if snapshot is None:
+        raise ApiError(
+            status.HTTP_404_NOT_FOUND, "cura_recovery_snapshot_unknown", "Cura recovery point not found"
+        )
+    if snapshot.record_version != payload.expected_version:
+        raise ApiError(status.HTTP_409_CONFLICT, "record_version_conflict", "Recovery point changed; reload")
+    active_restore = await session.scalar(
+        select(CuraRecoveryRestore.id).where(
+            CuraRecoveryRestore.snapshot_id == snapshot.id,
+            CuraRecoveryRestore.status.in_((CuraDeploymentStatus.PENDING, CuraDeploymentStatus.CLAIMED)),
+        )
+    )
+    if active_restore is not None:
+        raise ApiError(
+            status.HTTP_409_CONFLICT,
+            "cura_recovery_restore_pending",
+            "This backup cannot be deleted while its restore is pending",
+        )
+    add_audit_event(
+        session,
+        actor_id=administrator.id,
+        source="web",
+        action="cura.recovery_snapshot.delete",
+        object_type="cura_recovery_snapshot",
+        object_id=snapshot.id,
+        before={"capture_kind": snapshot.capture_kind, "cura_version": snapshot.cura_version},
+        after=None,
+        correlation_id=request.state.correlation_id,
+    )
+    remaining = await session.scalar(
+        select(CuraRecoverySnapshot)
+        .where(
+            CuraRecoverySnapshot.agent_id == agent_id,
+            CuraRecoverySnapshot.id != snapshot.id,
+        )
+        .order_by(CuraRecoverySnapshot.captured_at.desc())
+        .limit(1)
+    )
+    agent = await session.get(WorkstationAgent, agent_id)
+    if agent is not None:
+        if snapshot.capture_kind == "automatic":
+            suppression_key = _recovery_suppression_key(
+                snapshot.installation_id,
+                snapshot.cura_version,
+                snapshot.snapshot_checksum,
+            )
+            agent.suppressed_recovery_snapshots = list(
+                dict.fromkeys([*agent.suppressed_recovery_snapshots, suppression_key])
+            )[-100:]
+        agent.last_recovery_snapshot_at = remaining.captured_at if remaining is not None else None
+        if remaining is None:
+            agent.cura_recovery_status = "not_ready"
+            agent.cura_recovery_message = "No Cura recovery point is currently retained."
+        agent.record_version += 1
+    await session.delete(snapshot)
+    await session.commit()
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 
 @router.post(
@@ -1205,6 +1480,16 @@ async def complete_cura_deployment(
     elif payload.outcome == "succeeded":
         deployment.status = CuraDeploymentStatus.SUCCEEDED
         deployment.completed_at = now
+        if deployment.payload.get("operation") == "nozzle_update" and agent.cura_management_enabled:
+            try:
+                await queue_cura_library(
+                    session,
+                    [agent],
+                    requested_by=deployment.requested_by,
+                    force=True,
+                )
+            except ValueError:
+                pass
     else:
         deployment.status = CuraDeploymentStatus.FAILED
         deployment.completed_at = now

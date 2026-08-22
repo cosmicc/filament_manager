@@ -25,7 +25,7 @@ A remembered case-insensitive solid color name and display sample. The first spe
 
 ### spool
 
-A physical spool with `spool_code`, tare mass, purchase details, current expected remaining mass, status, bounded free-text location, internal location-ownership state, Spoolman ID, and label data. The code and linked filament may be corrected only while the record has no retained measurement/use/print/calibration/NFC history, then become immutable. Existing rows with no canonical location may adopt one remote location; a local edit or clear makes the canonical value authoritative.
+A physical spool with `spool_code`, purchased net filament weight, tare mass, optional purchase cost/currency, current expected remaining mass, status, bounded free-text location, internal location-ownership state, Spoolman ID, and label data. Cost per gram is derived with exact decimal arithmetic as purchase cost divided by purchased net filament weight. The code and linked filament may be corrected only while the record has no retained measurement/use/print/calibration/NFC history, then become immutable. Existing rows with no canonical location may adopt one remote location; a local edit or clear makes the canonical value authoritative.
 
 ### spool_measurement
 
@@ -133,7 +133,7 @@ Tracks remote object IDs, fingerprints, last successful publication, error, and 
 
 ### outbox_job
 
-Durable external work item created in the same transaction as the canonical change.
+Durable external work item created in the same transaction as the canonical change. It retains the exact newest failure time and sanitized error class/message. Superseded rows remain historical, while only pending, running, retrying, or current dead work counts as actionable queue debt.
 
 ### audit_event
 

@@ -41,6 +41,7 @@ export interface Spool {
   purchase_source: string | null
   purchase_date: string | null
   purchase_cost: string | null
+  cost_per_gram: string | null
   currency: string
   location: string | null
   spoolman_id: number | null
@@ -262,6 +263,9 @@ export interface Printer {
   status: string
   last_seen_at: string | null
   last_info_sync_at: string | null
+  spool_preflight_status: string
+  spool_preflight_message: string | null
+  last_spool_preflight_sync_at: string | null
   record_version: number
 }
 
@@ -392,6 +396,7 @@ export interface OutboxJob {
   attempts: number
   next_attempt_at: string
   last_error_class: string | null
+  last_error_at: string | null
   created_at: string
   completed_at: string | null
 }
@@ -522,6 +527,10 @@ export interface CuraRecoverySnapshot {
   quality_profile_count: number
   plugin_count: number
   plugins: CuraRecoveryPlugin[]
+  capture_kind: 'automatic' | 'manual'
+  name: string | null
+  description: string | null
+  record_version: number
   captured_at: string
   created_at: string
 }
@@ -628,6 +637,7 @@ export interface PrintJob {
       profile_value: string
     }>
     warnings?: string[]
+    file_metadata?: Record<string, string | number>
   }
   slicer: string | null
   slicer_version: string | null
@@ -689,11 +699,23 @@ export interface DiagnosticErrorEntry {
   correlation_id: string | null
 }
 
+export interface DiagnosticFailureGroup {
+  job_type: string
+  count: number
+  status: string
+  attempts: number
+  max_attempts: number
+  error_class: string
+  detail: string | null
+  occurred_at: string
+}
+
 export interface DiagnosticOverview {
   checked_at: string
   checks: DiagnosticCheck[]
   queue_counts: Record<string, number>
   job_type_counts: Record<string, number>
+  failure_groups: DiagnosticFailureGroup[]
   error_log: DiagnosticErrorEntry[]
 }
 

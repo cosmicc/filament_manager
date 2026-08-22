@@ -10,6 +10,7 @@ from sqlalchemy import func, select
 from filament_manager.models.enums import NozzleStatus
 from filament_manager.models.inventory import Nozzle, Printer
 from filament_manager.models.operations import NozzleLifecycleEvent
+from filament_manager.services.cura_nozzles import queue_cura_nozzle_update
 from filament_manager.services.events import add_audit_event
 from filament_manager.services.print_statistics import completed_nozzle_usage
 
@@ -279,6 +280,7 @@ async def install_nozzle(
         return (await _nozzle_responses(session, [nozzle]))[0]
     now = datetime.now(UTC)
     previous = await session.get(Nozzle, printer.active_nozzle_id) if printer.active_nozzle_id else None
+    previous_diameter_mm = printer.nozzle_diameter_mm
     if previous is not None:
         previous.status = NozzleStatus.AVAILABLE
         previous.installed_at = None
@@ -300,6 +302,12 @@ async def install_nozzle(
     nozzle.status = NozzleStatus.INSTALLED
     nozzle.installed_at = now
     nozzle.record_version += 1
+    cura_update_count = await queue_cura_nozzle_update(
+        session,
+        printer=printer,
+        previous_diameter_mm=previous_diameter_mm,
+        requested_by=operator.id,
+    )
     session.add(
         _lifecycle_event(
             nozzle_id=nozzle.id,
@@ -318,7 +326,11 @@ async def install_nozzle(
         object_type="printer",
         object_id=printer.id,
         before={"active_nozzle_id": str(previous.id) if previous else None},
-        after={"active_nozzle_id": str(nozzle.id), "nozzle_code": nozzle.nozzle_code},
+        after={
+            "active_nozzle_id": str(nozzle.id),
+            "nozzle_code": nozzle.nozzle_code,
+            "cura_update_count": cura_update_count,
+        },
         correlation_id=request.state.correlation_id,
     )
     await session.commit()

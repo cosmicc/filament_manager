@@ -777,24 +777,37 @@ async def _reconcile_moonraker_state(session: AsyncSession, job: OutboxJob) -> N
             )
         else:
             effective_active_spool_id = active_result
+            previous_preflight_status = printer.spool_preflight_status
             preflight_is_restoring = (
                 not isinstance(preflight_result, BaseException)
                 and preflight_result is not None
                 and not preflight_result.restored
             )
             if isinstance(preflight_result, BaseException):
-                logger.warning(
+                printer.spool_preflight_status = "unavailable"
+                printer.spool_preflight_message = (
+                    "The Filament Manager spool macro state could not be read. "
+                    "Verify the current macro include and Moonraker connection."
+                )
+                log_method = logger.warning if previous_preflight_status != "unavailable" else logger.debug
+                log_method(
                     "moonraker_spool_preflight_macro_unavailable",
                     printer_code=printer.printer_code,
                     error_class=type(preflight_result).__name__,
-                    error=str(preflight_result),
                 )
             elif preflight_result is None:
-                logger.warning(
+                printer.spool_preflight_status = "not_installed"
+                printer.spool_preflight_message = (
+                    "Install the current Filament Manager Klipper macros to enable guarded spool selection."
+                )
+                log_method = logger.warning if previous_preflight_status != "not_installed" else logger.debug
+                log_method(
                     "moonraker_spool_preflight_macro_not_installed",
                     printer_code=printer.printer_code,
                 )
             elif preflight_is_restoring:
+                printer.spool_preflight_status = "restoring"
+                printer.spool_preflight_message = "The persisted physical spool state is being restored."
                 logger.info(
                     "moonraker_spool_preflight_state_restoring",
                     printer_code=printer.printer_code,
@@ -913,13 +926,24 @@ async def _reconcile_moonraker_state(session: AsyncSession, job: OutboxJob) -> N
                                 printer_code=printer.printer_code,
                                 spoolman_id=effective_active_spool_id,
                             )
+                        printer.spool_preflight_status = "healthy"
+                        printer.spool_preflight_message = None
+                        printer.last_spool_preflight_sync_at = datetime.now(UTC)
                     except Exception as exc:
-                        failures.append(("spool preflight catalog", exc))
-                        logger.exception(
+                        # Catalog publication is an optional Klipper integration surface.
+                        # Preserve the successful physical spool and build-plate state
+                        # reconciliation, expose this failure in Diagnostics, and retry
+                        # on the next normal poll instead of creating endless dead jobs.
+                        printer.spool_preflight_status = "error"
+                        printer.spool_preflight_message = (
+                            "Spool catalog synchronization failed. Verify the current "
+                            "Filament Manager macros and Klipper save_variables configuration."
+                        )
+                        log_method = logger.warning if previous_preflight_status != "error" else logger.debug
+                        log_method(
                             "moonraker_spool_preflight_synchronization_failed",
                             printer_code=printer.printer_code,
                             error_class=type(exc).__name__,
-                            error=str(exc),
                         )
         if isinstance(mesh_result, BaseException):
             if not isinstance(mesh_result, Exception):
@@ -1199,8 +1223,9 @@ async def complete_job(session: AsyncSession, job: OutboxJob) -> None:
 
     persisted = await session.get(OutboxJob, job.id, with_for_update=True)
     if persisted and persisted.status == JobStatus.RUNNING and persisted.locked_by == job.locked_by:
+        completed_at = datetime.now(UTC)
         persisted.status = JobStatus.COMPLETED
-        persisted.completed_at = datetime.now(UTC)
+        persisted.completed_at = completed_at
         persisted.locked_by = None
         persisted.locked_at = None
         if persisted.idempotency_key.startswith("periodic:"):
@@ -1212,7 +1237,41 @@ async def complete_job(session: AsyncSession, job: OutboxJob) -> None:
                     OutboxJob.status == JobStatus.DEAD,
                     OutboxJob.idempotency_key.like("periodic:%"),
                 )
-                .values(status=JobStatus.SUPERSEDED, completed_at=datetime.now(UTC))
+                .values(status=JobStatus.SUPERSEDED, completed_at=completed_at)
+            )
+        else:
+            # A newer successful projection of the same canonical object makes
+            # older failed versions historical rather than actionable debt.
+            await session.execute(
+                update(OutboxJob)
+                .where(
+                    OutboxJob.id != persisted.id,
+                    OutboxJob.job_type == persisted.job_type,
+                    OutboxJob.aggregate_type == persisted.aggregate_type,
+                    OutboxJob.aggregate_id == persisted.aggregate_id,
+                    OutboxJob.aggregate_version <= persisted.aggregate_version,
+                    OutboxJob.status == JobStatus.DEAD,
+                )
+                .values(status=JobStatus.SUPERSEDED, completed_at=completed_at)
+            )
+        if persisted.job_type == "spoolman.reconcile.full":
+            # Full convergence reprojects the current canonical vendor,
+            # filament, and spool metadata. Earlier granular upsert failures
+            # are therefore proven obsolete, while deletes and explicit weight
+            # adjustments remain actionable until they succeed themselves.
+            await session.execute(
+                update(OutboxJob)
+                .where(
+                    OutboxJob.status == JobStatus.DEAD,
+                    OutboxJob.job_type.in_(
+                        (
+                            "spoolman.vendor.upsert",
+                            "spoolman.filament.upsert",
+                            "spoolman.spool.upsert",
+                        )
+                    ),
+                )
+                .values(status=JobStatus.SUPERSEDED, completed_at=completed_at)
             )
     await session.commit()
 
@@ -1227,6 +1286,8 @@ async def fail_job(session: AsyncSession, job: OutboxJob, exc: Exception) -> Job
     persisted.attempts += 1
     persisted.last_error_class = type(exc).__name__[:160]
     persisted.last_error_message = str(exc)[:500]
+    failure_time = datetime.now(UTC)
+    persisted.last_error_at = failure_time
     persisted.locked_by = None
     persisted.locked_at = None
     if persisted.attempts >= persisted.max_attempts:
@@ -1247,6 +1308,6 @@ async def fail_job(session: AsyncSession, job: OutboxJob, exc: Exception) -> Job
         retry_cap = periodic_retry_caps.get(persisted.job_type)
         if retry_cap is not None:
             delay_seconds = min(delay_seconds, retry_cap)
-        persisted.next_attempt_at = datetime.now(UTC) + timedelta(seconds=delay_seconds)
+        persisted.next_attempt_at = failure_time + timedelta(seconds=delay_seconds)
     await session.commit()
     return persisted.status

@@ -15,7 +15,7 @@ from filament_manager.domain.cura_material_settings import (
     cura_settings_for_profile,
 )
 from filament_manager.domain.spool_preflight import cura_material_guid
-from filament_manager.models.enums import CuraDeploymentStatus, ProfileStatus
+from filament_manager.models.enums import CuraDeploymentStatus, ProfileStatus, SpoolStatus
 from filament_manager.models.inventory import (
     BuildPlate,
     BuildPlateSurface,
@@ -24,6 +24,7 @@ from filament_manager.models.inventory import (
     MaterialTemplate,
     MaterialTemplateRevision,
     Printer,
+    Spool,
     Vendor,
 )
 from filament_manager.models.workstations import CuraDeployment, WorkstationAgent
@@ -97,10 +98,62 @@ async def _printer_payload(
     }
 
 
+async def _product_cura_costs(session: AsyncSession) -> dict[UUID, dict[str, str]]:
+    """Build one currency-safe weighted purchase-cost basis per filament product.
+
+    Cura material profiles identify products rather than physical spools. A normalized
+    1,000 g price keeps Cura's estimate mathematically equivalent to the weighted
+    cost per gram across currently usable, priced spools without pretending one
+    specific physical spool is selected during slicing.
+    """
+
+    spools = list(
+        await session.scalars(
+            select(Spool)
+            .where(
+                Spool.archived.is_(False),
+                Spool.status != SpoolStatus.EMPTY,
+                Spool.purchase_cost.is_not(None),
+            )
+            .order_by(Spool.filament_product_id, Spool.id)
+        )
+    )
+    grouped: dict[UUID, list[Spool]] = {}
+    for spool in spools:
+        grouped.setdefault(spool.filament_product_id, []).append(spool)
+
+    result: dict[UUID, dict[str, str]] = {}
+    for product_id, priced_spools in grouped.items():
+        currencies = {spool.currency for spool in priced_spools}
+        if len(currencies) != 1:
+            # Cura's material-cost preference has no currency field. Mixing
+            # currencies would create a plausible-looking but invalid estimate.
+            continue
+        total_weight = sum((spool.nominal_net_mass_g for spool in priced_spools), Decimal("0"))
+        total_cost = sum(
+            (spool.purchase_cost or Decimal("0") for spool in priced_spools),
+            Decimal("0"),
+        )
+        if total_weight <= 0:
+            continue
+        cost_per_gram = total_cost / total_weight
+        result[product_id] = {
+            "spool_weight_g": "1000",
+            "spool_cost": format(
+                (cost_per_gram * Decimal("1000")).quantize(Decimal("0.01")),
+                "f",
+            ),
+            "currency": next(iter(currencies)),
+            "source_spool_count": str(len(priced_spools)),
+        }
+    return result
+
+
 async def build_cura_library(session: AsyncSession) -> dict[str, object]:
     """Return the current templates and product profiles as desired state."""
 
     entries: list[dict[str, object]] = []
+    product_costs = await _product_cura_costs(session)
     templates = list(
         await session.scalars(
             select(MaterialTemplate)
@@ -205,6 +258,7 @@ async def build_cura_library(session: AsyncSession) -> dict[str, object]:
                     "diameter_mm": _decimal(product.diameter_mm),
                     "density_g_cm3": _decimal(profile.filament_density_g_cm3),
                     "nominal_net_mass_g": _decimal(product.nominal_net_mass_g),
+                    "cura_cost_basis": product_costs.get(product.id),
                 },
                 "printer": await _printer_payload(session, printer.id, profile.nozzle_diameter_mm),
                 "preferred_build_plate": await _plate_payload(

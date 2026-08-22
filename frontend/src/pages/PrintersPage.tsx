@@ -130,7 +130,7 @@ export default function PrintersPage() {
 
   return (
     <div>
-      <PageHeader eyebrow="Physical printer context" title="Printers" description="Canonical machine identity, workspace, active plate, and exact installed nozzle." actions={<Link className="button" to="/diagnostics">Open diagnostics</Link>} />
+      <PageHeader eyebrow="Physical printer context" title="Printers" description="Canonical machine identity, workspace, active plate, and exact installed nozzle." />
       {message ? <div className="deployment-note" role="status">{message}</div> : null}
       {printers.error ? <p className="form-error">{printers.error.message}</p> : null}
       {printers.isLoading ? <LoadingState /> : !printers.data?.length ? (

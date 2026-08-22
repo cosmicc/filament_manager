@@ -25,12 +25,14 @@ const printJob = {
   material_profile_version: 12,
   build_plate_id: '70000000-0000-0000-0000-000000000001',
   build_plate_surface_id: '80000000-0000-0000-0000-000000000001',
+  nozzle_id: '85000000-0000-0000-0000-000000000001',
   nozzle_diameter_mm: '0.4',
   material_guid: '90000000-0000-0000-0000-000000000001',
   material_name: 'Workshop PETG',
   material_type: 'PETG',
   state_snapshot: {
     printer: { name: 'Workshop Printer' }, spool: { code: 'PETG-01' },
+    nozzle: { code: 'N4', diameter_mm: '0.4', material: 'Hardened steel' },
     filament: { product_name: 'Workshop PETG' }, build_plate_surface: { code: 'P4b' },
   },
   profile_snapshot: { extruder_temp_c: '235', flow_percent: '96' },
@@ -40,6 +42,7 @@ const printJob = {
     extracted: {},
     mismatches: [{ field: 'extruder_temp_c', label: 'printing temperature', gcode_value: '240', profile_value: '235' }],
     warnings: [],
+    file_metadata: { size: 1048576, object_height: '25', layer_count: 125 },
   },
   inspected_at: '2026-08-13T20:00:00Z',
   slicer: 'Cura',
@@ -64,7 +67,7 @@ const printJob = {
   total_duration_seconds: '3700',
   support_configuration: { enabled: false },
   machine_name: 'workshop_printer',
-  timelapse_url: null,
+  timelapse_url: `/api/v1/prints/20000000-0000-0000-0000-000000000001/timelapse`,
   started_at: '2026-08-13T19:00:00Z',
   ended_at: '2026-08-13T20:00:00Z',
   record_version: 2,
@@ -110,6 +113,12 @@ test('exact print state, inspection, scoring, notifications, and mobile cards re
   const dialog = page.getByRole('dialog', { name: 'dimensional-cube.gcode' })
   await expect(dialog.getByText('G-code 240; profile 235')).toBeVisible()
   await expect(dialog.getByText('PETG-01', { exact: true })).toBeVisible()
+  await expect(dialog.getByText('N4 · 0.4 mm · Hardened steel')).toBeVisible()
+  await expect(dialog.getByText(/SHA-256/)).toHaveCount(0)
+  await expect(dialog.getByRole('link', { name: 'Open video' })).toHaveAttribute(
+    'href',
+    `/api/v1/prints/${printJob.id}/timelapse`,
+  )
   await expect(dialog.getByRole('button', { name: 'Save assessment' })).toBeVisible()
   await page.keyboard.press('Escape')
 

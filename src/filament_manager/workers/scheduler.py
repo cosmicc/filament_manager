@@ -3,7 +3,7 @@
 from datetime import UTC, datetime
 from uuid import UUID
 
-from sqlalchemy import select, text
+from sqlalchemy import select, text, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from filament_manager.config import get_settings
@@ -70,6 +70,19 @@ async def schedule_periodic_jobs(session: AsyncSession) -> int:
         )
         if exists:
             continue
+        # Keep terminal periodic history without allowing one persistent
+        # integration fault to become hundreds of actionable dead rows. The
+        # replacement remains pending and the newest failure, if any, is still
+        # visible in Diagnostics.
+        await session.execute(
+            update(OutboxJob)
+            .where(
+                OutboxJob.job_type == job_type,
+                OutboxJob.status == JobStatus.DEAD,
+                OutboxJob.idempotency_key.like("periodic:%"),
+            )
+            .values(status=JobStatus.SUPERSEDED, completed_at=now)
+        )
         add_outbox_job(
             session,
             job_type=job_type,

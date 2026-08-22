@@ -107,6 +107,7 @@ class FilamentCreate(ApiModel):
     nominal_net_mass_g: Decimal = Field(gt=0)
     notes: str | None = Field(default=None, max_length=4000)
     material_template_revision_id: UUID | None = None
+    duplicate_source_filament_id: UUID | None = None
 
 
 class FilamentResponse(FilamentCreate):
@@ -230,6 +231,7 @@ class SpoolResponse(ApiModel):
     purchase_source: str | None
     purchase_date: date | None
     purchase_cost: Decimal | None
+    cost_per_gram: Decimal | None
     currency: str
     location: str | None
     spoolman_id: int | None
@@ -746,6 +748,9 @@ class PrinterResponse(ApiModel):
     status: str
     last_seen_at: datetime | None
     last_info_sync_at: datetime | None
+    spool_preflight_status: str
+    spool_preflight_message: str | None
+    last_spool_preflight_sync_at: datetime | None
     record_version: int
 
 
@@ -1058,6 +1063,7 @@ class CuraRecoverySnapshotUpload(ApiModel):
 
     snapshot_checksum: str = Field(pattern=r"^[0-9a-f]{64}$")
     payload: dict[str, Any]
+    capture_request_id: UUID | None = None
 
 
 class CuraRecoverySnapshotUploadResponse(ApiModel):
@@ -1085,8 +1091,45 @@ class CuraRecoverySnapshotResponse(ApiModel):
     quality_profile_count: int
     plugin_count: int
     plugins: list[dict[str, Any]]
+    capture_kind: Literal["automatic", "manual"]
+    name: str | None
+    description: str | None
+    record_version: int
     captured_at: datetime
     created_at: datetime
+
+
+class CuraRecoveryCaptureRequest(ApiModel):
+    """Queue one named snapshot of an exact reported Cura installation."""
+
+    installation_id: str = Field(pattern=r"^[A-Za-z0-9_.-]+$", max_length=96)
+    name: str = Field(min_length=1, max_length=120)
+    description: str | None = Field(default=None, max_length=2000)
+
+    @field_validator("name")
+    @classmethod
+    def validate_name(cls, value: str) -> str:
+        """Reject a display name containing only whitespace."""
+
+        normalized = value.strip()
+        if not normalized:
+            raise ValueError("Backup name is required")
+        return normalized
+
+
+class CuraRecoverySnapshotUpdate(ApiModel):
+    """Rename or describe one retained recovery point."""
+
+    expected_version: int = Field(ge=1)
+    name: str | None = Field(default=None, max_length=120)
+    description: str | None = Field(default=None, max_length=2000)
+
+
+class CuraRecoverySnapshotDelete(ApiModel):
+    """Confirm deletion of one individual recovery point."""
+
+    expected_version: int = Field(ge=1)
+    confirmed: bool
 
 
 class CuraRecoveryRestoreRequest(ApiModel):

@@ -11,22 +11,22 @@ PostgreSQL is the canonical data store. A distinct Spoolman service remains the 
 - Browser-based `.xlsx` workbook upload with automatic first-run printer/build-plate seeding and a conservative `Template ASA` takeover target for each configured printer/nozzle
 - Directly saved and automatically favorited `Template <material type>` Cura entries whose complete effective values flow to linked filament profiles except for visibly highlighted sparse customizations, with exact inline validation and overlapping Cura aliases represented by one editor control
 - Difference-only comparison of two to four current profiles/templates with printer/nozzle scope warnings and exact-profile print success rates
-- Simple new-spool entry from filament amount plus optional full scale weight, automatic empty-spool calculation, correction editors, safe delete-or-archive behavior, and later gross-weight measurements with variance confirmation
+- Simple new-spool entry from purchased filament weight plus optional full scale weight, automatic empty-spool calculation, purchase cost and cost-per-gram display, correction editors, safe delete-or-archive behavior, and later gross-weight measurements with variance confirmation
 - Color-aware QR spool labels with a centered solid, multicolor, or rainbow spool icon and high error correction for reliable scanning
 - Immutable audit history and transactional projection outbox
 - Immediate Spoolman REST projection plus one-minute complete convergence and usage reconciliation, including Filament Manager-owned free-text bucket locations, plus Moonraker control clients with active-spool polling and retry inside one minute
-- Exact completed-print counts per physical nozzle, build-plate side, and each distinct spool used by a print
+- Exact completed-print records with nozzle/build-plate/spool attribution, useful bounded Moonraker details, and authenticated links to matching Moonraker-timelapse videos
 - Guarded direct-Spoolman selection, automatic physical-spool drift repair, and P-number build-plate synchronization with a live saved-mesh selector, including manual Side B setup followed by exact mesh discovery (`P4`/`P4b`)
 - Cura-to-Fluidd spool preflight with bounded G-code/profile inspection, optional fail-closed blocking, strict current exact-profile print choices, broader safe manual-load choices, and Spoolman updates only at completed unload/load boundaries
 - Moonraker-backed print history with exact immutable material/plate/profile state, M600 segments, legacy import, G-code hashes, actual terminal-job spool deductions for every outcome, and append-only outcome scoring
 - Automatic 5-minute Moonraker/Klipper printer information discovery with editable manual nozzle, hardware, and build-volume metadata
 - Seven-step calibration workflow with X/Y/Z, hole, shaft, wall/flow, material-shrinkage, suggested Cura settings, direct filament-profile application, confirmed linked-template application, and safe in-progress deletion
 - Uploaded, sanitized build-plate pictures, configurable cleaning/mesh reminders, and a persistent color-coded operator activity/notification center
-- Outbound-only Cura workstation agents with clearly identified fresh-install/upgrade paths and uninstallers, an explicit map-then-review source-to-existing-template takeover, direct intake of edits to known managed materials, authoritative synchronization including visible filler/finish descriptions and the Material Settings plugin selection, and ten versioned safe Cura recovery points per installation on Arch Linux and Windows 11
+- Outbound-only Cura workstation agents with clearly identified fresh-install/upgrade paths and uninstallers, managed-material reporting, currency-safe product cost estimates, exact nozzle-variant updates, authoritative synchronization, and ten named or automatic safe Cura recovery points per installation on Arch Linux and Windows 11
 - Three light and five dark browser-local color profiles under Settings, with the running version in the application shell
 - Health, readiness, and Prometheus metrics endpoints
 - Optional privacy-sanitized Bugsnag browser/server/worker error reporting and browser performance monitoring, disabled by default
-- A dedicated Diagnostics page with connection, synchronization, worker, queue, recent-error, running/latest-version, read-only recovery-validation, safe projection-rebuild controls, and a sanitized plain-text log download
+- A dedicated Diagnostics page with connection, synchronization, worker, actionable queue, per-job-type failure causes, running/latest-version, read-only recovery-validation, safe projection-rebuild controls, and a sanitized plain-text log download
 
 ## Start locally
 

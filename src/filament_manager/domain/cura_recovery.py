@@ -75,6 +75,22 @@ SAFE_OFFLINE_PLUGIN_SECTIONS = frozenset(
         "start_optimiser",
     }
 )
+SAFE_MOONRAKER_INSTANCE_KEYS = frozenset(
+    {
+        "retry_interval",
+        "output_format",
+        "upload_dialog",
+        "upload_start_print_job",
+        "upload_remember_state",
+        "upload_autohide_messagebox",
+        "trans_input",
+        "trans_output",
+        "trans_remove",
+        "camera_image_rotation",
+        "camera_image_mirror",
+        "power_device",
+    }
+)
 _SENSITIVE_KEY_PARTS = frozenset(
     {
         "address",
@@ -104,6 +120,7 @@ _NETWORK_OR_PATH_VALUE = re.compile(
 )
 _SAFE_PLUGIN_ID = re.compile(r"^[A-Za-z0-9_.-]{1,160}$")
 _SAFE_VERSION = re.compile(r"^[A-Za-z0-9_.+~-]{1,64}$")
+_SAFE_MACHINE_ID = re.compile(r"^[A-Za-z0-9_.-]{1,160}$")
 
 
 class _CaseSensitiveConfigParser(configparser.ConfigParser):
@@ -187,6 +204,30 @@ def _validate_json_value(value: object) -> None:
         raise ValueError("Recovery JSON contains a network endpoint or local path")
 
 
+def _validate_moonraker_instances(value: str) -> None:
+    """Require a behavior-only Cura2Moonraker instance map."""
+
+    try:
+        instances = json.loads(value)
+    except json.JSONDecodeError as error:
+        raise ValueError("Recovery Moonraker preferences are invalid") from error
+    if not isinstance(instances, dict) or len(instances) > 100:
+        raise ValueError("Recovery Moonraker preferences are invalid")
+    for machine_id, settings in instances.items():
+        if (
+            not isinstance(machine_id, str)
+            or _SAFE_MACHINE_ID.fullmatch(machine_id) is None
+            or not isinstance(settings, dict)
+        ):
+            raise ValueError("Recovery Moonraker preferences are invalid")
+        for key, item in settings.items():
+            if key not in SAFE_MOONRAKER_INSTANCE_KEYS or not (
+                isinstance(item, bool | int | float)
+                or (isinstance(item, str) and len(item) <= 160 and not value_is_sensitive(item))
+            ):
+                raise ValueError("Recovery Moonraker preferences contain an unsupported setting")
+
+
 def validate_recovery_file(scope: str, relative_path: str, content: str) -> int:
     """Validate one path-free, secret-free text file and return its byte count."""
 
@@ -212,6 +253,11 @@ def validate_recovery_file(scope: str, relative_path: str, content: str) -> int:
         normalized_section = section.casefold()
         for key, value in parser.items(section, raw=True):
             if scope == "config":
+                if normalized_section == "moonraker":
+                    if key.casefold() != "instances":
+                        raise ValueError("Recovery Moonraker preferences contain an unsupported setting")
+                    _validate_moonraker_instances(value)
+                    continue
                 allowed_keys = SAFE_CURA_PREFERENCE_KEYS.get(normalized_section)
                 if allowed_keys is None and normalized_section not in SAFE_OFFLINE_PLUGIN_SECTIONS:
                     raise ValueError("Recovery preferences contain an unsupported section")
