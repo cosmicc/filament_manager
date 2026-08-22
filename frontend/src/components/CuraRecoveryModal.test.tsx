@@ -68,6 +68,7 @@ describe('CuraRecoveryModal', () => {
   it('reviews an exact snapshot before queueing the restore', async () => {
     apiFetchMock.mockImplementation((path: string) => {
       if (path === '/workstation-agents/agent-id/cura-recovery-snapshots') return Promise.resolve([snapshot])
+      if (path === '/cura-deployments') return Promise.resolve([])
       if (path === '/workstation-agents/agent-id/cura-recovery-restores') return Promise.resolve({ id: 'restore-id' })
       return Promise.reject(new Error(`Unexpected API path: ${path}`))
     })

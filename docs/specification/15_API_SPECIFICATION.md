@@ -78,6 +78,8 @@ The Side B route derives `P<number>b` from the parent plate, rejects duplicates,
 
 The takeover request contains the complete reviewed source-ID set, explicit confirmation, and zero or more unique source-to-existing-template mappings. The server requires that content-hashed set to equal the latest reported source catalog, then validates active template scopes and single-use source/template constraints; directly applies mapped settings; cascades linked-profile inheritance; records mappings; enables management; and queues synchronization in one transaction. Unmapped sources create no canonical materials. Historical revision, publication, standalone Cura-import, template-rebase, and manual Cura-deployment routes remain hidden compatibility endpoints only.
 
+`POST /workstation-agent/heartbeat` includes one optional `material_settings_sync` receipt per Cura installation. The server validates bounded setting-key names, exact exposed/missing counts, status consistency, catalog checksum, UTC verification time, and at most one Material Settings plus one Klipper Settings package record before persisting it. `GET /workstation-agents` returns the same sanitized receipt for Cura Workstations. No Cura values, paths, preferences, or account data are accepted in this receipt.
+
 ### Calibration
 
 - `POST /calibrations`
@@ -142,7 +144,7 @@ Printer responses omit Moonraker addresses and credentials. Synchronization retu
 
 Only one physical nozzle may be installed on a printer. `PATCH` may edit its unique code, including while installed, without rewriting lifecycle or print history. Responses derive completed-print and total-filament-use values from immutable print history; lifecycle events are append-only.
 
-Installing a different diameter queues a closed-Cura update to one existing exact machine/nozzle variant on each managed workstation. An unavailable or ambiguous variant fails safely without changing the Cura machine. Successful changes locally back up the machine instance and queue the current material library.
+Installing a different diameter queues a closed-Cura update to one exact machine and linked position-zero extruder on each managed workstation. The agent backs up the existing machine, extruder, and definition-change files, writes `machine_nozzle_size` to the selected extruder's existing settings container, and selects one exact existing variant when available; it never manufactures a variant or container. A successful exact-version recovery queues this same alignment again before the current material library.
 
 Recovery endpoints list safe metadata, queue an exact-installation named capture, edit only name/description with optimistic concurrency, delete one confirmed unreferenced point, and queue confirmed exact-version restore. Automatic snapshots are content-deduplicated; deleting one stores only its exact version/content identity so the unchanged backup stays absent, while named capture requests remain idempotent by deployment and may intentionally retain identical settings.
 
@@ -172,7 +174,7 @@ Print responses expose an application-local timelapse link only after a conserva
 - `POST /diagnostics/validation-runs` (Administrator only)
 - `POST /diagnostics/projection-rebuild` (Administrator only)
 
-Diagnostics responses contain only sanitized bounded checks, counts, timestamps, versions, and messages. `failure_groups` retains one latest representative and actionable count for each failing job type independently of the bounded recent list. The authenticated text route generates a non-cacheable attachment from that same sanitized overview and never includes URLs, SQL, tracebacks, credentials, or upstream response bodies. The version route compares the running version with the highest non-draft semantic release from the fixed public GitHub repository endpoint, includes testing prereleases, caches the result, and never returns the upstream body. Validation is read-only and persisted. Rebuild queues idempotent derived work and never performs a database restore.
+Diagnostics responses contain only sanitized bounded checks, counts, timestamps, versions, and messages. Each managed Cura installation contributes a material-setting verification check derived from the manifest-bound heartbeat receipt, including expected/exposed counts and bounded missing keys without setting values. `failure_groups` retains one latest representative and actionable count for each failing job type independently of the bounded recent list. The authenticated text route generates a non-cacheable attachment from that same sanitized overview and never includes URLs, SQL, tracebacks, credentials, or upstream response bodies. The version route compares the running version with the highest non-draft semantic release from the fixed public GitHub repository endpoint, includes testing prereleases, caches the result, and never returns the upstream body. Validation is read-only and persisted. Rebuild queues idempotent derived work and never performs a database restore.
 
 ## WebSocket/SSE events
 

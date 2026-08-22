@@ -3,6 +3,7 @@
 from filament_manager.domain.profile_inheritance import (
     override_setting_keys,
     resolve_profile_settings,
+    resolve_profile_settings_for_template_update,
     sparse_profile_overrides,
 )
 
@@ -54,32 +55,38 @@ def test_sparse_overrides_ignore_equivalent_decimals_and_resolve_removals() -> N
 
     overrides = sparse_profile_overrides(base, desired)
 
-    assert overrides == {
-        "extruder_temp_c": "205",
-        "cura_extensions": {
-            "cool_min_layer_time": None,
-            "material_flow_layer_0": "98",
-        },
-    }
-    assert override_setting_keys(overrides) == {
-        "extruder_temp_c",
-        "cool_min_layer_time",
-        "material_flow_layer_0",
-    }
+    assert overrides == {"extruder_temp_c": "205"}
+    assert override_setting_keys(overrides) == {"extruder_temp_c"}
     resolved = resolve_profile_settings(base, overrides)
     assert resolved["extruder_temp_c"] == "205"
     assert resolved["flow_percent"] == "100"
     assert resolved["cura_extensions"] == {
         "retraction_enable": True,
-        "material_flow_layer_0": "98",
+        "cool_min_layer_time": "10",
     }
 
 
-def test_template_update_preserves_filament_overrides() -> None:
-    """Moving a base changes inherited values but retains customized values."""
+def test_template_update_preserves_profile_overrides_but_owns_template_only_settings() -> None:
+    """Moving a base retains profile controls and replaces template-only values."""
 
-    base = _settings()
-    overrides = {"extruder_temp_c": "205", "pressure_advance": "0.13"}
+    original_extensions = _settings()["cura_extensions"]
+    assert isinstance(original_extensions, dict)
+    base = {
+        **_settings(),
+        "cura_extensions": {
+            **original_extensions,
+            "acceleration_print": "5000",
+            "klipper_smooth_time_factor": "0.04",
+        },
+    }
+    overrides = {
+        "extruder_temp_c": "205",
+        "pressure_advance": "0.13",
+        "cura_extensions": {
+            "acceleration_print": "9000",
+            "klipper_smooth_time_factor": "0.08",
+        },
+    }
     newer = {**base, "cooling_max_percent": "80", "extruder_temp_c": "210"}
 
     resolved = resolve_profile_settings(newer, overrides)
@@ -87,3 +94,40 @@ def test_template_update_preserves_filament_overrides() -> None:
     assert resolved["extruder_temp_c"] == "205"
     assert resolved["pressure_advance"] == "0.13"
     assert resolved["cooling_max_percent"] == "80"
+    assert resolved["cura_extensions"]["acceleration_print"] == "5000"  # type: ignore[index]
+    assert resolved["cura_extensions"]["klipper_smooth_time_factor"] == "0.04"  # type: ignore[index]
+    assert sparse_profile_overrides(newer, resolve_profile_settings(newer, overrides)) == {
+        "extruder_temp_c": "205",
+        "pressure_advance": "0.13",
+    }
+    assert override_setting_keys(overrides) == {"extruder_temp_c", "pressure_advance"}
+
+
+def test_template_update_replaces_legacy_custom_regular_fan() -> None:
+    """Cooling values are template owned even when an old profile customized them."""
+
+    current = _settings()
+    overrides = {"cooling_min_percent": "90"}
+    current = resolve_profile_settings(current, overrides)
+    newer = {**_settings(), "cooling_max_percent": "80"}
+
+    resolved, adjusted = resolve_profile_settings_for_template_update(newer, current, overrides)
+
+    assert resolved["cooling_min_percent"] == "50"
+    assert resolved["cooling_max_percent"] == "80"
+    assert adjusted == {}
+
+
+def test_template_update_replaces_legacy_custom_maximum_fan() -> None:
+    """Both fan range controls inherit from the latest template."""
+
+    base = {**_settings(), "cooling_min_percent": "20"}
+    overrides = {"cooling_max_percent": "60"}
+    current = resolve_profile_settings(base, overrides)
+    newer = {**base, "cooling_min_percent": "70"}
+
+    resolved, adjusted = resolve_profile_settings_for_template_update(newer, current, overrides)
+
+    assert resolved["cooling_min_percent"] == "70"
+    assert resolved["cooling_max_percent"] == "100"
+    assert adjusted == {}

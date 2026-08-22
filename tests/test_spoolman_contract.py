@@ -6,7 +6,7 @@ import httpx
 import pytest
 import respx
 
-from filament_manager.clients.spoolman import MANAGED_EXTRA_FIELDS, SpoolmanClient
+from filament_manager.clients.spoolman import MANAGED_EXTRA_FIELDS, SpoolmanClient, SpoolmanError
 from filament_manager.config import SpoolmanConfig
 from filament_manager.domain.spoolman import (
     decode_text_extra_field,
@@ -124,3 +124,35 @@ async def test_measurement_uses_documented_measure_endpoint() -> None:
     )
     await client().measure_spool(7, 950)
     assert route.calls.last.request.read().decode() == '{"weight":950}'
+
+
+@pytest.mark.asyncio
+@respx.mock
+async def test_remaining_weight_correction_uses_supported_spool_update() -> None:
+    """Canonical net corrections must not use the gross-scale measurement route."""
+
+    respx.get("http://spoolman.test:8000/api/v1/spool/7").mock(
+        return_value=httpx.Response(200, json={"id": 7, "extra": {}})
+    )
+    route = respx.patch("http://spoolman.test:8000/api/v1/spool/7").mock(
+        return_value=httpx.Response(200, json={"id": 7, "remaining_weight": 750})
+    )
+
+    await client().set_spool_remaining_weight(7, 750)
+
+    assert route.calls.last.request.read().decode() == '{"remaining_weight":750,"extra":{}}'
+
+
+@pytest.mark.asyncio
+@respx.mock
+async def test_spoolman_http_failure_retains_status_without_response_body() -> None:
+    """Diagnostics need a safe status code but must never include an upstream body."""
+
+    respx.get("http://spoolman.test:8000/api/v1/spool/7").mock(
+        return_value=httpx.Response(400, json={"message": "private upstream detail"})
+    )
+
+    with pytest.raises(SpoolmanError, match=r"GET /spool/7 failed with HTTP 400") as raised:
+        await client().get_spool(7)
+
+    assert "private upstream detail" not in str(raised.value)

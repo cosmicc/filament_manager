@@ -171,6 +171,7 @@ export interface CuraSettingCatalogItem {
   value_type: 'boolean' | 'number' | 'string'
   unit: string | null
   editable: boolean
+  template_only: boolean
 }
 
 export interface MaterialSettings {
@@ -195,6 +196,10 @@ export interface MaterialSettings {
   support_overhang_angle_deg: string | null
   tree_max_branch_angle_deg: string | null
   pressure_advance: string | null
+  ironing_enabled: boolean | null
+  ironing_flow_percent: string | null
+  ironing_speed_mm_s: string | null
+  ironing_line_spacing_mm: string | null
   filament_density_g_cm3: string
   preferred_build_plate_surface_id: string | null
   cura_extensions: Record<string, string | number | boolean | null>
@@ -460,6 +465,25 @@ export interface CuraMachineReport {
   nozzle_diameter_mm: string | null
 }
 
+export interface CuraMaterialSettingsSyncReport {
+  status: 'not_deployed' | 'waiting_for_cura' | 'waiting_for_machine' | 'healthy' | 'degraded' | 'invalid'
+  expected_count: number
+  exposed_count: number
+  missing_keys: string[]
+  unexpected_keys: string[]
+  material_settings_plugin_ready: boolean
+  klipper_settings_plugin_ready: boolean
+  plugins: Array<{
+    role: 'material_settings' | 'klipper_settings'
+    package_id: string
+    display_name: string
+    version: string
+    enabled: boolean
+  }>
+  catalog_checksum: string | null
+  verified_at: string | null
+}
+
 export interface CuraInstallationReport {
   installation_id: string
   version: string
@@ -467,6 +491,7 @@ export interface CuraInstallationReport {
   path_hint: string
   setting_version: number | null
   managed_library_checksum: string | null
+  material_settings_sync?: CuraMaterialSettingsSyncReport | null
   machines: CuraMachineReport[]
 }
 
@@ -560,6 +585,7 @@ export interface CuraDeployment {
   agent_id: string
   material_profile_id: string | null
   requested_by: string | null
+  operation: string
   status: 'pending' | 'claimed' | 'succeeded' | 'failed' | 'cancelled'
   profile_checksum: string
   attempts: number

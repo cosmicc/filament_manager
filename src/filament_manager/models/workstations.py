@@ -103,6 +103,13 @@ class CuraDeployment(UUIDPrimaryKeyMixin, Base):
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     cancellation_reason: Mapped[str | None] = mapped_column(Text)
 
+    @property
+    def operation(self) -> str:
+        """Return one bounded public operation label without exposing payload data."""
+
+        value = self.payload.get("operation")
+        return value if isinstance(value, str) and len(value) <= 64 else "material_library"
+
 
 class CuraRecoverySnapshot(UUIDPrimaryKeyMixin, Base):
     """Sanitized Cura backup with immutable content and editable display metadata."""

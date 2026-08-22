@@ -12,6 +12,7 @@
 - idempotency-key generation
 - Spoolman extra-field merge
 - deterministic Cura material GUIDs, merged managed cost preferences, separate bounded strict-print/manual-load catalogs, exact-profile/template load-temperature fallback, Klipper macro syntax, and physical unload/load commit ordering
+- Cura Material Settings preference alignment and drift repair, active-definition exposure checks, manifest-bound value-free receipts, required-plugin version/readiness reporting, and sanitized Diagnostics summaries
 - derived completed-print counts for one plate side, captured physical nozzle, and each distinct start/M600 spool
 - manual Side B creation, duplicate rejection, and mesh-unavailable initial state
 - Cura recovery path/setting allowlists, credential/endpoint/path removal, deterministic checksums, semantic plugin inventory, automatic and named captures, metadata edits, durable confirmed deletion, exact-version enforcement, reset detection, retention, local rollback, safe Cura2Moonraker behavior merging, and current connection-secret preservation
@@ -26,7 +27,7 @@ Use a real disposable PostgreSQL instance for:
 - JSONB behavior
 - advisory locks
 - worker claiming with `SKIP LOCKED`
-- outbox atomicity, exact failure timestamps, periodic replacement supersession, and reconstructable-versus-non-reconstructable recovery
+- outbox atomicity, microsecond system-job versions beyond the 32-bit range, exact failure timestamps, periodic replacement supersession, and reconstructable-versus-non-reconstructable recovery
 - optimistic concurrency
 - nozzle lifecycle events, one-installed-nozzle enforcement, worker heartbeats, and persisted diagnostic runs
 - immutable Cura recovery snapshots, per-installation/version retention, idempotent upload, reset-blocked preservation, leased restore claims, and bounded completion state
@@ -60,6 +61,7 @@ Mock or containerize:
 16. Read-only recovery validation persists sanitized results without changing canonical records, and projection rebuild queues complete derived work.
 17. A completed print with repeated M600 segments counts each distinct spool once and its captured nozzle and plate side once.
 18. A closed Cura installation captures a sanitized recovery point; a simulated reset cannot displace it; an Administrator-confirmed exact-version restore rolls back safely on write failure and is followed by canonical material synchronization.
+19. A managed Cura installation reports 55 of 55 exposed settings after initialization; missing or disabled Material Settings/Klipper Settings plugins produce a bounded error with exact missing keys, and a new deployment remains waiting until Cura verifies its matching catalog checksum.
 
 ## Swarm tests
 

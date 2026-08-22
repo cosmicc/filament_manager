@@ -24,14 +24,18 @@ const settings: MaterialSettings = {
   support_overhang_angle_deg: null,
   tree_max_branch_angle_deg: null,
   pressure_advance: '0.035',
+  ironing_enabled: false,
+  ironing_flow_percent: null,
+  ironing_speed_mm_s: null,
+  ironing_line_spacing_mm: null,
   filament_density_g_cm3: '1.24',
   preferred_build_plate_surface_id: 'surface-a',
   cura_extensions: { retraction_enable: true, xy_offset: '0.05' },
 }
 
 const catalog: CuraSettingCatalogItem[] = [
-  { key: 'retraction_enable', label: 'Enable Retraction', value_type: 'boolean', unit: null, editable: true },
-  { key: 'xy_offset', label: 'Horizontal Expansion', value_type: 'number', unit: 'mm', editable: true },
+  { key: 'retraction_enable', label: 'Enable Retraction', value_type: 'boolean', unit: null, editable: true, template_only: false },
+  { key: 'xy_offset', label: 'Horizontal Expansion', value_type: 'number', unit: 'mm', editable: true, template_only: false },
 ]
 
 const plates = [{

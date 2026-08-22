@@ -5,35 +5,87 @@ from types import SimpleNamespace
 
 from filament_manager.domain.cura_import import material_settings_from_cura
 from filament_manager.domain.cura_material_settings import (
+    CURA_ALWAYS_EMITTED_SETTING_VALUES,
     CURA_EDITABLE_SETTING_KEYS,
     CURA_EXTENSION_SETTING_KEYS,
+    CURA_MANAGED_SETTING_KEYS,
     CURA_MATERIAL_SETTINGS,
+    CURA_RETIRED_SETTING_KEYS,
+    CURA_TEMPLATE_ONLY_SETTING_KEYS,
     CURA_TYPED_SETTING_KEYS,
     cura_settings_for_profile,
 )
 
 
 def test_operator_material_settings_catalog_is_exact_and_unique() -> None:
-    """Retain the 56 reported settings, with brand/type as derived metadata."""
+    """Retain the complete unique catalog, including template-only acceleration."""
 
     keys = [setting.key for setting in CURA_MATERIAL_SETTINGS]
 
-    assert len(keys) == 56
-    assert len(set(keys)) == 56
-    assert len(CURA_EDITABLE_SETTING_KEYS) == 52
-    assert len(CURA_TYPED_SETTING_KEYS) == 24
-    assert len(CURA_EXTENSION_SETTING_KEYS) == 29
+    assert len(keys) == 57
+    assert len(set(keys)) == 57
+    assert len(CURA_EDITABLE_SETTING_KEYS) == 51
+    assert len(CURA_TYPED_SETTING_KEYS) == 26
+    assert len(CURA_EXTENSION_SETTING_KEYS) == 27
     assert {setting.key for setting in CURA_MATERIAL_SETTINGS if not setting.editable} == {
+        "acceleration_enabled",
+        "acceleration_travel_enabled",
         "material_brand",
         "material_type",
-        "cool_fan_speed_0",
+        "cool_fan_speed",
         "retraction_speed",
     }
     assert {
-        "klipper_pressure_advance_factor",
+        "acceleration_infill",
+        "acceleration_print",
+        "acceleration_roofing",
+        "acceleration_support",
+        "acceleration_topbottom",
+        "acceleration_travel",
+        "acceleration_wall",
         "klipper_smooth_time_enable",
         "klipper_smooth_time_factor",
     }.issubset(keys)
+    assert CURA_TEMPLATE_ONLY_SETTING_KEYS == {
+        "acceleration_enabled",
+        "acceleration_infill",
+        "acceleration_print",
+        "acceleration_roofing",
+        "acceleration_support",
+        "acceleration_topbottom",
+        "acceleration_travel",
+        "acceleration_travel_enabled",
+        "acceleration_wall",
+        "klipper_smooth_time_enable",
+        "klipper_smooth_time_factor",
+        "cool_fan_enabled",
+        "cool_fan_full_layer",
+        "cool_fan_speed_max",
+        "cool_fan_speed_min",
+        "cool_min_layer_time",
+        "cool_min_layer_time_fan_speed_max",
+        "cool_min_speed",
+        "skirt_brim_speed",
+        "speed_infill",
+        "speed_layer_0",
+        "speed_print",
+        "speed_print_layer_0",
+        "speed_roofing",
+        "speed_support",
+        "speed_topbottom",
+        "speed_travel",
+        "speed_travel_layer_0",
+        "speed_wall",
+        "speed_wall_0",
+        "speed_wall_x",
+    }
+    assert CURA_ALWAYS_EMITTED_SETTING_VALUES["acceleration_enabled"] is True
+    assert CURA_ALWAYS_EMITTED_SETTING_VALUES["acceleration_travel_enabled"] is True
+    assert CURA_ALWAYS_EMITTED_SETTING_VALUES.keys() <= CURA_MANAGED_SETTING_KEYS
+    assert {
+        "default_material_bed_temperature",
+        "default_material_print_temperature",
+    } <= CURA_RETIRED_SETTING_KEYS
 
 
 def test_profile_mapping_places_klipper_values_in_the_material_settings() -> None:
@@ -61,8 +113,11 @@ def test_profile_mapping_places_klipper_values_in_the_material_settings() -> Non
         support_overhang_angle_deg=Decimal("55"),
         pressure_advance=Decimal("0.035"),
         cura_extensions={
+            "acceleration_print": "5000",
+            "acceleration_travel": "8000",
             "klipper_smooth_time_enable": True,
             "klipper_smooth_time_factor": "0.04",
+            "cool_fan_speed_0": "15",
         },
     )
 
@@ -71,11 +126,18 @@ def test_profile_mapping_places_klipper_values_in_the_material_settings() -> Non
     assert settings["klipper_pressure_advance_factor"] == "0.035"
     assert settings["klipper_smooth_time_enable"] is True
     assert settings["klipper_smooth_time_factor"] == "0.04"
+    assert settings["acceleration_enabled"] is True
+    assert settings["acceleration_travel_enabled"] is True
+    assert settings["acceleration_print"] == "5000"
+    assert settings["acceleration_travel"] == "8000"
     assert settings["material_print_temperature"] == "225"
+    assert settings["material_bed_temperature"] == "70"
+    assert "default_material_print_temperature" not in settings
+    assert "default_material_bed_temperature" not in settings
     assert settings["retraction_speed"] == "35"
     assert settings["retraction_retract_speed"] == "35"
     assert settings["retraction_prime_speed"] == "32"
-    assert settings["cool_fan_speed_0"] == "0"
+    assert settings["cool_fan_speed_0"] == "15"
     assert settings["cool_fan_speed"] == "70"
     assert settings["cool_fan_speed_max"] == "70"
 

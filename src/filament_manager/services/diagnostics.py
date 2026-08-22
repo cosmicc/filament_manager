@@ -13,6 +13,7 @@ from filament_manager.clients.google_sheets import GoogleSheetsClient, GoogleShe
 from filament_manager.clients.moonraker import MoonrakerClient, MoonrakerError
 from filament_manager.clients.spoolman import SpoolmanClient, SpoolmanError
 from filament_manager.config import PrinterConfig, get_settings
+from filament_manager.domain.cura_material_settings import CURA_MANAGED_SETTING_KEYS
 from filament_manager.models.enums import CuraDeploymentStatus, JobStatus, NotificationSeverity
 from filament_manager.models.inventory import (
     FilamentProduct,
@@ -32,7 +33,7 @@ from filament_manager.models.workstations import CuraDeployment, CuraRecoveryRes
 from filament_manager.services.cura_library import build_cura_library, queue_cura_library
 from filament_manager.services.events import add_audit_event, add_outbox_job
 
-EXPECTED_SCHEMA_VERSION = "b4c5d6e7f890"
+EXPECTED_SCHEMA_VERSION = "d6e7f8a9b012"
 SYSTEM_AGGREGATE_ID = UUID("00000000-0000-0000-0000-000000000001")
 
 DATABASE_ERROR_CLASSES = {
@@ -64,6 +65,88 @@ def _check(
         "detail": detail[:500],
         "checked_at": checked_at,
     }
+
+
+def _cura_material_settings_check(
+    agent: WorkstationAgent,
+    installation: dict[str, object],
+    checked_at: datetime,
+) -> dict[str, object]:
+    """Describe one workstation's value-free Cura settings verification receipt."""
+
+    version = installation.get("version")
+    safe_version = str(version)[:32] if isinstance(version, str) else "unknown"
+    sync = installation.get("material_settings_sync")
+    if not agent.enabled or not agent.cura_management_enabled:
+        detail = (
+            "Agent is disabled"
+            if not agent.enabled
+            else "Verification begins after the one-time Cura material-library takeover"
+        )
+        return _check(
+            f"cura.material_settings.{agent.id}.{installation.get('installation_id', 'unknown')}",
+            f"Cura {safe_version} material print settings · {agent.display_name}",
+            "synchronization",
+            "disabled",
+            detail,
+            checked_at,
+        )
+    if not isinstance(sync, dict):
+        return _check(
+            f"cura.material_settings.{agent.id}.{installation.get('installation_id', 'unknown')}",
+            f"Cura {safe_version} material print settings · {agent.display_name}",
+            "synchronization",
+            "warning",
+            (
+                "No verification receipt has been reported. Upgrade and restart the "
+                "workstation agent, then open Cura once."
+            ),
+            checked_at,
+        )
+    receipt_status = sync.get("status")
+    expected = sync.get("expected_count") if isinstance(sync.get("expected_count"), int) else 0
+    exposed = sync.get("exposed_count") if isinstance(sync.get("exposed_count"), int) else 0
+    raw_missing = sync.get("missing_keys")
+    missing = (
+        [key for key in raw_missing if isinstance(key, str) and key in CURA_MANAGED_SETTING_KEYS]
+        if isinstance(raw_missing, list)
+        else []
+    )
+    plugin_ready = sync.get("material_settings_plugin_ready") is True
+    klipper_ready = sync.get("klipper_settings_plugin_ready") is True
+    if receipt_status == "healthy" and expected == exposed and plugin_ready and klipper_ready:
+        status = "healthy"
+        detail = (
+            f"{exposed} of {expected} required material print settings are exposed and enforced; "
+            "Material Settings and Klipper Settings are ready"
+        )
+    elif receipt_status in {"waiting_for_cura", "waiting_for_machine", "not_deployed"}:
+        status = "warning"
+        detail = (
+            f"{expected} required settings are deployed but not yet verified. "
+            "Open or restart Cura with the configured printer active."
+        )
+    elif receipt_status == "invalid":
+        status = "error"
+        detail = (
+            "The workstation reported an invalid settings receipt; upgrade and restart its agent and Cura."
+        )
+    else:
+        status = "error"
+        missing_detail = ", ".join(missing[:12]) or "none reported"
+        detail = (
+            f"{exposed} of {expected} required settings are exposed. Missing: {missing_detail}. "
+            f"Material Settings ready: {'yes' if plugin_ready else 'no'}; "
+            f"Klipper Settings ready: {'yes' if klipper_ready else 'no'}."
+        )
+    return _check(
+        f"cura.material_settings.{agent.id}.{installation.get('installation_id', 'unknown')}",
+        f"Cura {safe_version} material print settings · {agent.display_name}",
+        "synchronization",
+        status,
+        detail,
+        checked_at,
+    )
 
 
 def _sanitized_error_detail(error_class: str | None, detail: str | None) -> str | None:
@@ -283,15 +366,30 @@ async def operational_overview(session: AsyncSession) -> dict[str, object]:
     job_type_counts = {job_type: int(count) for job_type, count in job_rows}
     dead = queue_counts.get(JobStatus.DEAD.value, 0)
     failed = queue_counts.get(JobStatus.FAILED.value, 0)
+    retrying_pending, next_retry_at = (
+        await session.execute(
+            select(func.count(OutboxJob.id), func.min(OutboxJob.next_attempt_at)).where(
+                OutboxJob.status == JobStatus.PENDING,
+                OutboxJob.attempts > 0,
+            )
+        )
+    ).one()
+    retrying_pending = int(retrying_pending)
+    retry_detail = (
+        f"; {retrying_pending} retrying after an earlier failure"
+        + (f", next retry {next_retry_at.isoformat()}" if next_retry_at is not None else "")
+        if retrying_pending
+        else ""
+    )
     checks.append(
         _check(
             "outbox.queue",
             "Projection queue",
             "worker",
-            "error" if dead else "warning" if failed else "healthy",
+            "error" if dead else "warning" if failed or retrying_pending else "healthy",
             (
                 f"{queue_counts.get('pending', 0)} pending, {queue_counts.get('running', 0)} running, "
-                f"{failed} failed, {dead} dead"
+                f"{failed} failed, {dead} dead{retry_detail}"
             ),
             checked_at,
         )
@@ -436,7 +534,7 @@ async def operational_overview(session: AsyncSession) -> dict[str, object]:
                 (
                     "Agent is disabled"
                     if not agent.enabled
-                    else "Agent reported an operational error; review the bounded error log"
+                    else agent.last_error
                     if agent.last_error
                     else f"Last contact: {agent.last_seen_at}"
                     if fresh
@@ -450,6 +548,9 @@ async def operational_overview(session: AsyncSession) -> dict[str, object]:
                 checked_at,
             )
         )
+        for installation in agent.cura_installations:
+            if isinstance(installation, dict):
+                checks.append(_cura_material_settings_check(agent, installation, checked_at))
         recovery_status = agent.cura_recovery_status
         checks.append(
             _check(

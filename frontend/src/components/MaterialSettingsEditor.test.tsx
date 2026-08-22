@@ -27,12 +27,27 @@ const settings: MaterialSettings = {
   support_overhang_angle_deg: null,
   tree_max_branch_angle_deg: null,
   pressure_advance: null,
+  ironing_enabled: false,
+  ironing_flow_percent: null,
+  ironing_speed_mm_s: null,
+  ironing_line_spacing_mm: null,
   filament_density_g_cm3: '1.24',
   preferred_build_plate_surface_id: null,
   cura_extensions: {},
 }
 
 describe('MaterialSettingsEditor validation', () => {
+  it('shows only the three requested temperature controls', () => {
+    const rendered = render(<MaterialSettingsEditor settings={settings} catalog={[]} plates={[]} />)
+
+    expect(screen.getByLabelText('Printing temperature (°C)')).toBeTruthy()
+    expect(screen.getByLabelText('Build volume temperature (°C)')).toBeTruthy()
+    expect(screen.getByLabelText('Build plate temperature (°C)')).toBeTruthy()
+    expect(screen.queryByText(/Default .*temperature/i)).toBeNull()
+    expect(screen.queryByLabelText('Chamber temperature (°C)')).toBeNull()
+    rendered.unmount()
+  })
+
   it('shows an accessible red error beside the exact invalid value', () => {
     render(
       <MaterialSettingsEditor
@@ -49,15 +64,15 @@ describe('MaterialSettingsEditor validation', () => {
     expect(message.parentElement?.className).toContain('field-validation')
   })
 
-  it('groups every requested Cura cooling control and hides initial fan speed', () => {
+  it('groups every requested Cura cooling control and allows initial fan speed editing', () => {
     const rendered = render(
       <MaterialSettingsEditor
         plates={[]}
         catalog={[
-          { key: 'cool_fan_full_layer', label: 'Regular Fan Speed at Layer', value_type: 'number', unit: null, editable: true },
-          { key: 'cool_min_layer_time', label: 'Minimum Layer Time', value_type: 'number', unit: 's', editable: true },
-          { key: 'cool_min_speed', label: 'Minimum Speed', value_type: 'number', unit: 'mm/s', editable: true },
-          { key: 'cool_fan_speed_0', label: 'Initial Fan Speed', value_type: 'number', unit: '%', editable: false },
+          { key: 'cool_fan_full_layer', label: 'Regular Fan Speed at Layer', value_type: 'number', unit: null, editable: true, template_only: false },
+          { key: 'cool_min_layer_time', label: 'Minimum Layer Time', value_type: 'number', unit: 's', editable: true, template_only: false },
+          { key: 'cool_min_speed', label: 'Minimum Speed', value_type: 'number', unit: 'mm/s', editable: true, template_only: false },
+          { key: 'cool_fan_speed_0', label: 'Initial Fan Speed', value_type: 'number', unit: '%', editable: true, template_only: false },
         ]}
       />,
     )
@@ -65,12 +80,12 @@ describe('MaterialSettingsEditor validation', () => {
     const cooling = within(rendered.container).getByRole('heading', { name: 'Cooling' }).closest('section')
     expect(cooling).not.toBeNull()
     const controls = within(cooling as HTMLElement)
-    expect(controls.getByLabelText('Regular fan speed (%)')).toBeTruthy()
-    expect(controls.getByLabelText('Maximum fan speed (%)')).toBeTruthy()
+    expect(controls.getByLabelText(/^Regular fan speed \(%\)/)).toBeTruthy()
+    expect(controls.getByLabelText(/^Maximum fan speed \(%\)/)).toBeTruthy()
     expect(controls.getByLabelText(/^Regular Fan Speed at Layer/)).toBeTruthy()
     expect(controls.getByLabelText(/^Minimum Layer Time \(s\)/)).toBeTruthy()
     expect(controls.getByLabelText(/^Minimum Speed \(mm\/s\)/)).toBeTruthy()
-    expect(within(rendered.container).queryByLabelText(/^Initial Fan Speed/)).toBeNull()
+    expect(controls.getByLabelText(/^Initial Fan Speed/)).toBeTruthy()
   })
 
   it('marks explicit filament customizations with the stronger ownership state', () => {
@@ -89,5 +104,40 @@ describe('MaterialSettingsEditor validation', () => {
       .closest('.setting-field')
     expect(flowField?.className).toContain('setting-field--customized')
     expect(within(flowField as HTMLElement).getByText(/Customized · Template: 100/)).toBeTruthy()
+  })
+
+  it('shows template-only acceleration and Klipper controls only in template editors', () => {
+    const catalog = [
+      { key: 'acceleration_enabled', label: 'Enable Acceleration Control', value_type: 'boolean' as const, unit: null, editable: false, template_only: true },
+      { key: 'acceleration_print', label: 'Print Acceleration', value_type: 'number' as const, unit: 'mm/s²', editable: true, template_only: true },
+      { key: 'acceleration_travel', label: 'Travel Acceleration', value_type: 'number' as const, unit: 'mm/s²', editable: true, template_only: true },
+      { key: 'klipper_smooth_time_enable', label: 'Enable Klipper Smooth Time', value_type: 'boolean' as const, unit: null, editable: true, template_only: true },
+    ]
+    const template = render(
+      <MaterialSettingsEditor settings={settings} plates={[]} catalog={catalog} scope="template" />,
+    )
+    const templateControls = within(template.container)
+
+    expect(templateControls.getByLabelText(/^Print Acceleration/)).toBeTruthy()
+    expect(templateControls.getByLabelText(/^Travel Acceleration/)).toBeTruthy()
+    expect(templateControls.getByLabelText(/^Klipper pressure advance/)).toBeTruthy()
+    expect(templateControls.getAllByText('Template only').length).toBeGreaterThanOrEqual(3)
+    expect(templateControls.queryByLabelText('Enable Acceleration Control')).toBeNull()
+    template.unmount()
+
+    const profile = render(
+      <MaterialSettingsEditor
+        settings={settings}
+        baseSettings={settings}
+        plates={[]}
+        catalog={catalog}
+        scope="profile"
+      />,
+    )
+    const profileControls = within(profile.container)
+    expect(profileControls.queryByLabelText(/^Print Acceleration/)).toBeNull()
+    expect(profileControls.queryByLabelText(/^Travel Acceleration/)).toBeNull()
+    expect(profileControls.getByLabelText(/^Klipper pressure advance/)).toBeTruthy()
+    expect(profileControls.queryByLabelText('Enable Klipper Smooth Time')).toBeNull()
   })
 })

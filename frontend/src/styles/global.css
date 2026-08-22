@@ -405,6 +405,10 @@ svg { flex: 0 0 auto; }
 .workstation-card__icon { width: 36px; height: 36px; display: grid; place-items: center; border-radius: 9px; color: var(--blue-600); background: var(--blue-50); }
 .cura-installation { display: flex; flex-direction: column; border-radius: var(--radius-sm); padding: 11px 12px; background: var(--surface-muted); }
 .cura-installation span { margin-top: 4px; color: var(--text-muted); font-size: 12px; }
+.cura-material-settings-status { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 5px 10px; margin-top: 10px; border-top: 1px solid var(--border); padding-top: 10px; }
+.cura-material-settings-status > span:first-child { display: inline-flex; align-items: center; gap: 6px; margin: 0; color: var(--text); font-size: 13px; }
+.cura-material-settings-status > .status-pill { margin: 0; }
+.cura-material-settings-status > small { grid-column: 1 / -1; color: var(--text-muted); }
 .cura-preservation { display: grid; gap: 10px; border-top: 1px solid var(--border); padding-top: 14px; }
 .cura-preservation h3 { margin-bottom: 4px; font-size: 15px; }
 .cura-recovery-summary { display: grid; gap: 10px; border-top: 1px solid var(--border); padding-top: 14px; }
@@ -463,6 +467,7 @@ textarea { resize: vertical; }
 .input-suffix span { position: absolute; top: 50%; right: 11px; color: var(--text-muted); transform: translateY(-50%); }
 .label-optional { color: var(--text-muted); font-weight: 400; }
 .field-help { display: block; font-weight: 400; }
+.setting-scope { display: inline-block; margin-left: 7px; color: var(--blue-700); font-size: 0.72rem; font-weight: 700; }
 .setting-field { display: grid; gap: 6px; align-content: start; }
 .setting-field > label { display: grid; gap: 6px; }
 .setting-field--customized { margin: -9px; border: 2px solid var(--blue-600); border-radius: var(--radius-sm); padding: 8px; background: var(--blue-50); box-shadow: inset 4px 0 0 var(--blue-600), 0 0 0 2px color-mix(in srgb, var(--blue-600) 12%, transparent); }

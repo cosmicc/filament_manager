@@ -120,7 +120,7 @@ export default function TemplatesPage() {
             <label className="form-grid__wide">Description<textarea name="description" rows={2} placeholder="Purpose, behavior, and calibration notes" aria-invalid={identityError('description').length ? true : undefined} aria-describedby={identityError('description').length ? identityErrorId('description') : undefined} />{identityFieldError('description')}</label>
           </div>
         </EditorSection> : null}
-        <MaterialSettingsEditor settings={sourceSettings} validationErrors={settingsValidationErrors} catalog={catalog.data ?? []} plates={plates.data ?? []} />
+        <MaterialSettingsEditor settings={sourceSettings} validationErrors={settingsValidationErrors} catalog={catalog.data ?? []} plates={plates.data ?? []} scope="template" />
         {save.error ? <p className="form-error" role="alert">{hasValidationErrors ? 'Correct the highlighted values and save again.' : save.error.message}</p> : null}
       </form>
     </Modal> : null}

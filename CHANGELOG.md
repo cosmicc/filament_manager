@@ -1,5 +1,40 @@
 # Changelog
 
+## 0.3.3 - 08.22.2026
+
+### Added
+
+- Added per-Cura-installation material-setting verification receipts with exact expected/exposed counts, bounded missing/extra keys, required Material Settings/Klipper Settings package versions and readiness, catalog checksums, and verification times on Cura Workstations and Diagnostics.
+- Added a PostgreSQL migration and regression coverage for microsecond-sized manual system-job versions in the durable projection outbox.
+- Added inheritance regression coverage for both one-sided Regular Fan Speed and Maximum Fan Speed customizations when a linked template changes.
+- Added template-only Cura controls for Print, Infill, Wall, Top Surface Skin, Top/Bottom, Support, and Travel Acceleration, with silently enforced acceleration-control and travel-acceleration toggles.
+- Added recovery coverage proving complete bounded non-sensitive machine/extruder options, including start/end G-code, survive Cura backup and restore.
+- Added ironing controls to both templates and filament profiles and to the complete tracked Cura settings checklist.
+- Added live named-backup request status and sanitized workstation-agent failure details to Cura Workstations.
+
+### Changed
+
+- Changed the managed Cura extension to reapply the authoritative 55-key Material Settings plugin selection after manual drift and verify every key against the active machine definitions before reporting healthy.
+- Changed all print-speed controls and cooling controls other than Initial Fan Speed to template-only ownership; existing current profiles receive new immutable inherited snapshots instead of rewritten history.
+- Changed pressure advance back to template-and-filament ownership while keeping Klipper smooth time and acceleration template-only.
+- Changed Cura flow tracking to one primary Flow value and retired feature-specific flow controls.
+- Changed temperature tracking to exactly Printing Temperature, Build Volume Temperature, and Build Plate Temperature; default, standby, initial/final print, and initial-bed controls are retired and no longer emitted.
+- Changed Initial Fan Speed from a hidden forced zero to an editable template/profile setting.
+- Changed the outbox aggregate-version column from 32-bit integer to `BIGINT` and advanced the expected database schema to `d6e7f8a9b012`.
+- Changed all server, frontend, and workstation-agent version surfaces to 0.3.3.
+
+### Fixed
+
+- Fixed Material Settings or Klipper Settings plugin absence, disabled packages, unsupported keys, and an unopened post-upgrade Cura installation being indistinguishable from a healthy material synchronization.
+- Fixed managed Cura template edits failing workstation heartbeats with a Pydantic validation error when the new template fan range conflicted with a linked filament's explicit fan customization.
+- Fixed manual Spoolman reconciliation and other system projection actions failing at commit with `NumericValueOutOfRange` because their microsecond timestamp identities exceeded PostgreSQL's 32-bit integer range.
+- Fixed Cura nozzle synchronization changing only the global machine stack instead of the exact linked position-zero extruder's `machine_nozzle_size`; recovery now requeues canonical nozzle alignment before material synchronization.
+- Fixed canonical net spool-weight corrections repeatedly failing through Spoolman's gross-scale measurement endpoint; corrections now use the supported `remaining_weight` update and the upgrade coalesces/retries existing rows immediately.
+- Fixed recovered manual recurring jobs remaining as permanent dead Projection Queue debt even after later periodic synchronization succeeded.
+- Fixed explicit named Cura backups after a reset being silently rejected by automatic reset protection and exposing only a generic diagnostics error.
+- Fixed pending Projection Queue retries appearing healthy without explaining how many had failed before or when they would retry.
+- Fixed retired flow/temperature keys lingering in old Cura custom profiles, unsafe workstation paths being able to reach the UI, and obsolete failed library deployments remaining actionable after a newer full-library synchronization succeeded.
+
 ## 0.3.2 - 08.21.2026
 
 ### Added

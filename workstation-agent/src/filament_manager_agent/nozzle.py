@@ -56,11 +56,11 @@ def _matching_machine(installation: CuraInstallation, payload: dict[str, object]
 
 def _matching_variant(
     installation: CuraInstallation,
-    machine: CuraMachine,
+    definition_id: str,
     diameter: Decimal,
 ) -> tuple[Path, str] | None:
     candidates: dict[str, Path] = {}
-    machine_definition = _normalized(machine.definition_id)
+    expected_definition = _normalized(definition_id)
     for variants in _variant_directories(installation):
         for path in sorted(variants.glob("*.cfg"))[:5000]:
             parser = _parser(path)
@@ -75,7 +75,7 @@ def _matching_variant(
                 continue
             general = parser["general"] if parser.has_section("general") else {}
             definition = _normalized(general.get("definition"))
-            if machine_definition and definition and definition != machine_definition:
+            if expected_definition and definition and definition != expected_definition:
                 continue
             variant_id = path.name.removesuffix(".inst.cfg").removesuffix(".cfg")
             candidates.setdefault(variant_id, path)
@@ -83,6 +83,74 @@ def _matching_variant(
         return None
     variant_id, path = next(iter(candidates.items()))
     return path, variant_id
+
+
+def _matching_extruder(
+    installation: CuraInstallation,
+    machine: CuraMachine,
+) -> tuple[Path, configparser.ConfigParser, str, str] | None:
+    """Return the exact enabled position-zero extruder linked to one machine."""
+
+    identities = {_normalized(machine.machine_id), _normalized(machine.display_name)}
+    identities.discard("")
+    candidates: list[tuple[Path, configparser.ConfigParser, str, str]] = []
+    directory = installation.data_path / "extruders"
+    if not directory.is_dir() or directory.is_symlink():
+        return None
+    for path in sorted(directory.glob("*.cfg"))[:500]:
+        parser = _parser(path)
+        if parser is None or not parser.has_section("metadata") or not parser.has_section("containers"):
+            continue
+        metadata = parser["metadata"]
+        if str(metadata.get("type", "")).casefold() != "extruder_train":
+            continue
+        if str(metadata.get("position", "")).strip() != "0":
+            continue
+        if str(metadata.get("enabled", "true")).casefold() in {"false", "0", "no"}:
+            continue
+        if _normalized(metadata.get("machine")) not in identities:
+            continue
+        settings_id = str(parser["containers"].get("6") or "").strip()
+        definition_id = str(parser["containers"].get("7") or "").strip()
+        if not settings_id or not definition_id:
+            continue
+        candidates.append((path, parser, settings_id, definition_id))
+    return candidates[0] if len(candidates) == 1 else None
+
+
+def _matching_definition_change(
+    installation: CuraInstallation,
+    settings_id: str,
+    definition_id: str,
+) -> tuple[Path, configparser.ConfigParser] | None:
+    """Resolve the existing definition-change container selected by an extruder."""
+
+    candidates: list[tuple[Path, configparser.ConfigParser]] = []
+    directory = installation.data_path / "definition_changes"
+    if not directory.is_dir() or directory.is_symlink():
+        return None
+    for path in sorted(directory.glob("*.cfg"))[:500]:
+        parser = _parser(path)
+        if parser is None or not parser.has_section("general"):
+            continue
+        general = parser["general"]
+        metadata = parser["metadata"] if parser.has_section("metadata") else {}
+        if str(metadata.get("type", "")).casefold() != "definition_changes":
+            continue
+        if str(general.get("name") or "").strip() != settings_id:
+            continue
+        if _normalized(general.get("definition")) != _normalized(definition_id):
+            continue
+        candidates.append((path, parser))
+    return candidates[0] if len(candidates) == 1 else None
+
+
+def _serialized(parser: configparser.ConfigParser) -> bytes:
+    """Serialize one Cura INI document with its established safe parser."""
+
+    output = io.StringIO()
+    parser.write(output, space_around_delimiters=True)
+    return output.getvalue().encode("utf-8")
 
 
 def _variant_directories(installation: CuraInstallation) -> list[Path]:
@@ -137,7 +205,7 @@ def apply_nozzle_update(
     deployment_id: str,
     payload: dict[str, object],
 ) -> dict[str, object]:
-    """Back up and update one exact machine only when a matching variant already exists."""
+    """Back up and align one exact machine and its linked position-zero extruder."""
 
     deployment_key = _deployment_key(deployment_id)
     target_diameter = _decimal(payload.get("nozzle_diameter_mm"))
@@ -146,43 +214,80 @@ def apply_nozzle_update(
     machine = _matching_machine(installation, payload)
     if machine is None:
         raise RuntimeError("No single matching Cura printer was found for the nozzle update.")
-    variant = _matching_variant(installation, machine, target_diameter)
-    if variant is None:
+    extruder = _matching_extruder(installation, machine)
+    if extruder is None:
+        raise RuntimeError("No single linked Cura position-zero extruder was found for the nozzle update.")
+    extruder_path, extruder_parser, settings_id, definition_id = extruder
+    definition_change = _matching_definition_change(
+        installation,
+        settings_id,
+        definition_id,
+    )
+    if definition_change is None:
         raise RuntimeError(
-            "Cura does not have one existing matching nozzle variant for this printer and diameter."
+            "No single linked Cura extruder settings container was found for the nozzle update."
         )
-    _, variant_id = variant
+    definition_change_path, definition_change_parser = definition_change
+    variant = _matching_variant(installation, definition_id, target_diameter)
+    variant_id = variant[1] if variant is not None else None
     try:
         relative_target = machine.source_path.relative_to(installation.data_path)
     except ValueError as error:
         raise RuntimeError("The matching Cura printer configuration is outside its installation.") from error
-    target = _safe_target(installation.data_path, relative_target)
-    parser = _parser(target)
-    if parser is None:
+    machine_target = _safe_target(installation.data_path, relative_target)
+    machine_parser = _parser(machine_target)
+    if machine_parser is None:
         raise RuntimeError("The matching Cura printer configuration is unsafe or invalid.")
-    if not parser.has_section("metadata"):
-        parser.add_section("metadata")
-    if not parser.has_section("containers"):
-        parser.add_section("containers")
-    parser["metadata"]["nozzle_diameter"] = format(target_diameter, "f")
-    parser["metadata"]["variant"] = variant_id
-    parser["containers"]["5"] = variant_id
-    output = io.StringIO()
-    parser.write(output, space_around_delimiters=True)
+    if not machine_parser.has_section("metadata"):
+        machine_parser.add_section("metadata")
+    machine_parser["metadata"]["nozzle_diameter"] = format(target_diameter, "f")
+    if variant_id is not None:
+        extruder_parser["containers"]["5"] = variant_id
+    if not definition_change_parser.has_section("values"):
+        definition_change_parser.add_section("values")
+    definition_change_parser["values"]["machine_nozzle_size"] = format(target_diameter, "f")
+
+    targets = {
+        machine_target: _serialized(machine_parser),
+        _safe_target(
+            installation.data_path,
+            extruder_path.relative_to(installation.data_path),
+        ): _serialized(extruder_parser),
+        _safe_target(
+            installation.data_path,
+            definition_change_path.relative_to(installation.data_path),
+        ): _serialized(definition_change_parser),
+    }
+    originals = {target: target.read_bytes() for target in targets}
     backup_directory = data_path() / "nozzle-backups" / deployment_key
     backup_directory.mkdir(parents=True, exist_ok=True)
     backup_path = backup_directory / f"{installation.installation_id}.zip"
     with zipfile.ZipFile(backup_path, "w", compression=zipfile.ZIP_DEFLATED) as archive:
-        archive.writestr(target.name, target.read_bytes())
+        for target, content in originals.items():
+            archive.writestr(target.relative_to(installation.data_path).as_posix(), content)
         archive.writestr(
             ".filament-manager-nozzle-backup.json",
-            json.dumps({"machine_id": machine.machine_id, "variant_id": variant_id}, sort_keys=True),
+            json.dumps(
+                {
+                    "machine_id": machine.machine_id,
+                    "extruder_definition_id": definition_id,
+                    "variant_id": variant_id,
+                },
+                sort_keys=True,
+            ),
         )
-    _atomic_write(target, output.getvalue().encode("utf-8"))
+    try:
+        for target, content in targets.items():
+            _atomic_write(target, content)
+    except Exception:
+        for target, content in originals.items():
+            _atomic_write(target, content)
+        raise
     return {
         "installation_id": installation.installation_id,
         "version": installation.version,
         "machine_id": machine.machine_id,
+        "extruder_definition_id": definition_id,
         "nozzle_diameter_mm": format(target_diameter, "f"),
         "variant_id": variant_id,
         "backup_id": f"{deployment_key}/{installation.installation_id}",

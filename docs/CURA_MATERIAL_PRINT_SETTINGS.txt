@@ -3,113 +3,132 @@ FILAMENT MANAGER - CURA MATERIAL PRINT SETTINGS
 
 Purpose
 -------
-This is the complete current list of Cura print settings that Filament Manager
-tracks per material and expects to be exposed by the Cura Material Settings
-plugin (sometimes called the Extra Print Settings for Materials plugin).
+This is the complete current Cura setting contract tracked or derived by
+Filament Manager. It includes editable template/profile controls, template-only
+controls, and derived aliases that the workstation agent writes silently.
 
-In Cura, open Preferences > Materials > Print Settings, choose "Select
-settings", and expose every setting listed below. The Cura setting key is the
-authoritative identifier; the display label is included to make each setting
-easy to find. There are 54 selected settings in this revision.
+In Cura, open Preferences > Materials > Print Settings and expose the editable
+settings supported by the Material Settings and Klipper Settings plugins.
+Filament Manager aligns the plugin selection automatically after takeover.
+The 55 non-metadata keys below are pushed to Cura; Material Type and Material
+Brand remain material XML metadata rather than selectable print settings. Cura
+Workstations and Diagnostics report the exact expected/exposed count, missing
+keys, required-plugin versions/readiness, and the last verification time.
 
-Filament Manager's centralized catalog is the source of truth:
+There are 57 tracked Cura keys: 51 editable controls and 6 derived or metadata
+keys. The authoritative catalog is:
 src/filament_manager/domain/cura_material_settings.py
-
-When this list changes, update the centralized catalog and this file together.
-An automated test rejects any missing, extra, renamed, or mislabeled entry.
 
 Format
 ------
-Cura setting key | Cura display label | value type/unit | note
+Cura setting key | Cura display label | value type/unit | ownership
 
 
 TEMPERATURE
 -----------
-material_print_temperature | Printing Temperature | number, C | primary nozzle temperature
-material_bed_temperature | Build Plate Temperature | number, C | primary build-plate temperature
-default_material_print_temperature | Default Printing Temperature | number, C | synchronized from the primary nozzle temperature
-material_print_temperature_layer_0 | Initial Printing Temperature | number, C | independently tracked material setting
-material_standby_temperature | Standby Temperature | number, C | independently tracked material setting
-material_initial_print_temperature | Initial Printing Temperature | number, C | independently tracked material setting
-build_volume_temperature | Build Volume Temperature | number, C | chamber temperature
-material_final_print_temperature | Final Printing Temperature | number, C | independently tracked material setting
-default_material_bed_temperature | Default Build Plate Temperature | number, C | synchronized from the primary build-plate temperature
-material_bed_temperature_layer_0 | Initial Build Plate Temperature | number, C | independently tracked material setting
+material_print_temperature | Printing Temperature | number, C | editable in templates and filament profiles
+material_bed_temperature | Build Plate Temperature | number, C | editable in templates and filament profiles
+build_volume_temperature | Build Volume Temperature | number, C | editable in templates and filament profiles
 
 
 FLOW
 ----
-material_flow | Flow | number, percent | primary material flow
-infill_material_flow | Infill Flow | number, percent | independently tracked material setting
-support_material_flow | Support Flow | number, percent | independently tracked material setting
-material_flow_layer_0 | Initial Layer Flow | number, percent | independently tracked material setting
-roofing_material_flow | Top Surface Skin Flow | number, percent | independently tracked material setting
-skirt_brim_material_flow | Skirt/Brim Flow | number, percent | independently tracked material setting
+material_flow | Flow | number, percent | the only managed flow control; Cura derives feature flow defaults
 
 
-SPEED
------
-speed_layer_0 | Initial Layer Speed | number, mm/s | synchronized from the primary initial-layer speed
-speed_wall_x | Inner Wall Speed | number, mm/s | primary inner-wall speed
-speed_infill | Infill Speed | number, mm/s | primary infill speed
-speed_roofing | Top Surface Skin Speed | number, mm/s | independently tracked material setting
-speed_wall_0 | Outer Wall Speed | number, mm/s | primary outer-wall speed
-speed_topbottom | Top/Bottom Speed | number, mm/s | primary top/bottom speed
-speed_travel_layer_0 | Initial Layer Travel Speed | number, mm/s | independently tracked material setting
-speed_print | Print Speed | number, mm/s | primary print speed
-speed_travel | Travel Speed | number, mm/s | primary travel speed
-speed_print_layer_0 | Initial Layer Print Speed | number, mm/s | synchronized from the primary initial-layer speed
-skirt_brim_speed | Skirt/Brim Speed | number, mm/s | independently tracked material setting
-speed_support | Support Speed | number, mm/s | primary support speed
-speed_wall | Wall Speed | number, mm/s | independently tracked material setting
+SPEED (TEMPLATE ONLY)
+---------------------
+speed_layer_0 | Initial Layer Speed | number, mm/s | inherited from the linked template
+speed_wall_x | Inner Wall Speed | number, mm/s | inherited from the linked template
+speed_infill | Infill Speed | number, mm/s | inherited from the linked template
+speed_roofing | Top Surface Skin Speed | number, mm/s | inherited from the linked template
+speed_wall_0 | Outer Wall Speed | number, mm/s | inherited from the linked template
+speed_topbottom | Top/Bottom Speed | number, mm/s | inherited from the linked template
+speed_travel_layer_0 | Initial Layer Travel Speed | number, mm/s | inherited from the linked template
+speed_print | Print Speed | number, mm/s | inherited from the linked template
+speed_travel | Travel Speed | number, mm/s | inherited from the linked template
+speed_print_layer_0 | Initial Layer Print Speed | number, mm/s | inherited from the linked template
+skirt_brim_speed | Skirt/Brim Speed | number, mm/s | inherited from the linked template
+speed_support | Support Speed | number, mm/s | inherited from the linked template
+speed_wall | Wall Speed | number, mm/s | inherited from the linked template
+
+
+ACCELERATION (TEMPLATE ONLY)
+----------------------------
+acceleration_enabled | Enable Acceleration Control | boolean | silently enforced as enabled
+acceleration_travel_enabled | Enable Travel Acceleration | boolean | silently enforced as enabled
+acceleration_print | Print Acceleration | number, mm/s2 | inherited from the linked template
+acceleration_infill | Infill Acceleration | number, mm/s2 | inherited from the linked template
+acceleration_wall | Wall Acceleration | number, mm/s2 | inherited from the linked template
+acceleration_roofing | Top Surface Skin Acceleration | number, mm/s2 | inherited from the linked template
+acceleration_topbottom | Top/Bottom Acceleration | number, mm/s2 | inherited from the linked template
+acceleration_support | Support Acceleration | number, mm/s2 | inherited from the linked template
+acceleration_travel | Travel Acceleration | number, mm/s2 | inherited from the linked template
 
 
 RETRACTION
 ----------
-retraction_enable | Enable Retraction | boolean | independently tracked material setting
-retraction_retract_speed | Retraction Retract Speed | number, mm/s | primary retraction retract speed
-retraction_amount | Retraction Distance | number, mm | primary retraction distance
-retraction_prime_speed | Retraction Prime Speed | number, mm/s | primary retraction prime speed
-limit_support_retractions | Limit Support Retractions | boolean | independently tracked material setting
-retraction_min_travel | Retraction Minimum Travel | number, mm | independently tracked material setting
-retract_at_layer_change | Retract at Layer Change | boolean | independently tracked material setting
+retraction_enable | Enable Retraction | boolean | editable in templates and filament profiles
+retraction_retract_speed | Retraction Retract Speed | number, mm/s | editable primary retract speed
+retraction_speed | Legacy Retraction Speed Alias | number, mm/s | derived from Retraction Retract Speed
+retraction_amount | Retraction Distance | number, mm | editable in templates and filament profiles
+retraction_prime_speed | Retraction Prime Speed | number, mm/s | editable in templates and filament profiles
+limit_support_retractions | Limit Support Retractions | boolean | editable in templates and filament profiles
+retraction_min_travel | Retraction Minimum Travel | number, mm | editable in templates and filament profiles
+retract_at_layer_change | Retract at Layer Change | boolean | editable in templates and filament profiles
+
+
+IRONING
+-------
+ironing_enabled | Enable Ironing | boolean | editable in templates and filament profiles
+ironing_flow | Ironing Flow | number, percent | editable in templates and filament profiles
+ironing_speed | Ironing Speed | number, mm/s | editable in templates and filament profiles
+ironing_line_spacing | Ironing Line Spacing | number, mm | editable in templates and filament profiles
 
 
 COOLING
 -------
-cool_fan_speed_min | Regular Fan Speed | number, percent | primary minimum fan speed
-cool_fan_enabled | Enable Print Cooling | boolean | primary cooling control
-cool_fan_speed | Fan Speed | number, percent | synchronized from the primary maximum fan speed
-cool_fan_speed_max | Maximum Fan Speed | number, percent | synchronized alias of the primary maximum fan speed
-cool_fan_full_layer | Regular Fan Speed at Layer | number | independently tracked material setting
-cool_min_layer_time | Minimum Layer Time | number, s | independently tracked material setting
-cool_min_layer_time_fan_speed_max | Minimum Layer Time at Maximum Fan | number, s | independently tracked material setting
-cool_min_speed | Minimum Speed | number, mm/s | independently tracked cooling setting
+cool_fan_enabled | Enable Print Cooling | boolean | template only
+cool_fan_speed_min | Regular Fan Speed | number, percent | template only
+cool_fan_speed_max | Maximum Fan Speed | number, percent | template only
+cool_fan_speed | Maximum Fan Speed Alias | number, percent | derived from Maximum Fan Speed
+cool_fan_full_layer | Regular Fan Speed at Layer | number | template only
+cool_min_layer_time | Minimum Layer Time | number, s | template only
+cool_min_layer_time_fan_speed_max | Minimum Layer Time at Maximum Fan | number, s | template only
+cool_min_speed | Minimum Speed | number, mm/s | template only
+cool_fan_speed_0 | Initial Fan Speed | number, percent | editable in templates and filament profiles; legacy snapshots start at 0 until changed
 
 
 SUPPORT
 -------
-support_angle | Support Overhang Angle | number, degrees | primary support overhang angle
+support_angle | Support Overhang Angle | number, degrees | editable in templates and filament profiles
 
 
 DIMENSIONAL COMPENSATION
 ------------------------
-xy_offset_layer_0 | Initial Layer Horizontal Expansion | number, mm | independently tracked material setting
-hole_xy_offset_max_diameter | Hole Horizontal Expansion Max Diameter | number, mm | independently tracked material setting
-xy_offset | Horizontal Expansion | number, mm | independently tracked material setting
-hole_xy_offset | Hole Horizontal Expansion | number, mm | independently tracked material setting
+xy_offset_layer_0 | Initial Layer Horizontal Expansion | number, mm | editable in templates and filament profiles
+hole_xy_offset_max_diameter | Hole Horizontal Expansion Max Diameter | number, mm | editable in templates and filament profiles
+xy_offset | Horizontal Expansion | number, mm | editable in templates and filament profiles
+hole_xy_offset | Hole Horizontal Expansion | number, mm | editable in templates and filament profiles
 
 
 KLIPPER SETTINGS PLUGIN
 -----------------------
-klipper_pressure_advance_factor | Klipper Pressure Advance | number, s | primary pressure-advance value
-klipper_smooth_time_enable | Enable Klipper Smooth Time | boolean | independently tracked material setting
-klipper_smooth_time_factor | Klipper Smooth Time | number, s | independently tracked material setting
+klipper_pressure_advance_factor | Klipper Pressure Advance | number, s | editable in templates and filament profiles
+klipper_smooth_time_enable | Enable Klipper Smooth Time | boolean | template only
+klipper_smooth_time_factor | Klipper Smooth Time | number, s | template only
 
 
-NOT SELECTED THROUGH THIS PLUGIN
---------------------------------
-Material Brand and Material Type are managed as Cura material metadata, so they
-are intentionally not part of this 54-setting selection list. Filament color,
-diameter, density, identity, and preferred build-plate side are also managed by
-Filament Manager outside this plugin setting selector.
+MATERIAL METADATA
+-----------------
+material_type | Material Type | string | derived from the canonical filament
+material_brand | Material Brand | string | derived from the canonical vendor
+
+
+RETIRED CONTROLS
+----------------
+Filament Manager no longer tracks default, standby, initial, final, or
+initial-bed temperature controls. Printing Temperature, Build Volume
+Temperature, and Build Plate Temperature are the only managed temperature
+settings. Feature-specific flow controls are also retired; Cura inherits them
+from the one primary Flow setting.

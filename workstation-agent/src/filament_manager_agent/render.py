@@ -17,9 +17,6 @@ SLUG_PATTERN = re.compile(r"[^a-z0-9]+")
 STANDARD_MATERIAL_KEYS = {
     "build_volume_temperature": "build volume temperature",
     "cool_fan_speed": "print cooling",
-    "default_material_bed_temperature": "heated bed temperature",
-    "default_material_print_temperature": "print temperature",
-    "material_standby_temperature": "standby temperature",
     "retraction_amount": "retraction amount",
     "retraction_speed": "retraction speed",
 }
@@ -37,6 +34,7 @@ class RenderedDeployment:
     machine: CuraMachine
     warnings: list[str]
     managed_material_setting_keys: frozenset[str]
+    cleanup_material_setting_keys: frozenset[str]
 
 
 def slug(value: str, *, maximum: int = 72) -> str:
@@ -173,7 +171,12 @@ def register(app):
 
 PLUGIN_MODULE_TEMPLATE = '''"""Enforce Filament Manager material ownership inside Cura."""
 
+import hashlib
 import json
+import os
+import tempfile
+from datetime import datetime, timezone
+from pathlib import Path
 
 from PyQt6.QtCore import QTimer
 from UM.Extension import Extension
@@ -183,6 +186,95 @@ from cura.Machines.Models.BaseMaterialsModel import BaseMaterialsModel
 MANAGED_PREFIX = "filament_manager_"
 MANAGED_SETTING_KEYS = frozenset(__MANAGED_SETTING_KEYS__)
 MANAGED_MATERIAL_COSTS = __MANAGED_MATERIAL_COSTS__
+KLIPPER_SETTING_KEYS = frozenset({
+    "klipper_pressure_advance_factor",
+    "klipper_smooth_time_enable",
+    "klipper_smooth_time_factor",
+})
+MATERIAL_SETTINGS_STATUS_SCHEMA_VERSION = 1
+MATERIAL_SETTINGS_STATUS_PATH = Path(__file__).with_name("material-settings-status.json")
+
+
+def _catalog_checksum():
+    """Return one deterministic checksum for the deployed visible-setting contract."""
+
+    serialized = "\\n".join(sorted(MANAGED_SETTING_KEYS)).encode("utf-8")
+    return hashlib.sha256(serialized).hexdigest()
+
+
+def _available_material_setting_keys(application):
+    """Return deployed keys Cura can resolve for the active machine definition."""
+
+    global_stack = application.getGlobalContainerStack()
+    if global_stack is None:
+        return None
+    stacks = [global_stack] + list(global_stack.extruderList)
+    available = set()
+    for key in MANAGED_SETTING_KEYS:
+        for stack in stacks:
+            try:
+                if key not in stack.getAllKeys():
+                    continue
+                settable_per_extruder = stack.getProperty(key, "settable_per_extruder")
+                resolve_value = stack.getProperty(key, "resolve")
+                if settable_per_extruder is False and resolve_value is None:
+                    continue
+                available.add(key)
+                break
+            except Exception:
+                continue
+    return available
+
+
+def _material_settings_status_payload(application):
+    """Build a value-free receipt for the settings Cura actually exposes."""
+
+    preferences = application.getPreferences()
+    visible_raw = str(preferences.getValue("material_settings/visible_settings") or "")
+    visible = {key for key in visible_raw.split(";") if key}
+    available = _available_material_setting_keys(application)
+    if available is None:
+        exposed = set()
+        missing = set(MANAGED_SETTING_KEYS)
+        status = "waiting_for_machine"
+    else:
+        exposed = MANAGED_SETTING_KEYS & visible & available
+        missing = MANAGED_SETTING_KEYS - exposed
+        status = "healthy" if not missing and visible == MANAGED_SETTING_KEYS else "degraded"
+    return {
+        "schema_version": MATERIAL_SETTINGS_STATUS_SCHEMA_VERSION,
+        "catalog_checksum": _catalog_checksum(),
+        "status": status,
+        "expected_count": len(MANAGED_SETTING_KEYS),
+        "exposed_count": len(exposed),
+        "missing_keys": sorted(missing),
+        "unexpected_keys": sorted(visible - MANAGED_SETTING_KEYS),
+        "material_settings_plugin_ready": visible == MANAGED_SETTING_KEYS,
+        "klipper_settings_plugin_ready": (
+            False if available is None else KLIPPER_SETTING_KEYS <= available
+        ),
+        "verified_at": datetime.now(timezone.utc).isoformat(),
+    }
+
+
+def _write_material_settings_status(application):
+    """Atomically persist the sanitized receipt for the outbound workstation agent."""
+
+    payload = _material_settings_status_payload(application)
+    descriptor, temporary_name = tempfile.mkstemp(
+        prefix=".material-settings-status-",
+        dir=MATERIAL_SETTINGS_STATUS_PATH.parent,
+    )
+    temporary_path = Path(temporary_name)
+    try:
+        with os.fdopen(descriptor, "w", encoding="utf-8") as handle:
+            json.dump(payload, handle, sort_keys=True, separators=(",", ":"))
+            handle.write("\\n")
+            handle.flush()
+            os.fsync(handle.fileno())
+        os.replace(temporary_path, MATERIAL_SETTINGS_STATUS_PATH)
+    finally:
+        temporary_path.unlink(missing_ok=True)
 
 
 def _favorite_templates(application, model):
@@ -269,6 +361,11 @@ class FilamentManagerVisibility(Extension):
         try:
             _configure_material_settings_plugin(self._application)
             _configure_material_costs(self._application)
+            preference_signal = getattr(
+                self._application.getPreferences(), "preferenceChanged", None
+            )
+            if preference_signal is not None:
+                preference_signal.connect(self._on_preference_changed)
             machine_manager = self._application.getMachineManager()
             for signal_name in (
                 "activeMaterialChanged",
@@ -284,6 +381,14 @@ class FilamentManagerVisibility(Extension):
             Logger.logException("e", "Filament Manager could not initialize material enforcement")
             return
         self._initialized = True
+        self._schedule_enforcement()
+
+    def _on_preference_changed(self, name):
+        """Repair manual drift in the Material Settings plugin selection."""
+
+        if name != "material_settings/visible_settings" or self._enforcing:
+            return
+        _configure_material_settings_plugin(self._application)
         self._schedule_enforcement()
 
     def _install_material_filter(self):
@@ -337,6 +442,7 @@ class FilamentManagerVisibility(Extension):
         try:
             global_stack = self._application.getGlobalContainerStack()
             if global_stack is None:
+                _write_material_settings_status(self._application)
                 return
             extruders = list(global_stack.extruderList)
             stacks = [global_stack] + extruders
@@ -385,6 +491,7 @@ class FilamentManagerVisibility(Extension):
                     if str(current_value) != str(material_value):
                         user_changes.setProperty(key, "value", material_value)
             Logger.log("d", "Filament Manager material settings enforced")
+            _write_material_settings_status(self._application)
         except Exception:
             Logger.logException("e", "Filament Manager could not enforce material settings")
         finally:
@@ -394,7 +501,7 @@ class FilamentManagerVisibility(Extension):
 PLUGIN_METADATA = b"""{
   "name": "Filament Manager Material Visibility",
   "author": "Filament Manager",
-  "version": "2.0.3",
+  "version": "2.0.4",
   "description": "Shows, favorites, and enforces the authoritative Filament Manager material library.",
   "api": 5,
   "supported_sdk_versions": ["8.0.0"]
@@ -442,6 +549,14 @@ def render_deployment(installation: CuraInstallation, payload: dict[str, Any]) -
     managed_setting_keys = frozenset(raw_managed_keys)
     if len(managed_setting_keys) != len(raw_managed_keys):
         raise ValueError("Deployment contains duplicate managed Cura setting keys.")
+    raw_retired_keys = payload.get("retired_material_setting_keys", [])
+    if not isinstance(raw_retired_keys, list) or any(
+        not isinstance(key, str) or not re.fullmatch(r"[a-z][a-z0-9_]{0,95}", key) for key in raw_retired_keys
+    ):
+        raise ValueError("Deployment contains an invalid retired Cura setting catalog.")
+    retired_setting_keys = frozenset(raw_retired_keys)
+    if len(retired_setting_keys) != len(raw_retired_keys):
+        raise ValueError("Deployment contains duplicate retired Cura setting keys.")
     materials = payload.get("materials")
     if not isinstance(materials, list) or not materials:
         raise ValueError("Deployment contains no material library entries.")
@@ -511,4 +626,5 @@ def render_deployment(installation: CuraInstallation, payload: dict[str, Any]) -
         machine=machines[0],
         warnings=warnings,
         managed_material_setting_keys=managed_setting_keys,
+        cleanup_material_setting_keys=managed_setting_keys | retired_setting_keys,
     )

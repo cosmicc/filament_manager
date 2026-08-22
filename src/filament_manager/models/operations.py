@@ -4,6 +4,7 @@ from datetime import datetime
 from uuid import UUID
 
 from sqlalchemy import (
+    BigInteger,
     Boolean,
     CheckConstraint,
     DateTime,
@@ -35,7 +36,7 @@ class OutboxJob(UUIDPrimaryKeyMixin, Base):
     idempotency_key: Mapped[str] = mapped_column(String(160), nullable=False)
     aggregate_type: Mapped[str] = mapped_column(String(64), nullable=False)
     aggregate_id: Mapped[UUID] = mapped_column(nullable=False)
-    aggregate_version: Mapped[int] = mapped_column(Integer, nullable=False)
+    aggregate_version: Mapped[int] = mapped_column(BigInteger, nullable=False)
     payload: Mapped[dict[str, object]] = mapped_column(JSONB, nullable=False)
     status: Mapped[JobStatus] = mapped_column(
         Enum(JobStatus, name="job_status"), nullable=False, default=JobStatus.PENDING

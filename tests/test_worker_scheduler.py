@@ -40,10 +40,10 @@ async def test_scheduler_does_not_queue_overlapping_reconciliation(
 
 
 @pytest.mark.asyncio
-async def test_scheduler_supersedes_prior_dead_periodic_run_before_replacement(
+async def test_scheduler_keeps_failure_actionable_until_replacement_succeeds(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """A persistent recurring fault keeps one actionable run, not unbounded dead debt."""
+    """Scheduling a replacement does not hide a recurring failure before recovery."""
 
     session = SimpleNamespace(
         scalar=AsyncMock(
@@ -77,7 +77,7 @@ async def test_scheduler_supersedes_prior_dead_periodic_run_before_replacement(
     )
 
     assert await scheduler.schedule_periodic_jobs(session) == 1  # type: ignore[arg-type]
-    session.execute.assert_awaited_once()
+    session.execute.assert_not_awaited()
     session.add.assert_called_once()
     session.commit.assert_awaited_once()
 
@@ -129,13 +129,13 @@ async def test_realtime_state_retry_never_waits_longer_than_its_poll_interval(
 
 
 @pytest.mark.asyncio
-async def test_successful_periodic_job_supersedes_older_dead_runs() -> None:
-    """Recovered periodic services no longer leave stale dead counts in diagnostics."""
+async def test_successful_recurring_job_supersedes_manual_older_dead_runs() -> None:
+    """Recovered recurring services retire dead rows regardless of their trigger."""
 
     persisted = SimpleNamespace(
         id=uuid4(),
         job_type="moonraker.state.reconcile",
-        idempotency_key="periodic:moonraker.state.reconcile:123",
+        idempotency_key="manual:moonraker.state.reconcile:123",
         status=JobStatus.RUNNING,
         locked_by="worker-1",
         locked_at=datetime.now(UTC),

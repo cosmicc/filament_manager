@@ -142,9 +142,9 @@ When mandatory steps are complete:
 5. offer a rare, exact-name-confirmed action that overlays only template-supported recommendations on the latest linked template and cascades its linked profiles;
 6. queue the supported Spoolman, Google, and managed Cura projections;
 7. offer Cura export;
-8. store pressure advance for the Cura Klipper Settings plugin in the material profile.
+8. show pressure advance as a Cura Klipper Settings recommendation that can apply to the filament or the confirmed linked template.
 
-An unapplied calibration may be deleted only after confirmation. Applied calibration history is immutable. Product-specific baseline overrides must never be copied into a template, and optional ironing remains profile-only.
+An unapplied calibration may be deleted only after confirmation. Applied calibration history is immutable. Product-specific baseline overrides must never be copied into a template; only reviewed template-supported recommendations, including optional ironing, may cascade.
 
 ## Overrides
 

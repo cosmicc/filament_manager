@@ -11,8 +11,12 @@ from filament_manager_agent.nozzle import apply_nozzle_update
 def _installation(tmp_path: Path) -> CuraInstallation:
     data = tmp_path / "cura" / "5.13"
     machines = data / "machine_instances"
+    extruders = data / "extruders"
+    definition_changes = data / "definition_changes"
     variants = data / "variants"
     machines.mkdir(parents=True)
+    extruders.mkdir()
+    definition_changes.mkdir()
     variants.mkdir()
     machine_path = machines / "workshop.global.cfg"
     machine_path.write_text(
@@ -25,8 +29,41 @@ type = machine
 nozzle_diameter = 0.4
 
 [containers]
-5 = workshop_0.4
+5 = empty_variant
 7 = workshop_printer
+""",
+        encoding="utf-8",
+    )
+    (extruders / "workshop_extruder_0.extruder.cfg").write_text(
+        """[general]
+version = 6
+name = Extruder 1
+id = workshop_extruder_0
+
+[metadata]
+type = extruder_train
+position = 0
+machine = Workshop Printer
+enabled = True
+
+[containers]
+5 = workshop_extruder_0_0.4
+6 = workshop_extruder_0_settings
+7 = workshop_extruder_0
+""",
+        encoding="utf-8",
+    )
+    (definition_changes / "workshop_extruder_0_settings.inst.cfg").write_text(
+        """[general]
+version = 4
+name = workshop_extruder_0_settings
+definition = workshop_extruder_0
+
+[metadata]
+type = definition_changes
+
+[values]
+machine_nozzle_size = 0.4
 """,
         encoding="utf-8",
     )
@@ -34,7 +71,7 @@ nozzle_diameter = 0.4
         """[general]
 version = 4
 name = Workshop 0.6 mm
-definition = workshop_printer
+definition = workshop_extruder_0
 
 [metadata]
 type = variant
@@ -79,28 +116,39 @@ def test_applies_exact_existing_nozzle_variant_with_backup(
     )
 
     machine = installation.machines[0].source_path.read_text(encoding="utf-8")
+    extruder = (installation.data_path / "extruders" / "workshop_extruder_0.extruder.cfg").read_text(
+        encoding="utf-8"
+    )
+    definition_change = (
+        installation.data_path / "definition_changes" / "workshop_extruder_0_settings.inst.cfg"
+    ).read_text(encoding="utf-8")
     assert "nozzle_diameter = 0.6" in machine
-    assert "variant = workshop_0.6" in machine
-    assert "5 = workshop_0.6" in machine
+    assert "5 = workshop_0.6" in extruder
+    assert "machine_nozzle_size = 0.6" in definition_change
     assert result["variant_id"] == "workshop_0.6"
     assert (
         tmp_path / "agent-data" / "nozzle-backups" / "10000000-0000-0000-0000-000000000001" / "cura-test.zip"
     ).is_file()
 
 
-def test_refuses_to_manufacture_missing_nozzle_variant(tmp_path: Path) -> None:
+def test_updates_extruder_nozzle_size_when_no_variant_exists(tmp_path: Path) -> None:
     installation = _installation(tmp_path)
 
-    with pytest.raises(RuntimeError, match="existing matching nozzle variant"):
-        apply_nozzle_update(
-            installation,
-            "10000000-0000-0000-0000-000000000002",
-            {
-                "printer_code": "workshop-printer",
-                "printer_name": "Workshop Printer",
-                "nozzle_diameter_mm": "0.8",
-            },
-        )
+    result = apply_nozzle_update(
+        installation,
+        "10000000-0000-0000-0000-000000000002",
+        {
+            "printer_code": "workshop-printer",
+            "printer_name": "Workshop Printer",
+            "nozzle_diameter_mm": "0.8",
+        },
+    )
+
+    definition_change = (
+        installation.data_path / "definition_changes" / "workshop_extruder_0_settings.inst.cfg"
+    ).read_text(encoding="utf-8")
+    assert "machine_nozzle_size = 0.8" in definition_change
+    assert result["variant_id"] is None
 
 
 def test_reads_configured_cura_resource_variant(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -114,7 +162,7 @@ def test_reads_configured_cura_resource_variant(tmp_path: Path, monkeypatch: pyt
         """[general]
 version = 4
 name = Workshop 0.6 mm
-definition = workshop_printer
+definition = workshop_extruder_0
 
 [metadata]
 type = variant
