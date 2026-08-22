@@ -121,8 +121,19 @@ async def test_direct_template_save_updates_linked_product_profile(
                         "cooling_enabled": True,
                         "cooling_min_percent": "20",
                         "cooling_max_percent": "60",
+                        "pressure_advance": "0.04",
                         "filament_density_g_cm3": "1.20",
-                        "cura_extensions": {"retraction_enable": True},
+                        "cura_extensions": {
+                            "retraction_enable": True,
+                            "cool_fan_speed_0": "0",
+                            "acceleration_print": "4500",
+                            "acceleration_infill": "5000",
+                            "acceleration_wall": "3000",
+                            "acceleration_roofing": "2500",
+                            "acceleration_topbottom": "2800",
+                            "acceleration_support": "3500",
+                            "acceleration_travel": "7000",
+                        },
                     },
                 },
             )
@@ -224,6 +235,27 @@ async def test_direct_template_save_updates_linked_product_profile(
             assert "settings.support_overhang_angle_deg" in errors_by_field
             assert "settings.cura_extensions.klipper_smooth_time_factor" in errors_by_field
             assert all("input" not in item for item in invalid_body["errors"])
+            invalid_acceleration = await client.put(
+                f"/api/v1/profiles/templates/{template['id']}/settings",
+                json={
+                    "expected_template_version": current_template["record_version"],
+                    "settings": {
+                        "extruder_temp_c": "250",
+                        "bed_temp_c": "55",
+                        "flow_percent": "100",
+                        "cooling_enabled": True,
+                        "cooling_min_percent": "20",
+                        "cooling_max_percent": "50",
+                        "filament_density_g_cm3": "1.20",
+                        "cura_extensions": {"acceleration_travel": "0"},
+                    },
+                },
+            )
+            assert invalid_acceleration.status_code == 422, invalid_acceleration.text
+            acceleration_errors = {
+                item["field"]: item["message"] for item in invalid_acceleration.json()["errors"]
+            }
+            assert "settings.cura_extensions.acceleration_travel" in acceleration_errors
             prefixed_extension_save = await client.put(
                 f"/api/v1/profiles/templates/{template['id']}/settings",
                 json={
@@ -257,8 +289,21 @@ async def test_direct_template_save_updates_linked_product_profile(
                         "cooling_enabled": True,
                         "cooling_min_percent": "20",
                         "cooling_max_percent": "50",
+                        "pressure_advance": "0.05",
                         "filament_density_g_cm3": "1.20",
-                        "cura_extensions": {"retraction_enable": True},
+                        "cura_extensions": {
+                            "retraction_enable": True,
+                            "cool_fan_speed_0": "15",
+                            "klipper_smooth_time_enable": True,
+                            "klipper_smooth_time_factor": "0.04",
+                            "acceleration_print": "5000",
+                            "acceleration_infill": "5500",
+                            "acceleration_wall": "3200",
+                            "acceleration_roofing": "2600",
+                            "acceleration_topbottom": "2900",
+                            "acceleration_support": "3600",
+                            "acceleration_travel": "8000",
+                        },
                     },
                 },
             )
@@ -275,6 +320,8 @@ async def test_direct_template_save_updates_linked_product_profile(
             assert inherited_profile["base_template_version"] == 2
             assert Decimal(inherited_profile["extruder_temp_c"]) == Decimal("250")
             assert Decimal(inherited_profile["filament_density_g_cm3"]) == Decimal("1.21")
+            assert Decimal(inherited_profile["pressure_advance"]) == Decimal("0.05")
+            assert inherited_profile["cura_extensions"]["acceleration_travel"] == "8000"
             assert inherited_profile["override_keys"] == ["filament_density_g_cm3"]
             duplicate = await client.post(
                 "/api/v1/filaments",
@@ -285,7 +332,7 @@ async def test_direct_template_save_updates_linked_product_profile(
                     "filler": None,
                     "finish": "Silk",
                     "diameter_mm": "1.75",
-                    "density_g_cm3": "1.21",
+                    "density_g_cm3": "1.30",
                     "nominal_net_mass_g": "500",
                     "material_template_revision_id": next_revision_id,
                     "duplicate_source_filament_id": product_id,
@@ -300,14 +347,23 @@ async def test_direct_template_save_updates_linked_product_profile(
             )
             assert duplicate_profile["override_keys"] == inherited_profile["override_keys"]
             assert Decimal(duplicate_profile["extruder_temp_c"]) == Decimal("250")
-            assert Decimal(duplicate_profile["filament_density_g_cm3"]) == Decimal("1.21")
+            assert Decimal(duplicate_profile["filament_density_g_cm3"]) == Decimal("1.30")
             exported = await client.get(f"/api/v1/profiles/{inherited_profile['id']}/exports/cura")
             assert exported.status_code == 200, exported.text
             assert exported.headers["content-disposition"].startswith(
                 'attachment; filename="filament-manager-cura-profile-'
             )
             assert exported.headers["content-type"].startswith("application/json")
-            assert exported.json()["cura"]["cool_fan_speed_0"] == "0"
+            assert exported.json()["cura"]["cool_fan_speed_0"] == "15"
+            assert exported.json()["cura"]["acceleration_enabled"] is True
+            assert exported.json()["cura"]["acceleration_travel_enabled"] is True
+            assert exported.json()["cura"]["acceleration_print"] == "5000"
+            assert exported.json()["cura"]["acceleration_infill"] == "5500"
+            assert exported.json()["cura"]["acceleration_wall"] == "3200"
+            assert exported.json()["cura"]["acceleration_roofing"] == "2600"
+            assert exported.json()["cura"]["acceleration_topbottom"] == "2900"
+            assert exported.json()["cura"]["acceleration_support"] == "3600"
+            assert exported.json()["cura"]["acceleration_travel"] == "8000"
 
         async with factory() as session:
             template_row = await session.scalar(
@@ -348,6 +404,7 @@ async def test_direct_template_save_updates_linked_product_profile(
             }
             assert library["hide_bundled_materials"] is True
             assert "speed_print" in library["managed_material_setting_keys"]
+            assert "material_flow_layer_0" in library["retired_material_setting_keys"]
             template_material = next(
                 item
                 for item in materials

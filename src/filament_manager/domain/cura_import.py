@@ -19,6 +19,9 @@ def merge_cura_settings(
     """Overlay explicit Cura values without leaving synonymous keys in conflict."""
 
     merged = dict(base_settings)
+    # Default temperature keys are accepted only as legacy inbound aliases
+    # from pre-upgrade workstation reports. They normalize to the primary
+    # values below and are never tracked or emitted.
     synonymous_groups = (
         {"material_print_temperature", "default_material_print_temperature"},
         {"material_bed_temperature", "default_material_bed_temperature"},
@@ -99,12 +102,14 @@ def material_settings_from_cura(
         "extruder_temp_c": _decimal(
             settings,
             "material_print_temperature",
+            # Backward-compatible input only; never emitted.
             "default_material_print_temperature",
             required=True,
         ),
         "bed_temp_c": _decimal(
             settings,
             "material_bed_temperature",
+            # Backward-compatible input only; never emitted.
             "default_material_bed_temperature",
             required=True,
         ),
@@ -135,6 +140,12 @@ def material_settings_from_cura(
         "support_overhang_angle_deg": _decimal(settings, "support_angle"),
         "tree_max_branch_angle_deg": None,
         "pressure_advance": _decimal(settings, "klipper_pressure_advance_factor"),
+        "ironing_enabled": (
+            _boolean(settings, "ironing_enabled", default=False) if "ironing_enabled" in settings else None
+        ),
+        "ironing_flow_percent": _decimal(settings, "ironing_flow"),
+        "ironing_speed_mm_s": _decimal(settings, "ironing_speed"),
+        "ironing_line_spacing_mm": _decimal(settings, "ironing_line_spacing"),
         "filament_density_g_cm3": filament_density_g_cm3,
         "preferred_build_plate_surface_id": preferred_build_plate_surface_id,
         "cura_extensions": extensions,

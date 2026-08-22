@@ -10,7 +10,7 @@ from urllib.parse import urlparse
 from uuid import UUID
 
 from fastapi import APIRouter, Request, Response, status
-from sqlalchemy import delete, or_, select
+from sqlalchemy import delete, or_, select, update
 
 from filament_manager.config import get_settings
 from filament_manager.domain.cura_import import material_settings_from_cura, merge_cura_settings
@@ -25,6 +25,7 @@ from filament_manager.models.inventory import (
     MaterialProfile,
     MaterialTemplate,
     MaterialTemplateRevision,
+    Printer,
 )
 from filament_manager.models.workstations import (
     CuraDeployment,
@@ -41,6 +42,7 @@ from filament_manager.services.cura_library import (
     queue_cura_library,
     settings_from_template,
 )
+from filament_manager.services.cura_nozzles import queue_cura_nozzle_update
 from filament_manager.services.events import add_audit_event
 from filament_manager.services.material_settings import save_template_settings
 
@@ -76,6 +78,27 @@ PAIRING_LIFETIME = timedelta(minutes=10)
 CLAIM_LEASE = timedelta(minutes=5)
 MAX_AGENT_JSON_BYTES = 2 * 1024 * 1024
 MAX_RECOVERY_JSON_BYTES = 3 * 1024 * 1024
+SAFE_AGENT_ERROR_MESSAGES = frozenset(
+    {
+        "No Cura printer configuration was found to back up.",
+        "Cura appears to have been reset; the last known-good automatic backup was preserved.",
+        "This automatic backup was previously deleted and remains suppressed.",
+        "A supported Cura settings directory failed the local safety check.",
+        "The Cura settings backup exceeds the safe file or size limit.",
+        "Cura settings could not be captured safely on the workstation.",
+    }
+)
+
+
+def _sanitized_agent_error(value: str | None) -> str | None:
+    """Keep only path-free agent guidance safe for web and diagnostics output."""
+
+    if value is None:
+        return None
+    normalized = " ".join(value.split())
+    if normalized in SAFE_AGENT_ERROR_MESSAGES:
+        return normalized
+    return "The workstation agent reported an error. Review its local service log."
 
 
 class PairingRateLimiter:
@@ -321,7 +344,7 @@ async def workstation_heartbeat(
     agent.cura_installations = [item.model_dump(mode="json") for item in payload.cura_installations]
     agent.cura_materials = [item.model_dump(mode="json") for item in payload.cura_materials]
     agent.last_seen_at = datetime.now(UTC)
-    agent.last_error = payload.last_error
+    agent.last_error = _sanitized_agent_error(payload.last_error)
     if (
         not agent.cura_management_enabled
         and payload.cura_installations
@@ -485,13 +508,17 @@ async def upload_cura_recovery_snapshot(
             snapshot_id=latest.id if latest else None,
             snapshot_checksum=payload.snapshot_checksum,
         )
-    if latest and suspected_reset(
-        previous_machine_count=latest.machine_count,
-        previous_file_count=latest.file_count,
-        previous_quality_profile_count=latest.quality_profile_count,
-        machine_count=machine_count,
-        file_count=file_count,
-        quality_profile_count=quality_profile_count,
+    if (
+        capture_request is None
+        and latest
+        and suspected_reset(
+            previous_machine_count=latest.machine_count,
+            previous_file_count=latest.file_count,
+            previous_quality_profile_count=latest.quality_profile_count,
+            machine_count=machine_count,
+            file_count=file_count,
+            quality_profile_count=quality_profile_count,
+        )
     ):
         agent.cura_recovery_status = "capture_blocked"
         agent.cura_recovery_message = (
@@ -1370,6 +1397,17 @@ async def complete_cura_recovery_restore(
         agent.cura_recovery_message = None
         agent.last_recovery_restore_at = now
         if agent.cura_management_enabled:
+            printers = list(await session.scalars(select(Printer).order_by(Printer.id)))
+            for printer in printers:
+                await queue_cura_nozzle_update(
+                    session,
+                    printer=printer,
+                    previous_diameter_mm=None,
+                    requested_by=restore.requested_by,
+                    agents=[agent],
+                    force=True,
+                    trigger_key=f"recovery-{restore.id}",
+                )
             try:
                 await queue_cura_library(
                     session,
@@ -1480,6 +1518,24 @@ async def complete_cura_deployment(
     elif payload.outcome == "succeeded":
         deployment.status = CuraDeploymentStatus.SUCCEEDED
         deployment.completed_at = now
+        if deployment.payload.get("operation") is None:
+            # A complete current-library install proves older failed desired
+            # states for this workstation are obsolete. Retain them as
+            # cancelled history without leaving permanent active alerts.
+            await session.execute(
+                update(CuraDeployment)
+                .where(
+                    CuraDeployment.id != deployment.id,
+                    CuraDeployment.agent_id == agent.id,
+                    CuraDeployment.status == CuraDeploymentStatus.FAILED,
+                    CuraDeployment.payload["operation"].as_string().is_(None),
+                )
+                .values(
+                    status=CuraDeploymentStatus.CANCELLED,
+                    completed_at=now,
+                    updated_at=now,
+                )
+            )
         if deployment.payload.get("operation") == "nozzle_update" and agent.cura_management_enabled:
             try:
                 await queue_cura_library(

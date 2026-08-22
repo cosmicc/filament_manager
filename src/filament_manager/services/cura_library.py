@@ -11,9 +11,11 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from filament_manager.domain.cura_material_settings import (
-    CURA_EDITABLE_SETTING_KEYS,
+    CURA_MANAGED_SETTING_KEYS,
+    CURA_RETIRED_SETTING_KEYS,
     cura_settings_for_profile,
 )
+from filament_manager.domain.profile_inheritance import resolve_profile_settings
 from filament_manager.domain.spool_preflight import cura_material_guid
 from filament_manager.models.enums import CuraDeploymentStatus, ProfileStatus, SpoolStatus
 from filament_manager.models.inventory import (
@@ -230,11 +232,19 @@ async def build_cura_library(session: AsyncSession) -> dict[str, object]:
     for profile in latest_profiles.values():
         product = await session.get(FilamentProduct, profile.filament_product_id)
         printer = await session.get(Printer, profile.printer_id)
-        if product is None or printer is None:
+        base_revision = await session.get(
+            MaterialTemplateRevision,
+            profile.base_template_revision_id,
+        )
+        if product is None or printer is None or base_revision is None:
             raise RuntimeError("A current material profile has an incomplete scope")
         if product.archived:
             continue
         vendor = await session.get(Vendor, product.vendor_id) if product.vendor_id else None
+        effective_settings = resolve_profile_settings(
+            base_revision.settings,
+            dict(profile.setting_overrides or {}),
+        )
         entries.append(
             {
                 "source_kind": "product",
@@ -244,7 +254,7 @@ async def build_cura_library(session: AsyncSession) -> dict[str, object]:
                     "id": str(profile.id),
                     "version": profile.version,
                     "checksum": profile.checksum,
-                    "settings": cura_settings_for_profile(profile),
+                    "settings": settings_from_template(effective_settings),
                 },
                 "material": {
                     "product_id": str(product.id),
@@ -271,7 +281,8 @@ async def build_cura_library(session: AsyncSession) -> dict[str, object]:
     desired_state: dict[str, object] = {
         "schema_version": 3,
         "hide_bundled_materials": True,
-        "managed_material_setting_keys": sorted(CURA_EDITABLE_SETTING_KEYS),
+        "managed_material_setting_keys": sorted(CURA_MANAGED_SETTING_KEYS),
+        "retired_material_setting_keys": sorted(CURA_RETIRED_SETTING_KEYS),
         "materials": entries,
     }
     checksum = hashlib.sha256(

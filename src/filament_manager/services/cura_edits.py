@@ -12,7 +12,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from filament_manager.api.schemas import CuraManagedMaterialReport, MaterialSettingsInput
 from filament_manager.domain.cura_import import cura_setting_maps_equal, material_settings_from_cura
-from filament_manager.domain.cura_material_settings import cura_settings_for_profile
+from filament_manager.domain.profile_inheritance import resolve_profile_settings
 from filament_manager.domain.spool_preflight import cura_material_guid
 from filament_manager.models.enums import ProfileStatus
 from filament_manager.models.inventory import (
@@ -129,9 +129,6 @@ async def import_managed_cura_edits(
 
         if source_kind == "product":
             assert isinstance(source_revision, MaterialProfile)
-            expected_cura = cura_settings_for_profile(source_revision)
-            if cura_setting_maps_equal(expected_cura, incoming_cura):
-                continue
             product = await session.get(FilamentProduct, source_revision.filament_product_id)
             base_revision = (
                 await session.get(MaterialTemplateRevision, source_revision.base_template_revision_id)
@@ -139,6 +136,14 @@ async def import_managed_cura_edits(
                 else None
             )
             if product is None or base_revision is None:
+                continue
+            expected_cura = settings_from_template(
+                resolve_profile_settings(
+                    base_revision.settings,
+                    dict(source_revision.setting_overrides or {}),
+                )
+            )
+            if cura_setting_maps_equal(expected_cura, incoming_cura):
                 continue
             product_settings = MaterialSettingsInput.model_validate(
                 material_settings_from_cura(

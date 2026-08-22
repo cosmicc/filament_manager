@@ -102,7 +102,7 @@ def test_dimensional_calibration_warns_when_axis_corrections_diverge() -> None:
 
 
 def test_template_calibration_applies_only_supported_suggestions() -> None:
-    """Template application must not copy product overrides or optional ironing."""
+    """Template application includes supported ironing without copying product identity."""
 
     settings = _template_settings_with_suggestions(
         {
@@ -127,5 +127,10 @@ def test_template_calibration_applies_only_supported_suggestions() -> None:
     assert settings.extruder_temp_c == Decimal("245")
     assert settings.flow_percent == Decimal("97.5")
     assert settings.filament_density_g_cm3 == Decimal("1.20")
-    assert settings.cura_extensions == {"xy_offset": "0.10", "retraction_enable": True}
-    assert "ironing_enabled" not in settings.model_dump()
+    assert settings.cura_extensions == {
+        "xy_offset": "0.10",
+        "retraction_enable": True,
+        "cool_fan_speed_0": "0",
+    }
+    assert settings.ironing_enabled is True
+    assert settings.ironing_flow_percent == Decimal("12")

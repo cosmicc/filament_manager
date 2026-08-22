@@ -52,6 +52,16 @@ SPOOL_MASS_QUANTUM = Decimal("0.001")
 _spoolman_fields_ready_until = 0.0
 _spoolman_fields_lock = asyncio.Lock()
 logger = structlog.get_logger()
+RECONSTRUCTABLE_RECURRING_JOB_TYPES = frozenset(
+    {
+        "spoolman.reconcile.full",
+        "moonraker.state.reconcile",
+        "moonraker.printer_info.reconcile",
+        "moonraker.print_history.reconcile",
+        "notifications.evaluate",
+        "google.publish.pending",
+    }
+)
 
 
 def _fingerprint(value: object) -> str:
@@ -1146,8 +1156,8 @@ async def dispatch_job(session: AsyncSession, job: OutboxJob) -> None:
     elif job.job_type == "spoolman.spool.adjust_weight":
         spool = await session.get(Spool, job.aggregate_id)
         if spool and spool.spoolman_id:
-            await spoolman.measure_spool(
-                spool.spoolman_id, float(spool.remaining_mass_effective_g + spool.tare_mass_g)
+            await spoolman.set_spool_remaining_weight(
+                spool.spoolman_id, float(spool.remaining_mass_effective_g)
             )
     elif job.job_type == "spoolman.reconcile.full":
         remote_spools = await _reconcile_spoolman(session, spoolman)
@@ -1228,14 +1238,13 @@ async def complete_job(session: AsyncSession, job: OutboxJob) -> None:
         persisted.completed_at = completed_at
         persisted.locked_by = None
         persisted.locked_at = None
-        if persisted.idempotency_key.startswith("periodic:"):
+        if persisted.job_type in RECONSTRUCTABLE_RECURRING_JOB_TYPES:
             await session.execute(
                 update(OutboxJob)
                 .where(
                     OutboxJob.id != persisted.id,
                     OutboxJob.job_type == persisted.job_type,
-                    OutboxJob.status == JobStatus.DEAD,
-                    OutboxJob.idempotency_key.like("periodic:%"),
+                    OutboxJob.status.in_((JobStatus.FAILED, JobStatus.DEAD)),
                 )
                 .values(status=JobStatus.SUPERSEDED, completed_at=completed_at)
             )

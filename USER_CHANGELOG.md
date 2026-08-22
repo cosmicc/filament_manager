@@ -1,5 +1,34 @@
 # User Changelog
 
+## 0.3.3 - 08.22.2026
+
+### Added
+
+- Added a Material Print Settings status to every managed Cura installation showing the exact verified count, required plugin versions/readiness, missing settings, and last verification time; the same result appears in Diagnostics.
+- Added automatic database upgrade support for the larger identifiers used by manually requested synchronization jobs.
+- Added template-only Print, Infill, Wall, Top Surface Skin, Top/Bottom, Support, and Travel Acceleration settings. Cura acceleration control and travel acceleration are always enabled automatically.
+- Added complete safe Cura printer/extruder setting backup coverage, including start/end G-code.
+- Added ironing settings to both templates and filament profiles.
+- Added live progress and useful sanitized error feedback for named Cura backups.
+
+### Changed
+
+- Filament Manager now automatically restores the required 55-setting Material Settings plugin selection when it drifts and verifies those settings after Cura starts.
+- Print speed settings and cooling settings other than Initial Fan Speed now live on templates and automatically flow to linked filament profiles.
+- Pressure advance and Initial Fan Speed are editable on both templates and filament profiles. Smooth time and acceleration remain template-only.
+- Flow is now one primary setting, and the temperature editor now uses only Printing Temperature, Build Volume Temperature, and Build Plate Temperature.
+
+### Fixed
+
+- Fixed a missing, disabled, or incompatible Cura settings plugin appearing healthy simply because the material files synchronized successfully.
+- Fixed a managed Cura edit being able to fail the workstation heartbeat when a customized filament fan value crossed a changed template fan value.
+- Fixed **Queue Spoolman reconciliation** and related manual projection actions failing before their jobs reached the worker.
+- Fixed nozzle changes updating the wrong Cura stack; the linked extruder nozzle size is now aligned again after a Cura restore.
+- Fixed repeated Spoolman weight corrections staying pending until they died in the Projection Queue.
+- Fixed an already-recovered manual Moonraker synchronization remaining forever as one dead Projection Queue item.
+- Fixed named Cura backups after a reset producing no saved point and no useful feedback.
+- Fixed old Cura synchronization failures staying active after the current full library had synchronized successfully.
+
 ## 0.3.2 - 08.21.2026
 
 ### Added

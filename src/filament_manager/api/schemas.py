@@ -1,5 +1,6 @@
 """Pydantic API contracts kept separate from ORM models."""
 
+import re
 from datetime import date, datetime
 from decimal import Decimal, InvalidOperation
 from typing import Annotated, Any, Literal
@@ -10,6 +11,7 @@ from pydantic import BaseModel, ConfigDict, Field, computed_field, field_validat
 from filament_manager.domain.cura_material_settings import (
     CURA_EXTENSION_SETTING_KEYS,
     CURA_MATERIAL_SETTINGS,
+    CURA_RETIRED_SETTING_KEYS,
     cura_settings_for_profile,
 )
 from filament_manager.models.enums import (
@@ -496,6 +498,10 @@ class MaterialSettingsInput(ApiModel):
     support_overhang_angle_deg: Decimal | None = Field(default=None, ge=0, le=90)
     tree_max_branch_angle_deg: Decimal | None = Field(default=None, ge=0, le=90)
     pressure_advance: Decimal | None = Field(default=None, ge=0, le=2)
+    ironing_enabled: bool | None = None
+    ironing_flow_percent: Decimal | None = Field(default=None, ge=0, le=100)
+    ironing_speed_mm_s: Decimal | None = Field(default=None, gt=0)
+    ironing_line_spacing_mm: Decimal | None = Field(default=None, gt=0)
     filament_density_g_cm3: Decimal = Field(gt=0)
     preferred_build_plate_surface_id: UUID | None = None
     cura_extensions: dict[str, Any] = Field(default_factory=dict)
@@ -508,6 +514,11 @@ class MaterialSettingsInput(ApiModel):
         import math
         import re
 
+        value = {key: item for key, item in value.items() if key not in CURA_RETIRED_SETTING_KEYS}
+        # Existing snapshots relied on a hidden zero before Initial Fan Speed
+        # became editable. Keep that safe starting value without overriding a
+        # value subsequently selected by the operator.
+        value.setdefault("cool_fan_speed_0", "0")
         catalog_by_key = {setting.key: setting for setting in CURA_MATERIAL_SETTINGS}
         if len(value) > len(CURA_EXTENSION_SETTING_KEYS):
             raise ValueError("Cura extensions contain too many settings")
@@ -537,6 +548,12 @@ class MaterialSettingsInput(ApiModel):
                 if isinstance(extension_value, str) and not re.fullmatch(r"-?\d+(?:\.\d+)?", extension_value):
                     raise ValueError(f"Cura extension {key} must be numeric")
                 numeric_value = Decimal(str(extension_value))
+                if key.startswith("acceleration_") and not (
+                    Decimal("0") < numeric_value <= Decimal("1000000")
+                ):
+                    raise ValueError(f"Cura extension {key} must be greater than 0 and at most 1000000")
+                if key == "cool_fan_speed_0" and not (Decimal("0") <= numeric_value <= Decimal("100")):
+                    raise ValueError("Cura extension cool_fan_speed_0 must be between 0 and 100")
                 if key == "klipper_smooth_time_factor" and not (
                     Decimal("0.001") <= numeric_value <= Decimal("0.2")
                 ):
@@ -907,6 +924,67 @@ class CuraMachineReport(ApiModel):
     nozzle_diameter_mm: str | None = Field(default=None, max_length=32)
 
 
+class CuraRequiredMaterialPluginReport(ApiModel):
+    """One required Cura plugin reported from bounded package metadata."""
+
+    role: Literal["material_settings", "klipper_settings"]
+    package_id: str = Field(pattern=r"^[A-Za-z0-9_.-]+$", max_length=160)
+    display_name: str = Field(min_length=1, max_length=160)
+    version: str = Field(pattern=r"^[A-Za-z0-9_.+-]+$", max_length=64)
+    enabled: bool
+
+
+class CuraMaterialSettingsSyncReport(ApiModel):
+    """Sanitized receipt proving which managed material settings Cura exposed."""
+
+    status: Literal[
+        "not_deployed",
+        "waiting_for_cura",
+        "waiting_for_machine",
+        "healthy",
+        "degraded",
+        "invalid",
+    ]
+    expected_count: int = Field(ge=0, le=len(CURA_MATERIAL_SETTINGS))
+    exposed_count: int = Field(ge=0, le=len(CURA_MATERIAL_SETTINGS))
+    missing_keys: list[str] = Field(default_factory=list, max_length=len(CURA_MATERIAL_SETTINGS))
+    unexpected_keys: list[str] = Field(default_factory=list, max_length=100)
+    material_settings_plugin_ready: bool
+    klipper_settings_plugin_ready: bool
+    plugins: list[CuraRequiredMaterialPluginReport] = Field(default_factory=list, max_length=2)
+    catalog_checksum: str | None = Field(default=None, pattern=r"^[0-9a-f]{64}$")
+    verified_at: datetime | None = None
+
+    @field_validator("missing_keys", "unexpected_keys")
+    @classmethod
+    def validate_material_setting_keys(cls, value: list[str]) -> list[str]:
+        """Reject duplicate or malformed setting names in a workstation receipt."""
+
+        if len(value) != len(set(value)):
+            raise ValueError("Cura material setting receipt contains duplicate keys")
+        if any(not re.fullmatch(r"[a-z][a-z0-9_]{0,95}", key) for key in value):
+            raise ValueError("Cura material setting receipt contains an invalid key")
+        return value
+
+    @model_validator(mode="after")
+    def validate_counts(self) -> "CuraMaterialSettingsSyncReport":
+        """Require the exposed and missing counts to describe one exact catalog."""
+
+        if self.exposed_count + len(self.missing_keys) != self.expected_count:
+            raise ValueError("Cura material setting receipt counts do not match")
+        if self.status == "healthy" and (
+            self.missing_keys
+            or self.unexpected_keys
+            or not self.material_settings_plugin_ready
+            or not self.klipper_settings_plugin_ready
+        ):
+            raise ValueError("Healthy Cura material setting receipt contains drift")
+        roles = [plugin.role for plugin in self.plugins]
+        if len(roles) != len(set(roles)):
+            raise ValueError("Cura material setting receipt contains duplicate plugin roles")
+        return self
+
+
 class CuraInstallationReport(ApiModel):
     """Sanitized Cura installation metadata reported by an agent."""
 
@@ -916,6 +994,7 @@ class CuraInstallationReport(ApiModel):
     path_hint: str = Field(min_length=1, max_length=255)
     setting_version: int | None = Field(default=None, ge=1, le=1000)
     managed_library_checksum: str | None = Field(default=None, pattern=r"^[0-9a-f]{64}$")
+    material_settings_sync: CuraMaterialSettingsSyncReport | None = None
     machines: list[CuraMachineReport] = Field(default_factory=list, max_length=100)
 
 
@@ -1200,6 +1279,7 @@ class CuraDeploymentResponse(ApiModel):
     agent_id: UUID
     material_profile_id: UUID | None
     requested_by: UUID | None
+    operation: str
     status: CuraDeploymentStatus
     profile_checksum: str
     attempts: int

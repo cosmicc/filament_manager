@@ -51,6 +51,17 @@ def test_combined_cura_import_source_count_prevents_automatic_takeover() -> None
     assert workstations._unmanaged_cura_source_count({"unmanaged_material_count": True}) is None
 
 
+def test_agent_error_detail_is_bounded_to_safe_operator_guidance() -> None:
+    """Heartbeat errors never expose a workstation path through the web API."""
+
+    safe = "No Cura printer configuration was found to back up."
+    assert workstations._sanitized_agent_error(safe) == safe
+    assert workstations._sanitized_agent_error(None) is None
+    assert workstations._sanitized_agent_error("Failed at /home/operator/private/Cura") == (
+        "The workstation agent reported an error. Review its local service log."
+    )
+
+
 @pytest.mark.integration
 @pytest.mark.asyncio
 async def test_pair_queue_claim_and_complete_workstation_deployment(
@@ -252,6 +263,27 @@ async def test_pair_queue_claim_and_complete_workstation_deployment(
             queued = await client.post(f"/api/v1/profiles/{profile_id}/deployments", json={})
             assert queued.status_code == 201, queued.text
             deployment_id = queued.json()[0]["id"]
+            async with factory() as session:
+                paired_agent = await session.scalar(select(WorkstationAgent))
+                assert paired_agent is not None
+                obsolete_failed = CuraDeployment(
+                    agent_id=paired_agent.id,
+                    material_profile_id=None,
+                    requested_by=None,
+                    status=CuraDeploymentStatus.FAILED,
+                    payload={"schema_version": 3, "materials": []},
+                    profile_checksum="f" * 64,
+                    idempotency_key=f"obsolete-library:{paired_agent.id}",
+                    attempts=1,
+                    last_error_class="RuntimeError",
+                    last_error_message="Old desired state failed",
+                    next_attempt_at=datetime.now(UTC),
+                    created_at=datetime.now(UTC),
+                    updated_at=datetime.now(UTC),
+                )
+                session.add(obsolete_failed)
+                await session.commit()
+                obsolete_failed_id = obsolete_failed.id
             claimed = await client.post(
                 "/api/v1/workstation-agent/deployments/claim",
                 headers={"Authorization": f"Bearer {agent_token}"},
@@ -290,6 +322,33 @@ async def test_pair_queue_claim_and_complete_workstation_deployment(
                             "path_hint": "Linux Cura user data / 5.13",
                             "setting_version": 27,
                             "managed_library_checksum": "a" * 64,
+                            "material_settings_sync": {
+                                "status": "healthy",
+                                "expected_count": 55,
+                                "exposed_count": 55,
+                                "missing_keys": [],
+                                "unexpected_keys": [],
+                                "material_settings_plugin_ready": True,
+                                "klipper_settings_plugin_ready": True,
+                                "plugins": [
+                                    {
+                                        "role": "material_settings",
+                                        "package_id": "MaterialSettingsPlugin",
+                                        "display_name": "Material Settings",
+                                        "version": "4.3.1",
+                                        "enabled": True,
+                                    },
+                                    {
+                                        "role": "klipper_settings",
+                                        "package_id": "KlipperSettingsPlugin",
+                                        "display_name": "Klipper Settings Plugin",
+                                        "version": "1.0.2",
+                                        "enabled": True,
+                                    },
+                                ],
+                                "catalog_checksum": "b" * 64,
+                                "verified_at": "2026-08-22T04:00:00Z",
+                            },
                             "machines": [],
                         }
                     ],
@@ -328,9 +387,39 @@ async def test_pair_queue_claim_and_complete_workstation_deployment(
             agent = await session.scalar(select(WorkstationAgent))
             assert agent is not None
             assert agent.token_hash != agent_token
+            assert agent.cura_installations[0]["material_settings_sync"] == {
+                "status": "healthy",
+                "expected_count": 55,
+                "exposed_count": 55,
+                "missing_keys": [],
+                "unexpected_keys": [],
+                "material_settings_plugin_ready": True,
+                "klipper_settings_plugin_ready": True,
+                "plugins": [
+                    {
+                        "role": "material_settings",
+                        "package_id": "MaterialSettingsPlugin",
+                        "display_name": "Material Settings",
+                        "version": "4.3.1",
+                        "enabled": True,
+                    },
+                    {
+                        "role": "klipper_settings",
+                        "package_id": "KlipperSettingsPlugin",
+                        "display_name": "Klipper Settings Plugin",
+                        "version": "1.0.2",
+                        "enabled": True,
+                    },
+                ],
+                "catalog_checksum": "b" * 64,
+                "verified_at": "2026-08-22T04:00:00Z",
+            }
             deployment = await session.get(CuraDeployment, deployment_id)
             assert deployment is not None
             assert deployment.status == CuraDeploymentStatus.SUCCEEDED
+            obsolete_failed = await session.get(CuraDeployment, obsolete_failed_id)
+            assert obsolete_failed is not None
+            assert obsolete_failed.status == CuraDeploymentStatus.CANCELLED
             queued_current_library = await session.scalar(
                 select(CuraDeployment)
                 .where(CuraDeployment.id != deployment_id)
@@ -412,6 +501,13 @@ async def test_cura_recovery_snapshot_and_restore_lifecycle(
             )
             session.add(administrator)
             await session.flush()
+            printer = Printer(
+                printer_code="workshop-printer",
+                name="Workshop Printer",
+                moonraker_base_url="http://moonraker.test:7125",
+                nozzle_diameter_mm=Decimal("0.4"),
+            )
+            session.add(printer)
             agent = WorkstationAgent(
                 agent_code="WS-RECOVERYTEST",
                 display_name="Recovery Cura",
@@ -421,7 +517,7 @@ async def test_cura_recovery_snapshot_and_restore_lifecycle(
                 agent_version="0.2.4",
                 token_hash=hash_token(agent_token),
                 enabled=True,
-                cura_management_enabled=False,
+                cura_management_enabled=True,
                 capabilities={"cura_recovery_snapshots": True},
                 cura_installations=[
                     {
@@ -520,6 +616,7 @@ async def test_cura_recovery_snapshot_and_restore_lifecycle(
                 },
             )
             assert capture_request.status_code == 202, capture_request.text
+            assert capture_request.json()["operation"] == "recovery_capture"
             capture_deployment_id = capture_request.json()["id"]
             claimed_capture = await client.post(
                 "/api/v1/workstation-agent/deployments/claim",
@@ -695,5 +792,14 @@ async def test_cura_recovery_snapshot_and_restore_lifecycle(
             assert agent.cura_recovery_status == "ready"
             assert agent.last_recovery_restore_at is not None
             assert len(agent.suppressed_recovery_snapshots) == 1
+            nozzle_alignment = await session.scalar(
+                select(CuraDeployment).where(
+                    CuraDeployment.agent_id == agent_id,
+                    CuraDeployment.idempotency_key.like(f"%recovery-{restore_id}"),
+                )
+            )
+            assert nozzle_alignment is not None
+            assert nozzle_alignment.payload["operation"] == "nozzle_update"
+            assert Decimal(str(nozzle_alignment.payload["nozzle_diameter_mm"])) == Decimal("0.4")
 
         await engine.dispose()

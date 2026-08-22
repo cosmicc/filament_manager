@@ -7,8 +7,8 @@ import { EditorSection } from './EditorSection'
 
 export const typedCuraKeys = new Set([
   'build_volume_temperature', 'cool_fan_enabled', 'cool_fan_speed',
-  'cool_fan_speed_min', 'default_material_bed_temperature',
-  'default_material_print_temperature', 'klipper_pressure_advance_factor',
+  'cool_fan_speed_min', 'klipper_pressure_advance_factor',
+  'ironing_enabled', 'ironing_flow', 'ironing_line_spacing', 'ironing_speed',
   'material_bed_temperature', 'material_flow', 'material_print_temperature',
   'retraction_amount', 'retraction_prime_speed', 'retraction_retract_speed',
   'retraction_speed', 'speed_infill', 'speed_layer_0',
@@ -24,27 +24,32 @@ const coreFields: Array<{
   required?: boolean
   defaultValue?: string
   precision?: number
+  templateOnly?: boolean
 }> = [
   { key: 'extruder_temp_c', label: 'Printing temperature', unit: '°C', required: true, precision: 0 },
   { key: 'bed_temp_c', label: 'Build plate temperature', unit: '°C', required: true, precision: 0 },
-  { key: 'chamber_temp_c', label: 'Chamber temperature', unit: '°C', precision: 0 },
+  { key: 'chamber_temp_c', label: 'Build volume temperature', unit: '°C', precision: 0 },
   { key: 'flow_percent', label: 'Flow', unit: '%', required: true, defaultValue: '100', precision: 0 },
-  { key: 'print_speed_mm_s', label: 'Print speed', unit: 'mm/s', precision: 0 },
-  { key: 'outer_wall_speed_mm_s', label: 'Outer wall speed', unit: 'mm/s', precision: 0 },
-  { key: 'inner_wall_speed_mm_s', label: 'Inner wall speed', unit: 'mm/s', precision: 0 },
-  { key: 'infill_speed_mm_s', label: 'Infill speed', unit: 'mm/s', precision: 0 },
-  { key: 'top_bottom_speed_mm_s', label: 'Top/bottom speed', unit: 'mm/s', precision: 0 },
-  { key: 'initial_layer_speed_mm_s', label: 'Initial layer speed', unit: 'mm/s', precision: 0 },
-  { key: 'travel_speed_mm_s', label: 'Travel speed', unit: 'mm/s', precision: 0 },
-  { key: 'support_speed_mm_s', label: 'Support speed', unit: 'mm/s', precision: 0 },
+  { key: 'print_speed_mm_s', label: 'Print speed', unit: 'mm/s', precision: 0, templateOnly: true },
+  { key: 'outer_wall_speed_mm_s', label: 'Outer wall speed', unit: 'mm/s', precision: 0, templateOnly: true },
+  { key: 'inner_wall_speed_mm_s', label: 'Inner wall speed', unit: 'mm/s', precision: 0, templateOnly: true },
+  { key: 'infill_speed_mm_s', label: 'Infill speed', unit: 'mm/s', precision: 0, templateOnly: true },
+  { key: 'top_bottom_speed_mm_s', label: 'Top/bottom speed', unit: 'mm/s', precision: 0, templateOnly: true },
+  { key: 'initial_layer_speed_mm_s', label: 'Initial layer speed', unit: 'mm/s', precision: 0, templateOnly: true },
+  { key: 'travel_speed_mm_s', label: 'Travel speed', unit: 'mm/s', precision: 0, templateOnly: true },
+  { key: 'support_speed_mm_s', label: 'Support speed', unit: 'mm/s', precision: 0, templateOnly: true },
   { key: 'retraction_distance_mm', label: 'Retraction distance', unit: 'mm', precision: 1 },
   { key: 'retraction_speed_mm_s', label: 'Retraction retract speed', unit: 'mm/s', precision: 0 },
   { key: 'retraction_prime_speed_mm_s', label: 'Retraction prime speed', unit: 'mm/s', precision: 0 },
-  { key: 'cooling_min_percent', label: 'Regular fan speed', unit: '%', required: true, defaultValue: '0', precision: 0 },
-  { key: 'cooling_max_percent', label: 'Maximum fan speed', unit: '%', required: true, defaultValue: '100', precision: 0 },
+  { key: 'cooling_min_percent', label: 'Regular fan speed', unit: '%', required: true, defaultValue: '0', precision: 0, templateOnly: true },
+  { key: 'cooling_max_percent', label: 'Maximum fan speed', unit: '%', required: true, defaultValue: '100', precision: 0, templateOnly: true },
   { key: 'support_overhang_angle_deg', label: 'Support overhang angle', unit: '°', precision: 0 },
   { key: 'tree_max_branch_angle_deg', label: 'Tree maximum branch angle', unit: '°', precision: 0 },
   { key: 'pressure_advance', label: 'Klipper pressure advance', unit: 's', precision: 2 },
+  { key: 'ironing_enabled', label: 'Enable ironing' },
+  { key: 'ironing_flow_percent', label: 'Ironing flow', unit: '%', precision: 0 },
+  { key: 'ironing_speed_mm_s', label: 'Ironing speed', unit: 'mm/s', precision: 0 },
+  { key: 'ironing_line_spacing_mm', label: 'Ironing line spacing', unit: 'mm', precision: 1 },
   { key: 'filament_density_g_cm3', label: 'Filament density', unit: 'g/cm³', required: true, defaultValue: '1.24', precision: 2 },
 ]
 
@@ -54,7 +59,9 @@ type MaterialSettingGroup =
   | 'temperature'
   | 'flow'
   | 'speed'
+  | 'acceleration'
   | 'retraction'
+  | 'ironing'
   | 'cooling'
   | 'support'
   | 'dimensional'
@@ -63,6 +70,7 @@ type MaterialSettingGroup =
   | 'build_plate'
 
 function curaSettingGroup(key: string): MaterialSettingGroup {
+  if (key.startsWith('acceleration_')) return 'acceleration'
   if (key.includes('flow')) return 'flow'
   if (key.startsWith('cool_')) return 'cooling'
   if (key.startsWith('speed_') || key.endsWith('_speed')) return 'speed'
@@ -79,7 +87,7 @@ function curaSettingGroup(key: string): MaterialSettingGroup {
 }
 
 function extensionPrecision(item: CuraSettingCatalogItem): number {
-  if (item.unit === '%' || item.unit === '°C' || item.unit === 'mm/s' || item.unit === '°') return 0
+  if (item.unit === '%' || item.unit === '°C' || item.unit === 'mm/s' || item.unit === 'mm/s²' || item.unit === '°') return 0
   if (item.key.startsWith('xy_offset') || item.key.startsWith('hole_xy_offset')) return 2
   if (item.key.startsWith('klipper_')) return 2
   if (item.unit === 'mm' || item.unit === 's') return 1
@@ -108,11 +116,12 @@ function preservedNumericValue(
 export function settingsFromForm(
   form: HTMLFormElement,
   catalog: CuraSettingCatalogItem[],
+  scope: 'template' | 'profile' = 'template',
 ): MaterialSettings {
   const data = new FormData(form)
   const extensions: Record<string, string | boolean> = {}
   for (const item of catalog) {
-    if (!item.editable || typedCuraKeys.has(item.key)) continue
+    if (!item.editable || typedCuraKeys.has(item.key) || (scope === 'profile' && item.template_only)) continue
     if (item.value_type === 'boolean') extensions[item.key] = data.get(`cura__${item.key}`) === 'on'
     else {
       const fieldName = `cura__${item.key}`
@@ -138,12 +147,18 @@ export function settingsFromForm(
     retraction_distance_mm: nullable(preservedNumericValue(form, 'retraction_distance_mm', data.get('retraction_distance_mm'))),
     retraction_speed_mm_s: nullable(preservedNumericValue(form, 'retraction_speed_mm_s', data.get('retraction_speed_mm_s'))),
     retraction_prime_speed_mm_s: nullable(preservedNumericValue(form, 'retraction_prime_speed_mm_s', data.get('retraction_prime_speed_mm_s'))),
-    cooling_enabled: data.get('cooling_enabled') === 'on',
+    cooling_enabled: scope === 'profile'
+      ? data.get('cooling_enabled') === 'true'
+      : data.get('cooling_enabled') === 'on',
     cooling_min_percent: String(preservedNumericValue(form, 'cooling_min_percent', data.get('cooling_min_percent'))),
     cooling_max_percent: String(preservedNumericValue(form, 'cooling_max_percent', data.get('cooling_max_percent'))),
     support_overhang_angle_deg: nullable(preservedNumericValue(form, 'support_overhang_angle_deg', data.get('support_overhang_angle_deg'))),
     tree_max_branch_angle_deg: nullable(preservedNumericValue(form, 'tree_max_branch_angle_deg', data.get('tree_max_branch_angle_deg'))),
     pressure_advance: nullable(preservedNumericValue(form, 'pressure_advance', data.get('pressure_advance'))),
+    ironing_enabled: data.get('ironing_enabled') === 'on',
+    ironing_flow_percent: nullable(preservedNumericValue(form, 'ironing_flow_percent', data.get('ironing_flow_percent'))),
+    ironing_speed_mm_s: nullable(preservedNumericValue(form, 'ironing_speed_mm_s', data.get('ironing_speed_mm_s'))),
+    ironing_line_spacing_mm: nullable(preservedNumericValue(form, 'ironing_line_spacing_mm', data.get('ironing_line_spacing_mm'))),
     filament_density_g_cm3: String(preservedNumericValue(form, 'filament_density_g_cm3', data.get('filament_density_g_cm3'))),
     preferred_build_plate_surface_id: nullable(data.get('preferred_build_plate_surface_id')),
     cura_extensions: extensions,
@@ -157,6 +172,7 @@ export function MaterialSettingsEditor({
   validationErrors = {},
   catalog,
   plates,
+  scope = 'template',
 }: {
   settings?: MaterialSettings
   baseSettings?: MaterialSettings | null
@@ -164,6 +180,7 @@ export function MaterialSettingsEditor({
   validationErrors?: Record<string, string[]>
   catalog: CuraSettingCatalogItem[]
   plates: BuildPlate[]
+  scope?: 'template' | 'profile'
 }) {
   const editorId = useId().replaceAll(':', '')
   const [resetKeys, setResetKeys] = useState<Set<string>>(() => new Set())
@@ -171,7 +188,11 @@ export function MaterialSettingsEditor({
   const customized = (key: string) => liveOwnership.get(key) ?? (overrideKeys.includes(key) && !resetKeys.has(key))
   const effectiveValue = (key: keyof MaterialSettings) => settings?.[key] ?? baseSettings?.[key]
   const effectiveExtensionValue = (key: string) => settings?.cura_extensions[key] ?? baseSettings?.cura_extensions[key]
-  const extensionCatalog = catalog.filter((item) => item.editable && !typedCuraKeys.has(item.key))
+  const extensionCatalog = catalog.filter((item) => (
+    item.editable
+    && !typedCuraKeys.has(item.key)
+    && (scope === 'template' || !item.template_only)
+  ))
   const errorsFor = (key: string) => validationErrors[key] ?? []
   const extensionErrorsFor = (key: string) => validationErrors[`cura_extensions.${key}`] ?? []
   const errorId = (key: string) => `${editorId}-${key.replaceAll(/[^a-zA-Z0-9_-]/g, '-')}-error`
@@ -242,13 +263,13 @@ export function MaterialSettingsEditor({
     {
       id: 'temperature',
       title: 'Temperatures',
-      description: 'Nozzle, build plate, chamber, standby, initial, and final material temperatures.',
+      description: 'The print, build volume, and build plate temperatures used by Cura.',
       keys: ['extruder_temp_c', 'bed_temp_c', 'chamber_temp_c'],
     },
     {
       id: 'flow',
       title: 'Flow',
-      description: 'Overall and feature-specific material flow percentages.',
+      description: 'One primary material flow value; Cura derives feature flow defaults from it.',
       keys: ['flow_percent'],
     },
     {
@@ -258,10 +279,22 @@ export function MaterialSettingsEditor({
       keys: ['print_speed_mm_s', 'outer_wall_speed_mm_s', 'inner_wall_speed_mm_s', 'infill_speed_mm_s', 'top_bottom_speed_mm_s', 'initial_layer_speed_mm_s', 'travel_speed_mm_s', 'support_speed_mm_s'],
     },
     {
+      id: 'acceleration',
+      title: 'Acceleration',
+      description: 'Template-owned print, feature, support, and travel acceleration values enforced in Cura.',
+      keys: [],
+    },
+    {
       id: 'retraction',
       title: 'Retraction',
       description: 'Retraction distance, speeds, travel limits, and layer-change behavior.',
       keys: ['retraction_distance_mm', 'retraction_speed_mm_s', 'retraction_prime_speed_mm_s'],
+    },
+    {
+      id: 'ironing',
+      title: 'Ironing',
+      description: 'Top-surface ironing behavior shared by templates and filament profiles.',
+      keys: ['ironing_enabled', 'ironing_flow_percent', 'ironing_speed_mm_s', 'ironing_line_spacing_mm'],
     },
     {
       id: 'cooling',
@@ -300,15 +333,38 @@ export function MaterialSettingsEditor({
       keys: [],
     },
   ]
+  const visibleGroups = fieldGroups.filter((group) => (
+    group.keys.some((key) => coreFields.some((field) => (
+      field.key === key && (scope === 'template' || !field.templateOnly)
+    )))
+    || extensionCatalog.some((item) => curaSettingGroup(item.key) === group.id)
+    || group.id === 'cooling'
+    || group.id === 'build_plate'
+  ))
   return (
     <div className="editor-form">
-      {fieldGroups.map((group) => (
+      {scope === 'profile' ? <>
+        {coreFields.filter((field) => field.templateOnly).map((field) => (
+          <input
+            key={`inherited-${field.key}`}
+            type="hidden"
+            name={field.key}
+            value={String(effectiveValue(field.key) ?? field.defaultValue ?? '')}
+            data-exact-value={String(effectiveValue(field.key) ?? field.defaultValue ?? '')}
+          />
+        ))}
+        <input type="hidden" name="cooling_enabled" value={String(Boolean(effectiveValue('cooling_enabled')))} />
+      </> : null}
+      {visibleGroups.map((group) => (
         <EditorSection key={group.title} title={group.title} description={group.description}>
           <div className="form-grid">
-            {coreFields.filter((field) => group.keys.includes(field.key)).map((field) => (
+            {coreFields.filter((field) => (
+              group.keys.includes(field.key) && (scope === 'template' || !field.templateOnly)
+              && field.key !== 'ironing_enabled'
+            )).map((field) => (
               <div className={`setting-field${customized(field.key) ? ' setting-field--customized' : ''}${errorsFor(field.key).length ? ' setting-field--invalid' : ''}`} key={field.key}>
                 <label>
-                  {field.label}{field.unit ? ` (${field.unit})` : ''}
+                  <span>{field.label}{field.unit ? ` (${field.unit})` : ''}{field.templateOnly ? <small className="setting-scope">Template only</small> : null}</span>
                   <input
                     name={field.key}
                     type="number"
@@ -326,7 +382,17 @@ export function MaterialSettingsEditor({
                 {ownership(field.key, baseSettings?.[field.key] as string | number | boolean | null | undefined)}
               </div>
             ))}
-            {group.id === 'cooling' ? (
+            {group.id === 'ironing' ? (
+              <div className={`setting-field${customized('ironing_enabled') ? ' setting-field--customized' : ''}${errorsFor('ironing_enabled').length ? ' setting-field--invalid' : ''}`}>
+                <label className="check-row">
+                  <input name="ironing_enabled" type="checkbox" defaultChecked={Boolean(effectiveValue('ironing_enabled'))} aria-invalid={errorsFor('ironing_enabled').length ? true : undefined} aria-describedby={errorsFor('ironing_enabled').length ? errorId('ironing_enabled') : undefined} onChange={(event) => markOwnership('ironing_enabled', event.currentTarget.checked, baseSettings?.ironing_enabled ?? undefined)} />
+                  <span><strong>Enable ironing</strong><small>Use ironing for the top surface.</small></span>
+                </label>
+                {fieldErrors('ironing_enabled')}
+                {ownership('ironing_enabled', baseSettings?.ironing_enabled ?? undefined)}
+              </div>
+            ) : null}
+            {group.id === 'cooling' && scope === 'template' ? (
               <div className={`setting-field${customized('cooling_enabled') ? ' setting-field--customized' : ''}${errorsFor('cooling_enabled').length ? ' setting-field--invalid' : ''}`}>
                 <label className="check-row">
                   <input name="cooling_enabled" type="checkbox" defaultChecked={effectiveValue('cooling_enabled') == null ? true : Boolean(effectiveValue('cooling_enabled'))} aria-invalid={errorsFor('cooling_enabled').length ? true : undefined} aria-describedby={errorsFor('cooling_enabled').length ? errorId('cooling_enabled') : undefined} onChange={(event) => markOwnership('cooling_enabled', event.currentTarget.checked, baseSettings?.cooling_enabled)} />
@@ -341,11 +407,11 @@ export function MaterialSettingsEditor({
                 {item.value_type === 'boolean' ? (
                   <label className="check-row">
                     <input name={`cura__${item.key}`} type="checkbox" defaultChecked={Boolean(effectiveExtensionValue(item.key))} aria-invalid={extensionErrorsFor(item.key).length ? true : undefined} aria-describedby={extensionErrorsFor(item.key).length ? errorId(`cura_extensions.${item.key}`) : undefined} onChange={(event) => markOwnership(item.key, event.currentTarget.checked, baseSettings?.cura_extensions[item.key])} />
-                    <span><strong>{item.label}</strong><small>{item.key}</small></span>
+                    <span><strong>{item.label}</strong>{item.template_only ? <small className="setting-scope">Template only</small> : null}<small>{item.key}</small></span>
                   </label>
                 ) : (
                   <label>
-                    {item.label}{item.unit ? ` (${item.unit})` : ''}
+                    <span>{item.label}{item.unit ? ` (${item.unit})` : ''}{item.template_only ? <small className="setting-scope">Template only</small> : null}</span>
                     <input
                       name={`cura__${item.key}`}
                       type={item.value_type === 'number' ? 'number' : 'text'}

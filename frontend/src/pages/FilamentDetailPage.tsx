@@ -128,7 +128,7 @@ export default function FilamentDetailPage() {
         method: 'PUT',
         body: JSON.stringify({
           expected_profile_version: latestProfile.record_version,
-          settings: settingsFromForm(form, catalog.data ?? []),
+          settings: settingsFromForm(form, catalog.data ?? [], 'profile'),
         }),
       })
     },
@@ -228,7 +228,7 @@ export default function FilamentDetailPage() {
     </Modal> : null}
     {editingSettings && latestProfile ? <Modal title="Edit material profile" description={`Edit resolved values inherited from ${latestProfile.base_template_name ?? 'the linked template'}. Only explicit differences are stored as filament customizations.`} onClose={() => setEditingSettings(false)} size="wide" footer={<><button className="button" type="button" onClick={() => setEditingSettings(false)}>Cancel</button><button className="button button--primary" form="edit-material-profile" disabled={saveProfile.isPending}><Save size={16} />{saveProfile.isPending ? 'Saving…' : 'Save settings'}</button></>}>
       <form id="edit-material-profile" className="editor-form" onSubmit={(event) => { event.preventDefault(); saveProfile.mutate(event.currentTarget) }} key={latestProfile.id}>
-        <MaterialSettingsEditor settings={latestProfile} baseSettings={latestProfile.base_template_settings} overrideKeys={latestProfile.override_keys} validationErrors={profileValidationErrors} catalog={catalog.data ?? []} plates={plates.data ?? []} />
+        <MaterialSettingsEditor settings={latestProfile} baseSettings={latestProfile.base_template_settings} overrideKeys={latestProfile.override_keys} validationErrors={profileValidationErrors} catalog={catalog.data ?? []} plates={plates.data ?? []} scope="profile" />
         {saveProfile.error ? <p className="form-error" role="alert">{hasProfileValidationErrors ? 'Correct the highlighted values and save again.' : saveProfile.error.message}</p> : null}
       </form>
     </Modal> : null}

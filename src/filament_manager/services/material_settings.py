@@ -20,7 +20,10 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from filament_manager.api.schemas import MaterialSettingsInput
 from filament_manager.domain.profile_inheritance import (
     profile_columns_from_settings,
+    profile_overrides_without_template_only,
     resolve_profile_settings,
+    resolve_profile_settings_for_template_update,
+    settings_snapshot_from_profile,
     sparse_profile_overrides,
 )
 from filament_manager.models.enums import ProfileStatus
@@ -90,7 +93,15 @@ async def create_published_profile_snapshot(
 ) -> MaterialProfile:
     """Append and finalize one current material-profile snapshot."""
 
-    validated = MaterialSettingsInput.model_validate(settings).model_dump(mode="json")
+    desired = MaterialSettingsInput.model_validate(settings).model_dump(mode="json")
+    overrides = profile_overrides_without_template_only(
+        dict(setting_overrides)
+        if setting_overrides is not None
+        else sparse_profile_overrides(base_revision.settings, desired)
+    )
+    validated = MaterialSettingsInput.model_validate(
+        resolve_profile_settings(base_revision.settings, overrides)
+    ).model_dump(mode="json")
     latest_version = await session.scalar(
         select(func.max(MaterialProfile.version)).where(
             MaterialProfile.filament_product_id == filament_product_id,
@@ -106,11 +117,7 @@ async def create_published_profile_snapshot(
         version=(latest_version or 0) + 1,
         status=ProfileStatus.PUBLISHED,
         base_template_revision_id=base_revision.id,
-        setting_overrides=(
-            dict(setting_overrides)
-            if setting_overrides is not None
-            else sparse_profile_overrides(base_revision.settings, validated)
-        ),
+        setting_overrides=overrides,
         published_at=datetime.now(UTC),
     )
     session.add(profile)
@@ -214,7 +221,11 @@ async def save_template_settings(
     inherited_profiles: list[MaterialProfile] = []
     for source in current_profiles.values():
         overrides = dict(source.setting_overrides or {})
-        effective_settings = resolve_profile_settings(validated, overrides)
+        effective_settings, overrides = resolve_profile_settings_for_template_update(
+            validated,
+            settings_snapshot_from_profile(source),
+            overrides,
+        )
         inherited_profiles.append(
             await create_published_profile_snapshot(
                 session,

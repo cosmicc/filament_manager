@@ -8,6 +8,7 @@ import pytest
 from filament_manager_agent.models import CuraInstallation
 from filament_manager_agent.recovery import (
     capture_recovery_snapshot,
+    material_settings_plugin_inventory,
     restore_recovery_snapshot,
 )
 
@@ -27,8 +28,12 @@ def _installation(data_root: Path, config_root: Path) -> CuraInstallation:
 
 def _write_operational_settings(installation: CuraInstallation, *, theme: str = "dark") -> None:
     machine_directory = installation.data_path / "machine_instances"
+    extruder_directory = installation.data_path / "extruders"
+    definition_change_directory = installation.data_path / "definition_changes"
     quality_directory = installation.data_path / "quality_changes"
     machine_directory.mkdir()
+    extruder_directory.mkdir()
+    definition_change_directory.mkdir()
     quality_directory.mkdir()
     (machine_directory / "Workshop.global.cfg").write_text(
         """[general]
@@ -42,10 +47,45 @@ setting_version = 27
 
 [values]
 machine_start_gcode = G28
+machine_end_gcode = M84
+machine_width = 260
+machine_depth = 260
 server_url = https://private-printer.example
 api_key = never-upload-this
 apiKey = never-upload-this-either
 cache_file = /srv/private-cura-cache
+""",
+        encoding="utf-8",
+    )
+    (extruder_directory / "workshop_extruder_0.extruder.cfg").write_text(
+        """[general]
+version = 6
+name = Extruder 1
+
+[metadata]
+type = extruder_train
+position = 0
+machine = Workshop Printer
+
+[containers]
+5 = workshop_0.6
+6 = workshop_extruder_0_settings
+7 = workshop_extruder_0
+""",
+        encoding="utf-8",
+    )
+    (definition_change_directory / "workshop_extruder_0_settings.inst.cfg").write_text(
+        """[general]
+version = 4
+name = workshop_extruder_0_settings
+definition = workshop_extruder_0
+
+[metadata]
+type = definition_changes
+
+[values]
+machine_nozzle_size = 0.6
+machine_heat_zone_length = 16
 """,
         encoding="utf-8",
     )
@@ -128,6 +168,11 @@ def test_capture_keeps_operational_settings_but_excludes_secrets_and_paths(tmp_p
     assert snapshot["snapshot_checksum"]
     assert "Workshop Printer" in serialized
     assert "Workshop Standard" in serialized
+    assert "machine_start_gcode" in serialized
+    assert "machine_end_gcode" in serialized
+    assert "machine_width" in serialized
+    assert "machine_nozzle_size" in serialized
+    assert "machine_heat_zone_length" in serialized
     assert "Material Settings" in serialized
     assert "never-upload" not in serialized
     assert "https://" not in serialized
@@ -136,6 +181,23 @@ def test_capture_keeps_operational_settings_but_excludes_secrets_and_paths(tmp_p
     assert "moonraker" in serialized.casefold()
     assert "upload_dialog" in serialized
     assert "upload_start_print_job" in serialized
+
+
+def test_reports_required_material_plugin_version_and_enabled_state(tmp_path: Path) -> None:
+    """Heartbeat metadata identifies the installed required Cura plugin package."""
+
+    installation = _installation(tmp_path / "data" / "5.13", tmp_path / "config" / "5.13")
+    _write_operational_settings(installation)
+
+    assert material_settings_plugin_inventory(installation) == [
+        {
+            "role": "material_settings",
+            "package_id": "MaterialSettingsPlugin",
+            "display_name": "Material Settings",
+            "version": "4.3.1",
+            "enabled": True,
+        }
+    ]
 
 
 def test_restore_replaces_profiles_and_merges_preferences_without_credentials(
@@ -181,6 +243,13 @@ instances = {"workshop":{"url":"https://current-printer.example","api_key":"keep
     assert restored_machine.is_file()
     assert "Workshop Printer" in restored_machine.read_text(encoding="utf-8")
     assert "machine_start_gcode = G28" in restored_machine.read_text(encoding="utf-8")
+    assert "machine_end_gcode = M84" in restored_machine.read_text(encoding="utf-8")
+    assert "machine_width = 260" in restored_machine.read_text(encoding="utf-8")
+    restored_extruder_settings = (
+        target.data_path / "definition_changes" / "workshop_extruder_0_settings.inst.cfg"
+    ).read_text(encoding="utf-8")
+    assert "machine_nozzle_size = 0.6" in restored_extruder_settings
+    assert "machine_heat_zone_length = 16" in restored_extruder_settings
     preferences = (target.config_path / "cura.cfg").read_text(encoding="utf-8")
     assert "theme = dark" in preferences
     assert "keep-current-login-token" in preferences

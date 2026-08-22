@@ -311,6 +311,25 @@ def _plugin_inventory(installation: CuraInstallation) -> list[dict[str, object]]
     return inventory
 
 
+def material_settings_plugin_inventory(installation: CuraInstallation) -> list[dict[str, object]]:
+    """Return installed Material Settings and Klipper Settings package metadata."""
+
+    required_plugins: list[dict[str, object]] = []
+    for plugin in _plugin_inventory(installation):
+        package_id = str(plugin["package_id"])
+        display_name = str(plugin["display_name"])
+        normalized = "".join(character for character in display_name.casefold() if character.isalnum())
+        role: str | None = None
+        if package_id == "MaterialSettingsPlugin" or normalized == "materialsettings":
+            role = "material_settings"
+        elif package_id == "KlipperSettingsPlugin" or normalized == "klippersettingsplugin":
+            role = "klipper_settings"
+        if role is not None:
+            required_plugins.append({"role": role, **plugin})
+    required_plugins.sort(key=lambda item: str(item["role"]))
+    return required_plugins
+
+
 def _snapshot_checksum(payload: dict[str, object]) -> str:
     canonical = json.dumps(payload, sort_keys=True, separators=(",", ":"), ensure_ascii=False)
     return hashlib.sha256(canonical.encode("utf-8")).hexdigest()

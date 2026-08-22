@@ -1,9 +1,11 @@
 """Sanitized diagnostics and portable text-export tests."""
 
 from datetime import UTC, datetime
+from types import SimpleNamespace
 
 from filament_manager.services.diagnostics import (
     EXPECTED_SCHEMA_VERSION,
+    _cura_material_settings_check,
     _sanitized_error_detail,
     diagnostics_text,
 )
@@ -12,7 +14,7 @@ from filament_manager.services.diagnostics import (
 def test_expected_schema_matches_current_migration_head() -> None:
     """Diagnostics must advance whenever the single Alembic head advances."""
 
-    assert EXPECTED_SCHEMA_VERSION == "b4c5d6e7f890"
+    assert EXPECTED_SCHEMA_VERSION == "d6e7f8a9b012"
 
 
 def test_error_details_remove_database_and_external_response_content() -> None:
@@ -32,6 +34,56 @@ def test_error_details_remove_database_and_external_response_content() -> None:
         )
         == "An external integration request failed. Review the server worker log for the matching time."
     )
+
+
+def test_cura_material_setting_receipts_report_exact_health_and_safe_drift() -> None:
+    """Diagnostics distinguishes verified exposure from bounded setting drift."""
+
+    checked_at = datetime(2026, 8, 22, 4, 0, tzinfo=UTC)
+    agent = SimpleNamespace(
+        id="agent-id",
+        display_name="Workshop Cura",
+        enabled=True,
+        cura_management_enabled=True,
+    )
+    healthy = _cura_material_settings_check(
+        agent,
+        {
+            "installation_id": "cura-513",
+            "version": "5.13",
+            "material_settings_sync": {
+                "status": "healthy",
+                "expected_count": 55,
+                "exposed_count": 55,
+                "missing_keys": [],
+                "material_settings_plugin_ready": True,
+                "klipper_settings_plugin_ready": True,
+            },
+        },
+        checked_at,
+    )
+    degraded = _cura_material_settings_check(
+        agent,
+        {
+            "installation_id": "cura-513",
+            "version": "5.13",
+            "material_settings_sync": {
+                "status": "degraded",
+                "expected_count": 55,
+                "exposed_count": 53,
+                "missing_keys": ["speed_print", "not_a_managed_key"],
+                "material_settings_plugin_ready": True,
+                "klipper_settings_plugin_ready": False,
+            },
+        },
+        checked_at,
+    )
+
+    assert healthy["status"] == "healthy"
+    assert "55 of 55" in str(healthy["detail"])
+    assert degraded["status"] == "error"
+    assert "speed_print" in str(degraded["detail"])
+    assert "not_a_managed_key" not in str(degraded["detail"])
 
 
 def test_diagnostics_text_contains_bounded_current_overview() -> None:

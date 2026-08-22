@@ -3,6 +3,7 @@
 import hashlib
 import json
 import os
+import re
 import tempfile
 import zipfile
 from datetime import UTC, datetime
@@ -17,7 +18,14 @@ from .quality_profiles import plan_quality_profile_cleanup, quality_profiles_are
 from .render import RenderedDeployment
 
 MANIFEST_PATH = Path(".filament-manager") / "manifest.json"
-DEPLOYMENT_RENDERER_REVISION = 6
+MATERIAL_SETTINGS_STATUS_PATH = (
+    Path("plugins")
+    / "FilamentManagerVisibility"
+    / "FilamentManagerVisibility"
+    / "material-settings-status.json"
+)
+MATERIAL_SETTINGS_STATUS_SCHEMA_VERSION = 1
+DEPLOYMENT_RENDERER_REVISION = 8
 
 
 def _sha256(data: bytes) -> str:
@@ -110,15 +118,18 @@ def _already_current(root: Path, checksum: str) -> bool:
     }
     if actual_materials != desired_materials:
         return False
-    raw_managed_keys = manifest.get("managed_material_setting_keys")
-    if not isinstance(raw_managed_keys, list) or not raw_managed_keys:
+    raw_cleanup_keys = manifest.get(
+        "cleanup_material_setting_keys",
+        manifest.get("managed_material_setting_keys"),
+    )
+    if not isinstance(raw_cleanup_keys, list) or not raw_cleanup_keys:
         return False
-    if any(not isinstance(key, str) for key in raw_managed_keys):
+    if any(not isinstance(key, str) for key in raw_cleanup_keys):
         return False
-    managed_keys = frozenset(raw_managed_keys)
-    if len(managed_keys) != len(raw_managed_keys):
+    cleanup_keys = frozenset(raw_cleanup_keys)
+    if len(cleanup_keys) != len(raw_cleanup_keys):
         return False
-    if not quality_profiles_are_clean(root, managed_keys):
+    if not quality_profiles_are_clean(root, cleanup_keys):
         return False
     return True
 
@@ -131,6 +142,125 @@ def managed_library_checksum(root: Path) -> str | None:
     if not isinstance(checksum, str) or len(checksum) != 64:
         return None
     return checksum if _already_current(root, checksum) else None
+
+
+def material_settings_sync_status(root: Path) -> dict[str, object]:
+    """Return a sanitized, manifest-bound Cura material-setting verification receipt."""
+
+    manifest = _manifest(root)
+    raw_expected = manifest.get("managed_material_setting_keys") if manifest else None
+    if (
+        not isinstance(raw_expected, list)
+        or not raw_expected
+        or any(
+            not isinstance(key, str) or not re.fullmatch(r"[a-z][a-z0-9_]{0,95}", key) for key in raw_expected
+        )
+    ):
+        return {
+            "status": "not_deployed",
+            "expected_count": 0,
+            "exposed_count": 0,
+            "missing_keys": [],
+            "unexpected_keys": [],
+            "material_settings_plugin_ready": False,
+            "klipper_settings_plugin_ready": False,
+            "catalog_checksum": None,
+            "verified_at": None,
+        }
+    expected = frozenset(raw_expected)
+    if len(expected) != len(raw_expected):
+        return {
+            "status": "invalid",
+            "expected_count": len(expected),
+            "exposed_count": 0,
+            "missing_keys": sorted(expected),
+            "unexpected_keys": [],
+            "material_settings_plugin_ready": False,
+            "klipper_settings_plugin_ready": False,
+            "catalog_checksum": None,
+            "verified_at": None,
+        }
+    expected_checksum = hashlib.sha256("\n".join(sorted(expected)).encode("utf-8")).hexdigest()
+    waiting = {
+        "status": "waiting_for_cura",
+        "expected_count": len(expected),
+        "exposed_count": 0,
+        "missing_keys": sorted(expected),
+        "unexpected_keys": [],
+        "material_settings_plugin_ready": False,
+        "klipper_settings_plugin_ready": False,
+        "catalog_checksum": expected_checksum,
+        "verified_at": None,
+    }
+    try:
+        status_path = _safe_target(root, MATERIAL_SETTINGS_STATUS_PATH)
+        if status_path.stat().st_size > 32 * 1024:
+            return {**waiting, "status": "invalid"}
+        receipt = json.loads(status_path.read_text(encoding="utf-8"))
+    except FileNotFoundError:
+        return waiting
+    except (OSError, UnicodeError, json.JSONDecodeError, RuntimeError, ValueError):
+        return {**waiting, "status": "invalid"}
+    if not isinstance(receipt, dict):
+        return {**waiting, "status": "invalid"}
+    if (
+        receipt.get("schema_version") != MATERIAL_SETTINGS_STATUS_SCHEMA_VERSION
+        or receipt.get("catalog_checksum") != expected_checksum
+    ):
+        return waiting
+    raw_missing = receipt.get("missing_keys")
+    raw_unexpected = receipt.get("unexpected_keys")
+    if (
+        not isinstance(raw_missing, list)
+        or not isinstance(raw_unexpected, list)
+        or len(raw_missing) > len(expected)
+        or len(raw_unexpected) > 100
+        or any(not isinstance(key, str) for key in [*raw_missing, *raw_unexpected])
+    ):
+        return {**waiting, "status": "invalid"}
+    missing = frozenset(raw_missing)
+    unexpected = frozenset(raw_unexpected)
+    if (
+        len(missing) != len(raw_missing)
+        or len(unexpected) != len(raw_unexpected)
+        or not missing <= expected
+        or any(not re.fullmatch(r"[a-z][a-z0-9_]{0,95}", key) for key in unexpected)
+    ):
+        return {**waiting, "status": "invalid"}
+    exposed_count = receipt.get("exposed_count")
+    plugin_ready = receipt.get("material_settings_plugin_ready")
+    klipper_ready = receipt.get("klipper_settings_plugin_ready")
+    receipt_status = receipt.get("status")
+    verified_at = receipt.get("verified_at")
+    if (
+        receipt.get("expected_count") != len(expected)
+        or exposed_count != len(expected) - len(missing)
+        or not isinstance(plugin_ready, bool)
+        or not isinstance(klipper_ready, bool)
+        or receipt_status not in {"healthy", "degraded", "waiting_for_machine"}
+        or not isinstance(verified_at, str)
+        or len(verified_at) > 64
+    ):
+        return {**waiting, "status": "invalid"}
+    try:
+        verified = datetime.fromisoformat(verified_at)
+    except ValueError:
+        return {**waiting, "status": "invalid"}
+    if verified.tzinfo is None:
+        return {**waiting, "status": "invalid"}
+    if receipt_status == "healthy" and (missing or unexpected or not plugin_ready or not klipper_ready):
+        return {**waiting, "status": "invalid"}
+    return {
+        "status": receipt_status,
+        "expected_count": len(expected),
+        "exposed_count": exposed_count,
+        "missing_keys": sorted(missing),
+        "unexpected_keys": sorted(unexpected),
+        "material_settings_plugin_ready": plugin_ready,
+        "klipper_settings_plugin_ready": klipper_ready,
+        "catalog_checksum": expected_checksum,
+        "verified_at": verified.isoformat(),
+    }
 
 
 def _backup(
@@ -213,7 +343,7 @@ def apply_rendered(
         }
     quality_cleanup = plan_quality_profile_cleanup(
         root,
-        rendered.managed_material_setting_keys,
+        rendered.cleanup_material_setting_keys,
     )
     desired_targets = set(rendered.files)
     cleanup_targets = {
@@ -252,6 +382,7 @@ def apply_rendered(
             "machine_id": rendered.machine.machine_id,
             "backup_path": str(backup_path),
             "managed_material_setting_keys": sorted(rendered.managed_material_setting_keys),
+            "cleanup_material_setting_keys": sorted(rendered.cleanup_material_setting_keys),
             "quality_profile_cleanup": {
                 "sanitized_profiles": len(quality_cleanup.replacements),
                 "repaired_profiles": quality_cleanup.repaired_profile_count,

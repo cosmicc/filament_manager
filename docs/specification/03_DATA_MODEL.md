@@ -73,11 +73,11 @@ Immutable internal settings snapshots scoped to:
 - nozzle diameter
 - optional layer-height range
 
-Every current snapshot directly references the current `material_template_revision`, stores only semantically different `setting_overrides`, and caches the complete resolved values in the typed columns plus `cura_extensions`. The resolved snapshot includes Cura Klipper Settings pressure advance and smooth time and may reference a preferred plate side. Direct saves append the next current immutable snapshot and queue projections without an operator-facing draft or publication state.
+Every current snapshot directly references the current `material_template_revision`, stores only semantically different permitted `setting_overrides`, and caches the complete resolved values in the typed columns plus `cura_extensions`. The resolved snapshot inherits template-owned print-speed, cooling, smooth-time, and acceleration values and may reference a preferred plate side. Initial Fan Speed, pressure advance, and ironing may enter product overrides. Direct saves append the next current immutable snapshot and queue projections without an operator-facing draft or publication state.
 
 ### material_template and material_template_revision
 
-The template is a mutable identity for one material type, printer, nozzle, and filament diameter. Its canonical Cura identity is `Template <material type>` under the `Template` brand. Only one active template exists per normalized material family and printer/nozzle scope. Revisions are hidden complete immutable settings snapshots. Creating a filament product links its first current profile to the template's current snapshot, records only product-specific differences such as density, and computes the resolved snapshot. A direct template save immediately creates the next current snapshot for every linked profile while preserving its exact explicit override keys.
+The template is a mutable identity for one material type, printer, nozzle, and filament diameter. Its canonical Cura identity is `Template <material type>` under the `Template` brand. Only one active template exists per normalized material family and printer/nozzle scope. Revisions are hidden complete immutable settings snapshots and exclusively own print-speed settings, cooling settings other than Initial Fan Speed, smooth time, and the approved print/feature/support/travel acceleration values. Creating a filament product links its first current profile to the template's current snapshot, records only permitted product-specific differences such as density, pressure advance, ironing, and Initial Fan Speed, and computes the resolved snapshot. A direct template save immediately creates the next current snapshot for every linked profile while preserving its permitted explicit override keys.
 
 ### cura_takeover_mapping
 
@@ -89,7 +89,7 @@ Idempotently records one content checksum reported for a known managed Cura GUID
 
 ### cura_recovery_snapshot
 
-Immutable, sanitized operational Cura configuration captured only while Cura is closed. It is scoped to one workstation agent, discovered installation identity, and exact Cura version. The payload is checksummed and bounded and contains allowlisted printer/extruder definitions, user definitions and variants, quality/profile state, setting visibility, safe preferences, and semantic plugin names/versions. It never stores workstation paths, account sessions, credentials, network endpoints, or plugin executable files. Retention keeps the ten newest distinct snapshots for each workstation installation and Cura version; a reset or large deletion is recorded as blocked state without replacing the last known-good snapshot.
+Immutable, sanitized operational Cura configuration captured only while Cura is closed. It is scoped to one workstation agent, discovered installation identity, and exact Cura version. The payload is checksummed and bounded and contains complete non-sensitive allowlisted printer/extruder/definition-change documents—including opaque start/end G-code and printer options—plus user definitions and variants, quality/profile state, setting visibility, safe preferences, and semantic plugin names/versions. It never stores workstation paths, account sessions, credentials, network endpoints, or plugin executable files. Retention keeps the ten newest distinct snapshots for each workstation installation and Cura version; a reset or large deletion is recorded as blocked state without replacing the last known-good snapshot.
 
 ### cura_recovery_restore
 
@@ -133,7 +133,7 @@ Tracks remote object IDs, fingerprints, last successful publication, error, and 
 
 ### outbox_job
 
-Durable external work item created in the same transaction as the canonical change. It retains the exact newest failure time and sanitized error class/message. Superseded rows remain historical, while only pending, running, retrying, or current dead work counts as actionable queue debt.
+Durable external work item created in the same transaction as the canonical change. Its aggregate version is a 64-bit integer so both canonical record versions and microsecond manual system-job identities fit exactly. It retains the exact newest failure time and sanitized error class/message. Superseded rows remain historical, while only pending, running, retrying, or current dead work counts as actionable queue debt.
 
 ### audit_event
 
@@ -173,7 +173,7 @@ Effective mass normally uses the latest accepted measurement adjusted by subsequ
 
 Stable typed fields:
 
-- chamber temperature
+- build volume temperature (canonical chamber temperature)
 - extruder temperature
 - bed temperature
 - flow percentage

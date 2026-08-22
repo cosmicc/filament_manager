@@ -2,12 +2,13 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { DatabaseBackup, Pencil, Plus, RotateCcw, ShieldCheck, Trash2 } from 'lucide-react'
 import { type FormEvent, useState } from 'react'
 import { apiFetch } from '../api/client'
-import type { CuraRecoveryRestore, CuraRecoverySnapshot, WorkstationAgent } from '../api/types'
+import type { CuraDeployment, CuraRecoveryRestore, CuraRecoverySnapshot, WorkstationAgent } from '../api/types'
 import { dateTime } from '../lib/format'
 import { EditorSection } from './EditorSection'
 import { EmptyState } from './EmptyState'
 import { LoadingState } from './LoadingState'
 import { Modal } from './Modal'
+import { StatusPill } from './StatusPill'
 
 function fileSize(value: number) {
   if (value < 1024) return `${value} B`
@@ -28,6 +29,14 @@ export function CuraRecoveryModal({ agent, onClose, onQueued }: {
     queryKey: ['cura-recovery-snapshots', agent.id],
     queryFn: () => apiFetch<CuraRecoverySnapshot[]>(`/workstation-agents/${agent.id}/cura-recovery-snapshots`),
   })
+  const deployments = useQuery({
+    queryKey: ['cura-deployments'],
+    queryFn: () => apiFetch<CuraDeployment[]>('/cura-deployments'),
+    refetchInterval: 5_000,
+  })
+  const backupRequests = (deployments.data ?? [])
+    .filter((deployment) => deployment.agent_id === agent.id && deployment.operation === 'recovery_capture')
+    .slice(0, 5)
   const selected = snapshots.data?.find((snapshot) => snapshot.id === selectedId) ?? null
   const restore = useMutation({
     mutationFn: (snapshot: CuraRecoverySnapshot) => apiFetch<CuraRecoveryRestore>(`/workstation-agents/${agent.id}/cura-recovery-restores`, {
@@ -49,6 +58,7 @@ export function CuraRecoveryModal({ agent, onClose, onQueued }: {
       queryClient.invalidateQueries({ queryKey: ['workstation-agents'] }),
       queryClient.invalidateQueries({ queryKey: ['cura-recovery-snapshots', agent.id] }),
       queryClient.invalidateQueries({ queryKey: ['diagnostics'] }),
+      queryClient.invalidateQueries({ queryKey: ['cura-deployments'] }),
     ])
   }
   const capture = useMutation({
@@ -65,8 +75,10 @@ export function CuraRecoveryModal({ agent, onClose, onQueued }: {
     },
     onSuccess: async () => {
       await refresh()
-      onQueued(`A named Cura backup was queued for ${agent.display_name}. Close Cura so the workstation agent can capture it.`)
-      onClose()
+      setStep('select')
+      setName('')
+      setDescription('')
+      onQueued(`A named Cura backup was queued for ${agent.display_name}. Its live status is shown in Recovery points; keep Cura closed until it completes.`)
     },
   })
   const update = useMutation({
@@ -115,7 +127,15 @@ export function CuraRecoveryModal({ agent, onClose, onQueued }: {
     size="wide"
     footer={footer}
   >
-    {step === 'select' ? <EditorSection title="Saved Cura configurations" description="Snapshots are captured automatically only while Cura is closed. Apparent resets are blocked from replacing the last known-good point.">
+    {step === 'select' ? <div className="editor-form">
+      {backupRequests.length ? <EditorSection title="Recent backup requests" description="Queued captures update automatically while this window is open.">
+        <div className="mobile-card-list mobile-card-list--always">{backupRequests.map((deployment) => <article className="mobile-data-card" key={deployment.id}>
+          <div><strong>Full Cura backup</strong><StatusPill status={deployment.status} /></div>
+          <span>{deployment.status === 'pending' ? 'Waiting for the workstation agent' : deployment.status === 'claimed' ? 'Capturing settings now' : deployment.status === 'succeeded' ? 'Backup saved' : 'Backup did not complete'}</span>
+          <small>{deployment.last_error_message ?? `${deployment.attempts} attempt${deployment.attempts === 1 ? '' : 's'} · requested ${dateTime(deployment.created_at)}`}</small>
+        </article>)}</div>
+      </EditorSection> : null}
+      <EditorSection title="Saved Cura configurations" description="Snapshots are captured automatically only while Cura is closed. Apparent resets are blocked from replacing the last known-good point.">
       {snapshots.isLoading ? <LoadingState /> : snapshots.error ? <p className="form-error" role="alert">{snapshots.error.message}</p> : !snapshots.data?.length ? <EmptyState icon={DatabaseBackup} title="No recovery points yet" description="Close Cura and leave the workstation agent running. An operational configuration with at least one printer will be captured automatically." /> : <div className="cura-recovery-list">{snapshots.data.map((snapshot, index) => <div className="cura-recovery-row" key={snapshot.id}><button
         className={`cura-recovery-item${snapshot.id === selectedId ? ' cura-recovery-item--selected' : ''}`}
         type="button"
@@ -125,7 +145,8 @@ export function CuraRecoveryModal({ agent, onClose, onQueued }: {
         <span><strong>{snapshot.name ?? `${snapshot.capture_kind === 'manual' ? 'Manual' : 'Automatic'} backup`}</strong><small>Cura {snapshot.cura_version}{index === 0 ? ' · Latest' : ''} · {dateTime(snapshot.captured_at)}</small>{snapshot.description ? <small>{snapshot.description}</small> : null}</span>
         <span className="cura-recovery-item__counts"><small>{snapshot.machine_count} printer{snapshot.machine_count === 1 ? '' : 's'}</small><small>{snapshot.quality_profile_count} quality file{snapshot.quality_profile_count === 1 ? '' : 's'}</small><small>{snapshot.plugin_count} plugin{snapshot.plugin_count === 1 ? '' : 's'}</small><small>{snapshot.file_count} files · {fileSize(snapshot.total_bytes)}</small></span>
       </button><span className="cura-recovery-row__actions"><button className="button button--small" type="button" aria-label={`Edit ${snapshot.name ?? 'backup'}`} onClick={() => editSnapshot(snapshot)}><Pencil size={15} /></button><button className="button button--small button--danger" type="button" aria-label={`Delete ${snapshot.name ?? 'backup'}`} onClick={() => { setSelectedId(snapshot.id); setStep('delete') }}><Trash2 size={15} /></button></span></div>)}</div>}
-    </EditorSection> : step === 'review' && selected ? <div className="editor-form">
+      </EditorSection>
+    </div> : step === 'review' && selected ? <div className="editor-form">
       <EditorSection title="Recovery point" description="Recovery is limited to the same workstation and exact Cura version.">
         <dl className="definition-list">
           <div><dt>Captured</dt><dd>{dateTime(selected.captured_at)}</dd></div>

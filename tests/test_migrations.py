@@ -1,13 +1,168 @@
 """PostgreSQL-backed Alembic upgrade and metadata-drift tests."""
 
+from decimal import Decimal
+
 import pytest
 from alembic import command
 from alembic.config import Config
-from sqlalchemy import create_engine, inspect, text
+from sqlalchemy import BigInteger, create_engine, inspect, text
+from sqlalchemy.orm import Session
 from testcontainers.community.postgres import PostgresContainer
 
 from filament_manager.config import DatabaseConfig, get_settings
+from filament_manager.models.enums import ProfileStatus
+from filament_manager.models.inventory import (
+    FilamentProduct,
+    MaterialProfile,
+    MaterialTemplate,
+    MaterialTemplateRevision,
+    Printer,
+)
 from filament_manager.startup import upgrade_database
+
+
+@pytest.mark.integration
+def test_template_only_settings_migration_appends_corrected_profile_snapshot(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Replace legacy template-only settings while preserving profile pressure advance."""
+
+    with PostgresContainer("postgres:17-alpine", driver="psycopg") as postgres:
+        database_url = postgres.get_connection_url().replace(
+            "postgresql+psycopg2://", "postgresql+psycopg://"
+        )
+        monkeypatch.setenv("FILAMENT_MANAGER_DATABASE_URL", database_url)
+        get_settings.cache_clear()
+        alembic_config = Config("alembic.ini")
+        command.upgrade(alembic_config, "c5d6e7f8a901")
+        engine = create_engine(database_url)
+
+        with Session(engine) as session:
+            printer = Printer(
+                printer_code="migration-printer",
+                name="Migration Printer",
+                moonraker_base_url="http://moonraker.invalid",
+                nozzle_diameter_mm=Decimal("0.4"),
+            )
+            session.add(printer)
+            session.flush()
+            template = MaterialTemplate(
+                name="Template PLA",
+                material_type="PLA",
+                printer_id=printer.id,
+                nozzle_diameter_mm=Decimal("0.4"),
+                filament_diameter_mm=Decimal("1.75"),
+                active=True,
+            )
+            session.add(template)
+            session.flush()
+            revision = MaterialTemplateRevision(
+                material_template_id=template.id,
+                version=1,
+                status=ProfileStatus.PUBLISHED,
+                settings={
+                    "extruder_temp_c": "210",
+                    "bed_temp_c": "60",
+                    "flow_percent": "100",
+                    "cooling_enabled": True,
+                    "cooling_min_percent": "20",
+                    "cooling_max_percent": "100",
+                    "pressure_advance": "0.04",
+                    "filament_density_g_cm3": "1.24",
+                    "cura_extensions": {
+                        "retraction_enable": True,
+                        "acceleration_print": "5000",
+                        "acceleration_travel": "7000",
+                        "klipper_smooth_time_factor": "0.04",
+                    },
+                },
+            )
+            session.add(revision)
+            session.flush()
+            product = FilamentProduct(
+                material_type="PLA",
+                color_name="Blue",
+                diameter_mm=Decimal("1.75"),
+                density_g_cm3=Decimal("1.24"),
+                nominal_net_mass_g=Decimal("1000"),
+                source_template_revision_id=revision.id,
+            )
+            session.add(product)
+            session.flush()
+            source_profile = MaterialProfile(
+                filament_product_id=product.id,
+                printer_id=printer.id,
+                nozzle_diameter_mm=Decimal("0.4"),
+                version=1,
+                status=ProfileStatus.PUBLISHED,
+                extruder_temp_c=Decimal("215"),
+                bed_temp_c=Decimal("60"),
+                flow_percent=Decimal("100"),
+                cooling_enabled=True,
+                cooling_min_percent=Decimal("20"),
+                cooling_max_percent=Decimal("100"),
+                pressure_advance=Decimal("0.09"),
+                filament_density_g_cm3=Decimal("1.24"),
+                base_template_revision_id=revision.id,
+                setting_overrides={
+                    "extruder_temp_c": "215",
+                    "pressure_advance": "0.09",
+                    "cura_extensions": {
+                        "retraction_enable": False,
+                        "acceleration_print": "9000",
+                        "acceleration_travel": "10000",
+                        "klipper_smooth_time_factor": "0.08",
+                    },
+                },
+                cura_extensions={
+                    "retraction_enable": False,
+                    "acceleration_print": "9000",
+                    "acceleration_travel": "10000",
+                    "klipper_smooth_time_factor": "0.08",
+                },
+            )
+            session.add(source_profile)
+            session.commit()
+            product_id = product.id
+
+        command.upgrade(alembic_config, "head")
+        with Session(engine) as session:
+            profiles = list(
+                session.query(MaterialProfile)
+                .filter(MaterialProfile.filament_product_id == product_id)
+                .order_by(MaterialProfile.version)
+            )
+            assert len(profiles) == 2
+            migrated = profiles[-1]
+            assert migrated.version == 2
+            assert migrated.extruder_temp_c == Decimal("215")
+            assert migrated.pressure_advance == Decimal("0.09")
+            assert migrated.cura_extensions == {
+                "retraction_enable": False,
+                "acceleration_print": "5000",
+                "acceleration_travel": "7000",
+                "klipper_smooth_time_factor": "0.04",
+            }
+            assert migrated.setting_overrides == {
+                "extruder_temp_c": "215",
+                "pressure_advance": "0.09",
+                "cura_extensions": {"retraction_enable": False},
+            }
+            assert migrated.checksum is not None and len(migrated.checksum) == 64
+            assert (
+                session.execute(
+                    text(
+                        "SELECT count(*) FROM outbox_jobs "
+                        "WHERE job_type = 'google.profile.publish' "
+                        "AND payload->>'profile_id' = :profile_id"
+                    ),
+                    {"profile_id": str(migrated.id)},
+                ).scalar_one()
+                == 1
+            )
+
+        engine.dispose()
+        get_settings.cache_clear()
 
 
 @pytest.mark.integration
@@ -104,6 +259,35 @@ def test_previous_schema_automatically_upgrades_to_metadata_head(
                         '{}'::jsonb, 'DEAD'::job_status, 12, 12,
                         CURRENT_TIMESTAMP, CURRENT_TIMESTAMP,
                         'SpoolmanError', 'Spoolman PUT /spool/7/measure failed'
+                    ),
+                    (
+                        '10000000-0000-0000-0000-000000000008',
+                        'spoolman.spool.adjust_weight',
+                        'spool:migration:weight:v2', 'spool',
+                        '20000000-0000-0000-0000-000000000007', 2,
+                        '{}'::jsonb, 'PENDING'::job_status, 4, 12,
+                        CURRENT_TIMESTAMP, CURRENT_TIMESTAMP + INTERVAL '1 second',
+                        'SpoolmanError', 'Spoolman PUT /spool/7/measure failed'
+                    )
+                    """
+                )
+            )
+            connection.execute(
+                text(
+                    """
+                    INSERT INTO outbox_jobs (
+                        id, job_type, idempotency_key, aggregate_type,
+                        aggregate_id, aggregate_version, payload, status,
+                        attempts, max_attempts, next_attempt_at, created_at,
+                        completed_at
+                    ) VALUES (
+                        '10000000-0000-0000-0000-000000000009',
+                        'moonraker.state.reconcile',
+                        'periodic:moonraker.state.reconcile:recovered', 'system',
+                        '20000000-0000-0000-0000-000000000004', 457,
+                        '{}'::jsonb, 'COMPLETED'::job_status, 0, 12,
+                        CURRENT_TIMESTAMP, CURRENT_TIMESTAMP + INTERVAL '2 seconds',
+                        CURRENT_TIMESTAMP + INTERVAL '2 seconds'
                     )
                     """
                 )
@@ -111,7 +295,7 @@ def test_previous_schema_automatically_upgrades_to_metadata_head(
 
         upgrade_database(DatabaseConfig(url=database_url))
         with engine.connect() as connection:
-            assert connection.scalar(text("SELECT version_num FROM alembic_version")) == "b4c5d6e7f890"
+            assert connection.scalar(text("SELECT version_num FROM alembic_version")) == "d6e7f8a9b012"
             recovered = connection.execute(
                 text(
                     """
@@ -153,10 +337,19 @@ def test_previous_schema_automatically_upgrades_to_metadata_head(
                 text(
                     "SELECT status::text, attempts, last_error_at IS NOT NULL "
                     "FROM outbox_jobs "
-                    "WHERE id = '10000000-0000-0000-0000-000000000007'"
+                    "WHERE id = '10000000-0000-0000-0000-000000000008'"
                 )
             ).one()
-            assert recovered_weight == ("PENDING", 0, True)
+            assert recovered_weight == ("PENDING", 0, False)
+            assert (
+                connection.scalar(
+                    text(
+                        "SELECT status::text FROM outbox_jobs "
+                        "WHERE id = '10000000-0000-0000-0000-000000000007'"
+                    )
+                )
+                == "SUPERSEDED"
+            )
         inspector = inspect(engine)
         assert "material_templates" in inspector.get_table_names()
         assert "material_template_revisions" in inspector.get_table_names()
@@ -203,7 +396,41 @@ def test_previous_schema_automatically_upgrades_to_metadata_head(
             "spool_preflight_message",
             "last_spool_preflight_sync_at",
         } <= {column["name"] for column in inspector.get_columns("printers")}
-        assert "last_error_at" in {column["name"] for column in inspector.get_columns("outbox_jobs")}
+        outbox_columns = {column["name"]: column for column in inspector.get_columns("outbox_jobs")}
+        assert "last_error_at" in outbox_columns
+        assert isinstance(outbox_columns["aggregate_version"]["type"], BigInteger)
+        with engine.begin() as connection:
+            connection.execute(
+                text(
+                    """
+                    INSERT INTO outbox_jobs (
+                        id, job_type, idempotency_key, aggregate_type,
+                        aggregate_id, aggregate_version, payload, status,
+                        attempts, max_attempts, next_attempt_at, created_at
+                    ) VALUES (
+                        '10000000-0000-0000-0000-000000000011',
+                        'spoolman.reconcile.full', 'bigint-system-job-test', 'system',
+                        '20000000-0000-0000-0000-000000000011', 1700000000000000,
+                        '{}'::jsonb, 'PENDING'::job_status, 0, 12,
+                        CURRENT_TIMESTAMP, CURRENT_TIMESTAMP
+                    )
+                    """
+                )
+            )
+            assert (
+                connection.scalar(
+                    text(
+                        "SELECT aggregate_version FROM outbox_jobs "
+                        "WHERE id = '10000000-0000-0000-0000-000000000011'"
+                    )
+                )
+                == 1_700_000_000_000_000
+            )
+            # Keep the existing downgrade compatibility test meaningful: old
+            # schemas cannot represent this intentionally oversized value.
+            connection.execute(
+                text("DELETE FROM outbox_jobs WHERE id = '10000000-0000-0000-0000-000000000011'")
+            )
         assert "nozzle_id" in {column["name"] for column in inspector.get_columns("print_jobs")}
         assert {
             "capture_request_id",

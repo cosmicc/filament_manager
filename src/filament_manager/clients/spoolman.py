@@ -70,9 +70,11 @@ class SpoolmanClient:
         except httpx.HTTPStatusError as exc:
             if exc.response.status_code == 404:
                 raise SpoolmanNotFoundError(f"Spoolman {method} {path} was not found") from exc
-            raise SpoolmanError(f"Spoolman {method} {path} failed") from exc
+            raise SpoolmanError(
+                f"Spoolman {method} {path} failed with HTTP {exc.response.status_code}"
+            ) from exc
         except httpx.HTTPError as exc:
-            raise SpoolmanError(f"Spoolman {method} {path} failed") from exc
+            raise SpoolmanError(f"Spoolman {method} {path} transport failed ({type(exc).__name__})") from exc
 
     async def _request(
         self,
@@ -265,6 +267,17 @@ class SpoolmanClient:
         if not isinstance(data, dict):
             raise SpoolmanError("Spoolman measurement returned an invalid payload")
         return data
+
+    async def set_spool_remaining_weight(self, spool_id: int, remaining_weight_g: float) -> dict[str, Any]:
+        """Set canonical net remaining weight through Spoolman's supported update API.
+
+        The ``/measure`` endpoint models a new physical gross-scale reading and
+        requires usable tare metadata. Filament Manager has already calculated
+        and validated these correction jobs as net filament mass, so the
+        ``remaining_weight`` update is the matching supported contract.
+        """
+
+        return await self.update_spool(spool_id, {"remaining_weight": remaining_weight_g})
 
     async def list_filaments(self) -> list[dict[str, Any]]:
         """Return every filament across all Spoolman result pages."""

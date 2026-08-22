@@ -115,8 +115,8 @@ test('template library is usable at desktop and mobile sizes', async ({ page }) 
   await page.route('**/api/v1/profiles', (route) => route.fulfill({ json: [] }))
   await page.route('**/api/v1/filaments', (route) => route.fulfill({ json: [] }))
   await page.route('**/api/v1/profiles/cura-settings/catalog', (route) => route.fulfill({ json: [
-    { key: 'retraction_enable', label: 'Enable Retraction', value_type: 'boolean', unit: null, editable: true },
-    { key: 'klipper_smooth_time_enable', label: 'Enable Klipper Smooth Time', value_type: 'boolean', unit: null, editable: true },
+    { key: 'retraction_enable', label: 'Enable Retraction', value_type: 'boolean', unit: null, editable: true, template_only: false },
+    { key: 'klipper_smooth_time_enable', label: 'Enable Klipper Smooth Time', value_type: 'boolean', unit: null, editable: true, template_only: true },
   ] }))
   await page.goto('/templates')
   await expect(page.getByRole('heading', { name: 'Template PLA' })).toBeVisible()
@@ -144,8 +144,8 @@ test('comparison shows only differences and warns across profile scopes', async 
   await page.route('**/api/v1/filaments', (route) => route.fulfill({ json: [filament] }))
   await page.route('**/api/v1/workstation-agents', (route) => route.fulfill({ json: [] }))
   await page.route('**/api/v1/profiles/cura-settings/catalog', (route) => route.fulfill({ json: [
-    { key: 'retraction_enable', label: 'Enable Retraction', value_type: 'boolean', unit: null, editable: true },
-    { key: 'klipper_smooth_time_enable', label: 'Enable Klipper Smooth Time', value_type: 'boolean', unit: null, editable: true },
+    { key: 'retraction_enable', label: 'Enable Retraction', value_type: 'boolean', unit: null, editable: true, template_only: false },
+    { key: 'klipper_smooth_time_enable', label: 'Enable Klipper Smooth Time', value_type: 'boolean', unit: null, editable: true, template_only: true },
   ] }))
   await page.route('**/api/v1/prints/profile-statistics**', (route) => route.fulfill({ json: {
     [comparisonProfile.id]: { rated_prints: 12, ratings: { successful: 10, failed: 2 }, success_rate_percent: '83.3', low_sample: false },
@@ -240,11 +240,11 @@ test('filament details remember colors and save Cura settings directly', async (
   await page.route('**/api/v1/profiles/templates?include_inactive=false', (route) => route.fulfill({ json: [template] }))
   await page.route('**/api/v1/profiles', (route) => route.fulfill({ json: [profile] }))
   await page.route('**/api/v1/profiles/cura-settings/catalog', (route) => route.fulfill({ json: [
-    { key: 'xy_offset', label: 'Horizontal Expansion', value_type: 'number', unit: 'mm', editable: true },
-    { key: 'hole_xy_offset', label: 'Hole Horizontal Expansion', value_type: 'number', unit: 'mm', editable: true },
-    { key: 'retraction_retract_speed', label: 'Retraction Retract Speed', value_type: 'number', unit: 'mm/s', editable: true },
-    { key: 'retraction_prime_speed', label: 'Retraction Prime Speed', value_type: 'number', unit: 'mm/s', editable: true },
-    { key: 'cool_fan_speed_max', label: 'Maximum Fan Speed', value_type: 'number', unit: '%', editable: true },
+    { key: 'xy_offset', label: 'Horizontal Expansion', value_type: 'number', unit: 'mm', editable: true, template_only: false },
+    { key: 'hole_xy_offset', label: 'Hole Horizontal Expansion', value_type: 'number', unit: 'mm', editable: true, template_only: false },
+    { key: 'retraction_retract_speed', label: 'Retraction Retract Speed', value_type: 'number', unit: 'mm/s', editable: true, template_only: false },
+    { key: 'retraction_prime_speed', label: 'Retraction Prime Speed', value_type: 'number', unit: 'mm/s', editable: true, template_only: false },
+    { key: 'cool_fan_speed_max', label: 'Maximum Fan Speed', value_type: 'number', unit: '%', editable: true, template_only: true },
   ] }))
   await page.route('**/api/v1/profiles/profile-id/settings', async (route) => {
     profileUpdate = route.request().postDataJSON() as Record<string, unknown>
@@ -267,9 +267,13 @@ test('filament details remember colors and save Cura settings directly', async (
   await expect(page.locator('.setting-field--customized')).toHaveCount(2)
   await expect(page.getByLabel('Retraction Retract Speed (mm/s)')).toHaveCount(1)
   await expect(page.getByLabel('Retraction Prime Speed (mm/s)')).toHaveCount(1)
-  await expect(page.getByLabel('Maximum Fan Speed (%)')).toHaveCount(1)
+  await expect(page.getByLabel('Maximum Fan Speed (%)')).toHaveCount(0)
   await expect(page.getByLabel(/^Retraction Speed/)).toHaveCount(0)
   await expect(page.getByLabel(/^Initial Fan Speed/)).toHaveCount(0)
+  await expect(page.getByLabel('Printing temperature (°C)')).toHaveCount(1)
+  await expect(page.getByLabel('Build volume temperature (°C)')).toHaveCount(1)
+  await expect(page.getByLabel('Build plate temperature (°C)')).toHaveCount(1)
+  await expect(page.getByLabel(/^Default print temperature/)).toHaveCount(0)
   await page.getByLabel('Build plate temperature (°C)').fill('61')
   await expect(page.locator('.setting-field--customized')).toHaveCount(3)
   await page.getByLabel('Build plate temperature (°C)').fill('60')
@@ -363,12 +367,43 @@ test('an empty Cura library can complete the one-time atomic takeover', async ({
   await expect.poll(() => submitted?.mappings).toEqual([])
 })
 
+test('managed Cura workstations show verified material print setting coverage', async ({ page }) => {
+  const agent = {
+    id: 'agent-id', agent_code: 'WS-TEST', display_name: 'Arch Cura', hostname: 'workstation',
+    platform: 'arch_linux', architecture: 'x86_64', agent_version: '0.3.3', enabled: true,
+    cura_management_enabled: true,
+    capabilities: { managed_material_count: 3, unmanaged_print_profile_count: 0, cura_recovery_snapshots: true },
+    cura_installations: [{
+      installation_id: 'cura-id', version: '5.13', channel: 'Linux Cura',
+      path_hint: 'Linux Cura user data / 5.13', setting_version: 27,
+      managed_library_checksum: 'a'.repeat(64), machines: [],
+      material_settings_sync: {
+        status: 'healthy', expected_count: 55, exposed_count: 55,
+        missing_keys: [], unexpected_keys: [],
+        material_settings_plugin_ready: true, klipper_settings_plugin_ready: true,
+        catalog_checksum: 'b'.repeat(64), verified_at: '2026-08-22T04:00:00Z',
+      },
+    }],
+    cura_materials: [], cura_recovery_status: 'ready', cura_recovery_message: null,
+    last_recovery_snapshot_at: '2026-08-22T03:00:00Z', last_recovery_restore_at: null,
+    last_seen_at: '2026-08-22T04:00:00Z', last_error: null,
+    record_version: 2, created_at: '2026-08-11T12:00:00Z',
+  }
+  await page.route('**/api/v1/workstation-agents', (route) => route.fulfill({ json: [agent] }))
+  await page.route('**/api/v1/profiles/templates?include_inactive=true', (route) => route.fulfill({ json: [] }))
+
+  await page.goto('/workstations')
+  await expect(page.getByText('55 of 55 verified')).toBeVisible()
+  await expect(page.getByText('Material Settings and Klipper Settings are ready; managed values are enforced over Cura profiles.')).toBeVisible()
+  await expect(page.getByText(/Verified Aug 22, 2026/)).toBeVisible()
+})
+
 test('each reported Cura source can be mapped to a template or intentionally ignored', async ({ page }) => {
   const material = {
     source_id: 'b'.repeat(64), installation_id: 'cura-id', name: 'Polymaker PETG · PolyLite',
     brand: 'Polymaker', material_type: 'PETG', color_name: 'Black',
     settings: {
-      default_material_print_temperature: '225', default_material_bed_temperature: '70',
+      material_print_temperature: '225', material_bed_temperature: '70',
       material_flow: '98.5', klipper_pressure_advance_factor: '0.035',
     },
   }

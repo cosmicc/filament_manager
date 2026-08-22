@@ -7,7 +7,7 @@ from typing import Any
 import structlog
 
 from . import __version__
-from .apply import apply_rendered, managed_library_checksum
+from .apply import apply_rendered, managed_library_checksum, material_settings_sync_status
 from .client import AgentClient
 from .config import load_config
 from .discovery import (
@@ -19,10 +19,40 @@ from .discovery import (
     unmanaged_material_count,
 )
 from .nozzle import apply_nozzle_update
-from .recovery import capture_recovery_snapshot, restore_recovery_snapshot
+from .recovery import (
+    capture_recovery_snapshot,
+    material_settings_plugin_inventory,
+    restore_recovery_snapshot,
+)
 from .render import render_deployment
 
 logger = structlog.get_logger()
+
+
+def _recovery_capture_message(error: BaseException | None = None, *, reason: object = None) -> str:
+    """Return an actionable path-free recovery failure suitable for the server UI."""
+
+    reason_messages = {
+        "no_printer_configuration": "No Cura printer configuration was found to back up.",
+        "suspected_reset": (
+            "Cura appears to have been reset; the last known-good automatic backup was preserved."
+        ),
+        "deleted_by_administrator": "This automatic backup was previously deleted and remains suppressed.",
+    }
+    if isinstance(reason, str) and reason in reason_messages:
+        return reason_messages[reason]
+    message = str(error or "")
+    if message in reason_messages.values():
+        return message
+    safe_messages = {
+        "A supported Cura recovery directory is unsafe.": (
+            "A supported Cura settings directory failed the local safety check."
+        ),
+        "Cura recovery settings exceed the safe capture limit.": (
+            "The Cura settings backup exceeds the safe file or size limit."
+        ),
+    }
+    return safe_messages.get(message, "Cura settings could not be captured safely on the workstation.")
 
 
 def heartbeat_payload(
@@ -37,6 +67,9 @@ def heartbeat_payload(
     for installation in installations:
         report = installation.report()
         report["managed_library_checksum"] = managed_library_checksum(installation.data_path)
+        sync_status = material_settings_sync_status(installation.data_path)
+        sync_status["plugins"] = material_settings_plugin_inventory(installation)
+        report["material_settings_sync"] = sync_status
         installation_reports.append(report)
     materials = discover_materials(installations)
     print_profiles = discover_print_profiles(installations)
@@ -57,6 +90,7 @@ def heartbeat_payload(
             "material_profiles": True,
             "material_settings_plugin": True,
             "klipper_settings_plugin": True,
+            "material_settings_verification_receipt": True,
             "authoritative_material_library": True,
             "hide_bundled_materials": True,
             "unmanaged_material_count": material_count,
@@ -89,7 +123,7 @@ def run_once() -> bool:
             try:
                 recovery_snapshots.append(capture_recovery_snapshot(installation))
             except (OSError, RuntimeError, ValueError) as error:
-                recovery_error = "Cura recovery capture failed; review the local agent log."
+                recovery_error = _recovery_capture_message(error)
                 logger.warning(
                     "recovery_capture_failed",
                     installation_id=installation.installation_id,
@@ -201,14 +235,14 @@ def run_once() -> bool:
             snapshot["capture_request_id"] = str(claim.deployment_id)
             response = client.upload_recovery_snapshot(snapshot)
             if response.get("accepted") is not True:
-                raise RuntimeError("The server blocked this Cura recovery snapshot.")
+                raise RuntimeError(_recovery_capture_message(reason=response.get("reason")))
         except (OSError, RuntimeError, ValueError) as error:
             client.complete(
                 claim.deployment_id,
                 outcome="failed",
                 result={},
                 error_class=type(error).__name__,
-                error_message="The requested Cura backup could not be captured safely.",
+                error_message=_recovery_capture_message(error),
             )
             logger.error(
                 "manual_recovery_capture_failed",

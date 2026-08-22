@@ -2,7 +2,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Check, Clipboard, DatabaseBackup, MonitorCog, Power, PowerOff, RefreshCw, ShieldCheck } from 'lucide-react'
 import { useMemo, useState } from 'react'
 import { apiFetch } from '../api/client'
-import type { CuraMaterialReport, MaterialTemplate, Printer, WorkstationAgent, WorkstationPairingCode } from '../api/types'
+import type { CuraMaterialReport, CuraMaterialSettingsSyncReport, MaterialTemplate, Printer, WorkstationAgent, WorkstationPairingCode } from '../api/types'
 import { EditorSection } from '../components/EditorSection'
 import { CuraRecoveryModal } from '../components/CuraRecoveryModal'
 import { EmptyState } from '../components/EmptyState'
@@ -37,6 +37,38 @@ function recoveryLabel(status: string | undefined) {
   if (status === 'restoring') return 'Restoring Cura'
   if (status === 'restore_failed') return 'Recovery failed'
   return 'Waiting for first recovery point'
+}
+
+function materialSettingsSummary(sync: CuraMaterialSettingsSyncReport | null | undefined) {
+  if (!sync) return {
+    status: 'warning',
+    label: 'Verification unavailable',
+    detail: 'Upgrade and restart the workstation agent, then open Cura once.',
+  }
+  const pluginVersions = (sync.plugins ?? [])
+    .map((plugin) => `${plugin.display_name} ${plugin.version}${plugin.enabled ? '' : ' (disabled)'}`)
+    .join(' · ')
+  if (sync.status === 'healthy') return {
+    status: 'healthy',
+    label: `${sync.exposed_count} of ${sync.expected_count} verified`,
+    detail: `Material Settings and Klipper Settings are ready; managed values are enforced over Cura profiles.${pluginVersions ? ` ${pluginVersions}.` : ''}`,
+  }
+  if (['waiting_for_cura', 'waiting_for_machine', 'not_deployed'].includes(sync.status)) return {
+    status: 'warning',
+    label: 'Waiting for Cura',
+    detail: `${sync.expected_count} settings are deployed. Open or restart Cura with this printer active to verify them.`,
+  }
+  if (sync.status === 'invalid') return {
+    status: 'error',
+    label: 'Invalid verification receipt',
+    detail: 'Upgrade and restart the workstation agent and Cura to regenerate the receipt.',
+  }
+  const missing = sync.missing_keys.slice(0, 8).join(', ')
+  return {
+    status: 'error',
+    label: `${sync.exposed_count} of ${sync.expected_count} exposed`,
+    detail: `Missing: ${missing || 'none reported'}. Material Settings: ${sync.material_settings_plugin_ready ? 'ready' : 'not ready'}; Klipper Settings: ${sync.klipper_settings_plugin_ready ? 'ready' : 'not ready'}.`,
+  }
 }
 
 export default function WorkstationsPage() {
@@ -121,10 +153,24 @@ export default function WorkstationsPage() {
       return <article className="workstation-card card" key={agent.id}>
         <header><span className="workstation-card__icon"><MonitorCog size={22} /></span><div><h2>{agent.display_name}</h2><p>{platformLabel(agent.platform)} · {agent.hostname} · Agent {agent.agent_version}</p></div><StatusPill status={agent.enabled ? 'active' : 'disabled'} /></header>
         <dl className="definition-list"><div><dt>Cura installations</dt><dd>{agent.cura_installations.length}</dd></div><div><dt>Material library</dt><dd>{agent.cura_management_enabled ? 'Automatic synchronization active' : 'Awaiting one-time takeover'}</dd></div><div><dt>{agent.cura_management_enabled ? 'Managed material profiles' : 'Unmanaged material import sources'}</dt><dd>{String(agent.cura_management_enabled ? agent.capabilities.managed_material_count ?? 'Unknown' : agent.capabilities.unmanaged_material_count ?? 'Unknown')}</dd></div><div><dt>User-saved custom print profiles</dt><dd>{String(agent.capabilities.unmanaged_print_profile_count ?? 'Unknown')}</dd></div><div><dt>Agent ID</dt><dd>{agent.agent_code}</dd></div></dl>
-        {agent.cura_installations.map((installation) => <div className="cura-installation" key={installation.installation_id}><strong>Cura {installation.version}</strong><small>{installation.channel} · Settings v{installation.setting_version ?? 'unknown'}</small>{installation.machines.length ? <span>{installation.machines.map((machine) => `${machine.display_name}${machine.nozzle_diameter_mm ? ` · ${compactNumber(machine.nozzle_diameter_mm, 1)} mm` : ''}`).join(', ')}</span> : <span>No machine instances detected</span>}</div>)}
+        {agent.cura_installations.map((installation) => {
+          const settingsSummary = materialSettingsSummary(installation.material_settings_sync)
+          return <div className="cura-installation" key={installation.installation_id}>
+            <strong>Cura {installation.version}</strong>
+            <small>{installation.channel} · Settings v{installation.setting_version ?? 'unknown'}</small>
+            {installation.machines.length ? <span>{installation.machines.map((machine) => `${machine.display_name}${machine.nozzle_diameter_mm ? ` · ${compactNumber(machine.nozzle_diameter_mm, 1)} mm` : ''}`).join(', ')}</span> : <span>No machine instances detected</span>}
+            {agent.cura_management_enabled ? <div className="cura-material-settings-status">
+              <span><ShieldCheck size={16} /><strong>Material print settings</strong></span>
+              <StatusPill status={settingsSummary.status} label={settingsSummary.label} />
+              <small>{settingsSummary.detail}</small>
+              {installation.material_settings_sync?.verified_at ? <small>Verified {dateTime(installation.material_settings_sync.verified_at)}</small> : null}
+            </div> : null}
+          </div>
+        })}
         <section className="cura-recovery-summary" aria-label={`Cura recovery for ${agent.display_name}`}>
           <div><span className="workstation-card__icon"><DatabaseBackup size={19} /></span><span><strong>Cura recovery</strong><small>{agent.last_recovery_snapshot_at ? `Latest snapshot ${dateTime(agent.last_recovery_snapshot_at)}` : 'No recovery point captured yet'}</small></span><StatusPill status={agent.cura_recovery_status ?? 'not_ready'} label={recoveryLabel(agent.cura_recovery_status)} /></div>
           {agent.cura_recovery_message ? <p className={agent.cura_recovery_status === 'restore_failed' ? 'form-error' : 'muted'}>{agent.cura_recovery_message}</p> : null}
+          {agent.last_error ? <p className="form-error" role="alert"><strong>Workstation agent:</strong> {agent.last_error}</p> : null}
           {agent.capabilities.cura_recovery_snapshots !== true ? <p className="warning-note">Upgrade this workstation agent to enable automatic printer and settings recovery.</p> : null}
           {user?.role === 'administrator' ? <button className="button" type="button" disabled={agent.capabilities.cura_recovery_snapshots !== true} onClick={() => setRecoveryAgent(agent)}><DatabaseBackup size={16} /> Recovery points</button> : null}
         </section>

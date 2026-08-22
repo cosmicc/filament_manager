@@ -409,6 +409,7 @@ async def test_seed_system_route_creates_configured_resources(monkeypatch: pytes
         assert profile_revision.json()["cura_extensions"] == {
             "xy_offset": "0.075",
             "hole_xy_offset": "0.2",
+            "cool_fan_speed_0": "0",
         }
 
         async with factory() as session:

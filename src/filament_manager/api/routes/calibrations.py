@@ -15,6 +15,7 @@ from filament_manager.domain.dimensional_calibration import (
 )
 from filament_manager.domain.profile_inheritance import (
     profile_columns_from_settings,
+    resolve_profile_settings,
     settings_snapshot_from_profile,
     sparse_profile_overrides,
 )
@@ -385,6 +386,9 @@ async def _calibration_suggestion(
         "support_overhang_angle_deg",
         "tree_max_branch_angle_deg",
         "pressure_advance",
+        "ironing_flow_percent",
+        "ironing_speed_mm_s",
+        "ironing_line_spacing_mm",
     ):
         if key in results:
             value = _decimal_result(results, key)
@@ -405,14 +409,9 @@ async def _calibration_suggestion(
     if calibration.build_plate_surface_id is not None:
         settings["preferred_build_plate_surface_id"] = calibration.build_plate_surface_id
         suggestions["preferred_build_plate_surface_id"] = calibration.build_plate_surface_id
-    for key in (
-        "ironing_enabled",
-        "ironing_flow_percent",
-        "ironing_speed_mm_s",
-        "ironing_line_spacing_mm",
-    ):
-        if key in results:
-            suggestions[key] = results[key]
+    if "ironing_enabled" in results:
+        settings["ironing_enabled"] = bool(results["ironing_enabled"])
+        suggestions["ironing_enabled"] = bool(results["ironing_enabled"])
     return MaterialSettingsInput.model_validate(settings), suggestions, base_revision
 
 
@@ -424,8 +423,7 @@ def _template_settings_with_suggestions(
 
     A filament baseline can contain product-specific overrides such as density.
     Those values must not become defaults for every filament linked to the
-    template. Optional ironing results remain profile-only because ironing is
-    not part of the centrally managed material-template setting catalog.
+    template. Only explicit reviewed suggestions are overlaid.
     """
 
     settings = dict(current_settings)
@@ -548,11 +546,16 @@ async def apply_calibration_profile_settings(
         "support_overhang_angle_deg",
         "tree_max_branch_angle_deg",
         "pressure_advance",
+        "ironing_flow_percent",
+        "ironing_speed_mm_s",
+        "ironing_line_spacing_mm",
     ):
         if key in results:
             base_settings[key] = _decimal_result(results, key)
     if "cooling_enabled" in results:
         base_settings["cooling_enabled"] = bool(results["cooling_enabled"])
+    if "ironing_enabled" in results:
+        base_settings["ironing_enabled"] = bool(results["ironing_enabled"])
     raw_extensions = base_settings.get("cura_extensions", {})
     extensions = dict(raw_extensions) if isinstance(raw_extensions, dict) else {}
     for key in ("xy_offset", "hole_xy_offset"):
@@ -563,7 +566,11 @@ async def apply_calibration_profile_settings(
     if calibration.build_plate_surface_id is not None:
         base_settings["preferred_build_plate_surface_id"] = calibration.build_plate_surface_id
 
-    validated_settings = MaterialSettingsInput.model_validate(base_settings).model_dump(mode="json")
+    desired_settings = MaterialSettingsInput.model_validate(base_settings).model_dump(mode="json")
+    setting_overrides = sparse_profile_overrides(base_revision.settings, desired_settings)
+    validated_settings = MaterialSettingsInput.model_validate(
+        resolve_profile_settings(base_revision.settings, setting_overrides)
+    ).model_dump(mode="json")
     profile = MaterialProfile(
         **profile_columns_from_settings(validated_settings),
         filament_product_id=calibration.filament_product_id,
@@ -572,32 +579,7 @@ async def apply_calibration_profile_settings(
         version=(latest or 0) + 1,
         status=ProfileStatus.PUBLISHED,
         base_template_revision_id=base_revision.id,
-        setting_overrides=sparse_profile_overrides(base_revision.settings, validated_settings),
-        ironing_enabled=results.get(
-            "ironing_enabled",
-            baseline.ironing_enabled if baseline is not None else None,
-        ),
-        ironing_flow_percent=(
-            _decimal_result(results, "ironing_flow_percent")
-            if "ironing_flow_percent" in results
-            else baseline.ironing_flow_percent
-            if baseline is not None
-            else None
-        ),
-        ironing_speed_mm_s=(
-            _decimal_result(results, "ironing_speed_mm_s")
-            if "ironing_speed_mm_s" in results
-            else baseline.ironing_speed_mm_s
-            if baseline is not None
-            else None
-        ),
-        ironing_line_spacing_mm=(
-            _decimal_result(results, "ironing_line_spacing_mm")
-            if "ironing_line_spacing_mm" in results
-            else baseline.ironing_line_spacing_mm
-            if baseline is not None
-            else None
-        ),
+        setting_overrides=setting_overrides,
         published_at=datetime.now(UTC),
     )
     session.add(profile)

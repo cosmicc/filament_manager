@@ -8,7 +8,13 @@ from types import ModuleType
 
 import pytest
 
-from filament_manager_agent.apply import apply_rendered, managed_library_checksum, rollback
+from filament_manager_agent.apply import (
+    MATERIAL_SETTINGS_STATUS_PATH,
+    apply_rendered,
+    managed_library_checksum,
+    material_settings_sync_status,
+    rollback,
+)
 from filament_manager_agent.discovery import (
     discover_installations,
     discover_managed_materials,
@@ -130,6 +136,7 @@ def _payload() -> dict[str, object]:
             "speed_print",
             "support_angle",
         ],
+        "retired_material_setting_keys": ["material_flow_layer_0"],
         "library_checksum": "a" * 64,
         "materials": [entry],
     }
@@ -150,6 +157,10 @@ def test_discovers_and_renders_complete_profile(tmp_path: Path, monkeypatch: obj
     assert b'key="klipper_pressure_advance_factor">0.035' in material_file
     assert b'key="klipper_smooth_time_enable">True' in material_file
     assert b'key="speed_print">180' in material_file
+    assert b'key="material_print_temperature">220' in material_file
+    assert b'key="material_bed_temperature">70' in material_file
+    assert b'key="print temperature"' not in material_file
+    assert b'key="heated bed temperature"' not in material_file
     assert b"<GUID>00000000-0000-4000-8000-000000000001</GUID>" in material_file
     assert b"<description>Filament Filler: None\nFilament Finish: Silk</description>" in material_file
     assert not any(path.startswith("quality_changes/") for path in paths)
@@ -304,6 +315,11 @@ def test_generated_plugin_defers_machine_manager_until_cura_initialization(
     assert application.preferences["material_settings/visible_settings"] == ";".join(
         sorted(_payload()["managed_material_setting_keys"])  # type: ignore[arg-type]
     )
+    receipt = json.loads(plugin_file.with_name("material-settings-status.json").read_text())
+    assert receipt["status"] == "waiting_for_machine"
+    assert receipt["expected_count"] == len(_payload()["managed_material_setting_keys"])
+    assert receipt["exposed_count"] == 0
+    assert receipt["material_settings_plugin_ready"] is True
     cost_preferences = json.loads(application.preferences["cura/material_settings"])
     assert cost_preferences["unmanaged-guid"] == {"spool_cost": 9.0}
     assert "old-managed-guid" not in cost_preferences
@@ -326,7 +342,31 @@ def test_apply_is_idempotent_and_rollback_restores_original(tmp_path: Path, monk
     assert first["status"] == "installed"
     manifest = json.loads((version / ".filament-manager" / "manifest.json").read_text())
     assert manifest["library_checksum"] == "a" * 64
-    assert manifest["renderer_revision"] == 6
+    assert manifest["renderer_revision"] == 8
+    waiting_status = material_settings_sync_status(version)
+    assert waiting_status["status"] == "waiting_for_cura"
+    expected_keys = sorted(_payload()["managed_material_setting_keys"])
+    status_path = version / MATERIAL_SETTINGS_STATUS_PATH
+    status_path.write_text(
+        json.dumps(
+            {
+                "schema_version": 1,
+                "catalog_checksum": waiting_status["catalog_checksum"],
+                "status": "healthy",
+                "expected_count": len(expected_keys),
+                "exposed_count": len(expected_keys),
+                "missing_keys": [],
+                "unexpected_keys": [],
+                "material_settings_plugin_ready": True,
+                "klipper_settings_plugin_ready": True,
+                "verified_at": "2026-08-22T04:00:00+00:00",
+            }
+        ),
+        encoding="utf-8",
+    )
+    healthy_status = material_settings_sync_status(version)
+    assert healthy_status["status"] == "healthy"
+    assert healthy_status["exposed_count"] == len(expected_keys)
     assert not unmanaged_material.exists()
     second = apply_rendered(installation, deployment_id, "a" * 64, rendered)
     assert second["status"] == "already_current"
@@ -347,7 +387,7 @@ def test_apply_is_idempotent_and_rollback_restores_original(tmp_path: Path, monk
     )
     assert upgraded["status"] == "installed"
     upgraded_manifest = json.loads((version / ".filament-manager" / "manifest.json").read_text())
-    assert upgraded_manifest["renderer_revision"] == 6
+    assert upgraded_manifest["renderer_revision"] == 8
 
     assert rollback(deployment_id) == ["Cura 5.10"]
     assert (version / "definition_changes" / "flsun-v400_settings.inst.cfg").read_bytes() == original
@@ -378,6 +418,7 @@ setting_version = 27
 
 [values]
 speed_print = 95
+material_flow_layer_0 = 97
 layer_height = 0.16
 """,
         encoding="utf-8",
@@ -415,6 +456,7 @@ wall_line_count = 3
     valid_text = valid_profile.read_text(encoding="utf-8")
     duplicate_text = duplicate_profile.read_text(encoding="utf-8")
     assert "speed_print" not in valid_text
+    assert "material_flow_layer_0" not in valid_text
     assert "layer_height = 0.16" in valid_text
     assert "material_flow" not in duplicate_text
     assert "wall_line_count = 3" in duplicate_text
@@ -422,7 +464,7 @@ wall_line_count = 3
     assert not corrupt_profile.exists()
     assert result["quality_profiles_sanitized"] == 2
     assert result["quality_profiles_repaired"] == 1
-    assert result["quality_profile_settings_removed"] == 2
+    assert result["quality_profile_settings_removed"] == 3
     assert result["quality_profiles_quarantined"] == 1
     assert len(result["quarantine_ids"]) == 1
     assert managed_library_checksum(version) == "a" * 64
@@ -482,7 +524,7 @@ def test_discovers_existing_material_settings_without_reporting_paths(
     report = materials[0].report()
     assert report["name"] == "Polymaker PETG · PolyLite"
     assert report["settings"] == {
-        "default_material_print_temperature": "225",
+        "material_print_temperature": "225",
         "material_flow": "98.5",
         "klipper_pressure_advance_factor": "0.035",
     }
@@ -567,6 +609,7 @@ speed_print = 999
     assert "path" not in report
 
     heartbeat = heartbeat_payload(installations)
+    assert heartbeat["capabilities"]["material_settings_verification_receipt"] is True
     assert heartbeat["capabilities"]["cura_print_profile_import"] is True
     assert heartbeat["capabilities"]["unmanaged_print_profile_count"] == 1
     assert heartbeat["capabilities"]["unmanaged_import_source_count"] == 1

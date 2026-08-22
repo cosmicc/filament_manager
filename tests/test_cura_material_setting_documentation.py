@@ -9,7 +9,7 @@ DOCUMENTED_SETTING = re.compile(r"^([a-z][a-z0-9_]*)\s+\|\s+([^|]+?)\s+\|")
 
 
 def test_cura_material_print_setting_list_matches_the_central_catalog() -> None:
-    """Every editable catalog key and label appears exactly once in the text list."""
+    """Every tracked or derived catalog key and label appears exactly once."""
 
     document = Path(__file__).parents[1] / "docs" / "CURA_MATERIAL_PRINT_SETTINGS.txt"
     documented: dict[str, str] = {}
@@ -21,5 +21,5 @@ def test_cura_material_print_setting_list_matches_the_central_catalog() -> None:
         assert key not in documented, f"Duplicate documented Cura material setting: {key}"
         documented[key] = label.strip()
 
-    expected = {setting.key: setting.label for setting in CURA_MATERIAL_SETTINGS if setting.editable}
+    expected = {setting.key: setting.label for setting in CURA_MATERIAL_SETTINGS}
     assert documented == expected

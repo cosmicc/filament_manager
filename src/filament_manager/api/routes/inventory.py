@@ -677,10 +677,24 @@ async def create_filament(
     await session.flush()
     profile: MaterialProfile | None = None
     if template_revision is not None and template is not None:
+        inherited_overrides = (
+            dict(duplicate_source_profile.setting_overrides or {})
+            if duplicate_source_profile is not None
+            else None
+        )
+        if inherited_overrides is not None:
+            template_density = Decimal(str(template_revision.settings["filament_density_g_cm3"]))
+            if product.density_g_cm3 == template_density:
+                inherited_overrides.pop("filament_density_g_cm3", None)
+            else:
+                inherited_overrides["filament_density_g_cm3"] = format(
+                    product.density_g_cm3,
+                    "f",
+                )
         profile_values = (
             resolve_profile_settings(
                 template_revision.settings,
-                dict(duplicate_source_profile.setting_overrides or {}),
+                inherited_overrides or {},
             )
             if duplicate_source_profile is not None
             else MaterialSettingsInput.model_validate(template_revision.settings).model_dump(mode="json")
@@ -695,11 +709,7 @@ async def create_filament(
             nozzle_diameter_mm=template.nozzle_diameter_mm,
             base_revision=template_revision,
             settings=profile_values,
-            setting_overrides=(
-                dict(duplicate_source_profile.setting_overrides or {})
-                if duplicate_source_profile is not None
-                else None
-            ),
+            setting_overrides=inherited_overrides,
         )
     add_audit_event(
         session,
