@@ -65,6 +65,18 @@ layer_height = 0.2
         encoding="utf-8",
     )
     assert installation.config_path is not None
+    moonraker_instances = json.dumps(
+        {
+            "workshop": {
+                "url": "https://private-printer.example",
+                "api_key": "never-upload-plugin-token",
+                "upload_dialog": True,
+                "upload_start_print_job": False,
+                "output_format": "ufp",
+            }
+        },
+        separators=(",", ":"),
+    )
     (installation.config_path / "cura.cfg").write_text(
         f"""[general]
 theme = {theme}
@@ -76,6 +88,7 @@ active_machine = workshop
 [moonraker]
 server_url = https://private-printer.example
 api_key = never-upload-plugin-token
+instances = {moonraker_instances}
 
 [material_settings]
 show_all = True
@@ -120,7 +133,9 @@ def test_capture_keeps_operational_settings_but_excludes_secrets_and_paths(tmp_p
     assert "https://" not in serialized
     assert "/private/download/path" not in serialized
     assert "/srv/private-cura-cache" not in serialized
-    assert "moonraker" not in serialized.casefold()
+    assert "moonraker" in serialized.casefold()
+    assert "upload_dialog" in serialized
+    assert "upload_start_print_job" in serialized
 
 
 def test_restore_replaces_profiles_and_merges_preferences_without_credentials(
@@ -146,6 +161,7 @@ ultimaker_auth_data = keep-current-login-token
 [moonraker]
 server_url = https://current-printer.example
 api_key = keep-current-plugin-token
+instances = {"workshop":{"url":"https://current-printer.example","api_key":"keep-current-plugin-token","upload_dialog":false,"upload_start_print_job":true}}
 """,
         encoding="utf-8",
     )
@@ -170,6 +186,8 @@ api_key = keep-current-plugin-token
     assert "keep-current-login-token" in preferences
     assert "https://current-printer.example" in preferences
     assert "keep-current-plugin-token" in preferences
+    assert '"upload_dialog":true' in preferences
+    assert '"upload_start_print_job":false' in preferences
     assert (
         agent_data / "recovery-backups" / "10000000-0000-0000-0000-000000000001" / "cura-test.zip"
     ).is_file()

@@ -507,6 +507,7 @@ async def list_jobs(
             "attempts": job.attempts,
             "next_attempt_at": job.next_attempt_at,
             "last_error_class": job.last_error_class,
+            "last_error_at": job.last_error_at,
             "created_at": job.created_at,
             "completed_at": job.completed_at,
         }
@@ -535,6 +536,7 @@ async def retry_job(
     job.locked_by = None
     job.last_error_class = None
     job.last_error_message = None
+    job.last_error_at = None
     add_audit_event(
         session,
         actor_id=administrator.id,

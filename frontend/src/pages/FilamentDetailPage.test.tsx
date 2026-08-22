@@ -118,6 +118,9 @@ describe('FilamentDetailPage', () => {
       </QueryClientProvider>,
     )
 
+    expect((await screen.findByRole('link', { name: 'Duplicate' })).getAttribute('href')).toBe(
+      '/filaments/duplicate/product-id',
+    )
     fireEvent.click(await screen.findByRole('button', { name: 'Edit' }))
     const selector = await screen.findByLabelText(/Linked material template/) as HTMLSelectElement
     expect(selector.value).toBe('current-revision')

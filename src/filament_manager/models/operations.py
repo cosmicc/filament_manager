@@ -47,6 +47,7 @@ class OutboxJob(UUIDPrimaryKeyMixin, Base):
     locked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     last_error_class: Mapped[str | None] = mapped_column(String(160))
     last_error_message: Mapped[str | None] = mapped_column(String(500))
+    last_error_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     remote_fingerprint: Mapped[str | None] = mapped_column(String(64))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))

@@ -376,6 +376,35 @@ class MoonrakerClient:
             raise MoonrakerError("Moonraker returned invalid G-code metadata")
         return result
 
+    @staticmethod
+    def validated_timelapse_filename(filename: str) -> str:
+        """Accept one relative MP4 path beneath Moonraker's timelapse root."""
+
+        validated = MoonrakerClient._validated_gcode_filename(filename)
+        if not validated.casefold().endswith(".mp4"):
+            raise ValueError("invalid timelapse filename")
+        return validated
+
+    async def timelapse_files(self) -> tuple[dict[str, Any], ...]:
+        """List bounded MP4 metadata from the Moonraker timelapse file root."""
+
+        payload = await self._get("/server/files/list", params={"root": "timelapse"})
+        result = payload.get("result")
+        if not isinstance(result, list) or len(result) > 2_000:
+            raise MoonrakerError("Moonraker returned an invalid timelapse file list")
+        files: list[dict[str, Any]] = []
+        for item in result:
+            if not isinstance(item, dict):
+                continue
+            path = item.get("path")
+            try:
+                if isinstance(path, str):
+                    self.validated_timelapse_filename(path)
+                    files.append(item)
+            except ValueError:
+                continue
+        return tuple(files)
+
     async def gcode_file(
         self,
         filename: str,

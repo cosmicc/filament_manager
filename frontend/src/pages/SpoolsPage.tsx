@@ -29,7 +29,7 @@ import { PageHeader } from "../components/PageHeader";
 import { StatusPill } from "../components/StatusPill";
 import { useAuth } from "../context/AuthContext";
 import { filamentSwatchStyle } from "../lib/colors";
-import { dateTime, grams, inputNumber, percent } from "../lib/format";
+import { costPerGram, currencyAmount, dateTime, grams, inputNumber, percent } from "../lib/format";
 
 function WeighModal({ spool, onClose }: { spool: Spool; onClose: () => void }) {
   const queryClient = useQueryClient();
@@ -263,6 +263,7 @@ function CreateSpoolModal({
     inputNumber(filaments[0]?.nominal_net_mass_g ?? "1000", 0),
   );
   const [fullSpoolMass, setFullSpoolMass] = useState("");
+  const [purchaseCost, setPurchaseCost] = useState("");
   const [error, setError] = useState("");
   const selected = filaments.find((item) => item.id === filamentId);
   const inferredTare =
@@ -285,7 +286,7 @@ function CreateSpoolModal({
           purchase_source:
             String(data.get("purchase_source") ?? "").trim() || null,
           purchase_date: String(data.get("purchase_date") ?? "") || null,
-          purchase_cost: String(data.get("purchase_cost") ?? "").trim() || null,
+          purchase_cost: purchaseCost.trim() || null,
           currency: "USD",
           location: String(data.get("location") ?? "").trim() || null,
           notes: String(data.get("notes") ?? "").trim() || null,
@@ -384,7 +385,7 @@ function CreateSpoolModal({
         >
           <div className="form-grid">
             <label>
-              Filament on this spool (g)
+              Filament purchase weight (g)
               <input
                 type="number"
                 min="0.1"
@@ -434,7 +435,12 @@ function CreateSpoolModal({
             </label>
             <label>
               Purchase cost
-              <input name="purchase_cost" type="number" min="0" step="0.01" />
+              <input name="purchase_cost" type="number" min="0" step="0.01" value={purchaseCost} onChange={(event) => setPurchaseCost(event.target.value)} />
+              <small className="field-help">
+                {purchaseCost && filamentMass
+                  ? `${costPerGram(Number(purchaseCost) / Number(filamentMass), 'USD')} using filament weight only.`
+                  : "Enter the total price paid; the physical spool weight is excluded."}
+              </small>
             </label>
             <label className="form-grid__wide">
               Notes <span className="label-optional">Optional</span>
@@ -472,6 +478,9 @@ function EditSpoolModal({
 }) {
   const queryClient = useQueryClient();
   const [error, setError] = useState("");
+  const [purchaseWeight, setPurchaseWeight] = useState(inputNumber(spool.nominal_net_mass_g, 1));
+  const [purchaseCost, setPurchaseCost] = useState(spool.purchase_cost ?? "");
+  const [currencyCode, setCurrencyCode] = useState(spool.currency);
   const mutation = useMutation({
     mutationFn: (form: HTMLFormElement) => {
       const data = new FormData(form);
@@ -572,7 +581,7 @@ function EditSpoolModal({
           <div className="form-grid">
             <label>Spool code<input name="spool_code" defaultValue={spool.spool_code} pattern={'[A-Za-z0-9_\\-]+'} maxLength={64} required autoFocus /></label>
             <label>Filament product<select name="filament_product_id" defaultValue={spool.filament_product_id} required>{filaments.map((filament) => <option key={filament.id} value={filament.id}>{filament.vendor_name ?? 'Unspecified'} · {filament.material_type} · {filament.color_name}</option>)}</select></label>
-            <label>Filament capacity (g)<input name="nominal_net_mass_g" type="number" min="1" step="1" defaultValue={inputNumber(spool.nominal_net_mass_g, 0)} required /></label>
+            <label>Filament purchase weight (g)<input name="nominal_net_mass_g" type="number" min="0.1" step="0.1" value={purchaseWeight} onChange={(event) => setPurchaseWeight(event.target.value)} required /><small className="field-help">Net filament purchased, excluding the empty physical spool.</small></label>
             <label>Empty spool weight (g)<input name="tare_mass_g" type="number" min="0" step="0.1" defaultValue={inputNumber(spool.tare_mass_g, 1)} required /></label>
             <label>Current filament remaining (g)<input name="remaining_mass_g" type="number" min="0" step="1" defaultValue={inputNumber(spool.remaining_mass_effective_g, 0)} required /><small className="field-help">Changing this records an operator correction and updates Spoolman.</small></label>
             <label>Bucket or location<input name="location" defaultValue={spool.location ?? ''} maxLength={160} placeholder="Bucket 12" /></label>
@@ -585,8 +594,8 @@ function EditSpoolModal({
           <div className="form-grid">
             <label>Purchase source<input name="purchase_source" defaultValue={spool.purchase_source ?? ''} maxLength={160} /></label>
             <label>Purchase date<input name="purchase_date" type="date" defaultValue={spool.purchase_date ?? ''} /></label>
-            <label>Purchase cost<input name="purchase_cost" type="number" min="0" step="0.01" defaultValue={spool.purchase_cost ?? ''} /></label>
-            <label>Currency<input name="currency" pattern="[A-Z]{3}" maxLength={3} defaultValue={spool.currency} required /></label>
+            <label>Purchase cost<input name="purchase_cost" type="number" min="0" step="0.01" value={purchaseCost} onChange={(event) => setPurchaseCost(event.target.value)} /><small className="field-help">{purchaseCost && purchaseWeight ? `${costPerGram(Number(purchaseCost) / Number(purchaseWeight), currencyCode)} based on purchase cost ÷ net filament weight.` : 'Enter cost and net filament weight to calculate cost per gram.'}</small></label>
+            <label>Currency<input name="currency" pattern="[A-Z]{3}" maxLength={3} value={currencyCode} onChange={(event) => setCurrencyCode(event.target.value.toUpperCase())} required /></label>
             <label className="form-grid__wide">Notes<textarea name="notes" rows={3} maxLength={4000} defaultValue={spool.notes ?? ''} /></label>
             <label className="check-row form-grid__wide"><input name="archived" type="checkbox" defaultChecked={spool.archived} /><span><strong>Archive this spool</strong><small>Archived spools are retained for history and hidden from normal inventory.</small></span></label>
           </div>
@@ -773,6 +782,7 @@ export default function SpoolsPage() {
                   <th>Spool</th>
                   <th>Material</th>
                   <th>Remaining</th>
+                  <th>Cost / gram</th>
                   <th>Status</th>
                   <th>Prints</th>
                   <th>Location</th>
@@ -830,6 +840,7 @@ export default function SpoolsPage() {
                         </div>
                       </div>
                     </td>
+                    <td>{costPerGram(spool.cost_per_gram, spool.currency)}</td>
                     <td>
                       <div className="status-stack">
                         {spool.active_printer_id ? (
@@ -868,7 +879,7 @@ export default function SpoolsPage() {
                 <small>
                   {spool.active_printer_id
                     ? `Loaded in ${printerNames.get(spool.active_printer_id) ?? "assigned printer"}`
-                    : (spool.location ?? "No location")} · {spool.completed_print_count} completed prints
+                    : (spool.location ?? "No location")} · {costPerGram(spool.cost_per_gram, spool.currency)} · {spool.completed_print_count} completed prints
                 </small>
               </button>
             ))}
@@ -923,6 +934,18 @@ export default function SpoolsPage() {
                           ? grams(selected.tare_mass_g, 1)
                           : "Unknown"}
                       </dd>
+                    </div>
+                    <div>
+                      <dt>Purchase weight</dt>
+                      <dd>{grams(selected.nominal_net_mass_g, 1)} filament only</dd>
+                    </div>
+                    <div>
+                      <dt>Purchase cost</dt>
+                      <dd>{currencyAmount(selected.purchase_cost, selected.currency)}</dd>
+                    </div>
+                    <div>
+                      <dt>Cost per gram</dt>
+                      <dd>{costPerGram(selected.cost_per_gram, selected.currency)}</dd>
                     </div>
                     <div>
                       <dt>Spoolman</dt>

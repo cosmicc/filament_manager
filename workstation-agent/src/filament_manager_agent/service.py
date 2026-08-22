@@ -18,6 +18,7 @@ from .discovery import (
     discover_print_profiles,
     unmanaged_material_count,
 )
+from .nozzle import apply_nozzle_update
 from .recovery import capture_recovery_snapshot, restore_recovery_snapshot
 from .render import render_deployment
 
@@ -39,6 +40,7 @@ def heartbeat_payload(
         installation_reports.append(report)
     materials = discover_materials(installations)
     print_profiles = discover_print_profiles(installations)
+    managed_materials = discover_managed_materials(installations)
     import_sources = [*materials[:100], *print_profiles[:100]]
     material_file_count = unmanaged_material_count(installations)
     # The takeover count must describe the rows actually sent to the server.  Cura
@@ -61,15 +63,14 @@ def heartbeat_payload(
             "unmanaged_material_file_count": material_file_count,
             "cura_print_profile_import": True,
             "unmanaged_print_profile_count": len(print_profiles),
+            "managed_material_count": len(managed_materials),
             "unmanaged_import_source_count": len(import_sources),
             "cura_recovery_snapshots": True,
             "cura_recovery_capture_state": recovery_capture_state,
         },
         "cura_installations": installation_reports,
         "cura_materials": [source.report() for source in import_sources],
-        "cura_managed_materials": [
-            material.report() for material in discover_managed_materials(installations)
-        ],
+        "cura_managed_materials": [material.report() for material in managed_materials],
         "last_error": last_error,
     }
 
@@ -174,6 +175,92 @@ def run_once() -> bool:
             retry_after_seconds=60,
         )
         logger.info("deployment_deferred", deployment_id=claim.deployment_id, reason="cura_running")
+        return True
+    operation = claim.payload.get("operation")
+    if operation == "recovery_capture":
+        target = next(
+            (
+                installation
+                for installation in installations
+                if installation.installation_id == claim.payload.get("installation_id")
+                and installation.version == claim.payload.get("cura_version")
+            ),
+            None,
+        )
+        if target is None:
+            client.complete(
+                claim.deployment_id,
+                outcome="failed",
+                result={},
+                error_class="CuraNotDetected",
+                error_message="The selected Cura installation is no longer available.",
+            )
+            return True
+        try:
+            snapshot = capture_recovery_snapshot(target)
+            snapshot["capture_request_id"] = str(claim.deployment_id)
+            response = client.upload_recovery_snapshot(snapshot)
+            if response.get("accepted") is not True:
+                raise RuntimeError("The server blocked this Cura recovery snapshot.")
+        except (OSError, RuntimeError, ValueError) as error:
+            client.complete(
+                claim.deployment_id,
+                outcome="failed",
+                result={},
+                error_class=type(error).__name__,
+                error_message="The requested Cura backup could not be captured safely.",
+            )
+            logger.error(
+                "manual_recovery_capture_failed",
+                deployment_id=claim.deployment_id,
+                error_class=type(error).__name__,
+                message=str(error)[:500],
+            )
+            return True
+        client.complete(
+            claim.deployment_id,
+            outcome="succeeded",
+            result={"snapshot_id": response.get("snapshot_id"), "installation_id": target.installation_id},
+        )
+        logger.info("manual_recovery_capture_succeeded", deployment_id=claim.deployment_id)
+        return True
+    if operation == "nozzle_update":
+        nozzle_results: list[dict[str, object]] = []
+        nozzle_errors: list[dict[str, str]] = []
+        for installation in installations:
+            try:
+                nozzle_results.append(
+                    apply_nozzle_update(installation, str(claim.deployment_id), claim.payload)
+                )
+            except (OSError, RuntimeError, ValueError) as error:
+                nozzle_errors.append(
+                    {
+                        "installation_id": installation.installation_id,
+                        "error_class": type(error).__name__,
+                        "message": str(error)[:500],
+                    }
+                )
+        if nozzle_results:
+            client.complete(
+                claim.deployment_id,
+                outcome="succeeded",
+                result={
+                    "installations": nozzle_results,
+                    "unmatched_installations": nozzle_errors,
+                },
+            )
+        else:
+            client.complete(
+                claim.deployment_id,
+                outcome="failed",
+                result={"installations": [], "errors": nozzle_errors},
+                error_class=(nozzle_errors[0]["error_class"] if nozzle_errors else "CuraNotDetected"),
+                error_message=(
+                    nozzle_errors[0]["message"]
+                    if nozzle_errors
+                    else "No writable Cura user-data installation was detected."
+                ),
+            )
         return True
     results: list[dict[str, object]] = []
     errors: list[dict[str, str]] = []

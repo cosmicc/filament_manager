@@ -243,6 +243,11 @@ Print requires approximately 328 g.
 You might not actually stop prints by default, but provide configurable policies.
 
 
+- **Consolidate Filaments and Profiles navigation**
+
+Keep the separate canonical product and material-profile models, but explore moving profile summaries, Cura export, comparison, and tuning entry points into each filament detail page so the one-printer interface does not present two overlapping catalog pages.
+
+
 - ~~**G-code inspection**~~
 
 When Moonraker receives a file, Filament Manager could inspect the G-code header.

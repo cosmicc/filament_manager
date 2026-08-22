@@ -1,0 +1,141 @@
+"""Safe Cura nozzle-variant selection tests."""
+
+from pathlib import Path
+
+import pytest
+
+from filament_manager_agent.models import CuraInstallation, CuraMachine
+from filament_manager_agent.nozzle import apply_nozzle_update
+
+
+def _installation(tmp_path: Path) -> CuraInstallation:
+    data = tmp_path / "cura" / "5.13"
+    machines = data / "machine_instances"
+    variants = data / "variants"
+    machines.mkdir(parents=True)
+    variants.mkdir()
+    machine_path = machines / "workshop.global.cfg"
+    machine_path.write_text(
+        """[general]
+name = Workshop Printer
+definition = workshop_printer
+
+[metadata]
+type = machine
+nozzle_diameter = 0.4
+
+[containers]
+5 = workshop_0.4
+7 = workshop_printer
+""",
+        encoding="utf-8",
+    )
+    (variants / "workshop_0.6.inst.cfg").write_text(
+        """[general]
+version = 4
+name = Workshop 0.6 mm
+definition = workshop_printer
+
+[metadata]
+type = variant
+hardware_type = nozzle
+
+[values]
+machine_nozzle_size = 0.6
+""",
+        encoding="utf-8",
+    )
+    return CuraInstallation(
+        installation_id="cura-test",
+        version="5.13",
+        channel="Test",
+        data_path=data,
+        machines=[
+            CuraMachine(
+                machine_id="workshop",
+                display_name="Workshop Printer",
+                definition_id="workshop_printer",
+                nozzle_diameter_mm="0.4",
+                source_path=machine_path,
+            )
+        ],
+    )
+
+
+def test_applies_exact_existing_nozzle_variant_with_backup(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    installation = _installation(tmp_path)
+    monkeypatch.setenv("FILAMENT_MANAGER_AGENT_DATA", str(tmp_path / "agent-data"))
+
+    result = apply_nozzle_update(
+        installation,
+        "10000000-0000-0000-0000-000000000001",
+        {
+            "printer_code": "workshop-printer",
+            "printer_name": "Workshop Printer",
+            "nozzle_diameter_mm": "0.6",
+        },
+    )
+
+    machine = installation.machines[0].source_path.read_text(encoding="utf-8")
+    assert "nozzle_diameter = 0.6" in machine
+    assert "variant = workshop_0.6" in machine
+    assert "5 = workshop_0.6" in machine
+    assert result["variant_id"] == "workshop_0.6"
+    assert (
+        tmp_path / "agent-data" / "nozzle-backups" / "10000000-0000-0000-0000-000000000001" / "cura-test.zip"
+    ).is_file()
+
+
+def test_refuses_to_manufacture_missing_nozzle_variant(tmp_path: Path) -> None:
+    installation = _installation(tmp_path)
+
+    with pytest.raises(RuntimeError, match="existing matching nozzle variant"):
+        apply_nozzle_update(
+            installation,
+            "10000000-0000-0000-0000-000000000002",
+            {
+                "printer_code": "workshop-printer",
+                "printer_name": "Workshop Printer",
+                "nozzle_diameter_mm": "0.8",
+            },
+        )
+
+
+def test_reads_configured_cura_resource_variant(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    installation = _installation(tmp_path)
+    for variant in (installation.data_path / "variants").iterdir():
+        variant.unlink()
+    resource_root = tmp_path / "cura-resources"
+    variants = resource_root / "variants"
+    variants.mkdir(parents=True)
+    (variants / "workshop_resource_0.6.inst.cfg").write_text(
+        """[general]
+version = 4
+name = Workshop 0.6 mm
+definition = workshop_printer
+
+[metadata]
+type = variant
+hardware_type = nozzle
+
+[values]
+machine_nozzle_size = 0.6
+""",
+        encoding="utf-8",
+    )
+    monkeypatch.setenv("FILAMENT_MANAGER_CURA_RESOURCE_ROOTS", str(resource_root))
+    monkeypatch.setenv("FILAMENT_MANAGER_AGENT_DATA", str(tmp_path / "agent-data"))
+
+    result = apply_nozzle_update(
+        installation,
+        "10000000-0000-0000-0000-000000000003",
+        {
+            "printer_code": "workshop-printer",
+            "printer_name": "Workshop Printer",
+            "nozzle_diameter_mm": "0.6",
+        },
+    )
+
+    assert result["variant_id"] == "workshop_resource_0.6"

@@ -94,6 +94,12 @@ def _payload() -> dict[str, object]:
             "diameter_mm": "1.75",
             "density_g_cm3": "1.27",
             "nominal_net_mass_g": "1000",
+            "cura_cost_basis": {
+                "spool_weight_g": "1000",
+                "spool_cost": "24.50",
+                "currency": "USD",
+                "source_spool_count": "2",
+            },
         },
         "printer": {
             "id": "312e2722-e60b-467e-8807-cfe410555bee",
@@ -160,6 +166,9 @@ def test_discovers_and_renders_complete_profile(tmp_path: Path, monkeypatch: obj
     assert b"FilamentManagerVisibility(app)" in plugin_init
     assert b'preferences.setValue("cura/favorite_materials", updated)' in plugin
     assert b'preferences.setValue("material_settings/visible_settings", expected)' in plugin
+    assert b'preferences.setValue("cura/material_settings", updated)' in plugin
+    assert b"'spool_cost': 24.5" in plugin
+    assert b"'spool_weight': 1000.0" in plugin
     assert b'"speed_print"' not in plugin
     assert b"'speed_print'" in plugin
     assert b'user_changes.setProperty(key, "value", material_value)' in plugin
@@ -227,7 +236,12 @@ def test_generated_plugin_defers_machine_manager_until_cura_initialization(
             self.started = False
             self.machine_manager_calls = 0
             self.machine_manager = FakeMachineManager()
-            self.preferences: dict[str, str] = {}
+            self.preferences: dict[str, str] = {
+                "cura/material_settings": json.dumps(
+                    {"unmanaged-guid": {"spool_cost": 9.0}, "old-managed-guid": {"spool_cost": 1.0}}
+                ),
+                "filament_manager/material_cost_guids": json.dumps(["old-managed-guid"]),
+            }
 
         def getPreferences(self) -> object:
             preferences = self.preferences
@@ -290,6 +304,13 @@ def test_generated_plugin_defers_machine_manager_until_cura_initialization(
     assert application.preferences["material_settings/visible_settings"] == ";".join(
         sorted(_payload()["managed_material_setting_keys"])  # type: ignore[arg-type]
     )
+    cost_preferences = json.loads(application.preferences["cura/material_settings"])
+    assert cost_preferences["unmanaged-guid"] == {"spool_cost": 9.0}
+    assert "old-managed-guid" not in cost_preferences
+    assert cost_preferences["00000000-0000-4000-8000-000000000001"] == {
+        "spool_cost": 24.5,
+        "spool_weight": 1000.0,
+    }
 
 
 def test_apply_is_idempotent_and_rollback_restores_original(tmp_path: Path, monkeypatch: object) -> None:
@@ -305,7 +326,7 @@ def test_apply_is_idempotent_and_rollback_restores_original(tmp_path: Path, monk
     assert first["status"] == "installed"
     manifest = json.loads((version / ".filament-manager" / "manifest.json").read_text())
     assert manifest["library_checksum"] == "a" * 64
-    assert manifest["renderer_revision"] == 5
+    assert manifest["renderer_revision"] == 6
     assert not unmanaged_material.exists()
     second = apply_rendered(installation, deployment_id, "a" * 64, rendered)
     assert second["status"] == "already_current"
@@ -326,7 +347,7 @@ def test_apply_is_idempotent_and_rollback_restores_original(tmp_path: Path, monk
     )
     assert upgraded["status"] == "installed"
     upgraded_manifest = json.loads((version / ".filament-manager" / "manifest.json").read_text())
-    assert upgraded_manifest["renderer_revision"] == 5
+    assert upgraded_manifest["renderer_revision"] == 6
 
     assert rollback(deployment_id) == ["Cura 5.10"]
     assert (version / "definition_changes" / "flsun-v400_settings.inst.cfg").read_bytes() == original
@@ -549,6 +570,7 @@ speed_print = 999
     assert heartbeat["capabilities"]["cura_print_profile_import"] is True
     assert heartbeat["capabilities"]["unmanaged_print_profile_count"] == 1
     assert heartbeat["capabilities"]["unmanaged_import_source_count"] == 1
+    assert heartbeat["capabilities"]["managed_material_count"] == 0
     assert heartbeat["cura_materials"][0]["source_kind"] == "print_profile"
 
 

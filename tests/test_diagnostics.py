@@ -12,7 +12,7 @@ from filament_manager.services.diagnostics import (
 def test_expected_schema_matches_current_migration_head() -> None:
     """Diagnostics must advance whenever the single Alembic head advances."""
 
-    assert EXPECTED_SCHEMA_VERSION == "a3b4c5d6e789"
+    assert EXPECTED_SCHEMA_VERSION == "b4c5d6e7f890"
 
 
 def test_error_details_remove_database_and_external_response_content() -> None:
@@ -53,6 +53,18 @@ def test_diagnostics_text_contains_bounded_current_overview() -> None:
             ],
             "queue_counts": {"pending": 3, "dead": 2},
             "job_type_counts": {"moonraker.state.reconcile": 2},
+            "failure_groups": [
+                {
+                    "job_type": "spoolman.spool.adjust_weight",
+                    "count": 2,
+                    "status": "dead",
+                    "attempts": 12,
+                    "max_attempts": 12,
+                    "error_class": "SpoolmanError",
+                    "detail": "Spoolman PUT /spool/7/measure failed",
+                    "occurred_at": checked_at,
+                }
+            ],
             "error_log": [
                 {
                     "source": "Projection worker",
@@ -70,5 +82,7 @@ def test_diagnostics_text_contains_bounded_current_overview() -> None:
     assert "Schema is current at e1f2a3b4c567" in report
     assert "dead: 2" in report
     assert "moonraker.state.reconcile: 2" in report
+    assert "spoolman.spool.adjust_weight: 2 actionable failure(s)" in report
+    assert "Spoolman PUT /spool/7/measure failed" in report
     assert "MoonrakerError x2" in report
     assert "credentials" in report

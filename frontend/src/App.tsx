@@ -49,19 +49,20 @@ export function App() {
   const { path, navigate } = useRouter()
 
   const isFilamentDetail = /^\/filaments\/[0-9a-f-]{36}$/i.test(path)
+  const isFilamentDuplicate = /^\/filaments\/duplicate\/[0-9a-f-]{36}$/i.test(path)
 
   useEffect(() => {
     if (loading) return
     if (!user && path !== '/login') navigate('/login', true)
     if (user && path === '/login') navigate('/', true)
-    if (user && path !== '/login' && !pages[path] && !isFilamentDetail) navigate('/', true)
-  }, [isFilamentDetail, loading, navigate, path, user])
+    if (user && path !== '/login' && !pages[path] && !isFilamentDetail && !isFilamentDuplicate) navigate('/', true)
+  }, [isFilamentDetail, isFilamentDuplicate, loading, navigate, path, user])
 
   if (loading) return <div className="app-loading"><LoadingState label="Opening Filament Manager" /></div>
   const content = user
     ? user.must_change_password
       ? <PasswordChangePage />
-      : (() => { const Page = isFilamentDetail ? FilamentDetailPage : pages[path] ?? DashboardPage; return <AppShell><Page /></AppShell> })()
+      : (() => { const Page = isFilamentDetail ? FilamentDetailPage : isFilamentDuplicate ? FilamentsPage : pages[path] ?? DashboardPage; return <AppShell><Page /></AppShell> })()
     : <LoginPage />
   return <Suspense fallback={<div className="app-loading"><LoadingState /></div>}>{content}</Suspense>
 }

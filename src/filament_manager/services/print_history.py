@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import re
 from datetime import UTC, datetime, timedelta
 from decimal import Decimal, InvalidOperation
 from math import pi
@@ -48,6 +49,89 @@ MAX_INITIAL_HISTORY_JOBS = 10_000
 HISTORY_PAGE_SIZE = 100
 MASS_QUANTUM = Decimal("0.001")
 logger = structlog.get_logger()
+
+
+def _safe_file_metadata(metadata: dict[str, Any]) -> dict[str, object]:
+    """Retain only bounded documented file facts useful to an operator."""
+
+    result: dict[str, object] = {}
+    for key in ("size", "modified", "object_height", "first_layer_height", "layer_count"):
+        value = metadata.get(key)
+        if isinstance(value, int | float | str) and not isinstance(value, bool):
+            text = str(value)
+            if len(text) <= 48:
+                result[key] = value
+    return result
+
+
+def _timelapse_match_key(filename: str) -> str:
+    """Normalize a G-code or video stem for conservative local association."""
+
+    leaf = filename.replace("\\", "/").rsplit("/", 1)[-1].rsplit(".", 1)[0]
+    return re.sub(r"[^a-z0-9]+", "", leaf.casefold())[:180]
+
+
+async def _associate_timelapses(
+    session: AsyncSession,
+    *,
+    printer: Printer,
+    client: MoonrakerClient,
+) -> int:
+    """Attach rendered Moonraker-timelapse MP4s without storing an external URL."""
+
+    list_files = getattr(client, "timelapse_files", None)
+    if list_files is None:
+        return 0
+    try:
+        files = await list_files()
+    except MoonrakerError:
+        return 0
+    candidates: list[tuple[str, str, datetime | None]] = []
+    for item in files:
+        path = item.get("path")
+        if not isinstance(path, str):
+            continue
+        modified = _timestamp(item.get("modified"))
+        candidates.append((path, _timelapse_match_key(path), modified))
+    jobs = list(
+        await session.scalars(
+            select(PrintJob)
+            .where(
+                PrintJob.printer_id == printer.id,
+                PrintJob.status != PrintJobStatus.IN_PROGRESS,
+                PrintJob.timelapse_url.is_(None),
+            )
+            .order_by(PrintJob.ended_at.desc().nullslast())
+            .limit(100)
+        )
+    )
+    attached = 0
+    for job in jobs:
+        key = _timelapse_match_key(job.filename)
+        if len(key) < 3:
+            continue
+        matches = [item for item in candidates if item[1] == key or item[1].startswith(key)]
+        if job.ended_at is not None:
+            timed = [
+                item
+                for item in matches
+                if item[2] is None or abs((item[2] - job.ended_at).total_seconds()) <= 86_400
+            ]
+            matches = timed
+        if not matches:
+            continue
+        matches.sort(
+            key=lambda item: (
+                abs((item[2] - job.ended_at).total_seconds())
+                if item[2] is not None and job.ended_at is not None
+                else float("inf"),
+                item[0],
+            )
+        )
+        job.timelapse_url = matches[0][0]
+        job.record_version += 1
+        attached += 1
+    return attached
 
 
 def _json_safe(value: object) -> dict[str, object]:
@@ -618,6 +702,7 @@ async def synchronize_live_print(
                 "extracted": result.extracted,
                 "mismatches": list(result.mismatches),
                 "warnings": list(result.warnings),
+                "file_metadata": _safe_file_metadata(metadata),
             }
         job.inspected_at = now
         add_audit_event(
@@ -809,6 +894,7 @@ async def _upsert_history_job(
                 "extracted": extracted_result.extracted,
                 "mismatches": [],
                 "warnings": ["Exact pre-0.2.1 material state could not be reconstructed."],
+                "file_metadata": _safe_file_metadata(metadata),
             },
             inspected_at=datetime.now(UTC),
             support_configuration={},
@@ -917,6 +1003,7 @@ async def synchronize_print_history(
     printer.print_history_initialized_at = printer.print_history_initialized_at or now
     printer.last_print_history_sync_at = now
     printer.last_print_history_end_at = latest_end
+    await _associate_timelapses(session, printer=printer, client=client)
     await session.commit()
     if skipped:
         logger.warning(

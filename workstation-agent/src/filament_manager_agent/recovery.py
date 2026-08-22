@@ -76,6 +76,22 @@ SAFE_OFFLINE_PLUGIN_SECTIONS = frozenset(
         "start_optimiser",
     }
 )
+SAFE_MOONRAKER_INSTANCE_KEYS = frozenset(
+    {
+        "retry_interval",
+        "output_format",
+        "upload_dialog",
+        "upload_start_print_job",
+        "upload_remember_state",
+        "upload_autohide_messagebox",
+        "trans_input",
+        "trans_output",
+        "trans_remove",
+        "camera_image_rotation",
+        "camera_image_mirror",
+        "power_device",
+    }
+)
 _SENSITIVE_KEY_PARTS = frozenset(
     {
         "address",
@@ -105,6 +121,7 @@ _NETWORK_OR_PATH_VALUE = re.compile(
 )
 _PLUGIN_ID = re.compile(r"^[A-Za-z0-9_.-]{1,160}$")
 _PLUGIN_VERSION = re.compile(r"^[A-Za-z0-9_.+~-]{1,64}$")
+_MACHINE_ID = re.compile(r"^[A-Za-z0-9_.-]{1,160}$")
 
 
 class _CaseSensitiveConfigParser(configparser.ConfigParser):
@@ -148,6 +165,35 @@ def _value_is_sensitive(value: str) -> bool:
     return bool(_NETWORK_OR_PATH_VALUE.search(value))
 
 
+def _sanitized_moonraker_instances(value: str) -> str | None:
+    """Retain behavior preferences while dropping every endpoint and credential."""
+
+    try:
+        raw = json.loads(value)
+    except json.JSONDecodeError:
+        return None
+    if not isinstance(raw, dict):
+        return None
+    sanitized: dict[str, dict[str, object]] = {}
+    for machine_id, raw_settings in list(raw.items())[:100]:
+        if (
+            not isinstance(machine_id, str)
+            or _MACHINE_ID.fullmatch(machine_id) is None
+            or not isinstance(raw_settings, dict)
+        ):
+            continue
+        settings: dict[str, object] = {}
+        for key in SAFE_MOONRAKER_INSTANCE_KEYS:
+            item = raw_settings.get(key)
+            if isinstance(item, bool | int | float) or (
+                isinstance(item, str) and len(item) <= 160 and not _value_is_sensitive(item)
+            ):
+                settings[key] = item
+        if settings:
+            sanitized[machine_id] = settings
+    return json.dumps(sanitized, sort_keys=True, separators=(",", ":")) if sanitized else None
+
+
 def _sanitize_ini(content: str, *, preferences: bool) -> str:
     source = _parser()
     try:
@@ -158,6 +204,13 @@ def _sanitize_ini(content: str, *, preferences: bool) -> str:
     for section in source.sections():
         normalized_section = section.casefold()
         allowed_keys = SAFE_CURA_PREFERENCE_KEYS.get(normalized_section)
+        if preferences and normalized_section == "moonraker":
+            value = source.get(section, "instances", raw=True, fallback="")
+            sanitized_instances = _sanitized_moonraker_instances(value)
+            if sanitized_instances is not None:
+                sanitized.add_section(section)
+                sanitized.set(section, "instances", sanitized_instances)
+            continue
         if preferences and allowed_keys is None and normalized_section not in SAFE_OFFLINE_PLUGIN_SECTIONS:
             continue
         sanitized.add_section(section)
@@ -377,6 +430,36 @@ def _merge_preferences(current_content: str, saved_content: str) -> bytes:
         if section.casefold() in SAFE_OFFLINE_PLUGIN_SECTIONS:
             current.remove_section(section)
     for section in saved.sections():
+        if section.casefold() == "moonraker":
+            saved_instances = json.loads(saved.get(section, "instances", raw=True, fallback="{}"))
+            current_section = next(
+                (item for item in current.sections() if item.casefold() == "moonraker"),
+                section,
+            )
+            if not current.has_section(current_section):
+                current.add_section(current_section)
+            try:
+                current_instances = json.loads(
+                    current.get(current_section, "instances", raw=True, fallback="{}")
+                )
+            except json.JSONDecodeError:
+                current_instances = {}
+            if not isinstance(current_instances, dict):
+                current_instances = {}
+            if isinstance(saved_instances, dict):
+                for machine_id, saved_settings in saved_instances.items():
+                    if not isinstance(saved_settings, dict):
+                        continue
+                    existing = current_instances.get(machine_id)
+                    merged = dict(existing) if isinstance(existing, dict) else {}
+                    merged.update(saved_settings)
+                    current_instances[machine_id] = merged
+            current.set(
+                current_section,
+                "instances",
+                json.dumps(current_instances, sort_keys=True, separators=(",", ":")),
+            )
+            continue
         if not current.has_section(section):
             current.add_section(section)
         for key, value in saved.items(section, raw=True):

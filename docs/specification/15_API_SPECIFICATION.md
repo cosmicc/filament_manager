@@ -24,11 +24,11 @@
 - `POST /spools/{id}/set-active`
 - `POST /printer-context/active-spool/clear`
 
-`POST /spools` accepts filament-only capacity and an optional full-spool gross reading; when tare is omitted, it infers tare as gross minus capacity and records the initial observation atomically. `PATCH /spools/{id}` accepts every setup field, explicit current-remaining correction, bounded free-text `location`, and `expected_version`. A changed current remaining amount appends an operator-correction usage event; supplying a location value or `null` establishes Filament Manager ownership. `DELETE /spools/{id}` deletes setup-only mistakes and their creation measurement, but archives any record with later measurement/use/print/calibration/NFC history. All paths queue supported Spoolman work atomically.
+`POST /spools` accepts purchased filament-only weight and an optional full-spool gross reading; when tare is omitted, it infers tare as gross minus net filament and records the initial observation atomically. Optional purchase cost/currency pair with that net weight. `PATCH /spools/{id}` accepts every setup field, explicit current-remaining correction, bounded free-text `location`, and `expected_version`. A changed current remaining amount appends an operator-correction usage event; supplying a location value or `null` establishes Filament Manager ownership. Cost-basis changes queue managed Cura synchronization in addition to Spoolman projection. `DELETE /spools/{id}` deletes setup-only mistakes and their creation measurement, but archives any record with later measurement/use/print/calibration/NFC history. All paths queue supported Spoolman work atomically.
 
 `POST /spools/{id}/set-active` is retained as the compatibility route for the Inventory **Load spool** action. It validates that the spool is available and projected and has a safe temperature from the newest non-archived exact profile or linked in-scope template, records an audited request, and queues `moonraker.spool_change.request`. It does not require publication, mutate canonical or Spoolman active state, or weaken the separate published-profile Cura print gate. The physical Klipper workflow performs state changes only at completed unload/load boundaries; periodic reconciliation observes the result.
 
-Spool responses include a derived completed-print count. Every completed job counts once for each distinct spool appearing as the starting spool or in an M600 segment.
+Spool responses include a derived completed-print count and `cost_per_gram`, calculated as purchase cost divided by purchased net filament weight with canonical decimal arithmetic. Every completed job counts once for each distinct spool appearing as the starting spool or in an M600 segment.
 
 ### Filament products and profiles
 
@@ -46,7 +46,7 @@ Spool responses include a derived completed-print count. Every completed job cou
 - `PUT /profiles/templates/{id}/settings`
 - `PATCH /profiles/templates/{id}`
 
-`POST /filaments` selects a current template snapshot and atomically creates the product plus its current inherited profile. `PATCH /filaments/{id}` corrects product setup and can relink a compatible current template while preserving sparse overrides. `DELETE /filaments/{id}` deletes only dependency-free setup mistakes and otherwise archives. Direct profile/template saves append hidden immutable snapshots, immediately become current, and queue projections. A template save also writes the next current profile snapshot for every linked filament while retaining each sparse explicit customization. Filament create/update resolves a shared case-insensitive solid palette, fixed Rainbow color, or one-to-three-sample product-specific multicolor palette. Only solid palette changes propagate to matching products. Color changes are rejected after retained spool use or print history. Configured-system seeding reports counts for printers, plates, and newly created recommended ASA templates.
+`POST /filaments` selects a current template snapshot and atomically creates the product plus its current inherited profile. Supplying a validated duplicate source copies its sparse explicit profile customizations into the compatible selected template scope but never copies spools, history, calibrations, or bindings. `PATCH /filaments/{id}` corrects product setup and can relink a compatible current template while preserving sparse overrides. `DELETE /filaments/{id}` deletes only dependency-free setup mistakes and otherwise archives. Direct profile/template saves append hidden immutable snapshots, immediately become current, and queue projections. A template save also writes the next current profile snapshot for every linked filament while retaining each sparse explicit customization. Filament create/update resolves a shared case-insensitive solid palette, fixed Rainbow color, or one-to-three-sample product-specific multicolor palette. Only solid palette changes propagate to matching products. Color changes are rejected after retained spool use or print history. Configured-system seeding reports counts for printers, plates, and newly created recommended ASA templates.
 
 ### Build plates
 
@@ -142,6 +142,12 @@ Printer responses omit Moonraker addresses and credentials. Synchronization retu
 
 Only one physical nozzle may be installed on a printer. `PATCH` may edit its unique code, including while installed, without rewriting lifecycle or print history. Responses derive completed-print and total-filament-use values from immutable print history; lifecycle events are append-only.
 
+Installing a different diameter queues a closed-Cura update to one existing exact machine/nozzle variant on each managed workstation. An unavailable or ambiguous variant fails safely without changing the Cura machine. Successful changes locally back up the machine instance and queue the current material library.
+
+Recovery endpoints list safe metadata, queue an exact-installation named capture, edit only name/description with optimistic concurrency, delete one confirmed unreferenced point, and queue confirmed exact-version restore. Automatic snapshots are content-deduplicated; deleting one stores only its exact version/content identity so the unchanged backup stays absent, while named capture requests remain idempotent by deployment and may intentionally retain identical settings.
+
+Print responses expose an application-local timelapse link only after a conservative Moonraker file association. The link requires application authentication, supports video range requests, and never reveals the configured Moonraker origin or API key.
+
 ### Devices
 
 - `POST /device-events/scale`
@@ -166,7 +172,7 @@ Only one physical nozzle may be installed on a printer. `PATCH` may edit its uni
 - `POST /diagnostics/validation-runs` (Administrator only)
 - `POST /diagnostics/projection-rebuild` (Administrator only)
 
-Diagnostics responses contain only sanitized bounded checks, counts, timestamps, versions, and messages. The authenticated text route generates a non-cacheable attachment from that same sanitized overview and never includes URLs, SQL, tracebacks, credentials, or upstream response bodies. The version route compares the running version with the highest non-draft semantic release from the fixed public GitHub repository endpoint, includes testing prereleases, caches the result, and never returns the upstream body. Validation is read-only and persisted. Rebuild queues idempotent derived work and never performs a database restore.
+Diagnostics responses contain only sanitized bounded checks, counts, timestamps, versions, and messages. `failure_groups` retains one latest representative and actionable count for each failing job type independently of the bounded recent list. The authenticated text route generates a non-cacheable attachment from that same sanitized overview and never includes URLs, SQL, tracebacks, credentials, or upstream response bodies. The version route compares the running version with the highest non-draft semantic release from the fixed public GitHub repository endpoint, includes testing prereleases, caches the result, and never returns the upstream body. Validation is read-only and persisted. Rebuild queues idempotent derived work and never performs a database restore.
 
 ## WebSocket/SSE events
 

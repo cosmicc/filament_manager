@@ -511,6 +511,64 @@ async def test_cura_recovery_snapshot_and_restore_lifecycle(
             assert duplicate.status_code == 200, duplicate.text
             assert duplicate.json()["snapshot_id"] == snapshot_id
 
+            capture_request = await client.post(
+                f"/api/v1/workstation-agents/{agent_id}/cura-recovery-captures",
+                json={
+                    "installation_id": "cura-test",
+                    "name": "Before nozzle change",
+                    "description": "Known-good workshop configuration",
+                },
+            )
+            assert capture_request.status_code == 202, capture_request.text
+            capture_deployment_id = capture_request.json()["id"]
+            claimed_capture = await client.post(
+                "/api/v1/workstation-agent/deployments/claim",
+                headers=headers,
+            )
+            assert claimed_capture.status_code == 200, claimed_capture.text
+            assert claimed_capture.json()["deployment_id"] == capture_deployment_id
+            manual = await client.post(
+                "/api/v1/workstation-agent/cura-recovery-snapshots",
+                headers=headers,
+                json={
+                    "snapshot_checksum": checksum,
+                    "payload": snapshot_payload,
+                    "capture_request_id": capture_deployment_id,
+                },
+            )
+            assert manual.status_code == 200, manual.text
+            assert manual.json()["snapshot_id"] != snapshot_id
+            manual_snapshot_id = manual.json()["snapshot_id"]
+            capture_completed = await client.post(
+                f"/api/v1/workstation-agent/deployments/{capture_deployment_id}/complete",
+                headers=headers,
+                json={
+                    "outcome": "succeeded",
+                    "result": {"snapshot_id": manual_snapshot_id, "installation_id": "cura-test"},
+                },
+            )
+            assert capture_completed.status_code == 204, capture_completed.text
+            manual_list = await client.get(f"/api/v1/workstation-agents/{agent_id}/cura-recovery-snapshots")
+            manual_item = next(item for item in manual_list.json() if item["id"] == manual_snapshot_id)
+            assert manual_item["capture_kind"] == "manual"
+            assert manual_item["name"] == "Before nozzle change"
+            renamed = await client.patch(
+                f"/api/v1/workstation-agents/{agent_id}/cura-recovery-snapshots/{manual_snapshot_id}",
+                json={
+                    "expected_version": manual_item["record_version"],
+                    "name": "Before 0.6 mm nozzle",
+                    "description": "Ready to restore",
+                },
+            )
+            assert renamed.status_code == 200, renamed.text
+            assert renamed.json()["name"] == "Before 0.6 mm nozzle"
+            deleted = await client.request(
+                "DELETE",
+                f"/api/v1/workstation-agents/{agent_id}/cura-recovery-snapshots/{manual_snapshot_id}",
+                json={"expected_version": renamed.json()["record_version"], "confirmed": True},
+            )
+            assert deleted.status_code == 204, deleted.text
+
             reset_payload = {
                 **snapshot_payload,
                 "files": [
@@ -602,9 +660,32 @@ async def test_cura_recovery_snapshot_and_restore_lifecycle(
             assert retained_snapshots.status_code == 200, retained_snapshots.text
             assert len(retained_snapshots.json()) == 10
             assert snapshot_id not in {item["id"] for item in retained_snapshots.json()}
+            deleted_automatic = next(
+                item for item in retained_snapshots.json() if item["snapshot_checksum"] == retained_checksum
+            )
+            deleted = await client.request(
+                "DELETE",
+                f"/api/v1/workstation-agents/{agent_id}/cura-recovery-snapshots/{deleted_automatic['id']}",
+                json={
+                    "expected_version": deleted_automatic["record_version"],
+                    "confirmed": True,
+                },
+            )
+            assert deleted.status_code == 204, deleted.text
+            suppressed = await client.post(
+                "/api/v1/workstation-agent/cura-recovery-snapshots",
+                headers=headers,
+                json={
+                    "snapshot_checksum": retained_checksum,
+                    "payload": retained_payload,
+                },
+            )
+            assert suppressed.status_code == 200, suppressed.text
+            assert suppressed.json()["accepted"] is False
+            assert suppressed.json()["reason"] == "deleted_by_administrator"
 
         async with factory() as session:
-            assert await session.scalar(select(func.count(CuraRecoverySnapshot.id))) == 10
+            assert await session.scalar(select(func.count(CuraRecoverySnapshot.id))) == 9
             restore = await session.get(CuraRecoveryRestore, restore_id)
             assert restore is not None and restore.status == CuraDeploymentStatus.SUCCEEDED
             assert restore.snapshot_id is None
@@ -613,5 +694,6 @@ async def test_cura_recovery_snapshot_and_restore_lifecycle(
             assert agent is not None
             assert agent.cura_recovery_status == "ready"
             assert agent.last_recovery_restore_at is not None
+            assert len(agent.suppressed_recovery_snapshots) == 1
 
         await engine.dispose()

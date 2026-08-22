@@ -67,9 +67,51 @@ def test_previous_schema_automatically_upgrades_to_metadata_head(
                 )
             )
 
+        command.upgrade(alembic_config, "a3b4c5d6e789")
+        with engine.begin() as connection:
+            connection.execute(
+                text(
+                    """
+                    INSERT INTO outbox_jobs (
+                        id, job_type, idempotency_key, aggregate_type,
+                        aggregate_id, aggregate_version, payload, status,
+                        attempts, max_attempts, next_attempt_at, created_at,
+                        last_error_class, last_error_message
+                    ) VALUES
+                    (
+                        '10000000-0000-0000-0000-000000000005',
+                        'moonraker.state.reconcile',
+                        'periodic:moonraker.state.reconcile:456', 'system',
+                        '20000000-0000-0000-0000-000000000004', 456,
+                        '{}'::jsonb, 'DEAD'::job_status, 12, 12,
+                        CURRENT_TIMESTAMP, CURRENT_TIMESTAMP,
+                        'RuntimeError', 'bounded Moonraker failure'
+                    ),
+                    (
+                        '10000000-0000-0000-0000-000000000006',
+                        'spoolman.filament.upsert',
+                        'filament:migration:v1', 'filament_product',
+                        '20000000-0000-0000-0000-000000000006', 1,
+                        '{}'::jsonb, 'DEAD'::job_status, 12, 12,
+                        CURRENT_TIMESTAMP, CURRENT_TIMESTAMP,
+                        'SpoolmanError', 'Spoolman POST /filament failed'
+                    ),
+                    (
+                        '10000000-0000-0000-0000-000000000007',
+                        'spoolman.spool.adjust_weight',
+                        'spool:migration:weight:v1', 'spool',
+                        '20000000-0000-0000-0000-000000000007', 1,
+                        '{}'::jsonb, 'DEAD'::job_status, 12, 12,
+                        CURRENT_TIMESTAMP, CURRENT_TIMESTAMP,
+                        'SpoolmanError', 'Spoolman PUT /spool/7/measure failed'
+                    )
+                    """
+                )
+            )
+
         upgrade_database(DatabaseConfig(url=database_url))
         with engine.connect() as connection:
-            assert connection.scalar(text("SELECT version_num FROM alembic_version")) == "a3b4c5d6e789"
+            assert connection.scalar(text("SELECT version_num FROM alembic_version")) == "b4c5d6e7f890"
             recovered = connection.execute(
                 text(
                     """
@@ -89,6 +131,32 @@ def test_previous_schema_automatically_upgrades_to_metadata_head(
                 )
             )
             assert periodic_status == "SUPERSEDED"
+            assert (
+                connection.scalar(
+                    text(
+                        "SELECT status::text FROM outbox_jobs "
+                        "WHERE id = '10000000-0000-0000-0000-000000000005'"
+                    )
+                )
+                == "SUPERSEDED"
+            )
+            assert (
+                connection.scalar(
+                    text(
+                        "SELECT status::text FROM outbox_jobs "
+                        "WHERE id = '10000000-0000-0000-0000-000000000006'"
+                    )
+                )
+                == "SUPERSEDED"
+            )
+            recovered_weight = connection.execute(
+                text(
+                    "SELECT status::text, attempts, last_error_at IS NOT NULL "
+                    "FROM outbox_jobs "
+                    "WHERE id = '10000000-0000-0000-0000-000000000007'"
+                )
+            ).one()
+            assert recovered_weight == ("PENDING", 0, True)
         inspector = inspect(engine)
         assert "material_templates" in inspector.get_table_names()
         assert "material_template_revisions" in inspector.get_table_names()
@@ -127,9 +195,23 @@ def test_previous_schema_automatically_upgrades_to_metadata_head(
             "cura_recovery_message",
             "last_recovery_snapshot_at",
             "last_recovery_restore_at",
+            "suppressed_recovery_snapshots",
         } <= {column["name"] for column in inspector.get_columns("workstation_agents")}
         assert "active_nozzle_id" in {column["name"] for column in inspector.get_columns("printers")}
+        assert {
+            "spool_preflight_status",
+            "spool_preflight_message",
+            "last_spool_preflight_sync_at",
+        } <= {column["name"] for column in inspector.get_columns("printers")}
+        assert "last_error_at" in {column["name"] for column in inspector.get_columns("outbox_jobs")}
         assert "nozzle_id" in {column["name"] for column in inspector.get_columns("print_jobs")}
+        assert {
+            "capture_request_id",
+            "capture_kind",
+            "name",
+            "description",
+            "record_version",
+        } <= {column["name"] for column in inspector.get_columns("cura_recovery_snapshots")}
         assert {"source_workstation_agent_id", "source_cura_material_id"} <= set(profile_columns)
         command.check(alembic_config)
         command.downgrade(alembic_config, "a7b8c9d0e123")

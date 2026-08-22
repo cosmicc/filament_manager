@@ -45,6 +45,11 @@ const spool = {
   remaining_percent: '80',
   weight_confidence: 'estimated',
   status: 'in_stock',
+  purchase_source: 'Local supplier',
+  purchase_date: '2026-08-20',
+  purchase_cost: '15.00',
+  cost_per_gram: '0.015000',
+  currency: 'USD',
   location: 'PLA-1',
   spoolman_id: 17,
   active_printer_id: null,
@@ -87,6 +92,7 @@ describe('SpoolsPage', () => {
     })
     expect(await screen.findByText(/Load request sent to Fluidd/)).toBeTruthy()
     expect(screen.getByText('Not active')).toBeTruthy()
+    expect(screen.getAllByText('1.5¢/g').length).toBeGreaterThan(0)
     expect(screen.queryByRole('button', { name: 'Set active' })).toBeNull()
   })
 })

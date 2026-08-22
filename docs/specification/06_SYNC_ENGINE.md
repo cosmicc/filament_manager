@@ -8,7 +8,7 @@ The Spoolman service is operationally distinct. Filament Manager must tolerate i
 
 ## Transactional outbox
 
-Every canonical mutation and its projection request commit in one PostgreSQL transaction. Workers claim jobs with `FOR UPDATE SKIP LOCKED`. Multiple configured dispatchers claim one job at a time, and a bounded lock timeout allows a replacement worker to reclaim work abandoned by a terminated process. Per-object PostgreSQL advisory locks prevent concurrent retries or convergence from creating duplicate remote objects.
+Every canonical mutation and its projection request commit in one PostgreSQL transaction. Workers claim jobs with `FOR UPDATE SKIP LOCKED`. Multiple configured dispatchers claim one job at a time, and a bounded lock timeout allows a replacement worker to reclaim work abandoned by a terminated process. Per-object PostgreSQL advisory locks prevent concurrent retries or convergence from creating duplicate remote objects. A new periodic run supersedes its previous terminal attempt before enqueueing, preventing a persistent fault from accumulating actionable dead rows. Newer equivalent object success retires obsolete failures; full Spoolman convergence may retire metadata upserts but never deletes or explicit weight adjustments.
 
 Suggested job types:
 

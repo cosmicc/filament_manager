@@ -76,7 +76,7 @@ const spool = {
   nominal_net_mass_g: '1000', tare_mass_g: '200', remaining_mass_expected_g: '800',
   remaining_mass_measured_g: '800', remaining_mass_effective_g: '800',
   remaining_percent: '80', weight_confidence: 'measured', status: 'in_stock',
-  purchase_source: null, purchase_date: null, purchase_cost: null, currency: 'USD',
+  purchase_source: null, purchase_date: null, purchase_cost: '15.00', cost_per_gram: '0.015000', currency: 'USD',
   location: 'Bucket 3', spoolman_id: 7, active_printer_id: null, last_measurement_at: '2026-08-11T14:00:00Z',
   notes: null, archived: false, record_version: 3, completed_print_count: 6,
 }
@@ -298,9 +298,12 @@ test('spool creation is available without opening Spoolman', async ({ page }) =>
   await page.goto('/spools')
   await page.getByRole('button', { name: 'Add spool' }).click()
   await page.getByLabel('Spool code').fill('PLA-BLUE-01')
+  await page.getByLabel('Purchase cost').fill('15')
+  await expect(page.getByText('1.5¢/g using filament weight only.')).toBeVisible()
   await page.getByRole('button', { name: 'Create spool' }).click()
   await expect.poll(() => submitted?.filament_product_id).toBe(filament.id)
   await expect.poll(() => submitted?.spool_code).toBe('PLA-BLUE-01')
+  await expect.poll(() => submitted?.purchase_cost).toBe('15')
 })
 
 test('free-text bucket location is editable from Filament Manager', async ({ page }) => {
@@ -317,6 +320,7 @@ test('free-text bucket location is editable from Filament Manager', async ({ pag
   })
 
   await page.goto('/spools')
+  await expect(page.getByText('1.5¢/g', { exact: true }).first()).toBeVisible()
   await page.getByText('PLA-BLUE-01', { exact: true }).click()
   await expect(page.getByText('Bucket 3', { exact: true }).last()).toBeVisible()
   await page.getByRole('button', { name: 'Edit spool' }).click()

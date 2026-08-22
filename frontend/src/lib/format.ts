@@ -21,6 +21,38 @@ export function compactNumber(
   })
 }
 
+export function currencyAmount(
+  value: string | number | null | undefined,
+  currency = 'USD',
+): string {
+  if (value == null || value === '') return '—'
+  const numeric = Number(value)
+  if (!Number.isFinite(numeric)) return '—'
+  try {
+    return new Intl.NumberFormat(undefined, {
+      style: 'currency',
+      currency,
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2,
+    }).format(numeric)
+  } catch {
+    return `${currency} ${numeric.toLocaleString(undefined, { maximumFractionDigits: 2 })}`
+  }
+}
+
+export function costPerGram(
+  value: string | number | null | undefined,
+  currency = 'USD',
+): string {
+  if (value == null || value === '') return '—'
+  const numeric = Number(value)
+  if (!Number.isFinite(numeric)) return '—'
+  if (currency === 'USD') {
+    return `${(numeric * 100).toLocaleString(undefined, { maximumFractionDigits: 2 })}¢/g`
+  }
+  return `${currency} ${numeric.toLocaleString(undefined, { maximumFractionDigits: 2 })}/g`
+}
+
 export function inputNumber(
   value: string | number | null | undefined,
   maximumFractionDigits = 1,

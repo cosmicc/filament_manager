@@ -327,6 +327,11 @@ def spool_response(spool: Spool, *, completed_print_count: int = 0) -> SpoolResp
     """Create the flattened API view required by table and detail screens."""
 
     product = spool.filament_product
+    cost_per_gram = (
+        (spool.purchase_cost / spool.nominal_net_mass_g).quantize(Decimal("0.000001"))
+        if spool.purchase_cost is not None
+        else None
+    )
     remaining_percent = (
         (spool.remaining_mass_effective_g / spool.nominal_net_mass_g) * Decimal("100")
     ).quantize(Decimal("0.001"))
@@ -354,6 +359,7 @@ def spool_response(spool: Spool, *, completed_print_count: int = 0) -> SpoolResp
         purchase_source=spool.purchase_source,
         purchase_date=spool.purchase_date,
         purchase_cost=spool.purchase_cost,
+        cost_per_gram=cost_per_gram,
         currency=spool.currency,
         location=spool.location,
         spoolman_id=spool.spoolman_id,
@@ -574,6 +580,37 @@ async def create_filament(
 
     template_revision: MaterialTemplateRevision | None = None
     template: MaterialTemplate | None = None
+    duplicate_source: FilamentProduct | None = None
+    duplicate_source_profile: MaterialProfile | None = None
+    if payload.duplicate_source_filament_id is not None:
+        duplicate_source = await session.get(FilamentProduct, payload.duplicate_source_filament_id)
+        if duplicate_source is None:
+            raise ApiError(
+                status.HTTP_422_UNPROCESSABLE_ENTITY,
+                "duplicate_source_unavailable",
+                "The source filament is no longer available",
+            )
+        duplicate_source_profile = await session.scalar(
+            select(MaterialProfile)
+            .where(
+                MaterialProfile.filament_product_id == duplicate_source.id,
+                MaterialProfile.status == ProfileStatus.PUBLISHED,
+            )
+            .order_by(MaterialProfile.version.desc())
+            .limit(1)
+        )
+        if duplicate_source_profile is None:
+            raise ApiError(
+                status.HTTP_422_UNPROCESSABLE_ENTITY,
+                "duplicate_source_profile_unavailable",
+                "The source filament does not have a current material profile",
+            )
+        if payload.material_template_revision_id is None:
+            raise ApiError(
+                status.HTTP_422_UNPROCESSABLE_ENTITY,
+                "duplicate_template_required",
+                "The duplicate must retain the source filament's current template",
+            )
     if payload.material_template_revision_id is not None:
         template_revision = await session.get(MaterialTemplateRevision, payload.material_template_revision_id)
         if template_revision is None or template_revision.status != ProfileStatus.PUBLISHED:
@@ -595,6 +632,17 @@ async def create_filament(
                 "material_type_template_mismatch",
                 "The filament material type must match the selected template",
             )
+        if duplicate_source_profile is not None and (
+            duplicate_source_profile.printer_id != template.printer_id
+            or duplicate_source_profile.nozzle_diameter_mm != template.nozzle_diameter_mm
+            or duplicate_source is None
+            or duplicate_source.material_type.casefold() != template.material_type.casefold()
+        ):
+            raise ApiError(
+                status.HTTP_422_UNPROCESSABLE_ENTITY,
+                "duplicate_template_scope_mismatch",
+                "The duplicate must use the source material, printer, and nozzle template scope",
+            )
 
     color = await _remember_color(
         session,
@@ -608,6 +656,7 @@ async def create_filament(
     product_values = payload.model_dump(
         exclude={
             "material_template_revision_id",
+            "duplicate_source_filament_id",
             "material_type",
             "color_name",
             "color_hex",
@@ -628,8 +677,13 @@ async def create_filament(
     await session.flush()
     profile: MaterialProfile | None = None
     if template_revision is not None and template is not None:
-        profile_values = MaterialSettingsInput.model_validate(template_revision.settings).model_dump(
-            mode="json"
+        profile_values = (
+            resolve_profile_settings(
+                template_revision.settings,
+                dict(duplicate_source_profile.setting_overrides or {}),
+            )
+            if duplicate_source_profile is not None
+            else MaterialSettingsInput.model_validate(template_revision.settings).model_dump(mode="json")
         )
         # Product density is canonical for the actual purchasable filament and
         # intentionally supersedes the generic template's starting density.
@@ -641,6 +695,11 @@ async def create_filament(
             nozzle_diameter_mm=template.nozzle_diameter_mm,
             base_revision=template_revision,
             settings=profile_values,
+            setting_overrides=(
+                dict(duplicate_source_profile.setting_overrides or {})
+                if duplicate_source_profile is not None
+                else None
+            ),
         )
     add_audit_event(
         session,
@@ -657,6 +716,11 @@ async def create_filament(
                 str(template_revision.id) if template_revision is not None else None
             ),
             "material_profile_id": str(profile.id) if profile is not None else None,
+            "duplicate_source_filament_id": (
+                str(payload.duplicate_source_filament_id)
+                if payload.duplicate_source_filament_id is not None
+                else None
+            ),
         },
         correlation_id=request.state.correlation_id,
     )
@@ -1191,6 +1255,7 @@ async def create_spool(
         aggregate_version=1,
         payload={"spool_id": str(spool.id)},
     )
+    await queue_managed_cura_library(session, requested_by=operator.id)
     await session.commit()
     spool.filament_product = product
     return await spool_response_with_statistics(session, spool)
@@ -1328,6 +1393,17 @@ async def update_spool(
         field: (spool.remaining_mass_effective_g if field == "remaining_mass_g" else getattr(spool, field))
         for field in before
     }
+    cura_cost_changed = any(
+        before.get(field) != after.get(field)
+        for field in {
+            "filament_product_id",
+            "nominal_net_mass_g",
+            "purchase_cost",
+            "currency",
+            "archived",
+        }
+        if field in before
+    )
     add_audit_event(
         session,
         actor_id=operator.id,
@@ -1358,6 +1434,8 @@ async def update_spool(
             aggregate_version=spool.record_version,
             payload={"spool_id": str(spool.id)},
         )
+    if cura_cost_changed:
+        await queue_managed_cura_library(session, requested_by=operator.id)
     await session.commit()
     return await spool_response_with_statistics(session, spool)
 
@@ -1404,6 +1482,7 @@ async def delete_or_archive_spool(
             after={"archived": True, "dependent_history_retained": True},
             correlation_id=request.state.correlation_id,
         )
+        await queue_managed_cura_library(session, requested_by=operator.id)
         await session.commit()
         return {"disposition": "archived"}
 
@@ -1441,6 +1520,7 @@ async def delete_or_archive_spool(
         )
     )
     await session.delete(spool)
+    await queue_managed_cura_library(session, requested_by=operator.id)
     await session.commit()
     return {"disposition": "deleted"}
 

@@ -2,7 +2,7 @@
 
 from datetime import UTC, datetime
 from types import SimpleNamespace
-from unittest.mock import AsyncMock
+from unittest.mock import AsyncMock, Mock
 from uuid import uuid4
 
 import pytest
@@ -36,6 +36,49 @@ async def test_scheduler_does_not_queue_overlapping_reconciliation(
     )
 
     assert await scheduler.schedule_periodic_jobs(session) == 0  # type: ignore[arg-type]
+    session.commit.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_scheduler_supersedes_prior_dead_periodic_run_before_replacement(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A persistent recurring fault keeps one actionable run, not unbounded dead debt."""
+
+    session = SimpleNamespace(
+        scalar=AsyncMock(
+            side_effect=[
+                True,
+                None,
+                None,
+                uuid4(),
+                uuid4(),
+                uuid4(),
+                uuid4(),
+            ]
+        ),
+        execute=AsyncMock(),
+        add=Mock(),
+        commit=AsyncMock(),
+    )
+    monkeypatch.setattr(
+        scheduler,
+        "get_settings",
+        lambda: SimpleNamespace(
+            spoolman=SimpleNamespace(full_reconcile_interval_minutes=1),
+            sync=SimpleNamespace(
+                max_retry_attempts=12,
+                moonraker_state_interval_seconds=15,
+                moonraker_info_interval_seconds=300,
+                moonraker_print_interval_seconds=5,
+            ),
+            google=SimpleNamespace(enabled=False),
+        ),
+    )
+
+    assert await scheduler.schedule_periodic_jobs(session) == 1  # type: ignore[arg-type]
+    session.execute.assert_awaited_once()
+    session.add.assert_called_once()
     session.commit.assert_awaited_once()
 
 

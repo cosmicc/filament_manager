@@ -1,5 +1,30 @@
 # User Changelog
 
+## 0.3.2 - 08.21.2026
+
+### Added
+
+- Added **Duplicate** on filament details to start a new filament with copied product data, template, and customized settings without copying physical inventory or history.
+- Added on-demand named full Cura backups, optional descriptions, editable backup details, and confirmed deletion that keeps an unchanged automatic recovery point from immediately reappearing.
+- Added exact nozzle details, more slicer/job timing and filament-use information, and secure timelapse video links to completed Print History records.
+- Added automatic Cura nozzle-variant selection after installing a different physical nozzle when Cura already has one exact matching variant.
+- Added purchase weight, purchase cost, and calculated cost per gram to physical spools. Cura receives a weighted cost for each managed product material when its available priced spools use one currency.
+- Added a Diagnostics summary showing the latest sanitized cause for every currently failing projection type.
+
+### Changed
+
+- Customized filament settings now have a stronger visual accent while retaining the Inherited/Customized explanation and Reset to Template action.
+- Cura Workstations now reports the managed material library separately from pre-takeover sources and user-saved custom print profiles, making a legitimate zero custom-profile count clearer.
+- Full Cura recovery now retains safe Cura2Moonraker upload, start, output, transformation, camera, and power-device choices while keeping connection URLs and API keys local.
+- Projection scheduling now keeps only the current recurring attempt actionable. The upgrade automatically retires obsolete recurring/metadata failures and retries unfinished Spoolman weight work.
+
+### Fixed
+
+- Fixed repeated spool-preflight catalog errors creating growing dead-job totals and repeated warning entries. The catalog problem now appears as its own actionable Diagnostics check without stopping the rest of Moonraker state synchronization.
+- Fixed Print History hiding the exact physical nozzle and showing an internal G-code SHA-256 value instead of more useful print details.
+- Fixed synchronized Cura material counts appearing as zero because only unmanaged pre-takeover files were counted.
+- Fixed recovered projection history continuing to inflate the dead count and fixed one repeating error from hiding the cause of other failing projection types.
+
 ## 0.3.1 - 08.20.2026
 
 ### Added

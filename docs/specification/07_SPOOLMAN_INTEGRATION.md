@@ -80,7 +80,7 @@ Material, vendor, product name/grade/hardness, diameter, density, nominal weight
 
 ### Spool
 
-Physical spool, initial weight, tare weight, remaining and used weight, price, first/last use, location, comment, and managed identifiers.
+Physical spool, purchased net filament weight as initial weight, tare weight, remaining and used weight, total purchase price, first/last use, location, comment, and managed identifiers. Filament Manager derives cost per gram locally from the same net weight and total price.
 
 The Spoolman active ID is an operational observation of what is physically loaded, never a reservation for the next spool. Klipper clears it only after the physical unload routine completes and sets the exact replacement only after the physical load routine completes. Filament Manager Inventory and public macros request that workflow instead of pre-activating a target. The worker repairs accidental direct Fluidd/Moonraker changes to the persisted physical macro value.
 

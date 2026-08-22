@@ -1,5 +1,32 @@
 # Changelog
 
+## 0.3.2 - 08.21.2026
+
+### Added
+
+- Added filament duplication through the normal Add Filament workflow, copying product fields, the current linked template, and sparse explicit Cura customizations without copying spools, print history, calibrations, or NFC bindings.
+- Added named full Cura backup requests, editable backup names/descriptions, durable confirmed deletion of individual backups, and intentional same-content named recovery points alongside content-deduplicated automatic snapshots.
+- Added safe Cura2Moonraker behavior-preference backup/restore while preserving current local Moonraker URLs and API keys, plus closed-Cura exact existing-variant nozzle updates with local machine backups.
+- Added physical nozzle details, bounded job/file metadata, timing and material-use details, and authenticated range-capable moonraker-timelapse video links to Print History.
+- Added derived per-gram purchase cost to every priced physical spool and a currency-safe weighted product cost basis for Cura print-cost estimates.
+- Added an actionable Diagnostics failure summary that always retains the newest sanitized cause for every failing projection type, even when another repeating error fills the recent log.
+
+### Changed
+
+- Changed filament customization fields to use a stronger border, inset accent, background, and ownership badge so template differences are immediately visible.
+- Changed Cura Workstations to distinguish synchronized managed materials, unmanaged pre-takeover sources, and user-saved custom print profiles instead of describing all counts as existing profiles.
+- Changed physical nozzle installation to queue safe Cura machine-variant alignment and a subsequent current material-library synchronization on managed workstations.
+- Changed all server, frontend, and workstation-agent version surfaces to 0.3.2 and advanced the expected database schema to `b4c5d6e7f890`.
+- Changed recurring projection scheduling to supersede the prior terminal attempt before queuing its replacement. The v0.3.2 migration retires obsolete recurring and reconstructable Spoolman metadata failures while requeuing non-reconstructable Spoolman work such as weight adjustments.
+
+### Fixed
+
+- Fixed optional Moonraker spool-preflight catalog failures failing the entire physical-state reconciliation, repeatedly accumulating dead projection jobs, and logging the same warning on every poll. The catalog now has an actionable per-printer Diagnostics status, transition-based warnings, and successful recurring reconciliation that supersedes the older dead rows.
+- Fixed Print History omitting the exact captured physical nozzle and other useful Moonraker/Cura job details, and removed the internal G-code SHA-256 value from the browser details.
+- Fixed linked and synchronized Cura workstations appearing to have zero material profiles because the displayed count excluded the managed Filament Manager library.
+- Fixed full Cura recovery excluding all Cura2Moonraker plugin settings when only its credentials and endpoints required exclusion.
+- Fixed old successful projection recovery leaving hundreds of dead rows actionable and fixed older Spoolman causes being hidden when repeated Moonraker errors consumed the bounded recent-error list.
+
 ## 0.3.1 - 08.20.2026
 
 ### Added

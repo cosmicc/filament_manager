@@ -3,6 +3,7 @@
 ## Unit tests
 
 - mass calculations and clamping
+- purchase cost per gram and currency-safe Cura product-cost aggregation
 - density/length calculations
 - profile validation
 - calibration dependency invalidation
@@ -10,10 +11,10 @@
 - Google output escaping
 - idempotency-key generation
 - Spoolman extra-field merge
-- deterministic Cura material GUIDs, separate bounded strict-print/manual-load catalogs, exact-profile/template load-temperature fallback, Klipper macro syntax, and physical unload/load commit ordering
+- deterministic Cura material GUIDs, merged managed cost preferences, separate bounded strict-print/manual-load catalogs, exact-profile/template load-temperature fallback, Klipper macro syntax, and physical unload/load commit ordering
 - derived completed-print counts for one plate side, captured physical nozzle, and each distinct start/M600 spool
 - manual Side B creation, duplicate rejection, and mesh-unavailable initial state
-- Cura recovery path/setting allowlists, credential/endpoint/path removal, deterministic checksums, semantic plugin inventory, exact-version enforcement, reset detection, retention, local rollback, and preference merging
+- Cura recovery path/setting allowlists, credential/endpoint/path removal, deterministic checksums, semantic plugin inventory, automatic and named captures, metadata edits, durable confirmed deletion, exact-version enforcement, reset detection, retention, local rollback, safe Cura2Moonraker behavior merging, and current connection-secret preservation
 - Bugsnag opt-in validation, final-delivery sanitization, lazy browser loading, route normalization, polling suppression, exact Content Security Policy destinations, and duplicate worker throttling
 
 ## PostgreSQL integration tests
@@ -25,7 +26,7 @@ Use a real disposable PostgreSQL instance for:
 - JSONB behavior
 - advisory locks
 - worker claiming with `SKIP LOCKED`
-- outbox atomicity
+- outbox atomicity, exact failure timestamps, periodic replacement supersession, and reconstructable-versus-non-reconstructable recovery
 - optimistic concurrency
 - nozzle lifecycle events, one-installed-nozzle enforcement, worker heartbeats, and persisted diagnostic runs
 - immutable Cura recovery snapshots, per-installation/version retention, idempotent upload, reset-blocked preservation, leased restore claims, and bounded completion state
@@ -35,7 +36,7 @@ Use a real disposable PostgreSQL instance for:
 Mock or containerize:
 
 - Spoolman REST and WebSocket
-- Moonraker status, physical-spool macro state, bounded catalogs, guarded change calls, direct Spoolman target capture/restoration, and live manual-load prompts
+- Moonraker status, physical-spool macro state, bounded catalogs with non-fatal durable catalog errors, guarded change calls, direct Spoolman target capture/restoration, and live manual-load prompts
 - running/latest-version comparison, testing-release inclusion, fixed GitHub endpoint behavior, caching, unavailable-state sanitization, and desktop/mobile presentation
 - Google Sheets batch updates and quota failures
 

@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { AlertTriangle, CheckCircle2, Clock3, FileSearch, History, Star } from 'lucide-react'
+import { AlertTriangle, CheckCircle2, Clock3, ExternalLink, FileSearch, History, Star } from 'lucide-react'
 import { type FormEvent, useMemo, useState } from 'react'
 import { apiFetch } from '../api/client'
 import type { PrintJob, PrintQualityRating } from '../api/types'
@@ -23,6 +23,15 @@ function snapshotLabel(snapshot: Record<string, unknown>, group: string, key: st
   return section && typeof section === 'object' && key in section
     ? String((section as Record<string, unknown>)[key] ?? '—')
     : '—'
+}
+
+function duration(value: string | null) {
+  if (!value) return '—'
+  const seconds = Number(value)
+  if (!Number.isFinite(seconds)) return '—'
+  const hours = Math.floor(seconds / 3600)
+  const minutes = Math.round((seconds % 3600) / 60)
+  return hours ? `${hours} hr ${minutes} min` : `${minutes} min`
 }
 
 function PrintAssessmentForm({ job, onSaved }: { job: PrintJob; onSaved: () => void }) {
@@ -62,11 +71,18 @@ function PrintDetail({ job, canAssess, onClose }: { job: PrintJob; canAssess: bo
   const queryClient = useQueryClient()
   const mismatches = job.inspection.mismatches ?? []
   const warnings = job.inspection.warnings ?? []
+  const metadata = job.inspection.file_metadata ?? {}
+  const nozzleDetails = [
+    snapshotLabel(job.state_snapshot, 'nozzle', 'code'),
+    job.nozzle_diameter_mm ? `${compactNumber(job.nozzle_diameter_mm, 2)} mm` : null,
+    snapshotLabel(job.state_snapshot, 'nozzle', 'material'),
+  ].filter((value) => value && value !== '—').join(' · ') || 'Legacy or unresolved'
   return (
     <Modal title={job.filename} description="Immutable print context, inspection evidence, material changes, and outcome history." size="wide" onClose={onClose} footer={<button className="button" onClick={onClose}>Close</button>}>
       <div className="print-detail-grid">
-        <section><p className="eyebrow">Exact material state</p><dl className="definition-list"><div><dt>Printer</dt><dd>{snapshotLabel(job.state_snapshot, 'printer', 'name')}</dd></div><div><dt>Spool</dt><dd>{snapshotLabel(job.state_snapshot, 'spool', 'code')}</dd></div><div><dt>Material</dt><dd>{job.material_name ?? snapshotLabel(job.state_snapshot, 'filament', 'product_name')}</dd></div><div><dt>Profile</dt><dd>{job.material_profile_id ? 'Exact saved settings captured' : 'Legacy or unresolved'}</dd></div><div><dt>Build plate</dt><dd>{snapshotLabel(job.state_snapshot, 'build_plate_surface', 'code')}</dd></div><div><dt>G-code SHA-256</dt><dd className="hash-value">{job.gcode_sha256 ?? 'Unavailable'}</dd></div></dl></section>
-        <section><p className="eyebrow">Sliced request</p><dl className="definition-list"><div><dt>Slicer</dt><dd>{[job.slicer, job.slicer_version].filter(Boolean).join(' ') || 'Unknown'}</dd></div><div><dt>Quality</dt><dd>{job.cura_quality_profile ?? 'Unknown'}</dd></div><div><dt>Nozzle / bed</dt><dd>{compactNumber(job.extruder_temp_c, 0)} / {compactNumber(job.bed_temp_c, 0)} °C</dd></div><div><dt>Layer / line</dt><dd>{compactNumber(job.layer_height_mm, 2)} / {compactNumber(job.line_width_mm, 2)} mm</dd></div><div><dt>Flow</dt><dd>{job.flow_percent ? `${compactNumber(job.flow_percent, 0)}%` : '—'}</dd></div><div><dt>Actual filament</dt><dd>{job.actual_filament_weight_g ? grams(job.actual_filament_weight_g) : 'Unavailable'}</dd></div></dl></section>
+        <section><p className="eyebrow">Exact physical state</p><dl className="definition-list"><div><dt>Printer</dt><dd>{snapshotLabel(job.state_snapshot, 'printer', 'name')}</dd></div><div><dt>Nozzle</dt><dd>{nozzleDetails}</dd></div><div><dt>Spool</dt><dd>{snapshotLabel(job.state_snapshot, 'spool', 'code')}</dd></div><div><dt>Material</dt><dd>{job.material_name ?? snapshotLabel(job.state_snapshot, 'filament', 'product_name')}</dd></div><div><dt>Profile</dt><dd>{job.material_profile_id ? `Exact saved settings · version ${job.material_profile_version ?? 'unknown'}` : 'Legacy or unresolved'}</dd></div><div><dt>Build plate</dt><dd>{snapshotLabel(job.state_snapshot, 'build_plate_surface', 'code')}</dd></div></dl></section>
+        <section><p className="eyebrow">Sliced request</p><dl className="definition-list"><div><dt>Slicer</dt><dd>{[job.slicer, job.slicer_version].filter(Boolean).join(' ') || 'Unknown'}</dd></div><div><dt>Quality / machine</dt><dd>{[job.cura_quality_profile, job.machine_name].filter(Boolean).join(' · ') || 'Unknown'}</dd></div><div><dt>Nozzle / bed / chamber</dt><dd>{compactNumber(job.extruder_temp_c, 0)} / {compactNumber(job.bed_temp_c, 0)} / {compactNumber(job.chamber_temp_c, 0)} °C</dd></div><div><dt>Layer / line</dt><dd>{compactNumber(job.layer_height_mm, 2)} / {compactNumber(job.line_width_mm, 2)} mm</dd></div><div><dt>Speed / flow</dt><dd>{job.print_speed_mm_s ? `${compactNumber(job.print_speed_mm_s, 0)} mm/s` : '—'} / {job.flow_percent ? `${compactNumber(job.flow_percent, 0)}%` : '—'}</dd></div><div><dt>Retraction</dt><dd>{job.retraction_distance_mm ? `${compactNumber(job.retraction_distance_mm, 2)} mm` : '—'} / {job.retraction_speed_mm_s ? `${compactNumber(job.retraction_speed_mm_s, 0)} mm/s` : '—'}</dd></div><div><dt>Pressure advance</dt><dd>{compactNumber(job.pressure_advance, 2)}</dd></div></dl></section>
+        <section><p className="eyebrow">Job results</p><dl className="definition-list"><div><dt>Started / finished</dt><dd>{dateTime(job.started_at)} / {dateTime(job.ended_at)}</dd></div><div><dt>Estimated / print / total</dt><dd>{duration(job.estimated_duration_seconds)} / {duration(job.print_duration_seconds)} / {duration(job.total_duration_seconds)}</dd></div><div><dt>Predicted filament</dt><dd>{job.predicted_filament_weight_g ? grams(job.predicted_filament_weight_g) : job.predicted_filament_length_mm ? `${compactNumber(job.predicted_filament_length_mm, 0)} mm` : 'Unavailable'}</dd></div><div><dt>Actual filament</dt><dd>{job.actual_filament_weight_g ? grams(job.actual_filament_weight_g) : job.actual_filament_length_mm ? `${compactNumber(job.actual_filament_length_mm, 0)} mm` : 'Unavailable'}</dd></div><div><dt>Object height / layers</dt><dd>{metadata.object_height ? `${compactNumber(metadata.object_height, 2)} mm` : '—'} / {metadata.layer_count ?? '—'}</dd></div><div><dt>G-code file size</dt><dd>{metadata.size ? `${compactNumber(Number(metadata.size) / 1_048_576, 2)} MB` : 'Unavailable'}</dd></div>{job.timelapse_url ? <div><dt>Timelapse</dt><dd><a className="button button--small" href={job.timelapse_url} target="_blank" rel="noreferrer"><ExternalLink size={15} /> Open video</a></dd></div> : null}</dl></section>
       </div>
       <section className="inspection-panel"><div className="section-heading"><div><p className="eyebrow">G-code inspection</p><h3>{titleCase(job.inspection_status)}</h3></div><StatusPill status={job.inspection_status} /></div>{mismatches.map((mismatch) => <p key={mismatch.field} className="form-error"><AlertTriangle size={16} /> {mismatch.label}: G-code {mismatch.gcode_value}; profile {mismatch.profile_value}</p>)}{warnings.map((message) => <p key={message} className="warning-note"><AlertTriangle size={16} /> {message}</p>)}{!mismatches.length && !warnings.length ? <p className="success-note"><CheckCircle2 size={17} /> The inspected settings match the exact managed profile.</p> : null}</section>
       <section><p className="eyebrow">Material segments</p><div className="mobile-card-list mobile-card-list--always">{job.segments.length ? job.segments.map((segment) => <article className="mobile-data-card" key={segment.id}><strong>Segment {segment.segment_number} · {titleCase(segment.source)}</strong><span>Spool {snapshotLabel(segment.state_snapshot, 'spool', 'code')}</span><small>{dateTime(segment.started_at)} – {dateTime(segment.ended_at)}</small></article>) : <p className="muted">No exact segments were recoverable for this print.</p>}</div></section>
@@ -87,7 +103,7 @@ export default function PrintHistoryPage() {
   })
   const jobs = useMemo(() => query.data ?? [], [query.data])
   return <div>
-    <PageHeader eyebrow="Canonical production record" title="Print history" description="Inspect each job against its exact profile, spool, plate, G-code, material segments, and recorded outcome." />
+    <PageHeader eyebrow="Canonical production record" title="Print history" description="Inspect each job against its exact profile, spool, nozzle, plate, slicer details, material segments, timelapse, and recorded outcome." />
     <section className="toolbar"><label className="select-field"><History size={17} /><select value={status} onChange={(event) => setStatus(event.target.value)}><option value="">All outcomes</option><option value="in_progress">In progress</option><option value="completed">Completed</option><option value="failed">Failed</option><option value="cancelled">Cancelled</option><option value="legacy_unknown">Unknown print status</option></select></label><span className="toolbar__summary">{jobs.length} print records</span></section>
     {query.isLoading ? <LoadingState label="Loading print history" /> : !jobs.length ? <EmptyState icon={FileSearch} title="No print history yet" description="Moonraker history and new exact-state prints will appear here automatically." /> : <>
       <div className="table-card desktop-data-table"><table><thead><tr><th>Print</th><th>Material state</th><th>Inspection</th><th>Outcome</th><th>Started</th><th>Duration</th></tr></thead><tbody>{jobs.map((job) => { const latest = [...job.assessments].sort((left, right) => right.revision - left.revision)[0]; return <tr key={job.id} onClick={() => setSelected(job)} tabIndex={0} onKeyDown={(event) => event.key === 'Enter' && setSelected(job)}><td><strong>{job.filename}</strong><small className="table-subtext">{job.slicer ?? titleCase(job.source)}</small></td><td>{job.material_name ?? job.material_type ?? 'Unresolved'}<small className="table-subtext">{job.material_profile_id ? 'Exact saved profile' : 'No exact profile'}</small></td><td><StatusPill status={job.inspection_status} /></td><td><StatusPill status={latest?.rating ?? job.status} /></td><td>{dateTime(job.started_at)}</td><td>{job.print_duration_seconds ? `${Math.round(Number(job.print_duration_seconds) / 60)} min` : '—'}</td></tr>})}</tbody></table></div>
