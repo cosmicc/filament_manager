@@ -1,5 +1,29 @@
 # Changelog
 
+## 0.4.0 - 08.24.2026
+
+### Added
+
+- Added automatic centered scrolling and keyboard focus for the first template setting rejected by browser or server validation.
+- Added independently remembered **List**, **Cards**, and **Detailed** catalog presentations to Spools, Filaments, Build Plates, and Nozzles.
+
+### Changed
+
+- Changed Build Plates to use compact responsive plate cards, smaller imagery and fact blocks, readable side grouping, and intrinsic-width desktop action rows instead of page-wide buttons.
+- Changed Spools to use the full available catalog width without a permanent selection card; selecting a spool from any presentation now opens its complete details and actions in an accessible modal.
+- Changed compact and detailed inventory cards to retain the same complete actions through a selected-item detail modal, while list presentations keep information-dense horizontal rows.
+- Tightened shared page headers, cards, toolbars, tables, status grids, empty states, and section spacing, and allowed catalog, integration, workstation, printer, and build-plate records to use available desktop width more efficiently without removing information.
+- Changed shared action groups to wrap compactly on desktop while retaining full-width 44-pixel touch actions on narrow mobile layouts.
+- Changed build-plate editing to offer only rectangular or round geometry. Rectangular plates show width and depth, round plates show diameter, and hidden shape-specific dimensions are cleared when saved.
+- Changed template editing to refresh the selected template immediately before opening so routine Cura-originated updates do not leave the editor on an already-stale version.
+- Changed all server, frontend, and workstation-agent version surfaces to 0.4.0.
+
+### Fixed
+
+- Fixed action buttons on Build Plates, Nozzles, Diagnostics, and spool details stretching across their entire containers because the shared action group used a one-column grid.
+- Fixed invalid template settings appearing only as a generic save failure at the bottom of a long modal; the exact control now has a prominent danger treatment, an inline sanitized reason, `aria-invalid` metadata, and centered focus.
+- Fixed the terse **Template changed; reload and retry** response obscuring a genuine concurrent update; a remaining conflict now explains that the editor must be reopened to review current values.
+
 ## 0.3.3 - 08.22.2026
 
 ### Added

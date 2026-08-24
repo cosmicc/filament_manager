@@ -1,8 +1,9 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { Check, Eraser, History, ImageUp, Layers3, Pencil, Plus, Save, Sparkles, Trash2 } from 'lucide-react'
-import { useState } from 'react'
+import { Check, Eraser, History, ImageUp, Layers3, Pencil, Plus, Save, Search, Sparkles, Trash2 } from 'lucide-react'
+import { useEffect, useMemo, useState } from 'react'
 import { apiFetch } from '../api/client'
 import type { BuildPlate, BuildPlateMaintenanceEvent, BuildPlateMaintenanceStatus, BuildPlateSurface, Printer } from '../api/types'
+import { CollectionViewSelector } from '../components/CollectionViewSelector'
 import { EditorSection } from '../components/EditorSection'
 import { EmptyState } from '../components/EmptyState'
 import { LoadingState } from '../components/LoadingState'
@@ -10,6 +11,7 @@ import { Modal } from '../components/Modal'
 import { PageHeader } from '../components/PageHeader'
 import { StatusPill } from '../components/StatusPill'
 import { useAuth } from '../context/AuthContext'
+import { useCollectionView } from '../hooks/useCollectionView'
 import { compactNumber, dateTime, inputNumber, titleCase } from '../lib/format'
 
 function optional(data: FormData, key: string) {
@@ -34,6 +36,12 @@ function PlateEditorModal({
   onClose: () => void
   onSave: (values: Record<string, unknown>) => void
 }) {
+  const [shape, setShape] = useState<'rectangular' | 'round' | ''>(() => (
+    plate.shape === 'rectangular' || plate.shape === 'round' ? plate.shape : ''
+  ))
+  const [width, setWidth] = useState(() => inputNumber(plate.dimensions_mm?.width, 1))
+  const [depth, setDepth] = useState(() => inputNumber(plate.dimensions_mm?.depth, 1))
+  const [diameter, setDiameter] = useState(() => inputNumber(plate.dimensions_mm?.diameter, 1))
   return (
     <Modal
       title={`Edit ${plate.plate_code}`}
@@ -60,11 +68,11 @@ function PlateEditorModal({
             description: optional(data, 'description'),
             manufacturer: optional(data, 'manufacturer'),
             product_name: optional(data, 'product_name'),
-            shape: optional(data, 'shape'),
+            shape: shape || null,
             dimensions_mm: {
-              width: optional(data, 'width'),
-              depth: optional(data, 'depth'),
-              diameter: optional(data, 'diameter'),
+              width: shape === 'rectangular' ? optional(data, 'width') : null,
+              depth: shape === 'rectangular' ? optional(data, 'depth') : null,
+              diameter: shape === 'round' ? optional(data, 'diameter') : null,
               thickness: optional(data, 'thickness'),
             },
             magnetic: triState(data, 'magnetic'),
@@ -94,11 +102,13 @@ function PlateEditorModal({
         </EditorSection>
         <EditorSection title="Geometry" description="Use rectangular dimensions or a round diameter as appropriate.">
           <div className="form-grid">
-            <label>Shape<select name="shape" defaultValue={plate.shape ?? ''}><option value="">Not specified</option><option value="rectangular">Rectangular</option><option value="round">Round</option><option value="other">Other</option></select></label>
+            <label>Shape<select name="shape" value={shape} onChange={(event) => setShape(event.currentTarget.value as 'rectangular' | 'round' | '')}><option value="">Not specified</option><option value="rectangular">Rectangular</option><option value="round">Round</option></select></label>
             <label>Thickness (mm)<input name="thickness" type="number" min="0.1" step="0.1" defaultValue={inputNumber(plate.dimensions_mm?.thickness, 1)} /></label>
-            <label>Width (mm)<input name="width" type="number" min="0.1" step="0.1" defaultValue={inputNumber(plate.dimensions_mm?.width, 1)} /></label>
-            <label>Depth (mm)<input name="depth" type="number" min="0.1" step="0.1" defaultValue={inputNumber(plate.dimensions_mm?.depth, 1)} /></label>
-            <label>Diameter (mm)<input name="diameter" type="number" min="0.1" step="0.1" defaultValue={inputNumber(plate.dimensions_mm?.diameter, 1)} /></label>
+            {shape === 'rectangular' ? <>
+              <label>Width (mm)<input name="width" type="number" min="0.1" step="0.1" value={width} onChange={(event) => setWidth(event.currentTarget.value)} /></label>
+              <label>Depth (mm)<input name="depth" type="number" min="0.1" step="0.1" value={depth} onChange={(event) => setDepth(event.currentTarget.value)} /></label>
+            </> : null}
+            {shape === 'round' ? <label>Diameter (mm)<input name="diameter" type="number" min="0.1" step="0.1" value={diameter} onChange={(event) => setDiameter(event.currentTarget.value)} /></label> : null}
           </div>
         </EditorSection>
         <EditorSection title="Condition and use" description="Group maintenance state and slicer guidance in one place.">
@@ -231,6 +241,9 @@ export default function BuildPlatesPage() {
   const [printerId, setPrinterId] = useState('')
   const [editingPlate, setEditingPlate] = useState<BuildPlate | null>(null)
   const [editingSurface, setEditingSurface] = useState<{ plate: BuildPlate; surface: BuildPlateSurface } | null>(null)
+  const [detailsPlate, setDetailsPlate] = useState<BuildPlate | null>(null)
+  const [search, setSearch] = useState('')
+  const [view, setView] = useCollectionView('build-plates', 'detailed')
   const [historyType, setHistoryType] = useState('')
   const [message, setMessage] = useState('')
   const plates = useQuery({ queryKey: ['plates'], queryFn: () => apiFetch<BuildPlate[]>('/build-plates'), refetchInterval: 15_000 })
@@ -287,6 +300,56 @@ export default function BuildPlatesPage() {
   })
   const clearActive = useMutation({ mutationFn: () => apiFetch<{ printer_name: string }>('/build-plates/active/clear', { method: 'POST' }), onSuccess: refreshCanonicalState })
   const mutationError = selectSurface.error ?? updatePlate.error ?? updateSurface.error ?? addSideB.error ?? recordMaintenance.error ?? uploadImage.error ?? deleteImage.error ?? clearActive.error
+  const visiblePlates = useMemo(() => {
+    const needle = search.trim().toLocaleLowerCase()
+    if (!needle) return plates.data ?? []
+    return (plates.data ?? []).filter((plate) => [
+      plate.plate_code,
+      plate.display_name,
+      plate.description,
+      plate.manufacturer,
+      plate.product_name,
+      plate.shape,
+      plate.condition,
+      plate.status,
+      ...plate.preferred_materials,
+      ...plate.surfaces.flatMap((surface) => [surface.surface_code, surface.surface_material, surface.texture]),
+    ].filter(Boolean).join(' ').toLocaleLowerCase().includes(needle))
+  }, [plates.data, search])
+  useEffect(() => {
+    if (!detailsPlate) return
+    const current = plates.data?.find((plate) => plate.id === detailsPlate.id)
+    if (current && current !== detailsPlate) setDetailsPlate(current)
+  }, [detailsPlate, plates.data])
+
+  const renderDetailedPlate = (plate: BuildPlate) => {
+    const activePlate = selectedPrinter?.active_plate_id === plate.id
+    const due = maintenance.data?.find((item) => item.build_plate_id === plate.id)
+    return <article className={`build-plate-card${activePlate ? ' build-plate-card--active' : ''}`} key={plate.id}>
+      <div className="build-plate-card__summary">
+        <div className={`plate-illustration plate-illustration--summary${plate.image_url ? ' plate-illustration--photo' : ''}`}>{plate.image_url ? <img src={plate.image_url} alt={`${plate.display_name} build plate`} /> : null}<span>{plate.plate_code}</span>{activePlate ? <i><Check size={16} /></i> : null}</div>
+        <div className="build-plate-card__identity">
+          <p className="eyebrow">Physical plate {plate.plate_code}</p>
+          <div className="build-plate-card__title"><h2>{plate.display_name}</h2><StatusPill status={activePlate ? 'active' : plate.status} /></div>
+          <p className="plate-description">{plate.description ?? 'No plate description has been recorded.'}</p>
+          <dl className="plate-facts">
+            <div><dt>Condition</dt><dd>{plate.condition}</dd></div>
+            <div><dt>Product</dt><dd>{[plate.manufacturer, plate.product_name].filter(Boolean).join(' · ') || 'Not specified'}</dd></div>
+            <div><dt>Shape</dt><dd>{plate.shape ?? 'Not specified'}</dd></div>
+            <div><dt>Properties</dt><dd>{[plate.magnetic === true ? 'Magnetic' : null, plate.flexible === true ? 'Flexible' : null].filter(Boolean).join(' · ') || 'Not specified'}</dd></div>
+            <div><dt>Preferred materials</dt><dd>{plate.preferred_materials.join(', ') || 'Not specified'}</dd></div>
+            <div><dt>Maximum bed temperature</dt><dd>{plate.max_bed_temp_c ? `${compactNumber(plate.max_bed_temp_c, 0)} °C` : 'Not specified'}</dd></div>
+            <div><dt>Last cleaned</dt><dd>{dateTime(plate.last_cleaned_at)}</dd></div>
+            <div><dt>Cleaning state</dt><dd>{due?.cleaning_due ? 'Due now' : `${due?.cleaning_prints_since ?? 0} prints since cleaning`}</dd></div>
+          </dl>
+          {user?.role !== 'viewer' ? <div className="detail-actions build-plate-card__actions"><button className="button" onClick={() => { setDetailsPlate(null); setEditingPlate(plate) }}><Pencil size={16} /> Edit physical plate</button><label className="button file-button"><ImageUp size={16} /> {plate.image_url ? 'Replace picture' : 'Upload picture'}<input type="file" accept="image/png,image/jpeg,image/webp" disabled={uploadImage.isPending} onChange={(event) => { const image = event.target.files?.[0]; if (image) uploadImage.mutate({ plate, image }); event.currentTarget.value = '' }} /></label>{plate.image_url ? <button className="button" disabled={deleteImage.isPending} onClick={() => { if (window.confirm(`Remove the picture for ${plate.display_name}?`)) deleteImage.mutate(plate) }}><Trash2 size={16} /> Remove picture</button> : null}<button className="button" disabled={recordMaintenance.isPending} onClick={() => recordMaintenance.mutate({ plateId: plate.id, maintenanceType: 'cleaned' })}><Check size={16} /> Mark cleaned</button></div> : null}
+        </div>
+      </div>
+      <div className="plate-surfaces">{plate.surfaces.map((surface) => <SurfaceCard key={surface.id} surface={surface} active={selectedPrinter?.active_plate_surface_id === surface.id} canEdit={user?.role !== 'viewer'} canSelect={user?.role !== 'viewer' && Boolean(printers.data?.length)} pending={selectSurface.isPending} onEdit={() => { setDetailsPlate(null); setEditingSurface({ plate, surface }) }} onSelect={() => selectSurface.mutate({ plateId: plate.id, surfaceId: surface.id })} />)}</div>
+      {user?.role !== 'viewer' && !plate.surfaces.some((surface) => surface.side === 'b') ? <div className="plate-maintenance-actions"><button className="button" disabled={addSideB.isPending} onClick={() => addSideB.mutate(plate)}><Plus size={16} /> Add Side B</button><span className="muted">Creates {plate.plate_code}b now; Moonraker mesh availability updates automatically.</span></div> : null}
+      {user?.role !== 'viewer' ? <div className="plate-maintenance-actions">{plate.surfaces.map((surface) => { const state = due?.surfaces.find((item) => item.surface_id === surface.id); return <button className="button" key={surface.id} disabled={recordMaintenance.isPending} onClick={() => recordMaintenance.mutate({ plateId: plate.id, maintenanceType: 'mesh_calibrated', surfaceId: surface.id })}><Sparkles size={16} /> Mark {surface.surface_code} mesh calibrated{state?.mesh_due ? ' · due' : ''}</button> })}</div> : null}
+    </article>
+  }
   return (
     <div>
       <PageHeader
@@ -301,58 +364,14 @@ export default function BuildPlatesPage() {
       {mutationError ? <p className="form-error plate-sync-note">{mutationError.message}</p> : null}
       {plates.error ? <p className="form-error">{plates.error.message}</p> : null}
       {printers.error ? <p className="form-error">{printers.error.message}</p> : null}
+      <section className="toolbar"><label className="search-field"><Search size={18} /><input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Search plate, product, surface, or material" aria-label="Search build plates" /></label><CollectionViewSelector label="Build plates" value={view} onChange={setView} /><span className="toolbar__summary">{visiblePlates.length} physical plates</span></section>
       {plates.isLoading ? <LoadingState /> : !plates.data?.length ? (
         <EmptyState icon={Layers3} title="No plates configured" description="P1 through P5 and later P-number meshes are discovered automatically from the configured Moonraker printer." />
-      ) : (
-        <section className="plate-list">
-          {plates.data.map((plate) => {
-            const activePlate = selectedPrinter?.active_plate_id === plate.id
-            const due = maintenance.data?.find((item) => item.build_plate_id === plate.id)
-            return (
-              <article className={`build-plate-card${activePlate ? ' build-plate-card--active' : ''}`} key={plate.id}>
-                <div className="build-plate-card__summary">
-                  <div className={`plate-illustration plate-illustration--summary${plate.image_url ? ' plate-illustration--photo' : ''}`}>{plate.image_url ? <img src={plate.image_url} alt={`${plate.display_name} build plate`} /> : null}<span>{plate.plate_code}</span>{activePlate ? <i><Check size={16} /></i> : null}</div>
-                  <div className="build-plate-card__identity">
-                    <p className="eyebrow">Physical plate {plate.plate_code}</p>
-                    <div className="build-plate-card__title"><h2>{plate.display_name}</h2><StatusPill status={activePlate ? 'active' : plate.status} /></div>
-                    <p className="plate-description">{plate.description ?? 'No plate description has been recorded.'}</p>
-                    <dl className="plate-facts">
-                      <div><dt>Condition</dt><dd>{plate.condition}</dd></div>
-                      <div><dt>Product</dt><dd>{[plate.manufacturer, plate.product_name].filter(Boolean).join(' · ') || 'Not specified'}</dd></div>
-                      <div><dt>Shape</dt><dd>{plate.shape ?? 'Not specified'}</dd></div>
-                      <div><dt>Properties</dt><dd>{[plate.magnetic === true ? 'Magnetic' : null, plate.flexible === true ? 'Flexible' : null].filter(Boolean).join(' · ') || 'Not specified'}</dd></div>
-                      <div><dt>Preferred materials</dt><dd>{plate.preferred_materials.join(', ') || 'Not specified'}</dd></div>
-                      <div><dt>Maximum bed temperature</dt><dd>{plate.max_bed_temp_c ? `${compactNumber(plate.max_bed_temp_c, 0)} °C` : 'Not specified'}</dd></div>
-                      <div><dt>Last cleaned</dt><dd>{dateTime(plate.last_cleaned_at)}</dd></div>
-                      <div><dt>Cleaning state</dt><dd>{due?.cleaning_due ? 'Due now' : `${due?.cleaning_prints_since ?? 0} prints since cleaning`}</dd></div>
-                    </dl>
-                    {user?.role !== 'viewer' ? <div className="detail-actions"><button className="button build-plate-card__edit" onClick={() => setEditingPlate(plate)}><Pencil size={16} /> Edit physical plate</button><label className="button file-button"><ImageUp size={16} /> {plate.image_url ? 'Replace picture' : 'Upload picture'}<input type="file" accept="image/png,image/jpeg,image/webp" disabled={uploadImage.isPending} onChange={(event) => { const image = event.target.files?.[0]; if (image) uploadImage.mutate({ plate, image }); event.currentTarget.value = '' }} /></label>{plate.image_url ? <button className="button" disabled={deleteImage.isPending} onClick={() => { if (window.confirm(`Remove the picture for ${plate.display_name}?`)) deleteImage.mutate(plate) }}><Trash2 size={16} /> Remove picture</button> : null}<button className="button" disabled={recordMaintenance.isPending} onClick={() => recordMaintenance.mutate({ plateId: plate.id, maintenanceType: 'cleaned' })}><Check size={16} /> Mark cleaned</button></div> : null}
-                  </div>
-                </div>
-                <div className="plate-surfaces">
-                  {plate.surfaces.map((surface) => (
-                    <SurfaceCard
-                      key={surface.id}
-                      surface={surface}
-                      active={selectedPrinter?.active_plate_surface_id === surface.id}
-                      canEdit={user?.role !== 'viewer'}
-                      canSelect={user?.role !== 'viewer' && Boolean(printers.data?.length)}
-                      pending={selectSurface.isPending}
-                      onEdit={() => setEditingSurface({ plate, surface })}
-                      onSelect={() => selectSurface.mutate({ plateId: plate.id, surfaceId: surface.id })}
-                    />
-                  ))}
-                </div>
-                {user?.role !== 'viewer' && !plate.surfaces.some((surface) => surface.side === 'b') ? <div className="plate-maintenance-actions"><button className="button" disabled={addSideB.isPending} onClick={() => addSideB.mutate(plate)}><Plus size={16} /> Add Side B</button><span className="muted">Creates {plate.plate_code}b now; Moonraker mesh availability updates automatically.</span></div> : null}
-                {user?.role !== 'viewer' ? <div className="plate-maintenance-actions">{plate.surfaces.map((surface) => { const state = due?.surfaces.find((item) => item.surface_id === surface.id); return <button className="button" key={surface.id} disabled={recordMaintenance.isPending} onClick={() => recordMaintenance.mutate({ plateId: plate.id, maintenanceType: 'mesh_calibrated', surfaceId: surface.id })}><Sparkles size={16} /> Mark {surface.surface_code} mesh calibrated{state?.mesh_due ? ' · due' : ''}</button> })}</div> : null}
-              </article>
-            )
-          })}
-        </section>
-      )}
+      ) : !visiblePlates.length ? <EmptyState icon={Search} title="No build plates match" description="Adjust the search to see another physical plate or surface." /> : view === 'detailed' ? <section className="plate-list">{visiblePlates.map(renderDetailedPlate)}</section> : view === 'list' ? <div className="table-card collection-table"><table><thead><tr><th>Build plate</th><th>Product</th><th>Condition</th><th>Surfaces</th><th>Preferred materials</th><th>Maintenance</th><th aria-label="Actions" /></tr></thead><tbody>{visiblePlates.map((plate) => { const activePlate = selectedPrinter?.active_plate_id === plate.id; const due = maintenance.data?.find((item) => item.build_plate_id === plate.id); return <tr key={plate.id} tabIndex={0} onClick={() => setDetailsPlate(plate)} onKeyDown={(event) => (event.key === 'Enter' || event.key === ' ') && setDetailsPlate(plate)}><td><div className="table-identity"><div className={`plate-illustration plate-illustration--table${plate.image_url ? ' plate-illustration--photo' : ''}`}>{plate.image_url ? <img src={plate.image_url} alt="" /> : null}<span>{plate.plate_code}</span></div><span><strong>{plate.display_name}</strong><small>{activePlate ? 'Active physical plate' : plate.status}</small></span></div></td><td>{[plate.manufacturer, plate.product_name].filter(Boolean).join(' · ') || 'Not specified'}</td><td>{titleCase(plate.condition)}</td><td>{plate.surfaces.map((surface) => surface.surface_code).join(', ')}</td><td>{plate.preferred_materials.join(', ') || 'Not specified'}</td><td>{due?.cleaning_due ? 'Cleaning due' : `${due?.cleaning_prints_since ?? 0} prints since cleaning`}</td><td><button className="button" onClick={(event) => { event.stopPropagation(); setDetailsPlate(plate) }}>Open details</button></td></tr> })}</tbody></table></div> : <section className="collection-grid collection-grid--cards">{visiblePlates.map((plate) => { const activePlate = selectedPrinter?.active_plate_id === plate.id; const due = maintenance.data?.find((item) => item.build_plate_id === plate.id); return <button className={`collection-card collection-card--button${activePlate ? ' build-plate-card--active' : ''}`} key={plate.id} onClick={() => setDetailsPlate(plate)}><header className="collection-card__header"><div className={`plate-illustration${plate.image_url ? ' plate-illustration--photo' : ''}`}>{plate.image_url ? <img src={plate.image_url} alt={`${plate.display_name} build plate`} /> : null}<span>{plate.plate_code}</span>{activePlate ? <i><Check size={16} /></i> : null}</div><StatusPill status={activePlate ? 'active' : plate.status} /></header><div className="collection-card__body"><p className="eyebrow">Physical plate {plate.plate_code}</p><h2>{plate.display_name}</h2><p>{[plate.manufacturer, plate.product_name].filter(Boolean).join(' · ') || plate.description || 'No product details recorded'}</p></div><dl className="catalog-meta"><div><dt>Condition</dt><dd>{titleCase(plate.condition)}</dd></div><div><dt>Surfaces</dt><dd>{plate.surfaces.map((surface) => surface.surface_code).join(', ')}</dd></div><div><dt>Materials</dt><dd>{plate.preferred_materials.join(', ') || 'Not specified'}</dd></div><div><dt>Cleaning</dt><dd>{due?.cleaning_due ? 'Due now' : `${due?.cleaning_prints_since ?? 0} prints ago`}</dd></div></dl><span className="collection-card__link">Open details and actions</span></button> })}</section>}
       <section className="card plate-history"><header className="card__header"><div><p className="eyebrow">Immutable ledger</p><h2><History size={20} /> Maintenance history</h2></div><label className="inline-field">Type<select value={historyType} onChange={(event) => setHistoryType(event.target.value)}><option value="">All</option><option value="cleaned">Cleaned</option><option value="mesh_calibrated">Mesh calibrated</option></select></label></header>{events.isLoading ? <LoadingState /> : events.data?.length ? <div className="mobile-card-list mobile-card-list--always">{events.data.map((event) => { const plate = plates.data?.find((item) => item.id === event.build_plate_id); const surface = plate?.surfaces.find((item) => item.id === event.build_plate_surface_id); return <article className="mobile-data-card" key={event.id}><strong>{plate?.plate_code ?? 'Unknown plate'} · {event.maintenance_type === 'cleaned' ? 'Cleaned' : `${surface?.surface_code ?? 'Side'} mesh calibrated`}</strong><span>{dateTime(event.occurred_at)}</span><small>{event.notes ?? titleCase(event.source)}</small></article> })}</div> : <p className="muted">No maintenance events match this filter.</p>}</section>
       {editingPlate ? <PlateEditorModal plate={editingPlate} pending={updatePlate.isPending} error={updatePlate.error?.message ?? ''} onClose={() => setEditingPlate(null)} onSave={(values) => updatePlate.mutate({ plate: editingPlate, values })} /> : null}
       {editingSurface ? <SurfaceEditorModal surface={editingSurface.surface} pending={updateSurface.isPending} error={updateSurface.error?.message ?? ''} onClose={() => setEditingSurface(null)} onSave={(values) => updateSurface.mutate({ ...editingSurface, values })} /> : null}
+      {detailsPlate ? <Modal title={`${detailsPlate.plate_code} details`} description="Inspect this physical build plate, its surfaces, and all available actions." size="wide" onClose={() => setDetailsPlate(null)} footer={<button className="button button--primary" onClick={() => setDetailsPlate(null)}>Done</button>}>{renderDetailedPlate(detailsPlate)}</Modal> : null}
     </div>
   )
 }

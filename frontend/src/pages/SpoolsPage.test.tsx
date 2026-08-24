@@ -63,6 +63,7 @@ const spool = {
 describe('SpoolsPage', () => {
   afterEach(() => {
     apiFetchMock.mockReset()
+    window.localStorage.clear()
   })
 
   it('requests a physical load without presenting the target as active early', async () => {
@@ -85,6 +86,8 @@ describe('SpoolsPage', () => {
     )
 
     fireEvent.click(await screen.findByText('FM-001'))
+    expect(screen.getByRole('dialog', { name: 'FM-001 details' })).toBeTruthy()
+    expect(screen.queryByText('Select a spool')).toBeNull()
     fireEvent.click(await screen.findByRole('button', { name: 'Load spool' }))
 
     await waitFor(() => {

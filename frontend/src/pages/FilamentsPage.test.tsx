@@ -51,6 +51,7 @@ describe('FilamentsPage', () => {
   afterEach(() => {
     cleanup()
     apiFetchMock.mockReset()
+    window.localStorage.clear()
   })
 
   it('uses the requested three-line identity and retains manual-entry focus', async () => {
@@ -74,6 +75,11 @@ describe('FilamentsPage', () => {
     expect(await screen.findByRole('heading', { name: 'PLA · Midnight · Workshop Blue' })).toBeTruthy()
     expect(screen.getByText('Workshop Vendor')).toBeTruthy()
     expect(screen.getByText('Carbon fiber / Matte')).toBeTruthy()
+
+    fireEvent.change(screen.getByLabelText('Filaments view'), { target: { value: 'list' } })
+    expect(screen.getByRole('table')).toBeTruthy()
+    expect(screen.getByRole('link', { name: /Open/ })).toBeTruthy()
+    fireEvent.change(screen.getByLabelText('Filaments view'), { target: { value: 'cards' } })
 
     fireEvent.click(screen.getByRole('button', { name: 'Add filament' }))
     const colorName = await screen.findByLabelText(/Color name/) as HTMLInputElement

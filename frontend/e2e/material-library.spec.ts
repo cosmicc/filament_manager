@@ -107,7 +107,11 @@ test.afterEach(async ({ page }) => {
 
 test('template library is usable at desktop and mobile sizes', async ({ page }) => {
   let templateUpdate: Record<string, unknown> | null = null
-  await page.route('**/api/v1/profiles/templates?include_inactive=true', (route) => route.fulfill({ json: [template] }))
+  let templateFetchCount = 0
+  await page.route('**/api/v1/profiles/templates?include_inactive=true', (route) => {
+    templateFetchCount += 1
+    return route.fulfill({ json: [{ ...template, record_version: templateFetchCount === 1 ? 2 : 3 }] })
+  })
   await page.route('**/api/v1/profiles/templates/template-id/settings', async (route) => {
     templateUpdate = route.request().postDataJSON() as Record<string, unknown>
     await route.fulfill({ json: template })
@@ -134,8 +138,54 @@ test('template library is usable at desktop and mobile sizes', async ({ page }) 
   await expect(page.getByRole('dialog', { name: 'Edit Template PLA' })).toBeVisible()
   await page.getByLabel('Printing temperature (°C)').fill('212')
   await page.getByRole('button', { name: 'Save template' }).click()
-  await expect.poll(() => templateUpdate?.expected_template_version).toBe(2)
+  await expect.poll(() => templateUpdate?.expected_template_version).toBe(3)
   await expect.poll(() => (templateUpdate?.settings as Record<string, unknown>)?.extruder_temp_c).toBe('212')
+})
+
+test('template validation centers, focuses, and highlights the rejected setting', async ({ page }) => {
+  await page.emulateMedia({ reducedMotion: 'reduce' })
+  await page.setViewportSize({ width: 390, height: 844 })
+  await page.route('**/api/v1/profiles/templates?include_inactive=true', (route) => route.fulfill({ json: [template] }))
+  await page.route('**/api/v1/profiles/templates/template-id/settings', (route) => route.fulfill({
+    status: 422,
+    json: {
+      code: 'validation_error',
+      message: 'Request validation failed',
+      errors: [{
+        field: 'settings.cooling_max_percent',
+        message: 'Maximum fan must be at least the minimum fan',
+        type: 'value_error',
+      }],
+    },
+  }))
+  await page.route('**/api/v1/profiles', (route) => route.fulfill({ json: [] }))
+  await page.route('**/api/v1/filaments', (route) => route.fulfill({ json: [] }))
+  await page.route('**/api/v1/profiles/cura-settings/catalog', (route) => route.fulfill({ json: [] }))
+
+  await page.goto('/templates')
+  await page.getByRole('button', { name: 'Edit template' }).click()
+  await page.getByLabel('Regular fan speed (%)').fill('90')
+  const maximumFan = page.getByLabel('Maximum fan speed (%)')
+  await maximumFan.fill('20')
+  await page.getByRole('button', { name: 'Save template' }).click()
+
+  await expect(maximumFan).toHaveAttribute('aria-invalid', 'true')
+  await expect(maximumFan).toBeFocused()
+  await expect(page.getByText('Maximum fan must be at least the minimum fan')).toBeVisible()
+  await expect(page.getByText('Correct the highlighted value and save again.')).toBeVisible()
+  const invalidSetting = maximumFan.locator('xpath=ancestor::div[contains(@class, "setting-field")][1]')
+  await expect(invalidSetting).toHaveClass(/setting-field--invalid/)
+  await expect.poll(async () => {
+    const box = await maximumFan.boundingBox()
+    return box ? Math.abs((box.y + box.height / 2) - 422) : Number.POSITIVE_INFINITY
+  }).toBeLessThan(190)
+  const errors = browserErrors.get(page) ?? []
+  expect(errors.some((error) => error.includes('[Filament Manager API] Request rejected'))).toBe(true)
+  expect(errors.filter((error) => (
+    !error.includes('[Filament Manager API] Request rejected')
+    && !error.includes('Failed to load resource: the server responded with a status of 422')
+  ))).toEqual([])
+  browserErrors.set(page, [])
 })
 
 test('comparison shows only differences and warns across profile scopes', async ({ page }) => {
@@ -370,7 +420,7 @@ test('an empty Cura library can complete the one-time atomic takeover', async ({
 test('managed Cura workstations show verified material print setting coverage', async ({ page }) => {
   const agent = {
     id: 'agent-id', agent_code: 'WS-TEST', display_name: 'Arch Cura', hostname: 'workstation',
-    platform: 'arch_linux', architecture: 'x86_64', agent_version: '0.3.3', enabled: true,
+    platform: 'arch_linux', architecture: 'x86_64', agent_version: '0.4.0', enabled: true,
     cura_management_enabled: true,
     capabilities: { managed_material_count: 3, unmanaged_print_profile_count: 0, cura_recovery_snapshots: true },
     cura_installations: [{

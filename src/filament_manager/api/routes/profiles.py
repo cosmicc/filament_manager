@@ -364,7 +364,11 @@ async def save_material_template_settings(
     if template is None:
         raise ApiError(status.HTTP_404_NOT_FOUND, "unknown_template", "Template not found")
     if template.record_version != payload.expected_template_version:
-        raise ApiError(status.HTTP_409_CONFLICT, "version_conflict", "Template changed; reload and retry")
+        raise ApiError(
+            status.HTTP_409_CONFLICT,
+            "version_conflict",
+            "This template changed after the editor opened; reopen it to load the current values",
+        )
     if (
         payload.settings.preferred_build_plate_surface_id
         and await session.get(

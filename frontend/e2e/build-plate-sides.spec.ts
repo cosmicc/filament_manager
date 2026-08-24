@@ -27,15 +27,24 @@ const plate = {
   plate_code: 'P4',
   display_name: 'Flexible P4',
   description: 'Double-sided spring-steel plate',
+  manufacturer: 'Workshop',
+  product_name: 'Spring Steel 235',
+  shape: 'rectangular',
+  dimensions_mm: { width: '235', depth: '235', thickness: '1.2' },
+  magnetic: true,
+  flexible: true,
   condition: 'good',
   status: 'active',
   preferred_materials: [],
+  max_bed_temp_c: '120',
   last_cleaned_at: null,
   cleaning_due_after_prints: 10,
   cleaning_due_after_days: 7,
   mesh_due_after_prints: 30,
   mesh_due_after_days: 30,
   notes: null,
+  image_url: null,
+  image_version: 0,
   record_version: 3,
   completed_print_count: 4,
   surfaces: [
@@ -96,21 +105,36 @@ test('groups both sides under one physical plate on desktop and mobile', async (
   await expect(page.getByText('Automatic Moonraker synchronization is on.')).toHaveCount(0)
   await expect(page.getByRole('button', { name: 'Synchronize with Moonraker' })).toHaveCount(0)
   await expect(page.getByText('Completed prints').first()).toBeVisible()
+  const plateCard = page.locator('.build-plate-card').first()
+  const editPlateButton = page.getByRole('button', { name: 'Edit physical plate' })
+  await expect(editPlateButton).toBeVisible()
+  expect((await editPlateButton.boundingBox())?.width).toBeLessThan((await plateCard.boundingBox())?.width ?? 0)
+  await page.screenshot({ path: '../docs/design/validation/build-plates-v040.png', fullPage: true })
 
-  await page.getByRole('button', { name: 'Edit physical plate' }).click()
+  await editPlateButton.click()
   const editor = page.getByRole('dialog', { name: 'Edit P4' })
   await expect(editor).toBeVisible()
   await expect(editor.getByRole('heading', { name: 'Identity' })).toBeVisible()
   await expect(editor.getByRole('heading', { name: 'Geometry' })).toBeVisible()
   await expect(editor.getByRole('heading', { name: 'Condition and use' })).toBeVisible()
   await expect(editor.getByRole('heading', { name: 'Maintenance reminders' })).toBeVisible()
+  await expect(editor.getByLabel('Width (mm)')).toBeVisible()
+  await expect(editor.getByLabel('Depth (mm)')).toBeVisible()
+  await expect(editor.getByLabel('Diameter (mm)')).toHaveCount(0)
+  await expect(editor.getByRole('option', { name: 'Other' })).toHaveCount(0)
+  await editor.getByLabel('Shape').selectOption('round')
+  await expect(editor.getByLabel('Diameter (mm)')).toBeVisible()
+  await expect(editor.getByLabel('Width (mm)')).toHaveCount(0)
+  await expect(editor.getByLabel('Depth (mm)')).toHaveCount(0)
   await page.keyboard.press('Escape')
   await expect(editor).toBeHidden()
 
   await page.setViewportSize({ width: 390, height: 844 })
+  await page.waitForTimeout(250)
   await expect(page.getByRole('heading', { name: 'Flexible P4' })).toBeVisible()
   await expect(
     page.getByRole('paragraph').filter({ hasText: 'Double-sided spring-steel plate' }),
   ).toBeVisible()
   await expect(page.getByRole('button', { name: 'Select P4' })).toBeVisible()
+  await page.screenshot({ path: '../docs/design/validation/build-plates-mobile-v040.png', fullPage: true })
 })

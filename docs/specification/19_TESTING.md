@@ -62,6 +62,9 @@ Mock or containerize:
 17. A completed print with repeated M600 segments counts each distinct spool once and its captured nozzle and plate side once.
 18. A closed Cura installation captures a sanitized recovery point; a simulated reset cannot displace it; an Administrator-confirmed exact-version restore rolls back safely on write failure and is followed by canonical material synchronization.
 19. A managed Cura installation reports 55 of 55 exposed settings after initialization; missing or disabled Material Settings/Klipper Settings plugins produce a bounded error with exact missing keys, and a new deployment remains waiting until Cura verifies its matching catalog checksum.
+20. Build-plate shape changes show only the applicable rectangular or round dimensions and clear hidden geometry, while a rejected template value is centered, focused, strongly highlighted, and paired with its sanitized inline reason.
+21. Build Plates renders compact intrinsic-width actions and readable side cards on desktop, retains every physical and maintenance detail, and changes only the narrow mobile action groups to full-width 44-pixel controls; shared action rows on Nozzles, Diagnostics, and spool details do not stretch unnecessarily.
+22. Spools, Filaments, Build Plates, and Nozzles default to their specified List/Cards/Detailed presentation, persist each page selection independently, search consistently, and retain complete record actions from every presentation; Spools has no permanent selection panel.
 
 ## Swarm tests
 

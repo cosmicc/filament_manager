@@ -1,5 +1,26 @@
 # User Changelog
 
+## 0.4.0 - 08.24.2026
+
+### Added
+
+- Added automatic scrolling and focus to the exact template setting that needs correction.
+- Added **List**, **Cards**, and **Detailed** view choices to Spools, Filaments, Build Plates, and Nozzles. Each page remembers its own choice in the browser.
+
+### Changed
+
+- Build Plates now uses compact responsive cards with smaller plate summaries, denser facts, neatly grouped sides, and desktop buttons sized to their labels instead of stretched across the page.
+- Spools now fills the available page width instead of reserving space for a selection card. Select any spool to open its full details and actions.
+- Page headers, cards, toolbars, tables, empty states, and repeated record grids now use space more efficiently across the app while preserving all existing information and mobile touch sizing.
+- Build-plate editing now shows width and depth only for rectangular plates and diameter only for round plates. The unused **Other** shape option was removed.
+- Opening a template editor now refreshes that template first so its version and values are current.
+
+### Fixed
+
+- Fixed shared action buttons on several pages expanding to the full width of their container on desktop.
+- Fixed rejected template values being difficult to locate in the long settings editor. The exact setting is now strongly highlighted in red with its reason beside it.
+- Fixed a genuine simultaneous template update using the vague **Template changed; reload and retry** message without explaining what happened.
+
 ## 0.3.3 - 08.22.2026
 
 ### Added
