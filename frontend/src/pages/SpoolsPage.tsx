@@ -21,6 +21,7 @@ import {
 } from "react";
 import { ApiClientError, apiFetch, idempotencyKey } from "../api/client";
 import type { Filament, Page, Printer, Spool } from "../api/types";
+import { CollectionViewSelector } from "../components/CollectionViewSelector";
 import { EditorSection } from "../components/EditorSection";
 import { EmptyState } from "../components/EmptyState";
 import { LoadingState } from "../components/LoadingState";
@@ -28,6 +29,7 @@ import { Modal } from "../components/Modal";
 import { PageHeader } from "../components/PageHeader";
 import { StatusPill } from "../components/StatusPill";
 import { useAuth } from "../context/AuthContext";
+import { useCollectionView } from "../hooks/useCollectionView";
 import { filamentSwatchStyle } from "../lib/colors";
 import { costPerGram, currencyAmount, dateTime, grams, inputNumber, percent } from "../lib/format";
 
@@ -616,6 +618,7 @@ export default function SpoolsPage() {
   const canEdit = user?.role !== "viewer";
   const [search, setSearch] = useState("");
   const [status, setStatus] = useState("");
+  const [view, setView] = useCollectionView("spools", "list");
   const [selected, setSelected] = useState<Spool | null>(null);
   const [weighing, setWeighing] = useState<Spool | null>(null);
   const [editingSpool, setEditingSpool] = useState<Spool | null>(null);
@@ -716,23 +719,13 @@ export default function SpoolsPage() {
         description="Track each labeled spool, its trustworthy remaining mass, and its projection state."
         actions={
           canEdit ? (
-            <>
-              {selected && (
-                <button
-                  className="button"
-                  onClick={() => setWeighing(selected)}
-                >
-                  <Scale size={17} /> Weigh selected
-                </button>
-              )}
-              <button
-                className="button button--primary"
-                onClick={() => setCreating(true)}
-                disabled={!filaments.data?.length}
-              >
-                <Plus size={17} /> Add spool
-              </button>
-            </>
+            <button
+              className="button button--primary"
+              onClick={() => setCreating(true)}
+              disabled={!filaments.data?.length}
+            >
+              <Plus size={17} /> Add spool
+            </button>
           ) : undefined
         }
       />
@@ -760,6 +753,7 @@ export default function SpoolsPage() {
             <option value="empty">Empty</option>
           </select>
         </label>
+        <CollectionViewSelector label="Spools" value={view} onChange={setView} />
         <span className="toolbar__summary">
           {query.data?.total ?? 0} spools · {needsAttention} need attention
         </span>
@@ -773,9 +767,8 @@ export default function SpoolsPage() {
           title="No spools found"
           description="Adjust the filters or import the master workbook to establish inventory."
         />
-      ) : (
-        <div className="inventory-layout">
-          <div className="table-card desktop-data-table">
+      ) : view === "list" ? (
+          <div className="table-card collection-table">
             <table>
               <thead>
                 <tr>
@@ -793,13 +786,10 @@ export default function SpoolsPage() {
                 {items.map((spool) => (
                   <tr
                     key={spool.id}
-                    className={
-                      selected?.id === spool.id ? "table-row--selected" : ""
-                    }
                     onClick={() => setSelected(spool)}
                     tabIndex={0}
                     onKeyDown={(event) =>
-                      event.key === "Enter" && setSelected(spool)
+                      (event.key === "Enter" || event.key === " ") && setSelected(spool)
                     }
                   >
                     <td>
@@ -857,47 +847,29 @@ export default function SpoolsPage() {
               </tbody>
             </table>
           </div>
-          <div className="mobile-card-list">
-            {items.map((spool) => (
-              <button
-                className="mobile-data-card mobile-data-card--button"
-                key={spool.id}
-                onClick={() => setSelected(spool)}
-              >
-                <span className="mobile-data-card__heading">
-                  <strong>
-                    {spool.spool_code} · {spool.material_type}
-                  </strong>
-                  <StatusPill
-                    status={spool.active_printer_id ? "active" : spool.status}
-                  />
-                </span>
-                <span>
-                  {spool.color_name} · {grams(spool.remaining_mass_effective_g)}{" "}
-                  remaining
-                </span>
-                <small>
-                  {spool.active_printer_id
-                    ? `Loaded in ${printerNames.get(spool.active_printer_id) ?? "assigned printer"}`
-                    : (spool.location ?? "No location")} · {costPerGram(spool.cost_per_gram, spool.currency)} · {spool.completed_print_count} completed prints
-                </small>
-              </button>
-            ))}
-          </div>
+      ) : (
+        <section className={`collection-grid collection-grid--${view}`}>
+          {items.map((spool) => <button className={`collection-card collection-card--button${view === "detailed" ? " collection-card--detailed" : ""}`} key={spool.id} onClick={() => setSelected(spool)}>
+            <header className="collection-card__header">
+              <div className="table-identity"><span className={`filament-swatch${view === "detailed" ? " filament-swatch--large" : ""}`} style={filamentSwatchStyle(spool.color_mode, spool.color_hexes, spool.color_hex ?? "2F80A5")} /><span><strong>{spool.spool_code}</strong><small>{spool.vendor_name ?? "No vendor"}</small></span></div>
+              <span className="status-stack">{spool.active_printer_id ? <StatusPill status="active" /> : null}<StatusPill status={spool.status} /></span>
+            </header>
+            <div className="collection-card__body"><h2>{spool.material_type}{spool.filler ? ` ${spool.filler}` : ""} · {spool.color_name}</h2><div className="table-progress"><span><strong>{grams(spool.remaining_mass_effective_g)}</strong><small>{percent(spool.remaining_percent)}</small></span><div className="progress progress--small"><span style={{ width: `${Math.min(100, Number(spool.remaining_percent))}%` }} /></div></div></div>
+            <dl className="catalog-meta"><div><dt>Cost / gram</dt><dd>{costPerGram(spool.cost_per_gram, spool.currency)}</dd></div><div><dt>Location</dt><dd>{spool.location ?? "Not set"}</dd></div>{view === "detailed" ? <><div><dt>Completed prints</dt><dd>{spool.completed_print_count.toLocaleString()}</dd></div><div><dt>Last weighed</dt><dd>{dateTime(spool.last_measurement_at)}</dd></div><div><dt>Confidence</dt><dd>{spool.weight_confidence}</dd></div><div><dt>Printer</dt><dd>{spool.active_printer_id ? printerNames.get(spool.active_printer_id) ?? "Assigned printer" : "Not active"}</dd></div></> : null}</dl>
+            <span className="collection-card__link">Open details and actions</span>
+          </button>)}
+        </section>
+      )}
 
-          <aside
-            className={`detail-panel${selected ? " detail-panel--open" : ""}`}
-          >
-            {selected ? (
-              <>
-                <header className="detail-panel__header">
+      {selected ? <Modal title={`${selected.spool_code} details`} description="Inspect this spool and use the same inventory actions from any catalog view." size="wide" onClose={() => setSelected(null)} footer={<button className="button button--primary" onClick={() => setSelected(null)}>Done</button>}>
+                <header className="collection-detail-heading">
                   <div className="table-identity">
                     <span
                       className="filament-swatch filament-swatch--large"
                       style={filamentSwatchStyle(selected.color_mode, selected.color_hexes, selected.color_hex ?? "2F80A5")}
                     />
                     <span>
-                      <p className="eyebrow">Selected spool</p>
+                      <p className="eyebrow">Physical spool</p>
                       <h2>{selected.spool_code}</h2>
                     </span>
                   </div>
@@ -907,7 +879,7 @@ export default function SpoolsPage() {
                     }
                   />
                 </header>
-                <div className="detail-panel__body">
+                <div>
                   <dl className="definition-list">
                     <div>
                       <dt>Filament</dt>
@@ -976,7 +948,7 @@ export default function SpoolsPage() {
                     {canEdit && (
                       <button
                         className="button button--primary"
-                        onClick={() => setWeighing(selected)}
+                        onClick={() => { setWeighing(selected); setSelected(null); }}
                       >
                         <Scale size={17} /> Weigh spool
                       </button>
@@ -984,7 +956,7 @@ export default function SpoolsPage() {
                     {canEdit && (
                       <button
                         className="button"
-                        onClick={() => setEditingSpool(selected)}
+                        onClick={() => { setEditingSpool(selected); setSelected(null); }}
                       >
                         <Pencil size={17} /> Edit spool
                       </button>
@@ -1047,17 +1019,7 @@ export default function SpoolsPage() {
                     </p>
                   )}
                 </div>
-              </>
-            ) : (
-              <EmptyState
-                icon={Boxes}
-                title="Select a spool"
-                description="Choose a row to inspect its trusted mass and available actions."
-              />
-            )}
-          </aside>
-        </div>
-      )}
+      </Modal> : null}
       {weighing && (
         <WeighModal
           spool={weighing}
