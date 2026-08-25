@@ -85,6 +85,38 @@ def test_recovery_payload_rejects_sensitive_plugin_display_metadata() -> None:
         validate_recovery_payload(payload)
 
 
+def test_recovery_payload_accepts_cura_key_only_visibility_presets() -> None:
+    """Cura visibility presets use valid entries without ``= value`` suffixes."""
+
+    content = "[values]\nlayer_height\nspeed_print\nspeed_ironing\n"
+    payload = _payload()
+    payload["files"] = [
+        {
+            "scope": "data",
+            "relative_path": "setting_visibility/my+advanced+set.cfg",
+            "content": content,
+        }
+    ]
+
+    assert validate_recovery_payload(payload) == (1, len(content.encode("utf-8")))
+
+
+def test_recovery_payload_keeps_other_cura_configuration_strict() -> None:
+    """Key-only syntax is accepted only for Cura setting-visibility presets."""
+
+    payload = _payload()
+    payload["files"] = [
+        {
+            "scope": "data",
+            "relative_path": "quality_changes/invalid.inst.cfg",
+            "content": "[values]\nlayer_height\n",
+        }
+    ]
+
+    with pytest.raises(ValueError, match="valid bounded INI"):
+        validate_recovery_payload(payload)
+
+
 def test_reset_detection_preserves_last_known_good_configuration() -> None:
     assert suspected_reset(
         previous_machine_count=2,

@@ -4,6 +4,7 @@ import platform
 import time
 from typing import Any
 
+import httpx
 import structlog
 
 from . import __version__
@@ -11,11 +12,13 @@ from .apply import apply_rendered, managed_library_checksum, material_settings_s
 from .client import AgentClient
 from .config import load_config
 from .discovery import (
+    acknowledge_managed_material_edits,
     cura_is_running,
     discover_installations,
     discover_managed_materials,
     discover_materials,
     discover_print_profiles,
+    managed_material_edit_receipts,
     unmanaged_material_count,
 )
 from .nozzle import apply_nozzle_update
@@ -146,6 +149,7 @@ def run_once() -> bool:
                     message=str(error)[:500],
                 )
     capture_state = "error" if recovery_error else "ready" if not running else "waiting_for_cura_close"
+    edit_receipts = managed_material_edit_receipts(installations)
     client.heartbeat(
         heartbeat_payload(
             installations,
@@ -153,8 +157,20 @@ def run_once() -> bool:
             recovery_capture_state=capture_state,
         )
     )
+    if not running:
+        acknowledge_managed_material_edits(edit_receipts)
     for snapshot in recovery_snapshots:
-        client.upload_recovery_snapshot(snapshot)
+        try:
+            client.upload_recovery_snapshot(snapshot)
+        except (httpx.HTTPError, RuntimeError) as error:
+            # Recovery is an independent capability. A rejected or unavailable
+            # backup endpoint must never prevent managed materials, nozzles, or
+            # restore claims from making progress.
+            logger.warning(
+                "recovery_snapshot_upload_failed",
+                error_class=type(error).__name__,
+                message="Cura settings backup upload failed; synchronization will continue.",
+            )
 
     recovery_claim = client.claim_recovery_restore()
     if recovery_claim is not None:

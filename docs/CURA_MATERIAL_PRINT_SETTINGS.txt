@@ -81,7 +81,7 @@ IRONING
 -------
 ironing_enabled | Enable Ironing | boolean | editable in templates and filament profiles
 ironing_flow | Ironing Flow | number, percent | editable in templates and filament profiles
-ironing_speed | Ironing Speed | number, mm/s | editable in templates and filament profiles
+speed_ironing | Ironing Speed | number, mm/s | editable in templates and filament profiles
 ironing_line_spacing | Ironing Line Spacing | number, mm | editable in templates and filament profiles
 
 

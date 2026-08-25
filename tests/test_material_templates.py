@@ -404,6 +404,10 @@ async def test_direct_template_save_updates_linked_product_profile(
             }
             assert library["hide_bundled_materials"] is True
             assert "speed_print" in library["managed_material_setting_keys"]
+            assert "speed_ironing" in library["managed_material_setting_keys"]
+            assert "ironing_speed" not in library["managed_material_setting_keys"]
+            assert "speed_print" in library["template_only_material_setting_keys"]
+            assert "material_print_temperature" in library["editable_material_setting_keys"]
             assert "material_flow_layer_0" in library["retired_material_setting_keys"]
             assert "limit_support_retractions" not in library["managed_material_setting_keys"]
             assert "limit_support_retractions" in library["retired_material_setting_keys"]

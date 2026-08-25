@@ -110,7 +110,7 @@ CURA_MATERIAL_SETTINGS: tuple[CuraMaterialSetting, ...] = (
     _number("cool_fan_speed_0", "Initial Fan Speed", "%"),
     _boolean("ironing_enabled", "Enable Ironing"),
     _number("ironing_flow", "Ironing Flow", "%"),
-    _number("ironing_speed", "Ironing Speed", "mm/s"),
+    _number("speed_ironing", "Ironing Speed", "mm/s"),
     _number("ironing_line_spacing", "Ironing Line Spacing", "mm"),
     _boolean(
         "acceleration_enabled",
@@ -182,7 +182,7 @@ CURA_TYPED_SETTING_KEYS = frozenset(
         "ironing_enabled",
         "ironing_flow",
         "ironing_line_spacing",
-        "ironing_speed",
+        "speed_ironing",
         "klipper_pressure_advance_factor",
         "material_bed_temperature",
         "material_flow",
@@ -211,6 +211,7 @@ CURA_EXTENSION_SETTING_KEYS = CURA_EDITABLE_SETTING_KEYS - CURA_TYPED_SETTING_KE
 CURA_RETIRED_SETTING_KEYS = frozenset(
     {
         "infill_material_flow",
+        "ironing_speed",
         "default_material_bed_temperature",
         "default_material_print_temperature",
         "material_bed_temperature_layer_0",
@@ -287,7 +288,7 @@ def cura_settings_for_profile(profile: MaterialProfileValues) -> dict[str, objec
         "material_print_temperature": _decimal(profile.extruder_temp_c),
         "ironing_enabled": getattr(profile, "ironing_enabled", None),
         "ironing_flow": _decimal(getattr(profile, "ironing_flow_percent", None)),
-        "ironing_speed": _decimal(getattr(profile, "ironing_speed_mm_s", None)),
+        "speed_ironing": _decimal(getattr(profile, "ironing_speed_mm_s", None)),
         "ironing_line_spacing": _decimal(getattr(profile, "ironing_line_spacing_mm", None)),
         "retraction_amount": _decimal(profile.retraction_distance_mm),
         "retraction_prime_speed": _decimal(profile.retraction_prime_speed_mm_s),

@@ -1,5 +1,24 @@
 # Changelog
 
+## 0.4.2 - 08.24.2026
+
+### Added
+
+- Added a formal responsive login experience with purpose-built Workshop Navy artwork showing a delta 3D printer and colored filament spools.
+- Added bounded in-Cura saving for tracked values on known managed templates and filament profiles. The managed plugin retains an operator's pending value, the agent reports the complete material state, and the server saves and resynchronizes it through the existing validated direct-save path.
+
+### Changed
+
+- Changed the managed Cura plugin to add its 54 required Material Settings keys without replacing unrelated operator selections, and to remove only cleanup-only retired selections.
+- Changed all server, frontend, and workstation-agent version surfaces to 0.4.2 and advanced the managed Cura renderer revision so existing installations receive the corrected plugin automatically.
+
+### Fixed
+
+- Fixed Cura 5.13 ironing verification using the nonexistent `ironing_speed` key instead of Cura's current `speed_ironing` definition.
+- Fixed `limit_support_retractions` remaining in an installed 55-key manifest when a rejected automatic Cura backup upload prevented the workstation agent from reaching its pending library deployment.
+- Fixed valid Cura setting-visibility backups being rejected by the server even after the workstation agent captured them safely, and isolated future backup upload failures so material, nozzle, and restore claims continue.
+- Fixed managed values changed in Cura being immediately restored from the old material file before the change could be saved to Filament Manager.
+
 ## 0.4.1 - 08.24.2026
 
 ### Added

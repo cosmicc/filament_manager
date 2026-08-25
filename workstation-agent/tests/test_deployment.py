@@ -16,10 +16,12 @@ from filament_manager_agent.apply import (
     rollback,
 )
 from filament_manager_agent.discovery import (
+    acknowledge_managed_material_edits,
     discover_installations,
     discover_managed_materials,
     discover_materials,
     discover_print_profiles,
+    managed_material_edit_receipts,
 )
 from filament_manager_agent.render import render_deployment
 from filament_manager_agent.service import heartbeat_payload
@@ -136,6 +138,20 @@ def _payload() -> dict[str, object]:
             "speed_print",
             "support_angle",
         ],
+        "editable_material_setting_keys": [
+            "cool_fan_enabled",
+            "klipper_pressure_advance_factor",
+            "material_bed_temperature",
+            "material_flow",
+            "material_print_temperature",
+            "speed_print",
+            "support_angle",
+        ],
+        "template_only_material_setting_keys": [
+            "cool_fan_enabled",
+            "cool_fan_speed",
+            "speed_print",
+        ],
         "retired_material_setting_keys": ["material_flow_layer_0"],
         "library_checksum": "a" * 64,
         "materials": [entry],
@@ -176,7 +192,7 @@ def test_discovers_and_renders_complete_profile(tmp_path: Path, monkeypatch: obj
     compile(plugin, str(plugin_path), "exec")
     assert b"FilamentManagerVisibility(app)" in plugin_init
     assert b'preferences.setValue("cura/favorite_materials", updated)' in plugin
-    assert b'preferences.setValue("material_settings/visible_settings", expected)' in plugin
+    assert b"selected | MANAGED_SETTING_KEYS" in plugin
     assert b'preferences.setValue("cura/material_settings", updated)' in plugin
     assert b"'spool_cost': 24.5" in plugin
     assert b"'spool_weight': 1000.0" in plugin
@@ -252,6 +268,7 @@ def test_generated_plugin_defers_machine_manager_until_cura_initialization(
                     {"unmanaged-guid": {"spool_cost": 9.0}, "old-managed-guid": {"spool_cost": 1.0}}
                 ),
                 "filament_manager/material_cost_guids": json.dumps(["old-managed-guid"]),
+                "material_settings/visible_settings": "layer_height;material_flow_layer_0",
             }
 
         def getPreferences(self) -> object:
@@ -313,7 +330,12 @@ def test_generated_plugin_defers_machine_manager_until_cura_initialization(
     application.initializationFinished.emit()
     assert application.machine_manager_calls == 1
     assert application.preferences["material_settings/visible_settings"] == ";".join(
-        sorted(_payload()["managed_material_setting_keys"])  # type: ignore[arg-type]
+        sorted(
+            {
+                *_payload()["managed_material_setting_keys"],  # type: ignore[misc]
+                "layer_height",
+            }
+        )
     )
     receipt = json.loads(plugin_file.with_name("material-settings-status.json").read_text())
     assert receipt["status"] == "waiting_for_machine"
@@ -327,6 +349,40 @@ def test_generated_plugin_defers_machine_manager_until_cura_initialization(
         "spool_cost": 24.5,
         "spool_weight": 1000.0,
     }
+
+    class FakeMaterial:
+        def __init__(self, brand: str) -> None:
+            self.brand = brand
+
+        def getMetaDataEntry(self, key: str, default: str = "") -> str:
+            if key == "GUID":
+                return "00000000-0000-4000-8000-000000000001"
+            if key == "brand":
+                return self.brand
+            return default
+
+        def getId(self) -> str:
+            return "filament_manager_test"
+
+    class FakeStack:
+        def __init__(self, brand: str) -> None:
+            self.material = FakeMaterial(brand)
+
+    plugin_module._record_pending_material_edit(  # type: ignore[attr-defined]
+        FakeStack("Polymaker"), "material_print_temperature", "228"
+    )
+    plugin_module._record_pending_material_edit(  # type: ignore[attr-defined]
+        FakeStack("Polymaker"), "speed_print", "150"
+    )
+    pending_path = plugin_file.with_name("managed-material-edits.json")
+    pending = json.loads(pending_path.read_text(encoding="utf-8"))
+    product_values = pending["materials"]["00000000-0000-4000-8000-000000000001"]
+    assert product_values == {"material_print_temperature": "228"}
+    plugin_module._record_pending_material_edit(  # type: ignore[attr-defined]
+        FakeStack("Template"), "speed_print", "150"
+    )
+    pending = json.loads(pending_path.read_text(encoding="utf-8"))
+    assert pending["materials"]["00000000-0000-4000-8000-000000000001"]["speed_print"] == "150"
 
 
 def test_apply_is_idempotent_and_rollback_restores_original(tmp_path: Path, monkeypatch: object) -> None:
@@ -342,7 +398,7 @@ def test_apply_is_idempotent_and_rollback_restores_original(tmp_path: Path, monk
     assert first["status"] == "installed"
     manifest = json.loads((version / ".filament-manager" / "manifest.json").read_text())
     assert manifest["library_checksum"] == "a" * 64
-    assert manifest["renderer_revision"] == 8
+    assert manifest["renderer_revision"] == 9
     waiting_status = material_settings_sync_status(version)
     assert waiting_status["status"] == "waiting_for_cura"
     expected_keys = sorted(_payload()["managed_material_setting_keys"])
@@ -387,7 +443,7 @@ def test_apply_is_idempotent_and_rollback_restores_original(tmp_path: Path, monk
     )
     assert upgraded["status"] == "installed"
     upgraded_manifest = json.loads((version / ".filament-manager" / "manifest.json").read_text())
-    assert upgraded_manifest["renderer_revision"] == 8
+    assert upgraded_manifest["renderer_revision"] == 9
 
     assert rollback(deployment_id) == ["Cura 5.10"]
     assert (version / "definition_changes" / "flsun-v400_settings.inst.cfg").read_bytes() == original
@@ -493,6 +549,44 @@ def test_reports_managed_material_edits_by_guid_without_treating_them_as_new(
     assert report["material_guid"] == "00000000-0000-4000-8000-000000000001"
     assert report["content_checksum"]
     assert report["settings"]["material_print_temperature"] == "225"
+
+
+def test_reports_and_acknowledges_plugin_managed_material_edits(tmp_path: Path, monkeypatch: object) -> None:
+    """Cura edits overlay the full managed profile and clear only after acceptance."""
+
+    version = _cura_fixture(tmp_path, monkeypatch)
+    installation = discover_installations()[0]
+    rendered = render_deployment(installation, _payload())
+    material_path = next(path for path in rendered.files if path.parts[0] == "materials")
+    target = version / material_path
+    target.parent.mkdir(parents=True)
+    target.write_bytes(rendered.files[material_path])
+    receipt_path = (
+        version
+        / "plugins"
+        / "FilamentManagerVisibility"
+        / "FilamentManagerVisibility"
+        / "managed-material-edits.json"
+    )
+    receipt_path.parent.mkdir(parents=True)
+    receipt_path.write_text(
+        json.dumps(
+            {
+                "schema_version": 1,
+                "materials": {"00000000-0000-4000-8000-000000000001": {"material_print_temperature": "228"}},
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    managed = discover_managed_materials([installation])
+    receipts = managed_material_edit_receipts([installation])
+
+    assert managed[0].settings["material_print_temperature"] == "228"
+    assert managed[0].settings["material_flow"] == "98.5"
+    assert installation.installation_id in receipts
+    acknowledge_managed_material_edits(receipts)
+    assert not receipt_path.exists()
 
 
 def test_discovers_existing_material_settings_without_reporting_paths(

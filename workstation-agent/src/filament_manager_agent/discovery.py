@@ -44,7 +44,7 @@ MATERIAL_SETTING_KEYS = frozenset(
         "ironing_enabled",
         "ironing_flow",
         "ironing_line_spacing",
-        "ironing_speed",
+        "speed_ironing",
         "klipper_pressure_advance_factor",
         "klipper_smooth_time_enable",
         "klipper_smooth_time_factor",
@@ -86,6 +86,13 @@ STANDARD_MATERIAL_KEYS = {
 }
 QUALITY_PROFILE_FILE_LIMIT = 200
 QUALITY_PROFILE_MAX_BYTES = 512 * 1024
+MANAGED_MATERIAL_EDITS_MAX_BYTES = 128 * 1024
+MANAGED_MATERIAL_EDITS_PATH = (
+    Path("plugins")
+    / "FilamentManagerVisibility"
+    / "FilamentManagerVisibility"
+    / "managed-material-edits.json"
+)
 QUALITY_EXTRUDER_STEM = re.compile(
     r"^(?P<machine>.+)_extruder_(?P<position>\d+)_(?:%23|#)\d+_(?P<profile>.+)$",
     re.IGNORECASE,
@@ -562,12 +569,28 @@ def discover_managed_materials(installations: list[CuraInstallation]) -> list[Cu
     materials: list[CuraMaterial] = []
     seen: set[tuple[str, uuid.UUID, str]] = set()
     for installation in installations:
+        pending_edits = _pending_managed_material_edits(installation)
         for path in sorted((installation.data_path / "materials").glob("*.xml.fdm_material"))[:500]:
             if not path.name.startswith("filament_manager_"):
                 continue
             material = _material_from_file(path, installation.installation_id)
             if material is None or material.material_guid is None or material.content_checksum is None:
                 continue
+            overlay = pending_edits.get(str(material.material_guid), {})
+            if overlay:
+                settings = {**material.settings, **overlay}
+                content_checksum = hashlib.sha256(
+                    json.dumps(
+                        {"material_guid": str(material.material_guid), "settings": settings},
+                        sort_keys=True,
+                        separators=(",", ":"),
+                    ).encode("utf-8")
+                ).hexdigest()
+                material = material.model_copy(
+                    update={"settings": settings, "content_checksum": content_checksum}
+                )
+            assert material.material_guid is not None
+            assert material.content_checksum is not None
             identity = (
                 material.installation_id,
                 material.material_guid,
@@ -578,6 +601,84 @@ def discover_managed_materials(installations: list[CuraInstallation]) -> list[Cu
             seen.add(identity)
             materials.append(material)
     return materials[:500]
+
+
+def _managed_material_edits_path(installation: CuraInstallation) -> Path:
+    """Return the agent-owned edit receipt path for one Cura installation."""
+
+    return installation.data_path / MANAGED_MATERIAL_EDITS_PATH
+
+
+def _pending_managed_material_edits(
+    installation: CuraInstallation,
+) -> dict[str, dict[str, str | bool]]:
+    """Read one bounded, value-only edit receipt produced by the managed plugin."""
+
+    path = _managed_material_edits_path(installation)
+    try:
+        if path.is_symlink() or not path.is_file():
+            return {}
+        if path.stat().st_size > MANAGED_MATERIAL_EDITS_MAX_BYTES:
+            return {}
+        payload = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, TypeError, ValueError):
+        return {}
+    if not isinstance(payload, dict):
+        return {}
+    materials = payload.get("materials")
+    if payload.get("schema_version") != 1 or not isinstance(materials, dict):
+        return {}
+    parsed: dict[str, dict[str, str | bool]] = {}
+    for guid, raw_settings in list(materials.items())[:100]:
+        try:
+            normalized_guid = str(uuid.UUID(str(guid)))
+        except ValueError:
+            continue
+        if not isinstance(raw_settings, dict):
+            continue
+        settings: dict[str, str | bool] = {}
+        for key, value in list(raw_settings.items())[: len(MATERIAL_SETTING_KEYS)]:
+            if key not in MATERIAL_SETTING_KEYS or not isinstance(value, (str, bool)):
+                continue
+            if isinstance(value, str) and (len(value) > 500 or "\n" in value or "\r" in value):
+                continue
+            settings[key] = value
+        if settings:
+            parsed[normalized_guid] = settings
+    return parsed
+
+
+def managed_material_edit_receipts(
+    installations: list[CuraInstallation],
+) -> dict[str, tuple[Path, str]]:
+    """Return checksums used to acknowledge only receipts included in a heartbeat."""
+
+    receipts: dict[str, tuple[Path, str]] = {}
+    for installation in installations:
+        path = _managed_material_edits_path(installation)
+        try:
+            if path.is_symlink() or not path.is_file():
+                continue
+            data = path.read_bytes()
+        except OSError:
+            continue
+        if len(data) > MANAGED_MATERIAL_EDITS_MAX_BYTES:
+            continue
+        receipts[installation.installation_id] = (path, hashlib.sha256(data).hexdigest())
+    return receipts
+
+
+def acknowledge_managed_material_edits(receipts: dict[str, tuple[Path, str]]) -> None:
+    """Delete only unchanged edit receipts after the server accepts their heartbeat."""
+
+    for path, expected_checksum in receipts.values():
+        try:
+            if path.is_symlink() or not path.is_file():
+                continue
+            if hashlib.sha256(path.read_bytes()).hexdigest() == expected_checksum:
+                path.unlink()
+        except OSError:
+            continue
 
 
 def unmanaged_material_count(installations: list[CuraInstallation]) -> int:

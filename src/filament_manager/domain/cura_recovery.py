@@ -180,8 +180,22 @@ def value_is_sensitive(value: str) -> bool:
     return bool(_NETWORK_OR_PATH_VALUE.search(value))
 
 
-def _parse_ini(content: str) -> configparser.ConfigParser:
-    parser = _CaseSensitiveConfigParser(interpolation=None, strict=False)
+def _parse_ini(
+    content: str,
+    *,
+    allow_no_value: bool = False,
+) -> configparser.ConfigParser:
+    """Parse one Cura INI document without evaluating interpolation tokens.
+
+    Cura setting-visibility presets are intentionally key-only INI-like files.
+    Every other recovery document remains strict about requiring values.
+    """
+
+    parser = _CaseSensitiveConfigParser(
+        interpolation=None,
+        strict=False,
+        allow_no_value=allow_no_value,
+    )
     try:
         parser.read_string(content)
     except (configparser.Error, UnicodeError) as error:
@@ -248,7 +262,11 @@ def validate_recovery_file(scope: str, relative_path: str, content: str) -> int:
         _validate_json_value(parsed)
         return size
 
-    parser = _parse_ini(content)
+    path = PurePosixPath(relative_path)
+    parser = _parse_ini(
+        content,
+        allow_no_value=scope == "data" and path.parts[0] == "setting_visibility",
+    )
     for section in parser.sections():
         normalized_section = section.casefold()
         for key, value in parser.items(section, raw=True):
@@ -263,7 +281,7 @@ def validate_recovery_file(scope: str, relative_path: str, content: str) -> int:
                     raise ValueError("Recovery preferences contain an unsupported section")
                 if allowed_keys is not None and key.casefold() not in allowed_keys:
                     raise ValueError("Recovery preferences contain an unsupported setting")
-            if key_is_sensitive(key) or value_is_sensitive(value):
+            if key_is_sensitive(key) or (value is not None and value_is_sensitive(value)):
                 raise ValueError("Recovery snapshot contains a credential, endpoint, or local path")
     return size
 

@@ -8,7 +8,7 @@ import { EditorSection } from './EditorSection'
 export const typedCuraKeys = new Set([
   'build_volume_temperature', 'cool_fan_enabled', 'cool_fan_speed',
   'cool_fan_speed_min', 'klipper_pressure_advance_factor',
-  'ironing_enabled', 'ironing_flow', 'ironing_line_spacing', 'ironing_speed',
+  'ironing_enabled', 'ironing_flow', 'ironing_line_spacing', 'speed_ironing',
   'material_bed_temperature', 'material_flow', 'material_print_temperature',
   'retraction_amount', 'retraction_prime_speed', 'retraction_retract_speed',
   'retraction_speed', 'speed_infill', 'speed_layer_0',

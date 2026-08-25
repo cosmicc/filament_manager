@@ -24,5 +24,5 @@ filament_density_g_cm3,number,material_density,required,Catalog/calibration
 preferred_build_plate_surface_code,string,Filament Manager metadata,required,Operator selection
 ironing_enabled,boolean,not in current material catalog,application-only,Ironing Test
 ironing_flow_percent,number,not in current material catalog,application-only,Ironing Test
-ironing_speed_mm_s,number,not in current material catalog,application-only,Ironing Test
+ironing_speed_mm_s,number,speed_ironing,material-setting,Ironing Test
 ironing_line_spacing_mm,number,not in current material catalog,application-only,Ironing Test

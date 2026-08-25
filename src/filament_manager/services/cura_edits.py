@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+from collections.abc import Mapping
 from datetime import UTC, datetime
 from uuid import UUID
 
@@ -12,6 +13,10 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from filament_manager.api.schemas import CuraManagedMaterialReport, MaterialSettingsInput
 from filament_manager.domain.cura_import import cura_setting_maps_equal, material_settings_from_cura
+from filament_manager.domain.cura_material_settings import (
+    CURA_EDITABLE_SETTING_KEYS,
+    CURA_TEMPLATE_ONLY_SETTING_KEYS,
+)
 from filament_manager.domain.profile_inheritance import resolve_profile_settings
 from filament_manager.domain.spool_preflight import cura_material_guid
 from filament_manager.models.enums import ProfileStatus
@@ -30,6 +35,23 @@ from filament_manager.services.material_settings import (
 )
 
 MAX_GUID_LOOKUP_REVISIONS = 10_000
+
+
+def merge_editable_cura_settings(
+    expected: Mapping[str, object],
+    reported: Mapping[str, str | bool],
+    *,
+    source_kind: str,
+) -> dict[str, object]:
+    """Apply only controls that the selected managed material is allowed to own."""
+
+    allowed = set(CURA_EDITABLE_SETTING_KEYS)
+    if source_kind == "product":
+        allowed.difference_update(CURA_TEMPLATE_ONLY_SETTING_KEYS)
+    merged = dict(expected)
+    for key in allowed.intersection(reported):
+        merged[key] = reported[key]
+    return merged
 
 
 async def _source_by_guid(
@@ -123,7 +145,6 @@ async def import_managed_cura_edits(
             # removes them without admitting untrusted new canonical objects.
             continue
         source_kind, source_revision = source
-        incoming_cura = dict(report.settings)
         created_profile_id: UUID | None = None
         created_template_id: UUID | None = None
 
@@ -142,6 +163,11 @@ async def import_managed_cura_edits(
                     base_revision.settings,
                     dict(source_revision.setting_overrides or {}),
                 )
+            )
+            incoming_cura = merge_editable_cura_settings(
+                expected_cura,
+                report.settings,
+                source_kind=source_kind,
             )
             if cura_setting_maps_equal(expected_cura, incoming_cura):
                 continue
@@ -180,6 +206,11 @@ async def import_managed_cura_edits(
         else:
             assert isinstance(source_revision, MaterialTemplateRevision)
             expected_cura = settings_from_template(source_revision.settings)
+            incoming_cura = merge_editable_cura_settings(
+                expected_cura,
+                report.settings,
+                source_kind=source_kind,
+            )
             if cura_setting_maps_equal(expected_cura, incoming_cura):
                 continue
             source_settings = MaterialSettingsInput.model_validate(source_revision.settings)

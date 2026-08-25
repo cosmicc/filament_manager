@@ -420,7 +420,7 @@ test('an empty Cura library can complete the one-time atomic takeover', async ({
 test('managed Cura workstations show verified material print setting coverage', async ({ page }) => {
   const agent = {
     id: 'agent-id', agent_code: 'WS-TEST', display_name: 'Arch Cura', hostname: 'workstation',
-    platform: 'arch_linux', architecture: 'x86_64', agent_version: '0.4.1', enabled: true,
+    platform: 'arch_linux', architecture: 'x86_64', agent_version: '0.4.2', enabled: true,
     cura_management_enabled: true,
     capabilities: { managed_material_count: 3, unmanaged_print_profile_count: 0, cura_recovery_snapshots: true },
     cura_installations: [{
@@ -428,7 +428,7 @@ test('managed Cura workstations show verified material print setting coverage', 
       path_hint: 'Linux Cura user data / 5.13', setting_version: 27,
       managed_library_checksum: 'a'.repeat(64), machines: [],
       material_settings_sync: {
-        status: 'healthy', expected_count: 55, exposed_count: 55,
+        status: 'healthy', expected_count: 54, exposed_count: 54,
         missing_keys: [], unexpected_keys: [],
         material_settings_plugin_ready: true, klipper_settings_plugin_ready: true,
         catalog_checksum: 'b'.repeat(64), verified_at: '2026-08-22T04:00:00Z',
@@ -443,7 +443,7 @@ test('managed Cura workstations show verified material print setting coverage', 
   await page.route('**/api/v1/profiles/templates?include_inactive=true', (route) => route.fulfill({ json: [] }))
 
   await page.goto('/workstations')
-  await expect(page.getByText('55 of 55 verified')).toBeVisible()
+  await expect(page.getByText('54 of 54 verified')).toBeVisible()
   await expect(page.getByText('Material Settings and Klipper Settings are ready; managed values are enforced over Cura profiles.')).toBeVisible()
   await expect(page.getByText(/Verified Aug 22, 2026/)).toBeVisible()
 })

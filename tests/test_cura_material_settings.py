@@ -85,8 +85,11 @@ def test_operator_material_settings_catalog_is_exact_and_unique() -> None:
     assert {
         "default_material_bed_temperature",
         "default_material_print_temperature",
+        "ironing_speed",
         "limit_support_retractions",
     } <= CURA_RETIRED_SETTING_KEYS
+    assert "speed_ironing" in keys
+    assert "ironing_speed" not in keys
     assert "limit_support_retractions" not in keys
 
 
@@ -114,6 +117,10 @@ def test_profile_mapping_places_klipper_values_in_the_material_settings() -> Non
         cooling_max_percent=Decimal("70"),
         support_overhang_angle_deg=Decimal("55"),
         pressure_advance=Decimal("0.035"),
+        ironing_enabled=True,
+        ironing_flow_percent=Decimal("11"),
+        ironing_speed_mm_s=Decimal("25"),
+        ironing_line_spacing_mm=Decimal("0.12"),
         cura_extensions={
             "acceleration_print": "5000",
             "acceleration_travel": "8000",
@@ -143,6 +150,7 @@ def test_profile_mapping_places_klipper_values_in_the_material_settings() -> Non
     assert settings["cool_fan_speed_0"] == "15"
     assert settings["cool_fan_speed"] == "70"
     assert settings["cool_fan_speed_max"] == "70"
+    assert settings["speed_ironing"] == "25"
     assert "limit_support_retractions" not in settings
 
 

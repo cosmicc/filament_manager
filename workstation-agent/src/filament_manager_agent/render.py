@@ -174,6 +174,7 @@ PLUGIN_MODULE_TEMPLATE = '''"""Enforce Filament Manager material ownership insid
 import hashlib
 import json
 import os
+import re
 import tempfile
 from datetime import datetime, timezone
 from pathlib import Path
@@ -185,6 +186,9 @@ from cura.Machines.Models.BaseMaterialsModel import BaseMaterialsModel
 
 MANAGED_PREFIX = "filament_manager_"
 MANAGED_SETTING_KEYS = frozenset(__MANAGED_SETTING_KEYS__)
+EDITABLE_SETTING_KEYS = frozenset(__EDITABLE_SETTING_KEYS__)
+TEMPLATE_ONLY_SETTING_KEYS = frozenset(__TEMPLATE_ONLY_SETTING_KEYS__)
+RETIRED_SETTING_KEYS = frozenset(__RETIRED_SETTING_KEYS__)
 MANAGED_MATERIAL_COSTS = __MANAGED_MATERIAL_COSTS__
 KLIPPER_SETTING_KEYS = frozenset({
     "klipper_pressure_advance_factor",
@@ -193,6 +197,12 @@ KLIPPER_SETTING_KEYS = frozenset({
 })
 MATERIAL_SETTINGS_STATUS_SCHEMA_VERSION = 1
 MATERIAL_SETTINGS_STATUS_PATH = Path(__file__).with_name("material-settings-status.json")
+MANAGED_MATERIAL_EDITS_SCHEMA_VERSION = 1
+MANAGED_MATERIAL_EDITS_PATH = Path(__file__).with_name("managed-material-edits.json")
+GUID_PATTERN = re.compile(
+    r"^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
+    re.IGNORECASE,
+)
 
 
 def _catalog_checksum():
@@ -215,10 +225,6 @@ def _available_material_setting_keys(application):
             try:
                 if key not in stack.getAllKeys():
                     continue
-                settable_per_extruder = stack.getProperty(key, "settable_per_extruder")
-                resolve_value = stack.getProperty(key, "resolve")
-                if settable_per_extruder is False and resolve_value is None:
-                    continue
                 available.add(key)
                 break
             except Exception:
@@ -240,7 +246,7 @@ def _material_settings_status_payload(application):
     else:
         exposed = MANAGED_SETTING_KEYS & visible & available
         missing = MANAGED_SETTING_KEYS - exposed
-        status = "healthy" if not missing and visible == MANAGED_SETTING_KEYS else "degraded"
+        status = "healthy" if not missing and not (visible & RETIRED_SETTING_KEYS) else "degraded"
     return {
         "schema_version": MATERIAL_SETTINGS_STATUS_SCHEMA_VERSION,
         "catalog_checksum": _catalog_checksum(),
@@ -248,8 +254,10 @@ def _material_settings_status_payload(application):
         "expected_count": len(MANAGED_SETTING_KEYS),
         "exposed_count": len(exposed),
         "missing_keys": sorted(missing),
-        "unexpected_keys": sorted(visible - MANAGED_SETTING_KEYS),
-        "material_settings_plugin_ready": visible == MANAGED_SETTING_KEYS,
+        "unexpected_keys": sorted(visible & RETIRED_SETTING_KEYS),
+        "material_settings_plugin_ready": (
+            MANAGED_SETTING_KEYS <= visible and not (visible & RETIRED_SETTING_KEYS)
+        ),
         "klipper_settings_plugin_ready": (
             False if available is None else KLIPPER_SETTING_KEYS <= available
         ),
@@ -297,13 +305,104 @@ def _favorite_templates(application, model):
 
 
 def _configure_material_settings_plugin(application):
-    """Expose the complete central setting catalog in Material Settings."""
+    """Add the central catalog without replacing the operator's other selections."""
 
     preferences = application.getPreferences()
-    expected = ";".join(sorted(MANAGED_SETTING_KEYS))
     current = str(preferences.getValue("material_settings/visible_settings") or "")
-    if current != expected:
-        preferences.setValue("material_settings/visible_settings", expected)
+    selected = {key for key in current.split(";") if key}
+    updated = (selected | MANAGED_SETTING_KEYS) - RETIRED_SETTING_KEYS
+    rendered = ";".join(sorted(updated))
+    if rendered != current:
+        preferences.setValue("material_settings/visible_settings", rendered)
+
+
+def _material_guid(stack):
+    """Return the canonical GUID for a selected managed material, if available."""
+
+    material = getattr(stack, "material", None)
+    if material is None:
+        return None
+    for candidate in (
+        material.getMetaDataEntry("GUID", ""),
+        material.getMetaDataEntry("guid", ""),
+        material.getId(),
+    ):
+        value = str(candidate or "").strip()
+        if GUID_PATTERN.fullmatch(value):
+            return value.lower()
+    return None
+
+
+def _load_pending_material_edits():
+    """Load the bounded local edit receipt without exposing values in logs."""
+
+    try:
+        if MANAGED_MATERIAL_EDITS_PATH.is_symlink():
+            return {}
+        if not MANAGED_MATERIAL_EDITS_PATH.exists():
+            return {}
+        if MANAGED_MATERIAL_EDITS_PATH.stat().st_size > 128 * 1024:
+            return {}
+        payload = json.loads(MANAGED_MATERIAL_EDITS_PATH.read_text(encoding="utf-8"))
+    except (OSError, TypeError, ValueError):
+        return {}
+    if not isinstance(payload, dict) or payload.get("schema_version") != 1:
+        return {}
+    materials = payload.get("materials")
+    return materials if isinstance(materials, dict) else {}
+
+
+def _write_pending_material_edits(materials):
+    """Atomically persist bounded managed edits for the outbound agent."""
+
+    payload = {
+        "schema_version": MANAGED_MATERIAL_EDITS_SCHEMA_VERSION,
+        "materials": materials,
+    }
+    descriptor, temporary_name = tempfile.mkstemp(
+        prefix=".managed-material-edits-",
+        dir=MANAGED_MATERIAL_EDITS_PATH.parent,
+    )
+    temporary_path = Path(temporary_name)
+    try:
+        with os.fdopen(descriptor, "w", encoding="utf-8") as handle:
+            json.dump(payload, handle, sort_keys=True, separators=(",", ":"))
+            handle.write("\\n")
+            handle.flush()
+            os.fsync(handle.fileno())
+        os.replace(temporary_path, MANAGED_MATERIAL_EDITS_PATH)
+    finally:
+        temporary_path.unlink(missing_ok=True)
+
+
+def _record_pending_material_edit(stack, key, value):
+    """Queue one editable managed value for secure server-side validation."""
+
+    material_guid = _material_guid(stack)
+    if material_guid is None or key not in EDITABLE_SETTING_KEYS:
+        return
+    material = getattr(stack, "material", None)
+    is_template = (
+        material is not None
+        and str(material.getMetaDataEntry("brand", "")).strip() == "Template"
+    )
+    if key in TEMPLATE_ONLY_SETTING_KEYS and not is_template:
+        return
+    if not isinstance(value, (str, int, float, bool)):
+        return
+    rendered_value = value if isinstance(value, bool) else str(value)
+    if isinstance(rendered_value, str) and (
+        len(rendered_value) > 500 or "\\n" in rendered_value or "\\r" in rendered_value
+    ):
+        return
+    materials = _load_pending_material_edits()
+    material_edits = materials.get(material_guid)
+    if not isinstance(material_edits, dict):
+        material_edits = {}
+        materials[material_guid] = material_edits
+    material_edits[key] = rendered_value
+    if len(materials) <= 100 and len(material_edits) <= len(EDITABLE_SETTING_KEYS):
+        _write_pending_material_edits(materials)
 
 
 def _configure_material_costs(application):
@@ -427,11 +526,26 @@ class FilamentManagerVisibility(Extension):
         material_id = str(material.getMetaDataEntry("base_file", material.getId()) or "")
         return material_id.startswith(MANAGED_PREFIX)
 
-    def _watch(self, container):
+    def _watch(self, container, stack, *, capture_edits=False):
         identity = id(container)
         if identity in self._connected_containers:
             return
-        container.propertyChanged.connect(self._schedule_enforcement)
+
+        def changed(key=None, property_name=None):
+            if self._enforcing:
+                return
+            if capture_edits and key in EDITABLE_SETTING_KEYS and property_name in {None, "value"}:
+                try:
+                    _record_pending_material_edit(
+                        stack,
+                        key,
+                        container.getProperty(key, "value"),
+                    )
+                except Exception:
+                    Logger.log("w", "Filament Manager could not queue a managed material edit")
+            self._schedule_enforcement()
+
+        container.propertyChanged.connect(changed)
         self._connected_containers.add(identity)
 
     def _enforce_material_settings(self):
@@ -448,8 +562,8 @@ class FilamentManagerVisibility(Extension):
             stacks = [global_stack] + extruders
             for stack in stacks:
                 quality_changes = stack.qualityChanges
-                self._watch(stack.userChanges)
-                self._watch(quality_changes)
+                self._watch(stack.userChanges, stack, capture_edits=True)
+                self._watch(quality_changes, stack)
                 changed = False
                 for key in MANAGED_SETTING_KEYS.intersection(quality_changes.getAllKeys()):
                     quality_changes.removeInstance(key, postpone_emit=True)
@@ -479,6 +593,10 @@ class FilamentManagerVisibility(Extension):
                     continue
                 material = stack.material
                 user_changes = stack.userChanges
+                material_guid = _material_guid(stack)
+                pending = _load_pending_material_edits().get(material_guid, {})
+                if not isinstance(pending, dict):
+                    pending = {}
                 material_keys = MANAGED_SETTING_KEYS.intersection(material.getAllKeys())
                 stale_keys = MANAGED_SETTING_KEYS.intersection(user_changes.getAllKeys()) - material_keys
                 for key in stale_keys:
@@ -486,7 +604,7 @@ class FilamentManagerVisibility(Extension):
                 if stale_keys:
                     user_changes.sendPostponedEmits()
                 for key in material_keys:
-                    material_value = material.getProperty(key, "value")
+                    material_value = pending.get(key, material.getProperty(key, "value"))
                     current_value = user_changes.getProperty(key, "value")
                     if str(current_value) != str(material_value):
                         user_changes.setProperty(key, "value", material_value)
@@ -501,7 +619,7 @@ class FilamentManagerVisibility(Extension):
 PLUGIN_METADATA = b"""{
   "name": "Filament Manager Material Visibility",
   "author": "Filament Manager",
-  "version": "2.0.4",
+  "version": "2.0.5",
   "description": "Shows, favorites, and enforces the authoritative Filament Manager material library.",
   "api": 5,
   "supported_sdk_versions": ["8.0.0"]
@@ -511,6 +629,9 @@ PLUGIN_METADATA = b"""{
 
 def _visibility_plugin_files(
     managed_setting_keys: frozenset[str],
+    editable_setting_keys: frozenset[str],
+    template_only_setting_keys: frozenset[str],
+    retired_setting_keys: frozenset[str],
     managed_material_costs: dict[str, dict[str, float]],
 ) -> dict[Path, bytes]:
     """Return the managed Cura plugin with its bounded central setting catalog."""
@@ -520,6 +641,18 @@ def _visibility_plugin_files(
         PLUGIN_MODULE_TEMPLATE.replace(
             "__MANAGED_SETTING_KEYS__",
             repr(tuple(sorted(managed_setting_keys))),
+        )
+        .replace(
+            "__EDITABLE_SETTING_KEYS__",
+            repr(tuple(sorted(editable_setting_keys))),
+        )
+        .replace(
+            "__TEMPLATE_ONLY_SETTING_KEYS__",
+            repr(tuple(sorted(template_only_setting_keys))),
+        )
+        .replace(
+            "__RETIRED_SETTING_KEYS__",
+            repr(tuple(sorted(retired_setting_keys))),
         )
         .replace(
             "__MANAGED_MATERIAL_COSTS__",
@@ -549,6 +682,32 @@ def render_deployment(installation: CuraInstallation, payload: dict[str, Any]) -
     managed_setting_keys = frozenset(raw_managed_keys)
     if len(managed_setting_keys) != len(raw_managed_keys):
         raise ValueError("Deployment contains duplicate managed Cura setting keys.")
+    raw_editable_keys = payload.get("editable_material_setting_keys")
+    if not isinstance(raw_editable_keys, list) or not raw_editable_keys:
+        raise ValueError("Deployment is missing its editable Cura setting catalog.")
+    if any(
+        not isinstance(key, str) or not re.fullmatch(r"[a-z][a-z0-9_]{0,95}", key)
+        for key in raw_editable_keys
+    ):
+        raise ValueError("Deployment contains an invalid editable Cura setting key.")
+    editable_setting_keys = frozenset(raw_editable_keys)
+    if len(editable_setting_keys) != len(raw_editable_keys):
+        raise ValueError("Deployment contains duplicate editable Cura setting keys.")
+    if not editable_setting_keys <= managed_setting_keys:
+        raise ValueError("Editable Cura settings must be part of the managed catalog.")
+    raw_template_only_keys = payload.get("template_only_material_setting_keys")
+    if not isinstance(raw_template_only_keys, list):
+        raise ValueError("Deployment is missing its template-only Cura setting catalog.")
+    if any(
+        not isinstance(key, str) or not re.fullmatch(r"[a-z][a-z0-9_]{0,95}", key)
+        for key in raw_template_only_keys
+    ):
+        raise ValueError("Deployment contains an invalid template-only Cura setting key.")
+    template_only_setting_keys = frozenset(raw_template_only_keys)
+    if len(template_only_setting_keys) != len(raw_template_only_keys):
+        raise ValueError("Deployment contains duplicate template-only Cura setting keys.")
+    if not template_only_setting_keys <= managed_setting_keys:
+        raise ValueError("Template-only Cura settings must be part of the managed catalog.")
     raw_retired_keys = payload.get("retired_material_setting_keys", [])
     if not isinstance(raw_retired_keys, list) or any(
         not isinstance(key, str) or not re.fullmatch(r"[a-z][a-z0-9_]{0,95}", key) for key in raw_retired_keys
@@ -620,7 +779,15 @@ def render_deployment(installation: CuraInstallation, payload: dict[str, Any]) -
         machines.append(machine)
     if not machines:
         raise MachineMatchError("No desired material matches a machine in this Cura installation.")
-    files.update(_visibility_plugin_files(managed_setting_keys, managed_material_costs))
+    files.update(
+        _visibility_plugin_files(
+            managed_setting_keys,
+            editable_setting_keys,
+            template_only_setting_keys,
+            retired_setting_keys,
+            managed_material_costs,
+        )
+    )
     return RenderedDeployment(
         files=files,
         machine=machines[0],

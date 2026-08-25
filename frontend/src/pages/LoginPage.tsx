@@ -1,4 +1,3 @@
-import { LockKeyhole } from 'lucide-react'
 import { type FormEvent, useState } from 'react'
 import { ApiClientError } from '../api/client'
 import { useAuth } from '../context/AuthContext'
@@ -27,13 +26,13 @@ export default function LoginPage() {
     <main className="login-page">
       <section className="login-card">
         <div className="login-brand">
-          <img src="/assets/filament-manager-mark.png" alt="" />
+          <img src="/assets/filament-manager-icon-128.png" alt="" />
           <div><strong>Filament</strong><span>Manager</span></div>
         </div>
         <div className="login-card__intro">
-          <span className="login-lock"><LockKeyhole size={21} /></span>
-          <h1>Welcome back</h1>
-          <p>Sign in with your local workshop account.</p>
+          <p className="login-card__eyebrow">PRINT OPERATIONS</p>
+          <h1>The ultimate 3D printing filament and Cura manager</h1>
+          <p>Coordinate filament inventory, material profiles, calibration, Cura synchronization, and live printer operations from one purpose-built workspace.</p>
         </div>
         <form onSubmit={(event) => void submit(event)}>
           <label>Username<input autoComplete="username" required minLength={2} value={username} onChange={(event) => setUsername(event.target.value)} autoFocus /></label>
@@ -41,11 +40,10 @@ export default function LoginPage() {
           {error && <p className="form-error" role="alert">{error}</p>}
           <button className="button button--primary button--full" disabled={submitting}>{submitting ? 'Signing in…' : 'Sign in'}</button>
         </form>
-        <p className="login-card__security">Session credentials stay on this server. Filament Manager never exposes integration secrets to the browser.</p>
       </section>
       <aside className="login-art" aria-hidden="true">
-        <div className="login-art__rings"><span /><span /><span /></div>
-        <div className="login-art__copy"><p>Workshop inventory, calibration, and printer state.</p><strong>One trustworthy place.</strong></div>
+        <img src="/assets/login-delta-workshop.webp" alt="" />
+        <div className="login-art__label"><span>Filament Manager</span><strong>Inventory · Cura · Printer</strong></div>
       </aside>
     </main>
   )

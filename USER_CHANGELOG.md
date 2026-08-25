@@ -1,5 +1,23 @@
 # User Changelog
 
+## 0.4.2 - 08.24.2026
+
+### Added
+
+- Added a modern login page featuring a rendered delta 3D printer and filament spools with concise, formal product wording.
+- Added the ability to change tracked values on an existing managed Cura template or filament material and save them back to Filament Manager automatically.
+
+### Changed
+
+- Filament Manager now adds its 54 required Material Settings choices while preserving unrelated choices you enabled in Cura.
+
+### Fixed
+
+- Fixed Cura asking for the obsolete `ironing_speed` setting; Cura 5.13 now receives and verifies `speed_ironing`.
+- Fixed the removed **Limit Support Retractions** setting remaining in Cura Workstations because a failed backup upload prevented the agent from installing the corrected library.
+- Fixed a failed Cura backup upload blocking all later material, nozzle, and restore synchronization work.
+- Fixed tracked Cura values snapping back before they could be saved.
+
 ## 0.4.1 - 08.24.2026
 
 ### Added

@@ -28,6 +28,7 @@ def merge_cura_settings(
         {"cool_fan_speed_max", "cool_fan_speed"},
         {"speed_print_layer_0", "speed_layer_0"},
         {"retraction_speed", "retraction_retract_speed"},
+        {"speed_ironing", "ironing_speed"},
     )
     for keys in synonymous_groups:
         if keys.intersection(source_settings):
@@ -144,7 +145,7 @@ def material_settings_from_cura(
             _boolean(settings, "ironing_enabled", default=False) if "ironing_enabled" in settings else None
         ),
         "ironing_flow_percent": _decimal(settings, "ironing_flow"),
-        "ironing_speed_mm_s": _decimal(settings, "ironing_speed"),
+        "ironing_speed_mm_s": _decimal(settings, "speed_ironing", "ironing_speed"),
         "ironing_line_spacing_mm": _decimal(settings, "ironing_line_spacing"),
         "filament_density_g_cm3": filament_density_g_cm3,
         "preferred_build_plate_surface_id": preferred_build_plate_surface_id,
