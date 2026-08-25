@@ -24,7 +24,7 @@ const settings = {
   travel_speed_mm_s: '150', support_speed_mm_s: '50', retraction_distance_mm: '0.8',
   retraction_speed_mm_s: '35', retraction_prime_speed_mm_s: '35', cooling_enabled: true,
   cooling_min_percent: '20', cooling_max_percent: '100', support_overhang_angle_deg: '50',
-  tree_max_branch_angle_deg: null, pressure_advance: '0.04', ironing_enabled: false,
+  tree_max_branch_angle_deg: null, pressure_advance: '0.04',
   ironing_flow_percent: null, ironing_speed_mm_s: null, ironing_line_spacing_mm: null,
   filament_density_g_cm3: '1.24', preferred_build_plate_surface_id: null, cura_extensions: {},
 }

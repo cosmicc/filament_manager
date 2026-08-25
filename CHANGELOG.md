@@ -1,5 +1,31 @@
 # Changelog
 
+## 0.5.1 - 08.25.2026
+
+### Added
+
+- Added interactive Windows workstation pairing during installation, current-user PATH registration, immediate startup after successful pairing, and persistent limited logon-task startup.
+- Added explicitly confirmed initialization of a fresh Cura installation from any retained recovery point captured on another paired workstation with the exact same Cura version, followed by canonical nozzle alignment and full managed-library synchronization.
+- Added a per-field **Copy from** selector for blank template values, populated from every active template containing that setting.
+- Added permanent printer ownership for every physical nozzle and exact physical-nozzle references for material templates.
+
+### Changed
+
+- Changed ironing management to track only flow, speed, and line spacing per material; Cura quality profiles now exclusively control whether ironing is enabled.
+- Changed the managed Cura Material Settings contract from 54 to 53 non-metadata keys and advanced the workstation renderer revision so existing agents replace the prior managed plugin manifest.
+- Added schema migration `e7f8a9b0c123` to remove the retired material-profile ironing-enable column; its historical values are intentionally not reconstructed on downgrade.
+- Changed template numeric controls to expose their supported browser constraints before submission while retaining sanitized server-side field validation.
+- Changed template cards to show the printer directly below the title and the exact nozzle code, diameter, and material in the details without rendering stored description text.
+- Changed Spools, Filaments, Build Plates, and Nozzles catalog grids to equal-height cards with bounded, truncated text; Filament and Nozzle list rows now open directly without redundant action buttons.
+- Added schema migration `f8a9b0c1d234` to backfill printer-owned nozzles and exact template/nozzle scope, rejecting genuinely ambiguous legacy ownership instead of guessing.
+
+### Fixed
+
+- Fixed fresh Windows installations leaving `filament-manager-agent` unavailable from normal prompts and leaving the registered startup task stopped.
+- Fixed fresh Cura workstations being unable to reuse a compatible backup captured by an existing workstation.
+- Fixed invalid ironing values producing poor save guidance by preserving exact field-level validation, native invalid highlighting, centered scrolling, and keyboard focus.
+- Fixed diameter-only template scope allowing two physical nozzles on one printer to share an indistinguishable template identity.
+
 ## 0.5.0 - 08.25.2026
 
 ### Added

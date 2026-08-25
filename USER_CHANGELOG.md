@@ -1,5 +1,26 @@
 # User Changelog
 
+## 0.5.1 - 08.25.2026
+
+### Added
+
+- Windows workstation installation now pairs interactively, makes `filament-manager-agent` available in new terminals, starts immediately, and runs automatically at sign-in.
+- A fresh Cura installation can restore a reviewed, exact-version backup from another paired workstation before Filament Manager synchronizes the current nozzle and material library.
+- Blank template settings now offer a **Copy from** list containing every active template that has a value for that setting.
+- Every nozzle now belongs to a specific printer, and every template identifies the exact printer and physical nozzle it controls.
+
+### Changed
+
+- Cura quality profiles now control whether ironing is enabled. Filament Manager continues tracking ironing flow, speed, and line spacing for each material.
+- Cura Workstations now verifies 53 managed Material Settings instead of 54.
+- Template cards now put the printer beneath the title, show exact nozzle details, and omit repetitive stored descriptions.
+- Spool, Filament, Build Plate, and Nozzle cards remain equal in size within each view and truncate unusually long text. Filament and Nozzle list rows open directly when clicked.
+
+### Fixed
+
+- Improved invalid template-setting feedback so the exact rejected control is visibly marked and focused instead of leaving only a generic save failure.
+- Prevented templates for different physical nozzles from being treated as the same diameter-only scope.
+
 ## 0.5.0 - 08.25.2026
 
 ### Added

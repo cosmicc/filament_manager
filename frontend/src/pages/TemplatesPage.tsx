@@ -8,6 +8,7 @@ import type {
   Filament,
   MaterialProfile,
   MaterialTemplate,
+  Nozzle,
   Printer,
 } from '../api/types'
 import { EditorSection } from '../components/EditorSection'
@@ -19,7 +20,7 @@ import { Modal } from '../components/Modal'
 import { PageHeader } from '../components/PageHeader'
 import { useAuth } from '../context/AuthContext'
 import { Link } from '../context/RouterContext'
-import { compactNumber, inputNumber } from '../lib/format'
+import { compactNumber } from '../lib/format'
 
 function nullable(value: FormDataEntryValue | null) {
   const normalized = String(value ?? '').trim()
@@ -44,12 +45,15 @@ export default function TemplatesPage() {
   const [openingTemplateId, setOpeningTemplateId] = useState<string | null>(null)
   const [comparisonTargetKey, setComparisonTargetKey] = useState<string | null>(null)
   const [message, setMessage] = useState('')
+  const [newPrinterId, setNewPrinterId] = useState('')
+  const [newNozzleId, setNewNozzleId] = useState('')
   const editorFormRef = useRef<HTMLFormElement>(null)
   const nativeInvalidPending = useRef(false)
   const templates = useQuery({ queryKey: ['material-templates'], queryFn: () => apiFetch<MaterialTemplate[]>('/profiles/templates?include_inactive=true') })
   const profiles = useQuery({ queryKey: ['profiles'], queryFn: () => apiFetch<MaterialProfile[]>('/profiles') })
   const filaments = useQuery({ queryKey: ['filaments'], queryFn: () => apiFetch<Filament[]>('/filaments') })
   const printers = useQuery({ queryKey: ['printers'], queryFn: () => apiFetch<Printer[]>('/printers') })
+  const nozzles = useQuery({ queryKey: ['nozzles'], queryFn: () => apiFetch<Nozzle[]>('/nozzles') })
   const plates = useQuery({ queryKey: ['plates'], queryFn: () => apiFetch<BuildPlate[]>('/build-plates') })
   const catalog = useQuery({ queryKey: ['cura-settings-catalog'], queryFn: () => apiFetch<CuraSettingCatalogItem[]>('/profiles/cura-settings/catalog') })
   const save = useMutation({
@@ -67,7 +71,8 @@ export default function TemplatesPage() {
           material_type: String(data.get('material_type')).trim(),
           description: nullable(data.get('description')),
           printer_id: String(data.get('printer_id')),
-          nozzle_diameter_mm: String(data.get('nozzle_diameter_mm')),
+          nozzle_id: String(data.get('nozzle_id')),
+          nozzle_diameter_mm: nozzles.data?.find((nozzle) => nozzle.id === data.get('nozzle_id'))?.diameter_mm,
           filament_diameter_mm: String(data.get('filament_diameter_mm')),
           settings,
         }),
@@ -96,7 +101,18 @@ export default function TemplatesPage() {
     0,
   )
   const hasVersionConflict = save.error instanceof ApiClientError && save.error.code === 'version_conflict'
-  const loading = templates.isLoading || printers.isLoading || plates.isLoading || catalog.isLoading
+  const loading = templates.isLoading || printers.isLoading || nozzles.isLoading || plates.isLoading || catalog.isLoading
+
+  useEffect(() => {
+    if (newPrinterId || !printers.data?.length) return
+    setNewPrinterId(printers.data[0].id)
+  }, [newPrinterId, printers.data])
+
+  useEffect(() => {
+    const compatible = (nozzles.data ?? []).filter((nozzle) => nozzle.printer_id === newPrinterId)
+    if (compatible.some((nozzle) => nozzle.id === newNozzleId)) return
+    setNewNozzleId(compatible[0]?.id ?? '')
+  }, [newNozzleId, newPrinterId, nozzles.data])
 
   useEffect(() => {
     if (!hasValidationErrors) return undefined
@@ -146,7 +162,9 @@ export default function TemplatesPage() {
     {message && <div className="deployment-note" role="status">{message}</div>}
     {loading ? <LoadingState /> : !templates.data?.length ? <EmptyState icon={Library} title="No material templates" description="Add Template PLA, Template PETG, Template ASA, and the other material bases you use." /> : <div className="catalog-grid">{templates.data.map((template) => {
       const latest = template.revisions[0]
-      return <article className="catalog-card catalog-card--template" key={template.id}><div><p className="eyebrow">{template.material_type} · {compactNumber(template.nozzle_diameter_mm, 1)} mm nozzle</p><h2>{template.name}</h2><p>{template.description ?? 'No description'}</p></div><dl className="catalog-meta"><div><dt>Printer</dt><dd>{printers.data?.find((item) => item.id === template.printer_id)?.name ?? 'Unknown'}</dd></div><div><dt>Linked behavior</dt><dd>Automatic inheritance</dd></div><div><dt>Temperatures</dt><dd>{compactNumber(latest.settings.extruder_temp_c, 0)}° / {compactNumber(latest.settings.bed_temp_c, 0)}°</dd></div><div><dt>Profile settings</dt><dd>{Object.keys(latest.settings.cura_extensions).length + canonicalMaterialFieldCount} unique controls</dd></div></dl><div className="template-card__actions">{profiles.data?.length ? <button className="button" onClick={() => setComparisonTargetKey(`template:${latest.id}`)}><GitCompareArrows size={16} /> Compare settings</button> : null}{user?.role !== 'viewer' && <button className="button" disabled={openingTemplateId === template.id} onClick={() => { void openEditor(template) }}><Pencil size={16} /> {openingTemplateId === template.id ? 'Refreshing…' : 'Edit template'}</button>}</div></article>
+      const nozzle = nozzles.data?.find((item) => item.id === template.nozzle_id)
+      const printer = printers.data?.find((item) => item.id === template.printer_id)
+      return <article className="catalog-card catalog-card--template" key={template.id}><div className="template-card__identity"><p className="eyebrow">{template.material_type} · {nozzle?.nozzle_code ?? 'Unknown nozzle'}</p><h2>{template.name}</h2><p>{printer?.name ?? 'Unknown printer'}</p></div><dl className="catalog-meta"><div><dt>Physical nozzle</dt><dd>{nozzle ? `${nozzle.nozzle_code} · ${compactNumber(nozzle.diameter_mm, 1)} mm ${nozzle.material}` : `${compactNumber(template.nozzle_diameter_mm, 1)} mm · unavailable`}</dd></div><div><dt>Linked behavior</dt><dd>Automatic inheritance</dd></div><div><dt>Temperatures</dt><dd>{compactNumber(latest.settings.extruder_temp_c, 0)}° / {compactNumber(latest.settings.bed_temp_c, 0)}°</dd></div><div><dt>Profile settings</dt><dd>{Object.keys(latest.settings.cura_extensions).length + canonicalMaterialFieldCount} unique controls</dd></div></dl><div className="template-card__actions">{profiles.data?.length ? <button className="button" onClick={() => setComparisonTargetKey(`template:${latest.id}`)}><GitCompareArrows size={16} /> Compare settings</button> : null}{user?.role !== 'viewer' && <button className="button" disabled={openingTemplateId === template.id} onClick={() => { void openEditor(template) }}><Pencil size={16} /> {openingTemplateId === template.id ? 'Refreshing…' : 'Edit template'}</button>}</div></article>
     })}</div>}
     {comparisonTargetKey && profiles.data ? <MaterialComparisonModal
       profiles={profiles.data}
@@ -163,13 +181,24 @@ export default function TemplatesPage() {
         {!editSource ? <EditorSection title="Template identity" description="Scope the reusable starting point to a printer, nozzle, and filament diameter.">
           <div className="form-grid">
             <label>Material type<input name="material_type" list="common-material-types" placeholder="PLA, PCTPE, Nylon 645…" required autoFocus aria-invalid={identityError('material_type').length ? true : undefined} aria-describedby={identityError('material_type').length ? identityErrorId('material_type') : undefined} /><small className="field-help">Cura name: Template + material type; brand: Template.</small>{identityFieldError('material_type')}<datalist id="common-material-types">{['PLA', 'PLA+', 'PETG', 'ASA', 'TPU', 'PCTPE', 'Nylon 645'].map((material) => <option key={material} value={material} />)}</datalist></label>
-            <label>Printer<select name="printer_id" required aria-invalid={identityError('printer_id').length ? true : undefined} aria-describedby={identityError('printer_id').length ? identityErrorId('printer_id') : undefined}>{printers.data?.map((printer) => <option key={printer.id} value={printer.id}>{printer.name}</option>)}</select>{identityFieldError('printer_id')}</label>
-            <label>Nozzle diameter<input name="nozzle_diameter_mm" type="number" min="0.1" step="0.1" defaultValue={inputNumber(printers.data?.[0]?.nozzle_diameter_mm ?? '0.4', 1)} required aria-invalid={identityError('nozzle_diameter_mm').length ? true : undefined} aria-describedby={identityError('nozzle_diameter_mm').length ? identityErrorId('nozzle_diameter_mm') : undefined} />{identityFieldError('nozzle_diameter_mm')}</label>
+            <label>Printer<select name="printer_id" value={newPrinterId} onChange={(event) => setNewPrinterId(event.target.value)} required aria-invalid={identityError('printer_id').length ? true : undefined} aria-describedby={identityError('printer_id').length ? identityErrorId('printer_id') : undefined}>{printers.data?.map((printer) => <option key={printer.id} value={printer.id}>{printer.name}</option>)}</select>{identityFieldError('printer_id')}</label>
+            <label>Physical nozzle<select name="nozzle_id" value={newNozzleId} onChange={(event) => setNewNozzleId(event.target.value)} required aria-invalid={identityError('nozzle_id').length ? true : undefined} aria-describedby={identityError('nozzle_id').length ? identityErrorId('nozzle_id') : undefined}><option value="" disabled>No nozzle available</option>{nozzles.data?.filter((nozzle) => nozzle.printer_id === newPrinterId).map((nozzle) => <option key={nozzle.id} value={nozzle.id}>{nozzle.nozzle_code} · {compactNumber(nozzle.diameter_mm, 1)} mm · {nozzle.material}</option>)}</select>{identityFieldError('nozzle_id')}</label>
             <label>Filament diameter<input name="filament_diameter_mm" type="number" min="0.1" step="0.01" defaultValue="1.75" required aria-invalid={identityError('filament_diameter_mm').length ? true : undefined} aria-describedby={identityError('filament_diameter_mm').length ? identityErrorId('filament_diameter_mm') : undefined} />{identityFieldError('filament_diameter_mm')}</label>
             <label className="form-grid__wide">Description<textarea name="description" rows={2} placeholder="Purpose, behavior, and calibration notes" aria-invalid={identityError('description').length ? true : undefined} aria-describedby={identityError('description').length ? identityErrorId('description') : undefined} />{identityFieldError('description')}</label>
           </div>
         </EditorSection> : null}
-        <MaterialSettingsEditor settings={sourceSettings} validationErrors={settingsValidationErrors} catalog={catalog.data ?? []} plates={plates.data ?? []} scope="template" />
+        <MaterialSettingsEditor
+          settings={sourceSettings}
+          validationErrors={settingsValidationErrors}
+          catalog={catalog.data ?? []}
+          plates={plates.data ?? []}
+          copySources={(templates.data ?? []).filter((template) => template.active && template.id !== editSource?.id && template.revisions[0]).map((template) => ({
+            id: template.id,
+            label: `${template.name} · ${printers.data?.find((printer) => printer.id === template.printer_id)?.name ?? 'Unknown printer'} · ${compactNumber(template.nozzle_diameter_mm, 1)} mm`,
+            settings: template.revisions[0].settings,
+          }))}
+          scope="template"
+        />
         {save.error ? <p className="form-error" role="alert">{hasValidationErrors ? `Correct the highlighted ${validationIssueCount === 1 ? 'value' : 'values'} and save again.` : hasVersionConflict ? 'This template changed after the editor opened. Close and reopen it to load the current values before saving.' : save.error.message}</p> : null}
       </form>
     </Modal> : null}

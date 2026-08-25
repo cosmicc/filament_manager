@@ -11,7 +11,7 @@ vi.mock('../api/client', () => ({ apiFetch: apiFetchMock }))
 vi.mock('../context/AuthContext', () => ({ useAuth: () => ({ user: { role: 'administrator' } }) }))
 
 const nozzle = {
-  id: 'nozzle-id', nozzle_code: 'N3', diameter_mm: '0.6', material: 'Hardened steel',
+  id: 'nozzle-id', nozzle_code: 'N3', printer_id: 'printer-id', diameter_mm: '0.6', material: 'Hardened steel',
   manufacturer: 'Workshop', product_name: 'High-flow', coating: null, purchase_date: null,
   status: 'installed', installed_printer_id: 'printer-id', installed_at: '2026-08-22T00:00:00Z',
   retired_at: null, notes: null, record_version: 2, completed_print_count: 12,
@@ -37,7 +37,7 @@ describe('NozzlesPage', () => {
 
     expect(await screen.findByRole('heading', { name: '0.6 mm Hardened steel' })).toBeTruthy()
     fireEvent.change(screen.getByLabelText('Nozzles view'), { target: { value: 'list' } })
-    fireEvent.click(screen.getByRole('button', { name: 'Open details' }))
+    fireEvent.click(screen.getAllByRole('row')[1])
     expect(screen.getByRole('dialog', { name: 'N3 details' })).toBeTruthy()
     expect(screen.getByRole('button', { name: 'History' })).toBeTruthy()
     expect(screen.getByRole('button', { name: 'Edit' })).toBeTruthy()

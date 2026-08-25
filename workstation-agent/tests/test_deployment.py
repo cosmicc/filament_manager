@@ -398,7 +398,7 @@ def test_apply_is_idempotent_and_rollback_restores_original(tmp_path: Path, monk
     assert first["status"] == "installed"
     manifest = json.loads((version / ".filament-manager" / "manifest.json").read_text())
     assert manifest["library_checksum"] == "a" * 64
-    assert manifest["renderer_revision"] == 9
+    assert manifest["renderer_revision"] == 10
     waiting_status = material_settings_sync_status(version)
     assert waiting_status["status"] == "waiting_for_cura"
     expected_keys = sorted(_payload()["managed_material_setting_keys"])
@@ -443,7 +443,7 @@ def test_apply_is_idempotent_and_rollback_restores_original(tmp_path: Path, monk
     )
     assert upgraded["status"] == "installed"
     upgraded_manifest = json.loads((version / ".filament-manager" / "manifest.json").read_text())
-    assert upgraded_manifest["renderer_revision"] == 9
+    assert upgraded_manifest["renderer_revision"] == 10
 
     assert rollback(deployment_id) == ["Cura 5.10"]
     assert (version / "definition_changes" / "flsun-v400_settings.inst.cfg").read_bytes() == original

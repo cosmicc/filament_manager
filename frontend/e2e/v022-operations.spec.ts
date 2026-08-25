@@ -30,8 +30,8 @@ test('diagnostics consolidates operational status and recovery controls', async 
     body: 'Filament Manager diagnostics\nGenerated: 2026-08-14T12:00:00Z\n',
   }))
   await page.route('**/api/v1/diagnostics/version', (route) => route.fulfill({ json: {
-    running_version: '0.5.0', latest_version: '0.5.0', status: 'current',
-    release_url: 'https://github.com/cosmicc/filament_manager/releases/tag/v0.5.0',
+    running_version: '0.5.1', latest_version: '0.5.1', status: 'current',
+    release_url: 'https://github.com/cosmicc/filament_manager/releases/tag/v0.5.1',
     detail: 'This installation matches the newest published GitHub release.',
   } }))
   await page.route('**/api/v1/diagnostics', (route) => route.fulfill({ json: {
@@ -67,9 +67,9 @@ test('diagnostics consolidates operational status and recovery controls', async 
   await page.goto('/diagnostics')
 
   await expect(page.getByRole('heading', { name: 'Diagnostics' })).toBeVisible()
-  await expect(page.getByRole('heading', { name: 'Filament Manager v0.5.0' })).toBeVisible()
-  await expect(page.getByText('Latest: v0.5.0')).toBeVisible()
-  await expect(page.getByText('v0.5.0', { exact: true }).first()).toBeVisible()
+  await expect(page.getByRole('heading', { name: 'Filament Manager v0.5.1' })).toBeVisible()
+  await expect(page.getByText('Latest: v0.5.1')).toBeVisible()
+  await expect(page.getByText('v0.5.1', { exact: true }).first()).toBeVisible()
   await expect(page.getByRole('button', { name: 'Logout' })).toBeVisible()
   await expect(page.getByRole('button', { name: 'Collapse navigation' })).toBeVisible()
   await expect(page.getByRole('heading', { name: 'Connections' })).toBeVisible()
@@ -108,7 +108,7 @@ test('theme control lives in Settings instead of the navigation', async ({ page 
   await page.getByRole('button', { name: 'Open navigation' }).click()
   await expect(page.locator('.app-shell')).not.toHaveClass(/app-shell--collapsed/)
   await expect.poll(() => page.locator('.sidebar').evaluate((element) => getComputedStyle(element).width)).toBe('310px')
-  await expect(page.locator('.sidebar').getByText('v0.5.0', { exact: true })).toBeVisible()
+  await expect(page.locator('.sidebar').getByText('v0.5.1', { exact: true })).toBeVisible()
   await expect(page.locator('.sidebar').getByRole('button', { name: 'Logout' })).toBeVisible()
   await expect(page.locator('.sidebar').getByRole('button', { name: /navigation/ })).toHaveCount(1)
   await page.waitForTimeout(250)
@@ -123,7 +123,7 @@ test('physical nozzle page shows exact historical use', async ({ page }) => {
     last_info_sync_at: checkedAt, record_version: 1,
   }] }))
   await page.route('**/api/v1/nozzles?include_retired=true', (route) => route.fulfill({ json: [{
-    id: 'nozzle-id', nozzle_code: 'N3', diameter_mm: '0.6', material: 'Hardened steel',
+    id: 'nozzle-id', nozzle_code: 'N3', printer_id: 'printer-id', diameter_mm: '0.6', material: 'Hardened steel',
     manufacturer: 'Workshop', product_name: 'High-flow', coating: null,
     purchase_date: '2026-07-21', status: 'installed', installed_printer_id: 'printer-id',
     installed_at: checkedAt, retired_at: null, notes: null, record_version: 2,
@@ -140,7 +140,7 @@ test('physical nozzle page shows exact historical use', async ({ page }) => {
   await expect(page.getByRole('heading', { name: '0.6 mm Hardened steel' })).toBeVisible()
   await expect(page.getByText('12', { exact: true })).toBeVisible()
   await expect(page.getByText('4,830.5 g', { exact: true })).toBeVisible()
-  await page.getByRole('button', { name: 'Open details and actions' }).click()
+  await page.getByRole('button').filter({ hasText: 'N3' }).click()
   await page.getByRole('button', { name: 'History' }).click()
   const lifecycle = page.getByRole('dialog', { name: 'N3 lifecycle' })
   await expect(lifecycle).toBeVisible()

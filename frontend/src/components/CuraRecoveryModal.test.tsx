@@ -21,7 +21,15 @@ const agent: WorkstationAgent = {
   enabled: true,
   cura_management_enabled: true,
   capabilities: { cura_recovery_snapshots: true },
-  cura_installations: [],
+  cura_installations: [{
+    installation_id: 'cura-test',
+    version: '5.13',
+    channel: 'stable',
+    path_hint: 'Cura 5.13',
+    setting_version: 27,
+    managed_library_checksum: null,
+    machines: [],
+  }],
   cura_materials: [],
   cura_recovery_status: 'ready',
   cura_recovery_message: null,
@@ -67,7 +75,7 @@ describe('CuraRecoveryModal', () => {
 
   it('reviews an exact snapshot before queueing the restore', async () => {
     apiFetchMock.mockImplementation((path: string) => {
-      if (path === '/workstation-agents/agent-id/cura-recovery-snapshots') return Promise.resolve([snapshot])
+      if (path === '/workstation-agents/agent-id/cura-recovery-snapshots?include_compatible=true') return Promise.resolve([snapshot])
       if (path === '/cura-deployments') return Promise.resolve([])
       if (path === '/workstation-agents/agent-id/cura-recovery-restores') return Promise.resolve({ id: 'restore-id' })
       return Promise.reject(new Error(`Unexpected API path: ${path}`))
@@ -78,7 +86,7 @@ describe('CuraRecoveryModal', () => {
       defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
     })
 
-    render(<QueryClientProvider client={queryClient}><CuraRecoveryModal agent={agent} onClose={onClose} onQueued={onQueued} /></QueryClientProvider>)
+    render(<QueryClientProvider client={queryClient}><CuraRecoveryModal agent={agent} agents={[agent]} onClose={onClose} onQueued={onQueued} /></QueryClientProvider>)
 
     fireEvent.click(await screen.findByRole('button', { name: /Cura 5.13/ }))
     fireEvent.click(screen.getByRole('button', { name: 'Review recovery' }))
@@ -91,7 +99,7 @@ describe('CuraRecoveryModal', () => {
     await waitFor(() => {
       expect(apiFetchMock).toHaveBeenCalledWith('/workstation-agents/agent-id/cura-recovery-restores', {
         method: 'POST',
-        body: JSON.stringify({ snapshot_id: 'snapshot-id', confirmed: true }),
+        body: JSON.stringify({ snapshot_id: 'snapshot-id', installation_id: 'cura-test', initialize_managed_library: false, confirmed: true }),
       })
     })
     expect(onQueued).toHaveBeenCalledWith(expect.stringContaining('Cura 5.13 recovery was queued'))
@@ -100,7 +108,7 @@ describe('CuraRecoveryModal', () => {
 
   it('shows saved configurations before recent backup requests', async () => {
     apiFetchMock.mockImplementation((path: string) => {
-      if (path === '/workstation-agents/agent-id/cura-recovery-snapshots') return Promise.resolve([snapshot])
+      if (path === '/workstation-agents/agent-id/cura-recovery-snapshots?include_compatible=true') return Promise.resolve([snapshot])
       if (path === '/cura-deployments') return Promise.resolve([{
         id: 'deployment-id',
         agent_id: agent.id,
@@ -116,7 +124,7 @@ describe('CuraRecoveryModal', () => {
       defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
     })
 
-    render(<QueryClientProvider client={queryClient}><CuraRecoveryModal agent={agent} onClose={vi.fn()} onQueued={vi.fn()} /></QueryClientProvider>)
+    render(<QueryClientProvider client={queryClient}><CuraRecoveryModal agent={agent} agents={[agent]} onClose={vi.fn()} onQueued={vi.fn()} /></QueryClientProvider>)
 
     const saved = await screen.findByRole('heading', { name: 'Saved Cura configurations' })
     const requests = await screen.findByRole('heading', { name: 'Recent backup requests' })

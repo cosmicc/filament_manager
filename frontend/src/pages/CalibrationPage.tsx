@@ -44,7 +44,6 @@ const resultFields: Record<string, { key: string; label: string; unit?: string; 
     { key: 'tree_max_branch_angle_deg', label: 'Maximum tree branch angle', unit: '°', precision: 0 },
   ],
   ironing: [
-    { key: 'ironing_enabled', label: 'Enable ironing', type: 'checkbox' },
     { key: 'ironing_flow_percent', label: 'Ironing flow', unit: '%', precision: 0 },
     { key: 'ironing_speed_mm_s', label: 'Ironing speed', unit: 'mm/s', precision: 0 },
     { key: 'ironing_line_spacing_mm', label: 'Line spacing', unit: 'mm', precision: 1 },

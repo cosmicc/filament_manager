@@ -108,7 +108,6 @@ CURA_MATERIAL_SETTINGS: tuple[CuraMaterialSetting, ...] = (
     _number("cool_min_speed", "Minimum Speed", "mm/s", template_only=True),
     _number("speed_wall", "Wall Speed", "mm/s", template_only=True),
     _number("cool_fan_speed_0", "Initial Fan Speed", "%"),
-    _boolean("ironing_enabled", "Enable Ironing"),
     _number("ironing_flow", "Ironing Flow", "%"),
     _number("speed_ironing", "Ironing Speed", "mm/s"),
     _number("ironing_line_spacing", "Ironing Line Spacing", "mm"),
@@ -179,7 +178,6 @@ CURA_TYPED_SETTING_KEYS = frozenset(
         "cool_fan_enabled",
         "cool_fan_speed",
         "cool_fan_speed_min",
-        "ironing_enabled",
         "ironing_flow",
         "ironing_line_spacing",
         "speed_ironing",
@@ -221,6 +219,7 @@ CURA_RETIRED_SETTING_KEYS = frozenset(
         "material_print_temperature_layer_0",
         "material_standby_temperature",
         "limit_support_retractions",
+        "ironing_enabled",
         "roofing_material_flow",
         "skirt_brim_material_flow",
         "support_material_flow",
@@ -251,7 +250,6 @@ class MaterialProfileValues(Protocol):
     cooling_max_percent: Decimal
     support_overhang_angle_deg: Decimal | None
     pressure_advance: Decimal | None
-    ironing_enabled: bool | None
     ironing_flow_percent: Decimal | None
     ironing_speed_mm_s: Decimal | None
     ironing_line_spacing_mm: Decimal | None
@@ -286,7 +284,6 @@ def cura_settings_for_profile(profile: MaterialProfileValues) -> dict[str, objec
         "material_bed_temperature": _decimal(profile.bed_temp_c),
         "material_flow": _decimal(profile.flow_percent),
         "material_print_temperature": _decimal(profile.extruder_temp_c),
-        "ironing_enabled": getattr(profile, "ironing_enabled", None),
         "ironing_flow": _decimal(getattr(profile, "ironing_flow_percent", None)),
         "speed_ironing": _decimal(getattr(profile, "ironing_speed_mm_s", None)),
         "ironing_line_spacing": _decimal(getattr(profile, "ironing_line_spacing_mm", None)),

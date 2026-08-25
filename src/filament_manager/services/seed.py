@@ -1,16 +1,18 @@
 """Idempotent first-run seeding for configured workshop resources."""
 
+from datetime import UTC, datetime
 from decimal import Decimal
 
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from filament_manager.config import Settings
-from filament_manager.models.enums import PlateCondition, PlateStatus
+from filament_manager.models.enums import NozzleStatus, PlateCondition, PlateStatus
 from filament_manager.models.inventory import (
     BuildPlate,
     BuildPlateSurface,
     MaterialTemplate,
+    Nozzle,
     Printer,
 )
 from filament_manager.services.material_settings import save_template_settings
@@ -92,11 +94,46 @@ async def seed_configured_system(session: AsyncSession, settings: Settings) -> d
         await session.scalars(select(Printer).where(Printer.printer_code.in_(configured_printer_codes)))
     )
     for printer in configured_printers:
+        nozzle = await session.get(Nozzle, printer.active_nozzle_id) if printer.active_nozzle_id else None
+        if nozzle is None:
+            nozzle = await session.scalar(
+                select(Nozzle)
+                .where(
+                    Nozzle.printer_id == printer.id,
+                    Nozzle.diameter_mm == printer.nozzle_diameter_mm,
+                    Nozzle.status != NozzleStatus.RETIRED,
+                )
+                .order_by(Nozzle.created_at, Nozzle.id)
+                .limit(1)
+            )
+        if nozzle is None:
+            existing_codes = {
+                code.casefold()
+                for code in await session.scalars(
+                    select(Nozzle.nozzle_code).where(Nozzle.printer_id == printer.id)
+                )
+            }
+            sequence = 1
+            while f"n{sequence}" in existing_codes:
+                sequence += 1
+            nozzle = Nozzle(
+                nozzle_code=f"N{sequence}",
+                printer_id=printer.id,
+                diameter_mm=printer.nozzle_diameter_mm,
+                material=printer.nozzle_material or "Brass",
+                status=NozzleStatus.INSTALLED,
+                installed_at=datetime.now(UTC),
+            )
+            session.add(nozzle)
+            await session.flush()
+        if printer.active_nozzle_id is None:
+            printer.active_nozzle_id = nozzle.id
+            nozzle.status = NozzleStatus.INSTALLED
+            nozzle.installed_at = nozzle.installed_at or datetime.now(UTC)
         existing_asa = await session.scalar(
             select(MaterialTemplate.id).where(
                 func.lower(MaterialTemplate.material_type) == "asa",
-                MaterialTemplate.printer_id == printer.id,
-                MaterialTemplate.nozzle_diameter_mm == printer.nozzle_diameter_mm,
+                MaterialTemplate.nozzle_id == nozzle.id,
             )
         )
         if existing_asa is not None:
@@ -106,6 +143,7 @@ async def seed_configured_system(session: AsyncSession, settings: Settings) -> d
             material_type="ASA",
             description="Recommended ASA starting point; calibrate or import Cura settings before printing.",
             printer_id=printer.id,
+            nozzle_id=nozzle.id,
             nozzle_diameter_mm=printer.nozzle_diameter_mm,
             filament_diameter_mm=Decimal("1.75"),
             active=True,

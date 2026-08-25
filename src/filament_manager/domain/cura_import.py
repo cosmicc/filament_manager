@@ -141,9 +141,6 @@ def material_settings_from_cura(
         "support_overhang_angle_deg": _decimal(settings, "support_angle"),
         "tree_max_branch_angle_deg": None,
         "pressure_advance": _decimal(settings, "klipper_pressure_advance_factor"),
-        "ironing_enabled": (
-            _boolean(settings, "ironing_enabled", default=False) if "ironing_enabled" in settings else None
-        ),
         "ironing_flow_percent": _decimal(settings, "ironing_flow"),
         "ironing_speed_mm_s": _decimal(settings, "speed_ironing", "ironing_speed"),
         "ironing_line_spacing_mm": _decimal(settings, "ironing_line_spacing"),

@@ -1,6 +1,11 @@
 [CmdletBinding()]
 param(
-    [string]$BinaryPath
+    [string]$BinaryPath,
+    [string]$ServerUrl,
+    [string]$WorkstationName,
+    [string]$PairingCode,
+    [switch]$SkipPairing,
+    [switch]$SkipPathUpdate
 )
 
 $ErrorActionPreference = 'Stop'
@@ -20,6 +25,7 @@ $TaskWasRunning = $ExistingTask -and $ExistingTask.State -eq 'Running'
 $StagedPath = $null
 $BackupPath = $null
 $InstalledPath = $null
+$PairingConfig = Join-Path $env:LOCALAPPDATA 'Filament Manager Agent\config.json'
 
 try {
     if ($BinaryPath) {
@@ -73,13 +79,50 @@ try {
     $StagedPath = $null
 
     $Agent = $InstalledPath
+    $AgentCommandRoot = Split-Path -Parent $Agent
+    if (-not $SkipPathUpdate) {
+        $UserPath = [Environment]::GetEnvironmentVariable('Path', 'User')
+        $UserPathEntries = @($UserPath -split ';' | Where-Object { $_ })
+        if (-not ($UserPathEntries | Where-Object { $_.TrimEnd('\') -ieq $AgentCommandRoot.TrimEnd('\') })) {
+            $UpdatedUserPath = (@($UserPathEntries) + $AgentCommandRoot) -join ';'
+            [Environment]::SetEnvironmentVariable('Path', $UpdatedUserPath, 'User')
+        }
+        if (-not (($env:Path -split ';') | Where-Object { $_.TrimEnd('\') -ieq $AgentCommandRoot.TrimEnd('\') })) {
+            $env:Path = "$AgentCommandRoot;$env:Path"
+        }
+    }
+
     $Action = New-ScheduledTaskAction -Execute $Agent -Argument 'run'
     $Trigger = New-ScheduledTaskTrigger -AtLogOn -User $env:USERNAME
     $Principal = New-ScheduledTaskPrincipal -UserId $env:USERNAME -LogonType Interactive -RunLevel Limited
     $Settings = New-ScheduledTaskSettingsSet -RestartCount 5 -RestartInterval (New-TimeSpan -Minutes 1) -ExecutionTimeLimit ([TimeSpan]::Zero)
     Register-ScheduledTask -TaskName $TaskName -Action $Action -Trigger $Trigger -Principal $Principal -Settings $Settings -Force | Out-Null
 
-    if ($TaskWasRunning) {
+    $IsPaired = Test-Path -LiteralPath $PairingConfig
+    if (-not $IsPaired -and -not $SkipPairing) {
+        if (-not $ServerUrl) {
+            $ServerUrl = Read-Host 'Filament Manager server URL (https://...)'
+        }
+        if (-not $WorkstationName) {
+            $DefaultName = if ($env:COMPUTERNAME) { "$($env:COMPUTERNAME) Cura" } else { 'Windows Cura' }
+            $EnteredName = Read-Host "Workstation name [$DefaultName]"
+            $WorkstationName = if ($EnteredName) { $EnteredName } else { $DefaultName }
+        }
+        if (-not $ServerUrl) {
+            throw 'A Filament Manager server URL is required to pair the workstation.'
+        }
+        $PairArguments = @('pair', '--server', $ServerUrl, '--name', $WorkstationName)
+        if ($PairingCode) {
+            $PairArguments += @('--code', $PairingCode)
+        }
+        & $Agent @PairArguments
+        if ($LASTEXITCODE -ne 0 -or -not (Test-Path -LiteralPath $PairingConfig)) {
+            throw 'The workstation agent could not be paired. The startup task was installed but was not started.'
+        }
+        $IsPaired = $true
+    }
+
+    if ($TaskWasRunning -or $IsPaired) {
         Start-ScheduledTask -TaskName $TaskName
     }
     if ($BackupPath -and (Test-Path -LiteralPath $BackupPath)) {
@@ -105,15 +148,13 @@ finally {
     }
 }
 
-if ($ExistingInstallation -and $TaskWasRunning) {
+if ($ExistingInstallation -and ($TaskWasRunning -or (Test-Path -LiteralPath $PairingConfig))) {
     Write-Host 'Agent upgraded and the existing per-user task was restarted. Pairing and private configuration were preserved.'
 }
 elseif ($ExistingInstallation) {
     Write-Host 'Filament Manager Agent upgrade complete. The task was not running before the upgrade, so it remains stopped.'
 }
 else {
-    Write-Host 'Filament Manager Agent fresh installation complete as a per-user logon task.'
-    Write-Host 'Pair this new installation:'
-    Write-Host ('  & "{0}" pair --server https://YOUR-SERVER --name "Windows Cura"' -f $Agent)
-    Write-Host ('Then run: Start-ScheduledTask -TaskName "{0}"' -f $TaskName)
+    Write-Host 'Filament Manager Agent fresh installation complete. The paired per-user agent is running and will start automatically at logon.'
+    Write-Host 'Open a new terminal to use filament-manager-agent from PATH.'
 }

@@ -216,6 +216,7 @@ async def test_physical_nozzle_side_b_and_distinct_completed_print_counts(
                 "/api/v1/nozzles",
                 json={
                     "nozzle_code": "NZ-040-HS",
+                    "printer_id": str(printer_id),
                     "diameter_mm": "0.4",
                     "material": "Hardened steel",
                     "manufacturer": "Test Tooling",

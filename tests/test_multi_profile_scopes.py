@@ -14,19 +14,22 @@ from filament_manager.api.schemas import MaterialSettingsInput
 from filament_manager.config import Settings
 from filament_manager.models import Base
 from filament_manager.models.auth import User
-from filament_manager.models.enums import UserRole
-from filament_manager.models.inventory import MaterialTemplate, Printer
+from filament_manager.models.enums import NozzleStatus, UserRole
+from filament_manager.models.inventory import MaterialTemplate, Nozzle, Printer
 from filament_manager.security import hash_password
 from filament_manager.services.material_settings import save_template_settings
 
 
-def _template_payload(*, printer_id: str, material: str, nozzle: str, temperature: str) -> dict[str, object]:
+def _template_payload(
+    *, printer_id: str, nozzle_id: str, material: str, nozzle: str, temperature: str
+) -> dict[str, object]:
     """Build one minimal valid direct-save template payload."""
 
     return {
         "name": f"Template {material} {nozzle}",
         "material_type": material,
         "printer_id": printer_id,
+        "nozzle_id": nozzle_id,
         "nozzle_diameter_mm": nozzle,
         "filament_diameter_mm": "1.75",
         "settings": {
@@ -97,8 +100,24 @@ async def test_multi_profile_creation_inheritance_density_and_duplication(
                 nozzle_diameter_mm=Decimal("0.4"),
             )
             session.add_all([administrator, printer])
+            await session.flush()
+            physical_nozzles = [
+                Nozzle(
+                    nozzle_code=f"NZ-{diameter.replace('.', '')}",
+                    printer_id=printer.id,
+                    diameter_mm=Decimal(diameter),
+                    material="Brass",
+                    status=NozzleStatus.AVAILABLE,
+                )
+                for diameter in ("0.4", "0.6", "0.8")
+            ]
+            session.add_all(physical_nozzles)
             await session.commit()
             printer_id = str(printer.id)
+            nozzle_ids = {
+                diameter: str(nozzle.id)
+                for diameter, nozzle in zip(("0.4", "0.6", "0.8"), physical_nozzles, strict=True)
+            }
 
         async def session_override() -> AsyncIterator[AsyncSession]:
             async with factory() as session:
@@ -125,6 +144,7 @@ async def test_multi_profile_creation_inheritance_density_and_duplication(
                 "/api/v1/profiles/templates",
                 json=_template_payload(
                     printer_id=printer_id,
+                    nozzle_id=nozzle_ids["0.4"],
                     material="PLA",
                     nozzle="0.4",
                     temperature="205",
@@ -134,6 +154,7 @@ async def test_multi_profile_creation_inheritance_density_and_duplication(
                 "/api/v1/profiles/templates",
                 json=_template_payload(
                     printer_id=printer_id,
+                    nozzle_id=nozzle_ids["0.6"],
                     material="PLA",
                     nozzle="0.6",
                     temperature="215",
@@ -143,6 +164,7 @@ async def test_multi_profile_creation_inheritance_density_and_duplication(
                 "/api/v1/profiles/templates",
                 json=_template_payload(
                     printer_id=printer_id,
+                    nozzle_id=nozzle_ids["0.8"],
                     material="ABS",
                     nozzle="0.8",
                     temperature="245",
@@ -401,6 +423,9 @@ async def test_multi_profile_creation_inheritance_density_and_duplication(
                     name="Template PLA imported",
                     material_type="PLA",
                     printer_id=printer.id,
+                    nozzle_id=next(
+                        nozzle.id for nozzle in physical_nozzles if nozzle.diameter_mm == Decimal("0.6")
+                    ),
                     nozzle_diameter_mm=Decimal("0.6"),
                     filament_diameter_mm=Decimal("1.75"),
                     source_cura_material_id="replacement-pla-06",

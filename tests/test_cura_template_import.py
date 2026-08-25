@@ -13,8 +13,8 @@ from filament_manager.api import dependencies
 from filament_manager.config import Settings
 from filament_manager.models import Base
 from filament_manager.models.auth import User
-from filament_manager.models.enums import CuraDeploymentStatus, UserRole
-from filament_manager.models.inventory import MaterialProfile, Printer
+from filament_manager.models.enums import CuraDeploymentStatus, NozzleStatus, UserRole
+from filament_manager.models.inventory import MaterialProfile, Nozzle, Printer
 from filament_manager.models.workstations import (
     CuraDeployment,
     CuraTakeoverMapping,
@@ -87,6 +87,16 @@ async def test_atomic_cura_source_mapping_completes_takeover_and_preserves_overr
             )
             session.add_all([administrator, printer])
             await session.flush()
+            nozzle = Nozzle(
+                nozzle_code="NZ-040",
+                printer_id=printer.id,
+                diameter_mm=Decimal("0.4"),
+                material="Brass",
+                status=NozzleStatus.INSTALLED,
+            )
+            session.add(nozzle)
+            await session.flush()
+            printer.active_nozzle_id = nozzle.id
             agent = WorkstationAgent(
                 agent_code="WS-CURA-IMPORT",
                 display_name="Workshop Cura",
@@ -152,6 +162,7 @@ async def test_atomic_cura_source_mapping_completes_takeover_and_preserves_overr
             await session.commit()
             administrator_id = administrator.id
             printer_id = printer.id
+            nozzle_id = nozzle.id
             agent_id = agent.id
 
         async def session_override() -> AsyncIterator[AsyncSession]:
@@ -181,6 +192,7 @@ async def test_atomic_cura_source_mapping_completes_takeover_and_preserves_overr
                     "name": "Template PETG",
                     "material_type": "PETG",
                     "printer_id": str(printer_id),
+                    "nozzle_id": str(nozzle_id),
                     "nozzle_diameter_mm": "0.4",
                     "filament_diameter_mm": "1.75",
                     "settings": {

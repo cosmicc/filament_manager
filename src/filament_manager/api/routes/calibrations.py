@@ -409,9 +409,6 @@ async def _calibration_suggestion(
     if calibration.build_plate_surface_id is not None:
         settings["preferred_build_plate_surface_id"] = calibration.build_plate_surface_id
         suggestions["preferred_build_plate_surface_id"] = calibration.build_plate_surface_id
-    if "ironing_enabled" in results:
-        settings["ironing_enabled"] = bool(results["ironing_enabled"])
-        suggestions["ironing_enabled"] = bool(results["ironing_enabled"])
     return MaterialSettingsInput.model_validate(settings), suggestions, base_revision
 
 
@@ -554,8 +551,6 @@ async def apply_calibration_profile_settings(
             base_settings[key] = _decimal_result(results, key)
     if "cooling_enabled" in results:
         base_settings["cooling_enabled"] = bool(results["cooling_enabled"])
-    if "ironing_enabled" in results:
-        base_settings["ironing_enabled"] = bool(results["ironing_enabled"])
     raw_extensions = base_settings.get("cura_extensions", {})
     extensions = dict(raw_extensions) if isinstance(raw_extensions, dict) else {}
     for key in ("xy_offset", "hole_xy_offset"):

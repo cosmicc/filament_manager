@@ -214,7 +214,6 @@ export interface MaterialSettings {
   support_overhang_angle_deg: string | null
   tree_max_branch_angle_deg: string | null
   pressure_advance: string | null
-  ironing_enabled: boolean | null
   ironing_flow_percent: string | null
   ironing_speed_mm_s: string | null
   ironing_line_spacing_mm: string | null
@@ -241,6 +240,7 @@ export interface MaterialTemplate {
   material_type: string
   description: string | null
   printer_id: string
+  nozzle_id: string
   nozzle_diameter_mm: string
   filament_diameter_mm: string
   source_workstation_agent_id: string | null
@@ -295,6 +295,7 @@ export interface Printer {
 export interface Nozzle {
   id: string
   nozzle_code: string
+  printer_id: string
   diameter_mm: string
   material: string
   manufacturer: string | null

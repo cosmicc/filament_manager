@@ -15,8 +15,9 @@ function fileSize(value: number) {
   return `${Math.round(value / 1024)} KB`
 }
 
-export function CuraRecoveryModal({ agent, onClose, onQueued }: {
+export function CuraRecoveryModal({ agent, agents, onClose, onQueued }: {
   agent: WorkstationAgent
+  agents: WorkstationAgent[]
   onClose: () => void
   onQueued: (message: string) => void
 }) {
@@ -25,9 +26,11 @@ export function CuraRecoveryModal({ agent, onClose, onQueued }: {
   const [step, setStep] = useState<'select' | 'review' | 'create' | 'edit' | 'delete'>('select')
   const [name, setName] = useState('')
   const [description, setDescription] = useState('')
+  const [targetInstallationId, setTargetInstallationId] = useState('')
+  const [initializeManagedLibrary, setInitializeManagedLibrary] = useState(!agent.cura_management_enabled)
   const snapshots = useQuery({
     queryKey: ['cura-recovery-snapshots', agent.id],
-    queryFn: () => apiFetch<CuraRecoverySnapshot[]>(`/workstation-agents/${agent.id}/cura-recovery-snapshots`),
+    queryFn: () => apiFetch<CuraRecoverySnapshot[]>(`/workstation-agents/${agent.id}/cura-recovery-snapshots?include_compatible=true`),
   })
   const deployments = useQuery({
     queryKey: ['cura-deployments'],
@@ -41,7 +44,12 @@ export function CuraRecoveryModal({ agent, onClose, onQueued }: {
   const restore = useMutation({
     mutationFn: (snapshot: CuraRecoverySnapshot) => apiFetch<CuraRecoveryRestore>(`/workstation-agents/${agent.id}/cura-recovery-restores`, {
       method: 'POST',
-      body: JSON.stringify({ snapshot_id: snapshot.id, confirmed: true }),
+      body: JSON.stringify({
+        snapshot_id: snapshot.id,
+        installation_id: targetInstallationId,
+        initialize_managed_library: initializeManagedLibrary,
+        confirmed: true,
+      }),
     }),
     onSuccess: async (_, snapshot) => {
       await Promise.all([
@@ -102,6 +110,22 @@ export function CuraRecoveryModal({ agent, onClose, onQueued }: {
     setDescription(snapshot.description ?? '')
     setStep('edit')
   }
+  const sourceAgentName = (snapshot: CuraRecoverySnapshot) => (
+    agents.find((item) => item.id === snapshot.agent_id)?.display_name ?? 'Former workstation'
+  )
+  const compatibleTargets = selected
+    ? agent.cura_installations.filter((installation) => installation.version === selected.cura_version)
+    : []
+  const selectSnapshot = (snapshot: CuraRecoverySnapshot) => {
+    setSelectedId(snapshot.id)
+    const targets = agent.cura_installations.filter(
+      (installation) => installation.version === snapshot.cura_version,
+    )
+    const sameInstallation = targets.find(
+      (installation) => installation.installation_id === snapshot.installation_id,
+    )
+    setTargetInstallationId((sameInstallation ?? targets[0])?.installation_id ?? '')
+  }
 
   const footer = step === 'select'
     ? <>
@@ -111,7 +135,7 @@ export function CuraRecoveryModal({ agent, onClose, onQueued }: {
     </>
     : step === 'review' ? <>
       <button className="button" type="button" onClick={() => setStep('select')}>Back to recovery points</button>
-      <button className="button button--primary" type="button" disabled={!selected || restore.isPending} onClick={() => selected && restore.mutate(selected)}>
+      <button className="button button--primary" type="button" disabled={!selected || !targetInstallationId || restore.isPending} onClick={() => selected && restore.mutate(selected)}>
         <RotateCcw size={16} />{restore.isPending ? 'Queuing…' : 'Restore Cura setup'}
       </button>
     </> : step === 'create' ? <><button className="button" type="button" onClick={() => setStep('select')}>Cancel</button><button className="button button--primary" form="create-cura-backup" disabled={!name.trim() || capture.isPending}><DatabaseBackup size={16} />{capture.isPending ? 'Queuing…' : 'Create backup'}</button></>
@@ -133,11 +157,11 @@ export function CuraRecoveryModal({ agent, onClose, onQueued }: {
         className={`cura-recovery-item${snapshot.id === selectedId ? ' cura-recovery-item--selected' : ''}`}
         type="button"
         aria-pressed={snapshot.id === selectedId}
-        onClick={() => setSelectedId(snapshot.id)}
+        onClick={() => selectSnapshot(snapshot)}
       >
-        <span><strong>{snapshot.name ?? `${snapshot.capture_kind === 'manual' ? 'Manual' : 'Automatic'} backup`}</strong><small>Cura {snapshot.cura_version}{index === 0 ? ' · Latest' : ''} · {dateTime(snapshot.captured_at)}</small>{snapshot.description ? <small>{snapshot.description}</small> : null}</span>
+        <span><strong>{snapshot.name ?? `${snapshot.capture_kind === 'manual' ? 'Manual' : 'Automatic'} backup`}</strong><small>{sourceAgentName(snapshot)} · Cura {snapshot.cura_version}{index === 0 ? ' · Latest compatible' : ''} · {dateTime(snapshot.captured_at)}</small>{snapshot.description ? <small>{snapshot.description}</small> : null}</span>
         <span className="cura-recovery-item__counts"><small>{snapshot.machine_count} printer{snapshot.machine_count === 1 ? '' : 's'}</small><small>{snapshot.quality_profile_count} quality file{snapshot.quality_profile_count === 1 ? '' : 's'}</small><small>{snapshot.plugin_count} plugin{snapshot.plugin_count === 1 ? '' : 's'}</small><small>{snapshot.file_count} files · {fileSize(snapshot.total_bytes)}</small></span>
-      </button><span className="cura-recovery-row__actions"><button className="button button--small" type="button" aria-label={`Edit ${snapshot.name ?? 'backup'}`} onClick={() => editSnapshot(snapshot)}><Pencil size={15} /></button><button className="button button--small button--danger" type="button" aria-label={`Delete ${snapshot.name ?? 'backup'}`} onClick={() => { setSelectedId(snapshot.id); setStep('delete') }}><Trash2 size={15} /></button></span></div>)}</div>}
+      </button>{snapshot.agent_id === agent.id ? <span className="cura-recovery-row__actions"><button className="button button--small" type="button" aria-label={`Edit ${snapshot.name ?? 'backup'}`} onClick={() => editSnapshot(snapshot)}><Pencil size={15} /></button><button className="button button--small button--danger" type="button" aria-label={`Delete ${snapshot.name ?? 'backup'}`} onClick={() => { setSelectedId(snapshot.id); setStep('delete') }}><Trash2 size={15} /></button></span> : null}</div>)}</div>}
       </EditorSection>
       {backupRequests.length ? <EditorSection title="Recent backup requests" description="Queued captures update automatically while this window is open.">
         <div className="mobile-card-list mobile-card-list--always">{backupRequests.map((deployment) => <article className="mobile-data-card" key={deployment.id}>
@@ -147,14 +171,16 @@ export function CuraRecoveryModal({ agent, onClose, onQueued }: {
         </article>)}</div>
       </EditorSection> : null}
     </div> : step === 'review' && selected ? <div className="editor-form">
-      <EditorSection title="Recovery point" description="Recovery is limited to the same workstation and exact Cura version.">
+      <EditorSection title="Recovery point" description="A saved configuration from any paired workstation can initialize this workstation when the Cura version matches exactly.">
         <dl className="definition-list">
+          <div><dt>Source workstation</dt><dd>{sourceAgentName(selected)}</dd></div>
           <div><dt>Captured</dt><dd>{dateTime(selected.captured_at)}</dd></div>
           <div><dt>Cura version</dt><dd>{selected.cura_version}</dd></div>
           <div><dt>Printers</dt><dd>{selected.machine_count}</dd></div>
           <div><dt>Quality configuration files</dt><dd>{selected.quality_profile_count}</dd></div>
           <div><dt>Saved configuration</dt><dd>{selected.file_count} files · {fileSize(selected.total_bytes)}</dd></div>
         </dl>
+        <label>Target Cura installation<select value={targetInstallationId} onChange={(event) => setTargetInstallationId(event.target.value)} required>{compatibleTargets.map((installation) => <option key={installation.installation_id} value={installation.installation_id}>Cura {installation.version} · {installation.channel}</option>)}</select></label>
       </EditorSection>
       <EditorSection title="Plugin inventory" description="Cura account synchronization installs plugin code. Filament Manager records names and versions for verification only.">
         {selected.plugins.length ? <ul className="feature-list">{selected.plugins.map((plugin) => <li key={plugin.package_id}><ShieldCheck size={17} /><span><strong>{plugin.display_name}</strong><small>{plugin.version} · {plugin.enabled ? 'Enabled' : 'Disabled when captured'}</small></span></li>)}</ul> : <p className="muted">No account-installed plugins were recorded in this recovery point.</p>}
@@ -162,7 +188,10 @@ export function CuraRecoveryModal({ agent, onClose, onQueued }: {
       <EditorSection title="Recovery sequence" description="Complete these steps in order so Cura and its plugins exist before their safe settings are restored.">
         <ol className="cura-recovery-steps"><li>Install or reset the same Cura version.</li><li>Open Cura, sign in to your Cura account, and wait for its plugins to install.</li><li>Close Cura completely.</li><li>Confirm this recovery and leave Cura closed until the status returns to Ready.</li><li>Re-enter Moonraker, OctoPrint, or other connection credentials if needed.</li></ol>
       </EditorSection>
-      <div className="warning-note"><strong>Credentials stay local.</strong> Account sessions, passwords, tokens, API keys, private URLs, local paths, and plugin executable files are never uploaded or restored. The current Cura login and connection secrets remain untouched.</div>
+      {!agent.cura_management_enabled ? <EditorSection title="Managed library initialization" description="Use the recovered printer configuration as the base, then make Filament Manager authoritative for this fresh Cura material library.">
+        <label className="check-row"><input type="checkbox" checked={initializeManagedLibrary} onChange={(event) => setInitializeManagedLibrary(event.target.checked)} /><span><strong>Synchronize all managed materials after recovery</strong><small>After recovery succeeds, align the current nozzle and install every current Filament Manager template and filament profile.</small></span></label>
+      </EditorSection> : null}
+      <div className="warning-note"><strong>Review before initializing this Cura installation.</strong> Printer, extruder, quality, and start/end G-code configuration from {sourceAgentName(selected)} will replace the selected installation's matching safe files. Account sessions, passwords, tokens, API keys, private URLs, local paths, and plugin executable files are never uploaded or restored. The current Cura login and connection secrets remain untouched.</div>
       {restore.error ? <p className="form-error" role="alert">{restore.error.message}</p> : null}
     </div> : step === 'create' ? <form id="create-cura-backup" className="editor-form" onSubmit={(event: FormEvent<HTMLFormElement>) => { event.preventDefault(); capture.mutate(event.currentTarget) }}><EditorSection title="Backup identity" description="The name and description are stored with the sanitized full Cura configuration."><div className="form-grid"><label>Cura installation<select name="installation_id" required autoFocus>{agent.cura_installations.map((installation) => <option key={installation.installation_id} value={installation.installation_id}>Cura {installation.version} · {installation.channel}</option>)}</select></label><label>Backup name<input value={name} onChange={(event) => setName(event.target.value)} minLength={1} maxLength={120} required /></label><label className="form-grid__wide">Description <span className="label-optional">Optional</span><textarea value={description} onChange={(event) => setDescription(event.target.value)} maxLength={2000} rows={3} /></label></div></EditorSection>{capture.error ? <p className="form-error" role="alert">{capture.error.message}</p> : null}</form> : step === 'edit' ? <div className="editor-form"><EditorSection title="Backup identity" description="Use a concise name and optional note to distinguish this recovery point."><div className="form-grid"><label>Backup name<input value={name} onChange={(event) => setName(event.target.value)} maxLength={120} autoFocus /></label><label className="form-grid__wide">Description <span className="label-optional">Optional</span><textarea value={description} onChange={(event) => setDescription(event.target.value)} maxLength={2000} rows={3} /></label></div></EditorSection>{update.error ? <p className="form-error" role="alert">{update.error.message}</p> : null}</div> : selected ? <div className="warning-note"><strong>Delete {selected.name ?? 'this backup'}?</strong> This cannot be undone. Other recovery points and the current Cura installation will not be changed.{remove.error ? <p className="form-error" role="alert">{remove.error.message}</p> : null}</div> : null}
   </Modal>

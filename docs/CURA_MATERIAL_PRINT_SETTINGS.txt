@@ -10,7 +10,7 @@ controls, and derived aliases that the workstation agent writes silently.
 In Cura, open Preferences > Materials > Print Settings and expose the editable
 settings supported by the Material Settings and Klipper Settings plugins.
 Filament Manager aligns the plugin selection automatically after takeover.
-The 54 non-metadata keys below are pushed to Cura; Material Type and Material
+The 53 non-metadata keys below are pushed to Cura; Material Type and Material
 Brand remain material XML metadata rather than selectable print settings. Cura
 Workstations and Diagnostics report the exact expected/exposed count, missing
 keys, required-plugin versions/readiness, and the last verification time.
@@ -79,7 +79,6 @@ retract_at_layer_change | Retract at Layer Change | boolean | editable in templa
 
 IRONING
 -------
-ironing_enabled | Enable Ironing | boolean | editable in templates and filament profiles
 ironing_flow | Ironing Flow | number, percent | editable in templates and filament profiles
 speed_ironing | Ironing Speed | number, mm/s | editable in templates and filament profiles
 ironing_line_spacing | Ironing Line Spacing | number, mm | editable in templates and filament profiles

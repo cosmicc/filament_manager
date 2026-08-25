@@ -320,12 +320,14 @@ async def test_seed_system_route_creates_configured_resources(monkeypatch: pytes
             )
             remembered_colors = await client.get("/api/v1/filament-colors")
             printers_response = await client.get("/api/v1/printers")
+            nozzles_response = await client.get("/api/v1/nozzles")
             template = await client.post(
                 "/api/v1/profiles/templates",
                 json={
                     "name": "Template PLA",
                     "material_type": "PLA",
                     "printer_id": printers_response.json()[0]["id"],
+                    "nozzle_id": nozzles_response.json()[0]["id"],
                     "nozzle_diameter_mm": "0.4",
                     "filament_diameter_mm": "1.75",
                     "settings": {

@@ -83,8 +83,7 @@ async def manual_load_temperature(session: AsyncSession, *, spool: Spool, printe
         )
         .where(
             MaterialTemplateRevision.id == product.source_template_revision_id,
-            MaterialTemplate.printer_id == printer.id,
-            MaterialTemplate.nozzle_diameter_mm == printer.nozzle_diameter_mm,
+            MaterialTemplate.nozzle_id == printer.active_nozzle_id,
             MaterialTemplateRevision.status != ProfileStatus.ARCHIVED,
         )
     )
@@ -214,8 +213,7 @@ async def build_spool_preflight_catalog(session: AsyncSession, *, printer: Print
                 )
                 .where(
                     MaterialTemplateRevision.id.in_(source_template_ids),
-                    MaterialTemplate.printer_id == printer.id,
-                    MaterialTemplate.nozzle_diameter_mm == printer.nozzle_diameter_mm,
+                    MaterialTemplate.nozzle_id == printer.active_nozzle_id,
                     MaterialTemplateRevision.status != ProfileStatus.ARCHIVED,
                 )
             )

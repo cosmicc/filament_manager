@@ -28,6 +28,7 @@ from filament_manager.models.inventory import (
     MaterialProfile,
     MaterialTemplate,
     MaterialTemplateRevision,
+    Nozzle,
     Printer,
 )
 from filament_manager.models.workstations import WorkstationAgent
@@ -141,6 +142,7 @@ async def _template_response(
         material_type=template.material_type,
         description=template.description,
         printer_id=template.printer_id,
+        nozzle_id=template.nozzle_id,
         nozzle_diameter_mm=template.nozzle_diameter_mm,
         filament_diameter_mm=template.filament_diameter_mm,
         source_workstation_agent_id=template.source_workstation_agent_id,
@@ -151,6 +153,33 @@ async def _template_response(
         updated_at=template.updated_at,
         revisions=[_template_revision_response(item) for item in revisions],
     )
+
+
+async def _template_nozzle(
+    session: DatabaseSession,
+    *,
+    nozzle_id: UUID,
+    printer_id: UUID,
+    diameter_mm: Decimal,
+) -> Nozzle:
+    """Resolve the exact physical nozzle and enforce its immutable printer scope."""
+
+    nozzle = await session.get(Nozzle, nozzle_id)
+    if nozzle is None:
+        raise ApiError(status.HTTP_422_UNPROCESSABLE_ENTITY, "unknown_nozzle", "Nozzle not found")
+    if nozzle.printer_id != printer_id:
+        raise ApiError(
+            status.HTTP_422_UNPROCESSABLE_ENTITY,
+            "nozzle_printer_mismatch",
+            "The selected nozzle belongs to a different printer",
+        )
+    if nozzle.diameter_mm != diameter_mm:
+        raise ApiError(
+            status.HTTP_422_UNPROCESSABLE_ENTITY,
+            "nozzle_diameter_mismatch",
+            "The selected nozzle diameter does not match the template diameter",
+        )
+    return nozzle
 
 
 async def _profile_base(
@@ -288,6 +317,12 @@ async def create_material_template(
 
     if await session.get(Printer, payload.printer_id) is None:
         raise ApiError(status.HTTP_422_UNPROCESSABLE_ENTITY, "unknown_printer", "Printer not found")
+    await _template_nozzle(
+        session,
+        nozzle_id=payload.nozzle_id,
+        printer_id=payload.printer_id,
+        diameter_mm=payload.nozzle_diameter_mm,
+    )
     if (
         payload.settings.preferred_build_plate_surface_id
         and await session.get(BuildPlateSurface, payload.settings.preferred_build_plate_surface_id) is None
@@ -301,8 +336,7 @@ async def create_material_template(
         select(MaterialTemplate.id).where(
             MaterialTemplate.active.is_(True),
             func.lower(MaterialTemplate.material_type) == payload.material_type.strip().casefold(),
-            MaterialTemplate.printer_id == payload.printer_id,
-            MaterialTemplate.nozzle_diameter_mm == payload.nozzle_diameter_mm,
+            MaterialTemplate.nozzle_id == payload.nozzle_id,
         )
     )
     if existing is not None:
@@ -316,6 +350,7 @@ async def create_material_template(
         material_type=payload.material_type.strip(),
         description=payload.description,
         printer_id=payload.printer_id,
+        nozzle_id=payload.nozzle_id,
         nozzle_diameter_mm=payload.nozzle_diameter_mm,
         filament_diameter_mm=payload.filament_diameter_mm,
         active=True,
@@ -439,6 +474,12 @@ async def import_cura_material_template(
     )
     if await session.get(Printer, payload.printer_id) is None:
         raise ApiError(status.HTTP_422_UNPROCESSABLE_ENTITY, "unknown_printer", "Printer not found")
+    await _template_nozzle(
+        session,
+        nozzle_id=payload.nozzle_id,
+        printer_id=payload.printer_id,
+        diameter_mm=payload.nozzle_diameter_mm,
+    )
     if (
         payload.preferred_build_plate_surface_id
         and await session.get(BuildPlateSurface, payload.preferred_build_plate_surface_id) is None
@@ -470,8 +511,7 @@ async def import_cura_material_template(
         select(MaterialTemplate.id).where(
             MaterialTemplate.active.is_(True),
             func.lower(MaterialTemplate.material_type) == payload.material_type.strip().casefold(),
-            MaterialTemplate.printer_id == payload.printer_id,
-            MaterialTemplate.nozzle_diameter_mm == payload.nozzle_diameter_mm,
+            MaterialTemplate.nozzle_id == payload.nozzle_id,
         )
     )
     if existing_scope is not None:
@@ -506,6 +546,7 @@ async def import_cura_material_template(
         description=payload.description
         or f'Imported from Cura source "{candidate_name}" on {agent.display_name}.',
         printer_id=payload.printer_id,
+        nozzle_id=payload.nozzle_id,
         nozzle_diameter_mm=payload.nozzle_diameter_mm,
         filament_diameter_mm=payload.filament_diameter_mm,
         source_workstation_agent_id=agent.id,
@@ -571,8 +612,7 @@ async def update_material_template(
                 MaterialTemplate.id != template.id,
                 MaterialTemplate.active.is_(True),
                 func.lower(MaterialTemplate.material_type) == target_material_type.casefold(),
-                MaterialTemplate.printer_id == template.printer_id,
-                MaterialTemplate.nozzle_diameter_mm == template.nozzle_diameter_mm,
+                MaterialTemplate.nozzle_id == template.nozzle_id,
             )
         )
         if conflicting_template is not None:

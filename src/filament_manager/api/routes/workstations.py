@@ -633,17 +633,25 @@ async def list_cura_recovery_snapshots(
     agent_id: UUID,
     _: Viewer,
     session: DatabaseSession,
+    include_compatible: bool = False,
 ) -> list[CuraRecoverySnapshotResponse]:
-    """List the retained recovery metadata for one paired workstation."""
+    """List local or exact-version-compatible retained recovery metadata."""
 
     agent = await session.get(WorkstationAgent, agent_id)
     if agent is None:
         raise ApiError(status.HTTP_404_NOT_FOUND, "workstation_unknown", "Workstation not found")
+    query = select(CuraRecoverySnapshot)
+    if include_compatible:
+        reported_versions = {
+            str(item.get("version"))
+            for item in agent.cura_installations
+            if isinstance(item, dict) and isinstance(item.get("version"), str)
+        }
+        query = query.where(CuraRecoverySnapshot.cura_version.in_(reported_versions))
+    else:
+        query = query.where(CuraRecoverySnapshot.agent_id == agent_id)
     snapshots = await session.scalars(
-        select(CuraRecoverySnapshot)
-        .where(CuraRecoverySnapshot.agent_id == agent_id)
-        .order_by(CuraRecoverySnapshot.captured_at.desc())
-        .limit(RECOVERY_HISTORY_LIMIT * 20)
+        query.order_by(CuraRecoverySnapshot.captured_at.desc()).limit(RECOVERY_HISTORY_LIMIT * 20)
     )
     return [_recovery_snapshot_response(snapshot) for snapshot in snapshots]
 
@@ -887,19 +895,14 @@ async def create_cura_recovery_restore(
         raise ApiError(status.HTTP_404_NOT_FOUND, "workstation_unknown", "Workstation not found")
     if not agent.enabled:
         raise ApiError(status.HTTP_409_CONFLICT, "workstation_disabled", "Enable the workstation first")
-    snapshot = await session.scalar(
-        select(CuraRecoverySnapshot).where(
-            CuraRecoverySnapshot.id == payload.snapshot_id,
-            CuraRecoverySnapshot.agent_id == agent.id,
-        )
-    )
+    snapshot = await session.get(CuraRecoverySnapshot, payload.snapshot_id)
     if snapshot is None:
         raise ApiError(
             status.HTTP_404_NOT_FOUND,
             "cura_recovery_snapshot_unknown",
             "Cura recovery point not found",
         )
-    if _reported_cura_installation(agent, snapshot.installation_id, snapshot.cura_version) is None:
+    if _reported_cura_installation(agent, payload.installation_id, snapshot.cura_version) is None:
         raise ApiError(
             status.HTTP_409_CONFLICT,
             "cura_recovery_version_mismatch",
@@ -918,18 +921,21 @@ async def create_cura_recovery_restore(
             "A Cura recovery is already pending for this workstation",
         )
     now = datetime.now(UTC)
+    restore_payload = dict(snapshot.payload)
+    restore_payload["installation_id"] = payload.installation_id
+    restore_payload["cura_version"] = snapshot.cura_version
     restore = CuraRecoveryRestore(
         agent_id=agent.id,
         snapshot_id=snapshot.id,
         requested_by=administrator.id,
-        installation_id=snapshot.installation_id,
+        installation_id=payload.installation_id,
         cura_version=snapshot.cura_version,
         snapshot_checksum=snapshot.snapshot_checksum,
-        payload=snapshot.payload,
+        payload=restore_payload,
         status=CuraDeploymentStatus.PENDING,
         attempts=0,
         next_attempt_at=now,
-        result={},
+        result={"initialize_managed_library": payload.initialize_managed_library},
         created_at=now,
         updated_at=now,
     )
@@ -949,6 +955,9 @@ async def create_cura_recovery_restore(
         after={
             "agent_code": agent.agent_code,
             "snapshot_id": str(snapshot.id),
+            "source_agent_id": str(snapshot.agent_id),
+            "target_installation_id": payload.installation_id,
+            "initialize_managed_library": payload.initialize_managed_library,
             "cura_version": snapshot.cura_version,
         },
         correlation_id=request.state.correlation_id,
@@ -1372,7 +1381,9 @@ async def complete_cura_recovery_restore(
             "Cura recovery is not currently claimed",
         )
     now = datetime.now(UTC)
-    restore.result = payload.result.model_dump(mode="json") if payload.result else {}
+    initialize_managed_library = restore.result.get("initialize_managed_library") is True
+    if payload.outcome != "deferred":
+        restore.result = payload.result.model_dump(mode="json") if payload.result else {}
     restore.lease_expires_at = None
     restore.updated_at = now
     if payload.outcome == "deferred":
@@ -1396,6 +1407,8 @@ async def complete_cura_recovery_restore(
         agent.cura_recovery_status = "ready"
         agent.cura_recovery_message = None
         agent.last_recovery_restore_at = now
+        if initialize_managed_library:
+            agent.cura_management_enabled = True
         if agent.cura_management_enabled:
             printers = list(await session.scalars(select(Printer).order_by(Printer.id)))
             for printer in printers:

@@ -137,17 +137,16 @@ function New-ScheduledTaskTrigger { param([switch]$AtLogOn, $User) [pscustomobje
 function New-ScheduledTaskPrincipal { param($UserId, $LogonType, $RunLevel) [pscustomobject]@{} }
 function New-ScheduledTaskSettingsSet { param($RestartCount, $RestartInterval, $ExecutionTimeLimit) [pscustomobject]@{} }
 function Register-ScheduledTask { param($TaskName, $Action, $Trigger, $Principal, $Settings, [switch]$Force) $global:TaskState = 'Ready'; [pscustomobject]@{} }
-& $Installer -BinaryPath $FirstBinary
 $pairing = Join-Path $env:LOCALAPPDATA 'Filament Manager Agent/config.json'
 New-Item -ItemType Directory -Path (Split-Path -Parent $pairing) -Force | Out-Null
 Set-Content -LiteralPath $pairing -Value '{"agent_token":"preserve-me"}' -NoNewline
-$global:TaskState = 'Running'
-& $Installer -BinaryPath $SecondBinary
+& $Installer -BinaryPath $FirstBinary -SkipPairing -SkipPathUpdate
+& $Installer -BinaryPath $SecondBinary -SkipPairing -SkipPathUpdate
 $installed = Join-Path $env:LOCALAPPDATA 'FilamentManagerAgent/filament-manager-agent.exe'
 if ((Get-Content -LiteralPath $installed -Raw) -ne 'version-two') { throw 'Agent was not upgraded.' }
 if ((Get-Content -LiteralPath $pairing -Raw) -ne '{"agent_token":"preserve-me"}') { throw 'Pairing changed.' }
-if ($global:Stops -ne 1 -or $global:Starts -ne 1) { throw 'Running task was not restarted exactly once.' }
-& $Uninstaller
+if ($global:Stops -ne 1 -or $global:Starts -ne 2) { throw 'A fresh paired task and its upgrade were not started exactly once each.' }
+& $Uninstaller -SkipPathCleanup
 if (Test-Path -LiteralPath (Join-Path $env:LOCALAPPDATA 'FilamentManagerAgent')) { throw 'Install root was not removed.' }
 if (Test-Path -LiteralPath (Join-Path $env:LOCALAPPDATA 'Filament Manager Agent')) { throw 'Private root was not removed.' }
 if ($global:Unregisters -ne 1) { throw 'Scheduled task was not unregistered exactly once.' }

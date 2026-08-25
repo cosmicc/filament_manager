@@ -235,6 +235,8 @@ async def commit_approved_run(
     printer = await session.scalar(select(Printer).order_by(Printer.created_at).limit(1))
     if printer is None:
         raise ValueError("seed the configured printer before importing profiles")
+    if printer.active_nozzle_id is None:
+        raise ValueError("assign the configured printer's physical nozzle before importing profiles")
 
     workbook = load_workbook(workbook_path, data_only=True, read_only=True)
     sheet = workbook["Inventory"]
@@ -243,7 +245,7 @@ async def commit_approved_run(
     colors: dict[str, FilamentColor] = {}
     imported_spools = 0
     imported_profiles = 0
-    template_revisions: dict[tuple[str, UUID, Decimal], MaterialTemplateRevision] = {}
+    template_revisions: dict[tuple[str, UUID], MaterialTemplateRevision] = {}
     row_iterator = sheet.iter_rows(min_row=2, max_col=len(HEADERS), values_only=True)
     for _row_number, row_values in enumerate(row_iterator, start=2):
         values = dict(zip(HEADERS, row_values, strict=True))
@@ -379,8 +381,7 @@ async def commit_approved_run(
                 }
                 template_key = (
                     product.material_type.casefold(),
-                    printer.id,
-                    printer.nozzle_diameter_mm,
+                    printer.active_nozzle_id,
                 )
                 template_revision = template_revisions.get(template_key)
                 if template_revision is None:
@@ -392,8 +393,7 @@ async def commit_approved_run(
                         )
                         .where(
                             func.lower(MaterialTemplate.material_type) == product.material_type.casefold(),
-                            MaterialTemplate.printer_id == printer.id,
-                            MaterialTemplate.nozzle_diameter_mm == printer.nozzle_diameter_mm,
+                            MaterialTemplate.nozzle_id == printer.active_nozzle_id,
                             MaterialTemplateRevision.status == ProfileStatus.PUBLISHED,
                         )
                         .order_by(MaterialTemplateRevision.version.desc())
@@ -405,6 +405,7 @@ async def commit_approved_run(
                         material_type=product.material_type,
                         description="Created from the approved initial inventory import.",
                         printer_id=printer.id,
+                        nozzle_id=printer.active_nozzle_id,
                         nozzle_diameter_mm=printer.nozzle_diameter_mm,
                         filament_diameter_mm=product.diameter_mm,
                         active=True,

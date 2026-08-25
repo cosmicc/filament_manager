@@ -5,10 +5,16 @@ import type { BuildPlate, CuraSettingCatalogItem, MaterialSettings } from '../ap
 import { compactNumber, inputNumber } from '../lib/format'
 import { EditorSection } from './EditorSection'
 
+export interface MaterialSettingCopySource {
+  id: string
+  label: string
+  settings: MaterialSettings
+}
+
 export const typedCuraKeys = new Set([
   'build_volume_temperature', 'cool_fan_enabled', 'cool_fan_speed',
   'cool_fan_speed_min', 'klipper_pressure_advance_factor',
-  'ironing_enabled', 'ironing_flow', 'ironing_line_spacing', 'speed_ironing',
+  'ironing_flow', 'ironing_line_spacing', 'speed_ironing',
   'material_bed_temperature', 'material_flow', 'material_print_temperature',
   'retraction_amount', 'retraction_prime_speed', 'retraction_retract_speed',
   'retraction_speed', 'speed_infill', 'speed_layer_0',
@@ -46,10 +52,9 @@ const coreFields: Array<{
   { key: 'support_overhang_angle_deg', label: 'Support overhang angle', unit: '°', precision: 0 },
   { key: 'tree_max_branch_angle_deg', label: 'Tree maximum branch angle', unit: '°', precision: 0 },
   { key: 'pressure_advance', label: 'Klipper pressure advance', unit: 's', precision: 2 },
-  { key: 'ironing_enabled', label: 'Enable ironing' },
   { key: 'ironing_flow_percent', label: 'Ironing flow', unit: '%', precision: 0 },
   { key: 'ironing_speed_mm_s', label: 'Ironing speed', unit: 'mm/s', precision: 0 },
-  { key: 'ironing_line_spacing_mm', label: 'Ironing line spacing', unit: 'mm', precision: 1 },
+  { key: 'ironing_line_spacing_mm', label: 'Ironing line spacing', unit: 'mm', precision: 2 },
   { key: 'filament_density_g_cm3', label: 'Filament density', unit: 'g/cm³', required: true, defaultValue: '1.24', precision: 2 },
 ]
 
@@ -91,6 +96,24 @@ function extensionPrecision(item: CuraSettingCatalogItem): number {
   if (item.key.startsWith('klipper_')) return 2
   if (item.unit === 'mm' || item.unit === 's') return 1
   return 1
+}
+
+function hasSettingValue(value: unknown): boolean {
+  return value !== null && value !== undefined && value !== ''
+}
+
+function minimumForCoreField(key: keyof MaterialSettings, precision: number): string | undefined {
+  if (['retraction_distance_mm', 'retraction_speed_mm_s', 'retraction_prime_speed_mm_s', 'pressure_advance', 'ironing_flow_percent'].includes(key)) return '0'
+  if (['support_overhang_angle_deg', 'tree_max_branch_angle_deg'].includes(key)) return '0'
+  if (key === 'chamber_temp_c') return undefined
+  return precision === 0 ? '1' : precision === 1 ? '0.1' : '0.01'
+}
+
+function maximumForCoreField(key: keyof MaterialSettings): string | undefined {
+  if (['cooling_min_percent', 'cooling_max_percent', 'ironing_flow_percent'].includes(key)) return '100'
+  if (['support_overhang_angle_deg', 'tree_max_branch_angle_deg'].includes(key)) return '90'
+  if (key === 'pressure_advance') return '2'
+  return undefined
 }
 
 function nullable(value: FormDataEntryValue | null) {
@@ -154,7 +177,6 @@ export function settingsFromForm(
     support_overhang_angle_deg: nullable(preservedNumericValue(form, 'support_overhang_angle_deg', data.get('support_overhang_angle_deg'))),
     tree_max_branch_angle_deg: nullable(preservedNumericValue(form, 'tree_max_branch_angle_deg', data.get('tree_max_branch_angle_deg'))),
     pressure_advance: nullable(preservedNumericValue(form, 'pressure_advance', data.get('pressure_advance'))),
-    ironing_enabled: data.get('ironing_enabled') === 'on',
     ironing_flow_percent: nullable(preservedNumericValue(form, 'ironing_flow_percent', data.get('ironing_flow_percent'))),
     ironing_speed_mm_s: nullable(preservedNumericValue(form, 'ironing_speed_mm_s', data.get('ironing_speed_mm_s'))),
     ironing_line_spacing_mm: nullable(preservedNumericValue(form, 'ironing_line_spacing_mm', data.get('ironing_line_spacing_mm'))),
@@ -171,6 +193,7 @@ export function MaterialSettingsEditor({
   validationErrors = {},
   catalog,
   plates,
+  copySources = [],
   scope = 'template',
 }: {
   settings?: MaterialSettings
@@ -179,11 +202,13 @@ export function MaterialSettingsEditor({
   validationErrors?: Record<string, string[]>
   catalog: CuraSettingCatalogItem[]
   plates: BuildPlate[]
+  copySources?: MaterialSettingCopySource[]
   scope?: 'template' | 'profile'
 }) {
   const editorId = useId().replaceAll(':', '')
   const [resetKeys, setResetKeys] = useState<Set<string>>(() => new Set())
   const [liveOwnership, setLiveOwnership] = useState<Map<string, boolean>>(() => new Map())
+  const [liveValuePresence, setLiveValuePresence] = useState<Map<string, boolean>>(() => new Map())
   const customized = (key: string) => liveOwnership.get(key) ?? (overrideKeys.includes(key) && !resetKeys.has(key))
   const effectiveValue = (key: keyof MaterialSettings) => settings?.[key] ?? baseSettings?.[key]
   const effectiveExtensionValue = (key: string) => settings?.cura_extensions[key] ?? baseSettings?.cura_extensions[key]
@@ -211,6 +236,46 @@ export function MaterialSettingsEditor({
   const markOwnership = (key: string, value: string | boolean, baseValue: string | number | boolean | null | undefined) => {
     if (!baseSettings) return
     setLiveOwnership((current) => new Map(current).set(key, !equivalent(value, baseValue)))
+  }
+  const markValuePresence = (key: string, value: unknown) => {
+    setLiveValuePresence((current) => new Map(current).set(key, hasSettingValue(value)))
+  }
+  const copyOptions = (key: string, extension = false) => copySources.flatMap((source) => {
+    const value = extension ? source.settings.cura_extensions[key] : source.settings[key as keyof MaterialSettings]
+    return hasSettingValue(value) ? [{ source, value }] : []
+  })
+  const copyControl = (
+    key: string,
+    initialValue: unknown,
+    baseValue: string | number | boolean | null | undefined,
+    extension = false,
+  ) => {
+    const options = copyOptions(key, extension)
+    const currentlyPresent = liveValuePresence.get(key) ?? hasSettingValue(initialValue)
+    if (scope !== 'template' || currentlyPresent || !options.length) return null
+    return <label className="setting-copy-control">
+      Copy from
+      <select
+        value=""
+        aria-label={`Copy ${key} from another template`}
+        onChange={(event) => {
+          const selected = options.find((option) => option.source.id === event.currentTarget.value)
+          const field = event.currentTarget.closest('.setting-field')
+          const input = field?.querySelector<HTMLInputElement | HTMLSelectElement>('input, select')
+          if (!selected || !input) return
+          input.value = String(selected.value)
+          if (input instanceof HTMLInputElement) {
+            input.dataset.exactValue = String(selected.value)
+            input.dataset.changed = 'true'
+          }
+          markOwnership(key, String(selected.value), baseValue)
+          markValuePresence(key, selected.value)
+        }}
+      >
+        <option value="">Choose a template…</option>
+        {options.map(({ source, value }) => <option key={source.id} value={source.id}>{source.label} · {String(value)}</option>)}
+      </select>
+    </label>
   }
   const displayedBaseValue = (key: string, value: string | number | boolean | null | undefined) => {
     if (value == null || value === '') return 'Not set'
@@ -292,8 +357,8 @@ export function MaterialSettingsEditor({
     {
       id: 'ironing',
       title: 'Ironing',
-      description: 'Top-surface ironing behavior shared by templates and filament profiles.',
-      keys: ['ironing_enabled', 'ironing_flow_percent', 'ironing_speed_mm_s', 'ironing_line_spacing_mm'],
+      description: 'Material-specific top-surface ironing values. Cura quality profiles decide whether ironing is enabled.',
+      keys: ['ironing_flow_percent', 'ironing_speed_mm_s', 'ironing_line_spacing_mm'],
     },
     {
       id: 'cooling',
@@ -359,7 +424,6 @@ export function MaterialSettingsEditor({
           <div className="form-grid">
             {coreFields.filter((field) => (
               group.keys.includes(field.key) && (scope === 'template' || !field.templateOnly)
-              && field.key !== 'ironing_enabled'
             )).map((field) => (
               <div className={`setting-field${customized(field.key) ? ' setting-field--customized' : ''}${errorsFor(field.key).length ? ' setting-field--invalid' : ''}`} key={field.key}>
                 <label>
@@ -368,29 +432,21 @@ export function MaterialSettingsEditor({
                     name={field.key}
                     type="number"
                     step={field.precision === 0 ? '1' : field.precision === 1 ? '0.1' : '0.01'}
-                    min={field.key === 'pressure_advance' ? '0' : undefined}
+                    min={minimumForCoreField(field.key, field.precision ?? 1)}
+                    max={maximumForCoreField(field.key)}
                     required={field.required}
                     defaultValue={effectiveValue(field.key) == null ? field.defaultValue ?? '' : inputNumber(effectiveValue(field.key) as string | number | null, field.precision)}
                     data-exact-value={effectiveValue(field.key) == null ? field.defaultValue ?? '' : String(effectiveValue(field.key))}
                     aria-invalid={errorsFor(field.key).length ? true : undefined}
                     aria-describedby={errorsFor(field.key).length ? errorId(field.key) : undefined}
-                    onChange={(event) => { event.currentTarget.dataset.changed = 'true'; markOwnership(field.key, event.currentTarget.value, baseSettings?.[field.key] as string | number | boolean | null | undefined) }}
+                    onChange={(event) => { event.currentTarget.dataset.changed = 'true'; markOwnership(field.key, event.currentTarget.value, baseSettings?.[field.key] as string | number | boolean | null | undefined); markValuePresence(field.key, event.currentTarget.value) }}
                   />
                 </label>
+                {copyControl(field.key, effectiveValue(field.key) ?? field.defaultValue, baseSettings?.[field.key] as string | number | boolean | null | undefined)}
                 {fieldErrors(field.key)}
                 {ownership(field.key, baseSettings?.[field.key] as string | number | boolean | null | undefined)}
               </div>
             ))}
-            {group.id === 'ironing' ? (
-              <div className={`setting-field${customized('ironing_enabled') ? ' setting-field--customized' : ''}${errorsFor('ironing_enabled').length ? ' setting-field--invalid' : ''}`}>
-                <label className="check-row">
-                  <input name="ironing_enabled" type="checkbox" defaultChecked={Boolean(effectiveValue('ironing_enabled'))} aria-invalid={errorsFor('ironing_enabled').length ? true : undefined} aria-describedby={errorsFor('ironing_enabled').length ? errorId('ironing_enabled') : undefined} onChange={(event) => markOwnership('ironing_enabled', event.currentTarget.checked, baseSettings?.ironing_enabled ?? undefined)} />
-                  <span><strong>Enable ironing</strong><small>Use ironing for the top surface.</small></span>
-                </label>
-                {fieldErrors('ironing_enabled')}
-                {ownership('ironing_enabled', baseSettings?.ironing_enabled ?? undefined)}
-              </div>
-            ) : null}
             {group.id === 'cooling' && scope === 'template' ? (
               <div className={`setting-field${customized('cooling_enabled') ? ' setting-field--customized' : ''}${errorsFor('cooling_enabled').length ? ' setting-field--invalid' : ''}`}>
                 <label className="check-row">
@@ -419,11 +475,12 @@ export function MaterialSettingsEditor({
                       data-exact-value={item.value_type === 'number' ? String(effectiveExtensionValue(item.key) ?? '') : undefined}
                       aria-invalid={extensionErrorsFor(item.key).length ? true : undefined}
                       aria-describedby={extensionErrorsFor(item.key).length ? errorId(`cura_extensions.${item.key}`) : undefined}
-                      onChange={(event) => { if (item.value_type === 'number') event.currentTarget.dataset.changed = 'true'; markOwnership(item.key, event.currentTarget.value, baseSettings?.cura_extensions[item.key]) }}
+                      onChange={(event) => { if (item.value_type === 'number') event.currentTarget.dataset.changed = 'true'; markOwnership(item.key, event.currentTarget.value, baseSettings?.cura_extensions[item.key]); markValuePresence(item.key, event.currentTarget.value) }}
                     />
                     <small className="field-help">{item.key}</small>
                   </label>
                 )}
+                {item.value_type !== 'boolean' ? copyControl(item.key, effectiveExtensionValue(item.key), baseSettings?.cura_extensions[item.key], true) : null}
                 {fieldErrors(`cura_extensions.${item.key}`, extensionErrorsFor(item.key))}
                 {ownership(item.key, baseSettings?.cura_extensions[item.key])}
               </div>
@@ -441,6 +498,7 @@ export function MaterialSettingsEditor({
                     )))}
                   </select>
                 </label>
+                {copyControl('preferred_build_plate_surface_id', effectiveValue('preferred_build_plate_surface_id'), baseSettings?.preferred_build_plate_surface_id)}
                 {fieldErrors('preferred_build_plate_surface_id')}
                 {ownership('preferred_build_plate_surface_id', baseSettings?.preferred_build_plate_surface_id)}
               </div>

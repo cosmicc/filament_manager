@@ -13,11 +13,12 @@ from filament_manager.api import dependencies
 from filament_manager.config import Settings
 from filament_manager.models import Base
 from filament_manager.models.auth import User
-from filament_manager.models.enums import ProfileStatus, UserRole
+from filament_manager.models.enums import NozzleStatus, ProfileStatus, UserRole
 from filament_manager.models.inventory import (
     FilamentProduct,
     MaterialProfile,
     MaterialTemplate,
+    Nozzle,
     Printer,
 )
 from filament_manager.security import hash_password
@@ -81,8 +82,20 @@ async def test_direct_template_save_updates_linked_product_profile(
                 nozzle_diameter_mm=Decimal("0.4"),
             )
             session.add_all([administrator, printer])
+            await session.flush()
+            nozzle = Nozzle(
+                nozzle_code="NZ-040",
+                printer_id=printer.id,
+                diameter_mm=Decimal("0.4"),
+                material="Brass",
+                status=NozzleStatus.INSTALLED,
+            )
+            session.add(nozzle)
+            await session.flush()
+            printer.active_nozzle_id = nozzle.id
             await session.commit()
             printer_id = printer.id
+            nozzle_id = nozzle.id
 
         async def session_override() -> AsyncIterator[AsyncSession]:
             async with factory() as session:
@@ -112,6 +125,7 @@ async def test_direct_template_save_updates_linked_product_profile(
                     "material_type": "PCTPE",
                     "description": "Starting settings for flexible PCTPE",
                     "printer_id": str(printer_id),
+                    "nozzle_id": str(nozzle_id),
                     "nozzle_diameter_mm": "0.4",
                     "filament_diameter_mm": "1.75",
                     "settings": {
@@ -147,6 +161,7 @@ async def test_direct_template_save_updates_linked_product_profile(
                     "name": "Generic TPU",
                     "material_type": "TPU",
                     "printer_id": str(printer_id),
+                    "nozzle_id": str(nozzle_id),
                     "nozzle_diameter_mm": "0.4",
                     "filament_diameter_mm": "1.75",
                     "settings": {

@@ -39,7 +39,6 @@ PROFILE_SETTING_KEYS = (
     "support_overhang_angle_deg",
     "tree_max_branch_angle_deg",
     "pressure_advance",
-    "ironing_enabled",
     "ironing_flow_percent",
     "ironing_speed_mm_s",
     "ironing_line_spacing_mm",
@@ -48,9 +47,7 @@ PROFILE_SETTING_KEYS = (
 )
 
 DECIMAL_SETTING_KEYS = frozenset(
-    key
-    for key in PROFILE_SETTING_KEYS
-    if key not in {"cooling_enabled", "ironing_enabled", "preferred_build_plate_surface_id"}
+    key for key in PROFILE_SETTING_KEYS if key not in {"cooling_enabled", "preferred_build_plate_surface_id"}
 )
 NUMERIC_TEXT = re.compile(r"^-?\d+(?:\.\d+)?$")
 TEMPLATE_ONLY_PROFILE_SETTING_KEYS = frozenset(
@@ -220,8 +217,6 @@ def profile_columns_from_settings(settings: dict[str, object]) -> dict[str, obje
             columns[key] = UUID(str(value)) if value is not None else None
         elif key == "cooling_enabled":
             columns[key] = bool(value)
-        elif key == "ironing_enabled":
-            columns[key] = bool(value) if value is not None else None
         else:
             columns[key] = value
     columns["cura_extensions"] = deepcopy(normalized["cura_extensions"])

@@ -22,10 +22,10 @@ def test_operator_material_settings_catalog_is_exact_and_unique() -> None:
 
     keys = [setting.key for setting in CURA_MATERIAL_SETTINGS]
 
-    assert len(keys) == 56
-    assert len(set(keys)) == 56
-    assert len(CURA_EDITABLE_SETTING_KEYS) == 50
-    assert len(CURA_TYPED_SETTING_KEYS) == 26
+    assert len(keys) == 55
+    assert len(set(keys)) == 55
+    assert len(CURA_EDITABLE_SETTING_KEYS) == 49
+    assert len(CURA_TYPED_SETTING_KEYS) == 25
     assert len(CURA_EXTENSION_SETTING_KEYS) == 26
     assert {setting.key for setting in CURA_MATERIAL_SETTINGS if not setting.editable} == {
         "acceleration_enabled",
@@ -86,10 +86,12 @@ def test_operator_material_settings_catalog_is_exact_and_unique() -> None:
         "default_material_bed_temperature",
         "default_material_print_temperature",
         "ironing_speed",
+        "ironing_enabled",
         "limit_support_retractions",
     } <= CURA_RETIRED_SETTING_KEYS
     assert "speed_ironing" in keys
     assert "ironing_speed" not in keys
+    assert "ironing_enabled" not in keys
     assert "limit_support_retractions" not in keys
 
 
@@ -117,7 +119,6 @@ def test_profile_mapping_places_klipper_values_in_the_material_settings() -> Non
         cooling_max_percent=Decimal("70"),
         support_overhang_angle_deg=Decimal("55"),
         pressure_advance=Decimal("0.035"),
-        ironing_enabled=True,
         ironing_flow_percent=Decimal("11"),
         ironing_speed_mm_s=Decimal("25"),
         ironing_line_spacing_mm=Decimal("0.12"),

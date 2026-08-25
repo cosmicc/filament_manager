@@ -51,6 +51,7 @@ async def _nozzle_responses(session: DatabaseSession, nozzles: list[Nozzle]) -> 
         NozzleResponse(
             id=nozzle.id,
             nozzle_code=nozzle.nozzle_code,
+            printer_id=nozzle.printer_id,
             diameter_mm=nozzle.diameter_mm,
             material=nozzle.material,
             manufacturer=nozzle.manufacturer,
@@ -115,10 +116,23 @@ async def create_nozzle(
     """Create a uniquely labelled physical nozzle without assuming installation."""
 
     code = payload.nozzle_code.upper()
-    if await session.scalar(select(Nozzle.id).where(func.lower(Nozzle.nozzle_code) == code.casefold())):
-        raise ApiError(status.HTTP_409_CONFLICT, "nozzle_code_exists", "Nozzle code already exists")
+    printer = await session.get(Printer, payload.printer_id)
+    if printer is None:
+        raise ApiError(status.HTTP_422_UNPROCESSABLE_ENTITY, "unknown_printer", "Printer not found")
+    if await session.scalar(
+        select(Nozzle.id).where(
+            Nozzle.printer_id == printer.id,
+            func.lower(Nozzle.nozzle_code) == code.casefold(),
+        )
+    ):
+        raise ApiError(
+            status.HTTP_409_CONFLICT,
+            "nozzle_code_exists",
+            "Nozzle code already exists for this printer",
+        )
     nozzle = Nozzle(
         nozzle_code=code,
+        printer_id=printer.id,
         diameter_mm=payload.diameter_mm,
         material=payload.material.strip(),
         manufacturer=payload.manufacturer.strip() if payload.manufacturer else None,
@@ -140,6 +154,7 @@ async def create_nozzle(
         before=None,
         after={
             "nozzle_code": nozzle.nozzle_code,
+            "printer_id": str(nozzle.printer_id),
             "diameter_mm": str(nozzle.diameter_mm),
             "material": nozzle.material,
         },
@@ -181,11 +196,16 @@ async def update_nozzle(
         conflict = await session.scalar(
             select(Nozzle.id).where(
                 Nozzle.id != nozzle.id,
+                Nozzle.printer_id == nozzle.printer_id,
                 func.lower(Nozzle.nozzle_code) == code.casefold(),
             )
         )
         if conflict is not None:
-            raise ApiError(status.HTTP_409_CONFLICT, "nozzle_code_exists", "Nozzle code already exists")
+            raise ApiError(
+                status.HTTP_409_CONFLICT,
+                "nozzle_code_exists",
+                "Nozzle code already exists for this printer",
+            )
         nozzle.nozzle_code = code
     for field in ("diameter_mm", "manufacturer", "product_name", "coating", "purchase_date", "notes"):
         if field in payload.model_fields_set:
@@ -264,6 +284,12 @@ async def install_nozzle(
     printer = await session.scalar(select(Printer).where(Printer.id == payload.printer_id).with_for_update())
     if printer is None:
         raise ApiError(status.HTTP_404_NOT_FOUND, "unknown_printer", "Printer not found")
+    if nozzle.printer_id != printer.id:
+        raise ApiError(
+            status.HTTP_409_CONFLICT,
+            "nozzle_printer_mismatch",
+            "This nozzle belongs to a different printer",
+        )
     other_printer = await session.scalar(
         select(Printer).where(
             Printer.active_nozzle_id == nozzle.id,

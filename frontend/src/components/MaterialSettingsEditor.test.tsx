@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 
-import { render, screen, within } from '@testing-library/react'
+import { fireEvent, render, screen, within } from '@testing-library/react'
 import { describe, expect, it } from 'vitest'
 import type { MaterialSettings } from '../api/types'
 import { MaterialSettingsEditor } from './MaterialSettingsEditor'
@@ -27,7 +27,6 @@ const settings: MaterialSettings = {
   support_overhang_angle_deg: null,
   tree_max_branch_angle_deg: null,
   pressure_advance: null,
-  ironing_enabled: false,
   ironing_flow_percent: null,
   ironing_speed_mm_s: null,
   ironing_line_spacing_mm: null,
@@ -139,5 +138,27 @@ describe('MaterialSettingsEditor validation', () => {
     expect(profileControls.queryByLabelText(/^Travel Acceleration/)).toBeNull()
     expect(profileControls.getByLabelText(/^Klipper pressure advance/)).toBeTruthy()
     expect(profileControls.queryByLabelText('Enable Klipper Smooth Time')).toBeNull()
+  })
+
+  it('copies a blank setting from any active template source and then hides the chooser', () => {
+    const rendered = render(
+      <MaterialSettingsEditor
+        settings={settings}
+        plates={[]}
+        catalog={[]}
+        copySources={[{
+          id: 'template-petg',
+          label: 'Template PETG · Workshop printer · 0.4 mm',
+          settings: { ...settings, chamber_temp_c: '45' },
+        }]}
+        scope="template"
+      />,
+    )
+
+    expect(screen.queryByLabelText('Enable ironing')).toBeNull()
+    const chooser = within(rendered.container).getByLabelText('Copy chamber_temp_c from another template')
+    fireEvent.change(chooser, { target: { value: 'template-petg' } })
+    expect((within(rendered.container).getByLabelText('Build volume temperature (°C)') as HTMLInputElement).value).toBe('45')
+    expect(within(rendered.container).queryByLabelText('Copy chamber_temp_c from another template')).toBeNull()
   })
 })

@@ -41,7 +41,6 @@ MATERIAL_SETTING_KEYS = frozenset(
         "cool_min_speed",
         "hole_xy_offset",
         "hole_xy_offset_max_diameter",
-        "ironing_enabled",
         "ironing_flow",
         "ironing_line_spacing",
         "speed_ironing",

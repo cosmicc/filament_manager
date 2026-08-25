@@ -13,6 +13,14 @@ const printer = {
   status: 'connected', last_seen_at: '2026-08-11T14:00:00Z', record_version: 1,
 }
 
+const nozzle = {
+  id: 'nozzle-id', nozzle_code: 'NZ-040', printer_id: printer.id, diameter_mm: '0.4',
+  material: 'Hardened steel', manufacturer: 'Workshop', product_name: 'Standard flow',
+  coating: null, purchase_date: null, status: 'installed', installed_printer_id: printer.id,
+  installed_at: '2026-08-11T14:00:00Z', retired_at: null, notes: null,
+  record_version: 1, completed_print_count: 0, completed_filament_weight_g: '0',
+}
+
 const settings = {
   chamber_temp_c: null, extruder_temp_c: '210', bed_temp_c: '60', flow_percent: '100',
   print_speed_mm_s: '120', outer_wall_speed_mm_s: '60', inner_wall_speed_mm_s: '90',
@@ -27,7 +35,7 @@ const settings = {
 
 const template = {
   id: 'template-id', name: 'Template PLA', material_type: 'PLA',
-  description: 'Starting settings for ordinary PLA', printer_id: printer.id,
+  description: 'Starting settings for ordinary PLA', printer_id: printer.id, nozzle_id: nozzle.id,
   nozzle_diameter_mm: '0.4', filament_diameter_mm: '1.75', active: true,
   source_workstation_agent_id: null, source_cura_material_id: null,
   record_version: 2, created_at: '2026-08-11T12:00:00Z', updated_at: '2026-08-11T13:00:00Z',
@@ -94,6 +102,7 @@ test.beforeEach(async ({ page }) => {
   }))
   await page.route('**/api/v1/auth/me', (route) => route.fulfill({ json: user }))
   await page.route('**/api/v1/printers', (route) => route.fulfill({ json: [printer] }))
+  await page.route('**/api/v1/nozzles', (route) => route.fulfill({ json: [nozzle] }))
   await page.route('**/api/v1/build-plates', (route) => route.fulfill({ json: [] }))
   await page.route('**/api/v1/notifications**', (route) => route.fulfill({ json: [] }))
   await page.route('**/api/v1/filament-colors', (route) => route.fulfill({ json: [
@@ -126,6 +135,8 @@ test('template library is usable at desktop and mobile sizes', async ({ page }) 
   await expect(page.getByRole('heading', { name: 'Template PLA' })).toBeVisible()
   await expect(page.getByRole('link', { name: 'Import from Cura' })).toHaveAttribute('href', '/workstations')
   await expect(page.getByText('Workshop Printer')).toBeVisible()
+  await expect(page.getByText('NZ-040 · 0.4 mm Hardened steel')).toBeVisible()
+  await expect(page.getByText('Starting settings for ordinary PLA')).toHaveCount(0)
   await page.getByRole('button', { name: 'Edit template' }).click()
   await expect(page.getByRole('dialog', { name: 'Edit Template PLA' })).toBeVisible()
   await expect(page.getByLabel('Printing temperature (°C)')).toHaveValue('210')
@@ -440,7 +451,7 @@ test('an empty Cura library can complete the one-time atomic takeover', async ({
 test('managed Cura workstations show verified material print setting coverage', async ({ page }) => {
   const agent = {
     id: 'agent-id', agent_code: 'WS-TEST', display_name: 'Arch Cura', hostname: 'workstation',
-    platform: 'arch_linux', architecture: 'x86_64', agent_version: '0.5.0', enabled: true,
+    platform: 'arch_linux', architecture: 'x86_64', agent_version: '0.5.1', enabled: true,
     cura_management_enabled: true,
     capabilities: { managed_material_count: 3, unmanaged_print_profile_count: 0, cura_recovery_snapshots: true },
     cura_installations: [{
@@ -448,7 +459,7 @@ test('managed Cura workstations show verified material print setting coverage', 
       path_hint: 'Linux Cura user data / 5.13', setting_version: 27,
       managed_library_checksum: 'a'.repeat(64), machines: [],
       material_settings_sync: {
-        status: 'healthy', expected_count: 54, exposed_count: 54,
+        status: 'healthy', expected_count: 53, exposed_count: 53,
         missing_keys: [], unexpected_keys: [],
         material_settings_plugin_ready: true, klipper_settings_plugin_ready: true,
         catalog_checksum: 'b'.repeat(64), verified_at: '2026-08-22T04:00:00Z',
@@ -461,7 +472,7 @@ test('managed Cura workstations show verified material print setting coverage', 
   }
   await page.route('**/api/v1/workstation-agents', (route) => route.fulfill({ json: [agent] }))
   await page.route('**/api/v1/profiles/templates?include_inactive=true', (route) => route.fulfill({ json: [] }))
-  await page.route('**/api/v1/workstation-agents/agent-id/cura-recovery-snapshots', (route) => route.fulfill({ json: [{
+  await page.route('**/api/v1/workstation-agents/agent-id/cura-recovery-snapshots?include_compatible=true', (route) => route.fulfill({ json: [{
     id: 'snapshot-id', agent_id: 'agent-id', installation_id: 'cura-id', cura_version: '5.13', setting_version: 27,
     snapshot_checksum: 'c'.repeat(64), file_count: 8, total_bytes: 12000, machine_count: 1,
     quality_profile_count: 3, plugin_count: 1, capture_kind: 'automatic', name: 'Known good Cura setup',
@@ -476,7 +487,7 @@ test('managed Cura workstations show verified material print setting coverage', 
   }] }))
 
   await page.goto('/workstations')
-  await expect(page.getByText('54 of 54 verified')).toBeVisible()
+  await expect(page.getByText('53 of 53 verified')).toBeVisible()
   await expect(page.getByText('Material Settings and Klipper Settings are ready; managed values are enforced over Cura profiles.')).toBeVisible()
   await expect(page.getByText(/Verified Aug 22, 2026/)).toBeVisible()
   await page.getByRole('button', { name: 'Recovery points' }).click()

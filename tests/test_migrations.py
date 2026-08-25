@@ -1,6 +1,7 @@
 """PostgreSQL-backed Alembic upgrade and metadata-drift tests."""
 
 from decimal import Decimal
+from uuid import uuid4
 
 import pytest
 from alembic import command
@@ -14,7 +15,6 @@ from filament_manager.models.enums import ProfileStatus
 from filament_manager.models.inventory import (
     FilamentProduct,
     MaterialProfile,
-    MaterialTemplate,
     MaterialTemplateRevision,
     Printer,
 )
@@ -46,18 +46,38 @@ def test_template_only_settings_migration_appends_corrected_profile_snapshot(
             )
             session.add(printer)
             session.flush()
-            template = MaterialTemplate(
-                name="Template PLA",
-                material_type="PLA",
-                printer_id=printer.id,
-                nozzle_diameter_mm=Decimal("0.4"),
-                filament_diameter_mm=Decimal("1.75"),
-                active=True,
+            nozzle_id = uuid4()
+            template_id = uuid4()
+            session.execute(
+                text(
+                    """
+                    INSERT INTO nozzles (
+                        id, nozzle_code, diameter_mm, material, status, record_version,
+                        created_at, updated_at
+                    ) VALUES (
+                        :id, 'NZ-040', 0.4, 'Brass', 'AVAILABLE', 1,
+                        CURRENT_TIMESTAMP, CURRENT_TIMESTAMP
+                    )
+                    """
+                ),
+                {"id": nozzle_id},
             )
-            session.add(template)
-            session.flush()
+            session.execute(
+                text(
+                    """
+                    INSERT INTO material_templates (
+                        id, name, material_type, printer_id, nozzle_diameter_mm,
+                        filament_diameter_mm, active, record_version, created_at, updated_at
+                    ) VALUES (
+                        :id, 'Template PLA', 'PLA', :printer_id, 0.4,
+                        1.75, true, 1, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP
+                    )
+                    """
+                ),
+                {"id": template_id, "printer_id": printer.id},
+            )
             revision = MaterialTemplateRevision(
-                material_template_id=template.id,
+                material_template_id=template_id,
                 version=1,
                 status=ProfileStatus.PUBLISHED,
                 settings={
@@ -295,7 +315,72 @@ def test_previous_schema_automatically_upgrades_to_metadata_head(
 
         upgrade_database(DatabaseConfig(url=database_url))
         with engine.connect() as connection:
-            assert connection.scalar(text("SELECT version_num FROM alembic_version")) == "d6e7f8a9b012"
+            assert connection.scalar(text("SELECT version_num FROM alembic_version")) == "f8a9b0c1d234"
+            assert (
+                connection.scalar(
+                    text(
+                        """
+                    SELECT count(*)
+                    FROM information_schema.columns
+                    WHERE table_name = 'material_profiles'
+                      AND column_name = 'ironing_enabled'
+                    """
+                    )
+                )
+                == 0
+            )
+            assert (
+                connection.scalar(
+                    text(
+                        """
+                    SELECT is_nullable
+                    FROM information_schema.columns
+                    WHERE table_name = 'nozzles'
+                      AND column_name = 'printer_id'
+                    """
+                    )
+                )
+                == "NO"
+            )
+            assert (
+                connection.scalar(
+                    text(
+                        """
+                    SELECT is_nullable
+                    FROM information_schema.columns
+                    WHERE table_name = 'material_templates'
+                      AND column_name = 'nozzle_id'
+                    """
+                    )
+                )
+                == "NO"
+            )
+            assert (
+                connection.scalar(
+                    text(
+                        """
+                    SELECT count(*)
+                    FROM pg_indexes
+                    WHERE tablename = 'nozzles'
+                      AND indexname = 'uq_nozzles_printer_code'
+                    """
+                    )
+                )
+                == 1
+            )
+            assert (
+                connection.scalar(
+                    text(
+                        """
+                    SELECT count(*)
+                    FROM pg_indexes
+                    WHERE tablename = 'material_templates'
+                      AND indexname = 'uq_material_template_active_nozzle_scope'
+                    """
+                    )
+                )
+                == 1
+            )
             recovered = connection.execute(
                 text(
                     """

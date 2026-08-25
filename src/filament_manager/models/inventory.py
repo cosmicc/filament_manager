@@ -258,12 +258,18 @@ class Nozzle(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     """A uniquely identified physical nozzle with immutable print attribution."""
 
     __tablename__ = "nozzles"
-    __table_args__ = (
-        CheckConstraint("diameter_mm > 0", name="nozzle_diameter_positive"),
-        Index("ix_nozzles_status_code", "status", "nozzle_code"),
-    )
 
-    nozzle_code: Mapped[str] = mapped_column(String(64), nullable=False, unique=True)
+    nozzle_code: Mapped[str] = mapped_column(String(64), nullable=False)
+    printer_id: Mapped[UUID] = mapped_column(
+        ForeignKey(
+            "printers.id",
+            name="fk_nozzles_printer_id",
+            ondelete="RESTRICT",
+            use_alter=True,
+        ),
+        nullable=False,
+        index=True,
+    )
     diameter_mm: Mapped[Decimal] = mapped_column(MEASUREMENT, nullable=False)
     material: Mapped[str] = mapped_column(String(96), nullable=False)
     manufacturer: Mapped[str | None] = mapped_column(String(160))
@@ -277,6 +283,16 @@ class Nozzle(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     retired_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     notes: Mapped[str | None] = mapped_column(Text)
     record_version: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
+    __table_args__ = (
+        CheckConstraint("diameter_mm > 0", name="nozzle_diameter_positive"),
+        Index(
+            "uq_nozzles_printer_code",
+            printer_id,
+            func.lower(nozzle_code),
+            unique=True,
+        ),
+        Index("ix_nozzles_status_code", "status", "nozzle_code"),
+    )
 
 
 class BuildPlate(UUIDPrimaryKeyMixin, TimestampMixin, Base):
@@ -431,7 +447,6 @@ class MaterialProfile(UUIDPrimaryKeyMixin, TimestampMixin, Base):
         index=True,
     )
     source_cura_material_id: Mapped[str | None] = mapped_column(String(64))
-    ironing_enabled: Mapped[bool | None] = mapped_column(Boolean)
     ironing_flow_percent: Mapped[Decimal | None] = mapped_column(MEASUREMENT)
     ironing_speed_mm_s: Mapped[Decimal | None] = mapped_column(MEASUREMENT)
     ironing_line_spacing_mm: Mapped[Decimal | None] = mapped_column(MEASUREMENT)
@@ -453,6 +468,9 @@ class MaterialTemplate(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     printer_id: Mapped[UUID] = mapped_column(
         ForeignKey("printers.id", ondelete="RESTRICT"), nullable=False, index=True
     )
+    nozzle_id: Mapped[UUID] = mapped_column(
+        ForeignKey("nozzles.id", ondelete="RESTRICT"), nullable=False, index=True
+    )
     nozzle_diameter_mm: Mapped[Decimal] = mapped_column(MEASUREMENT, nullable=False)
     filament_diameter_mm: Mapped[Decimal] = mapped_column(MEASUREMENT, nullable=False)
     source_workstation_agent_id: Mapped[UUID | None] = mapped_column(
@@ -468,12 +486,11 @@ class MaterialTemplate(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     record_version: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
     __table_args__ = (
         Index(
-            "uq_material_template_manual_scope",
+            "uq_material_template_active_nozzle_scope",
             func.lower(material_type),
-            printer_id,
-            nozzle_diameter_mm,
+            nozzle_id,
             unique=True,
-            postgresql_where=source_cura_material_id.is_(None),
+            postgresql_where=active.is_(True),
         ),
         UniqueConstraint(
             "source_workstation_agent_id",

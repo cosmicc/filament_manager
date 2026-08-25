@@ -24,7 +24,6 @@ const settings: MaterialSettings = {
   support_overhang_angle_deg: null,
   tree_max_branch_angle_deg: null,
   pressure_advance: '0.035',
-  ironing_enabled: false,
   ironing_flow_percent: null,
   ironing_speed_mm_s: null,
   ironing_line_spacing_mm: null,

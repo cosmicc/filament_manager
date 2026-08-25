@@ -18,12 +18,13 @@ from filament_manager.domain.cura_recovery import recovery_checksum
 from filament_manager.domain.spool_preflight import cura_material_guid
 from filament_manager.models import Base
 from filament_manager.models.auth import User
-from filament_manager.models.enums import CuraDeploymentStatus, ProfileStatus, UserRole
+from filament_manager.models.enums import CuraDeploymentStatus, NozzleStatus, ProfileStatus, UserRole
 from filament_manager.models.inventory import (
     FilamentProduct,
     MaterialProfile,
     MaterialTemplate,
     MaterialTemplateRevision,
+    Nozzle,
     Printer,
     Vendor,
 )
@@ -122,6 +123,16 @@ async def test_pair_queue_claim_and_complete_workstation_deployment(
             )
             session.add_all([administrator, vendor, printer])
             await session.flush()
+            nozzle = Nozzle(
+                nozzle_code="NZ-040",
+                printer_id=printer.id,
+                diameter_mm=Decimal("0.4"),
+                material="Brass",
+                status=NozzleStatus.INSTALLED,
+            )
+            session.add(nozzle)
+            await session.flush()
+            printer.active_nozzle_id = nozzle.id
             product = FilamentProduct(
                 vendor_id=vendor.id,
                 material_type="PETG",
@@ -140,6 +151,7 @@ async def test_pair_queue_claim_and_complete_workstation_deployment(
                 name="Template PETG",
                 material_type="PETG",
                 printer_id=printer.id,
+                nozzle_id=nozzle.id,
                 nozzle_diameter_mm=Decimal("0.4"),
                 filament_diameter_mm=Decimal("1.75"),
                 active=True,
@@ -324,8 +336,8 @@ async def test_pair_queue_claim_and_complete_workstation_deployment(
                             "managed_library_checksum": "a" * 64,
                             "material_settings_sync": {
                                 "status": "healthy",
-                                "expected_count": 54,
-                                "exposed_count": 54,
+                                "expected_count": 53,
+                                "exposed_count": 53,
                                 "missing_keys": [],
                                 "unexpected_keys": [],
                                 "material_settings_plugin_ready": True,
@@ -389,8 +401,8 @@ async def test_pair_queue_claim_and_complete_workstation_deployment(
             assert agent.token_hash != agent_token
             assert agent.cura_installations[0]["material_settings_sync"] == {
                 "status": "healthy",
-                "expected_count": 54,
-                "exposed_count": 54,
+                "expected_count": 53,
+                "exposed_count": 53,
                 "missing_keys": [],
                 "unexpected_keys": [],
                 "material_settings_plugin_ready": True,
@@ -696,7 +708,12 @@ async def test_cura_recovery_snapshot_and_restore_lifecycle(
 
             queued = await client.post(
                 f"/api/v1/workstation-agents/{agent_id}/cura-recovery-restores",
-                json={"snapshot_id": snapshot_id, "confirmed": True},
+                json={
+                    "snapshot_id": snapshot_id,
+                    "installation_id": "cura-test",
+                    "initialize_managed_library": False,
+                    "confirmed": True,
+                },
             )
             assert queued.status_code == 201, queued.text
             restore_id = queued.json()["id"]

@@ -59,7 +59,7 @@ describe('FilamentsPage', () => {
       if (path === '/filaments') return Promise.resolve([filament])
       if (path === '/profiles/templates') return Promise.resolve([{
         id: 'template-id', name: 'Template PLA', material_type: 'PLA', description: null,
-        printer_id: 'printer-id', nozzle_diameter_mm: '0.4', filament_diameter_mm: '1.75',
+        printer_id: 'printer-id', nozzle_id: 'nozzle-id', nozzle_diameter_mm: '0.4', filament_diameter_mm: '1.75',
         source_workstation_agent_id: null, source_cura_material_id: null, active: true,
         record_version: 1, created_at: '2026-08-18T00:00:00Z', updated_at: '2026-08-18T00:00:00Z',
         revisions: [{ id: 'revision-id', material_template_id: 'template-id', version: 1,
@@ -78,7 +78,7 @@ describe('FilamentsPage', () => {
 
     fireEvent.change(screen.getByLabelText('Filaments view'), { target: { value: 'list' } })
     expect(screen.getByRole('table')).toBeTruthy()
-    expect(screen.getByRole('link', { name: /Open/ })).toBeTruthy()
+    expect(screen.getAllByRole('row')[1].getAttribute('tabindex')).toBe('0')
     fireEvent.change(screen.getByLabelText('Filaments view'), { target: { value: 'cards' } })
 
     fireEvent.click(screen.getByRole('button', { name: 'Add filament' }))

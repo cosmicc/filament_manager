@@ -210,6 +210,6 @@ export default function WorkstationsPage() {
       {takeover.error ? <p className="form-error" role="alert">{takeover.error.message}</p> : null}
       </>}
     </Modal> : null}
-    {recoveryAgent ? <CuraRecoveryModal agent={recoveryAgent} onClose={() => setRecoveryAgent(null)} onQueued={setMessage} /> : null}
+    {recoveryAgent ? <CuraRecoveryModal agent={recoveryAgent} agents={agents.data ?? []} onClose={() => setRecoveryAgent(null)} onQueued={setMessage} /> : null}
   </div>
 }

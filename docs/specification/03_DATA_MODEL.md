@@ -50,7 +50,7 @@ Printer identity, server-only Moonraker endpoint, installed physical-nozzle refe
 
 ### nozzle and nozzle_lifecycle_event
 
-A physical nozzle has an editable unique human code, diameter, construction material, manufacturer/product, optional purchase and installation metadata, lifecycle status, notes, and optimistic version. Code edits do not rewrite append-only lifecycle or print attribution. A printer has at most one installed nozzle. Append-only lifecycle events retain installation and removal boundaries. Completed-print count and total filament use derive from immutable print history captured while the nozzle was installed.
+A physical nozzle belongs permanently to one printer and has an editable human code that is case-insensitively unique within that printer, diameter, construction material, manufacturer/product, optional purchase and installation metadata, lifecycle status, notes, and optimistic version. Code edits do not rewrite append-only lifecycle or print attribution. A printer has at most one installed nozzle, and a nozzle cannot be installed on a printer other than its owner. Append-only lifecycle events retain installation and removal boundaries. Completed-print count and total filament use derive from immutable print history captured while the nozzle was installed.
 
 ### build_plate
 
@@ -73,11 +73,11 @@ Immutable internal settings snapshots scoped to:
 - nozzle diameter
 - optional layer-height range
 
-Every current snapshot directly references the current `material_template_revision`, stores only semantically different permitted `setting_overrides`, and caches the complete resolved values in the typed columns plus `cura_extensions`. The resolved snapshot inherits template-owned print-speed, cooling, smooth-time, and acceleration values and may reference a preferred plate side. Initial Fan Speed, pressure advance, and ironing may enter product overrides. Direct saves append the next current immutable snapshot and queue projections without an operator-facing draft or publication state.
+Every current snapshot directly references the current `material_template_revision`, stores only semantically different permitted `setting_overrides`, and caches the complete resolved values in the typed columns plus `cura_extensions`. The resolved snapshot inherits template-owned print-speed, cooling, smooth-time, and acceleration values and may reference a preferred plate side. Initial Fan Speed, pressure advance, and ironing flow/speed/line-spacing values may enter product overrides; Cura quality profiles own ironing enablement. Direct saves append the next current immutable snapshot and queue projections without an operator-facing draft or publication state.
 
 ### material_template and material_template_revision
 
-The template is a mutable identity for one material type, printer, nozzle, and filament diameter. Its canonical Cura identity is `Template <material type>` under the `Template` brand. Only one active template exists per normalized material family and printer/nozzle scope. Revisions are hidden complete immutable settings snapshots and exclusively own print-speed settings, cooling settings other than Initial Fan Speed, smooth time, and the approved print/feature/support/travel acceleration values. Creating a filament product links its first current profile to the template's current snapshot, records only permitted product-specific differences such as density, pressure advance, ironing, and Initial Fan Speed, and computes the resolved snapshot. A direct template save immediately creates the next current snapshot for every linked profile while preserving its permitted explicit override keys.
+The template is a mutable identity for one material type and one exact printer-owned physical nozzle; its printer and cached diameter must match that nozzle. Its canonical Cura identity is `Template <material type>` under the `Template` brand. Only one active template exists per normalized material family and physical nozzle. Revisions are hidden complete immutable settings snapshots and exclusively own print-speed settings, cooling settings other than Initial Fan Speed, smooth time, and the approved print/feature/support/travel acceleration values. Creating a filament product links its first current profile to the template's current snapshot, records only permitted product-specific differences such as density, pressure advance, ironing, and Initial Fan Speed, and computes the resolved snapshot. A direct template save immediately creates the next current snapshot for every linked profile while preserving its permitted explicit override keys.
 
 ### cura_takeover_mapping
 
@@ -93,7 +93,7 @@ Immutable, sanitized operational Cura configuration captured only while Cura is 
 
 ### cura_recovery_restore
 
-One confirmed Administrator recovery request copied from an immutable snapshot. It is leased only to the originating agent and matching reported Cura version, retains a bounded success/failure result, and never exposes the stored file payload to the browser. The workstation creates its own rollback backup before applying the restore.
+One confirmed Administrator recovery request copied from an immutable snapshot. The snapshot may originate from any paired workstation, but the request is leased only to the selected target agent and an installation reporting the exact matching Cura version. It retains a bounded success/failure result and never exposes the stored file payload to the browser. The target workstation creates its own rollback backup before applying the restore.
 
 ### calibration_session
 

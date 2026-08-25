@@ -51,7 +51,6 @@ CALIBRATION_STEPS: tuple[StepDefinition, ...] = (
         "Ironing Test",
         False,
         (
-            "ironing_enabled",
             "ironing_flow_percent",
             "ironing_speed_mm_s",
             "ironing_line_spacing_mm",

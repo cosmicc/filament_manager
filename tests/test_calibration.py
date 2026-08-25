@@ -119,7 +119,6 @@ def test_template_calibration_applies_only_supported_suggestions() -> None:
             "extruder_temp_c": Decimal("245"),
             "flow_percent": Decimal("97.5"),
             "cura_extensions.xy_offset": "0.10",
-            "ironing_enabled": True,
             "ironing_flow_percent": "12",
         },
     )
@@ -132,5 +131,4 @@ def test_template_calibration_applies_only_supported_suggestions() -> None:
         "retraction_enable": True,
         "cool_fan_speed_0": "0",
     }
-    assert settings.ironing_enabled is True
     assert settings.ironing_flow_percent == Decimal("12")

@@ -20,12 +20,13 @@ from filament_manager.clients.moonraker import (
 from filament_manager.config import Settings
 from filament_manager.domain.spool_preflight import cura_material_guid
 from filament_manager.models import Base
-from filament_manager.models.enums import ProfileStatus, SpoolStatus
+from filament_manager.models.enums import NozzleStatus, ProfileStatus, SpoolStatus
 from filament_manager.models.inventory import (
     FilamentProduct,
     MaterialProfile,
     MaterialTemplate,
     MaterialTemplateRevision,
+    Nozzle,
     Printer,
     Spool,
     SpoolUsageEvent,
@@ -105,10 +106,21 @@ async def test_active_spool_selection_and_clear_follow_moonraker(
             )
             session.add_all([printer, product])
             await session.flush()
+            nozzle = Nozzle(
+                nozzle_code="NZ-040",
+                printer_id=printer.id,
+                diameter_mm=Decimal("0.4"),
+                material="Brass",
+                status=NozzleStatus.INSTALLED,
+            )
+            session.add(nozzle)
+            await session.flush()
+            printer.active_nozzle_id = nozzle.id
             template = MaterialTemplate(
                 name="Template PLA",
                 material_type="PLA",
                 printer_id=printer.id,
+                nozzle_id=nozzle.id,
                 nozzle_diameter_mm=Decimal("0.4"),
                 filament_diameter_mm=Decimal("1.75"),
             )

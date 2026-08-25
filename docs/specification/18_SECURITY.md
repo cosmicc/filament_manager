@@ -70,7 +70,7 @@ Hidden browser source maps may leave CI only during an authorized direct push wi
 - fail closed when Cura material identity, eligible inventory, current exact-profile temperature, or persistent physical-spool state is unavailable
 - accept managed Cura setting edits only for deterministic known GUIDs and approved bounded keys; derive the idempotency checksum server-side, save the known current settings directly, and reject new Cura-created materials as canonical input
 - accept Cura recovery snapshots only from the paired agent for its exact currently reported installation/version; enforce fixed target allowlists, bounded content, semantic checksums, reset detection, and conservative credential/endpoint/path filtering
-- expose only recovery metadata to authenticated browser users, require Administrator confirmation to queue a restore, and lease the copied restore payload only to its originating agent
+- expose only recovery metadata to authenticated browser users, require Administrator confirmation to queue a restore, require an exact target Cura-version match, and lease the copied restore payload only to the selected paired target agent
 
 The exact first-install password is intentionally weak at the owner's request for this single-user self-hosted deployment. Mandatory first-login replacement, normal Argon2id storage, login throttling, and no deployment-variable credential exposure limit that accepted bootstrap risk. Do not broaden this exception to replacement passwords or remove the forced-change gate.
 

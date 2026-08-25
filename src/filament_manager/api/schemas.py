@@ -498,7 +498,6 @@ class MaterialSettingsInput(ApiModel):
     support_overhang_angle_deg: Decimal | None = Field(default=None, ge=0, le=90)
     tree_max_branch_angle_deg: Decimal | None = Field(default=None, ge=0, le=90)
     pressure_advance: Decimal | None = Field(default=None, ge=0, le=2)
-    ironing_enabled: bool | None = None
     ironing_flow_percent: Decimal | None = Field(default=None, ge=0, le=100)
     ironing_speed_mm_s: Decimal | None = Field(default=None, gt=0)
     ironing_line_spacing_mm: Decimal | None = Field(default=None, gt=0)
@@ -669,6 +668,7 @@ class CuraMaterialTemplateImportRequest(ApiModel):
     material_type: str = Field(min_length=1, max_length=48)
     description: str | None = Field(default=None, max_length=4000)
     printer_id: UUID
+    nozzle_id: UUID
     nozzle_diameter_mm: Decimal = Field(gt=0)
     filament_diameter_mm: Decimal = Field(default=Decimal("1.75"), gt=0)
     filament_density_g_cm3: Decimal = Field(gt=0)
@@ -684,6 +684,7 @@ class MaterialTemplateCreate(ApiModel):
     material_type: str = Field(min_length=1, max_length=48)
     description: str | None = Field(default=None, max_length=4000)
     printer_id: UUID
+    nozzle_id: UUID
     nozzle_diameter_mm: Decimal = Field(gt=0)
     filament_diameter_mm: Decimal = Field(default=Decimal("1.75"), gt=0)
     settings: MaterialSettingsInput
@@ -731,6 +732,7 @@ class MaterialTemplateResponse(ApiModel):
     material_type: str
     description: str | None
     printer_id: UUID
+    nozzle_id: UUID
     nozzle_diameter_mm: Decimal
     filament_diameter_mm: Decimal
     source_workstation_agent_id: UUID | None
@@ -782,6 +784,7 @@ class NozzleCreate(ApiModel):
     """Create one uniquely labelled physical nozzle."""
 
     nozzle_code: str = Field(min_length=1, max_length=64, pattern=r"^[A-Za-z0-9][A-Za-z0-9._-]*$")
+    printer_id: UUID
     diameter_mm: Decimal = Field(gt=0, le=10)
     material: str = Field(min_length=1, max_length=96)
     manufacturer: str | None = Field(default=None, max_length=160)
@@ -819,6 +822,7 @@ class NozzleInstallRequest(ApiModel):
 class NozzleResponse(ApiModel):
     id: UUID
     nozzle_code: str
+    printer_id: UUID
     diameter_mm: Decimal
     material: str
     manufacturer: str | None
@@ -1252,6 +1256,8 @@ class CuraRecoveryRestoreRequest(ApiModel):
     """Explicit Administrator confirmation for one recovery point."""
 
     snapshot_id: UUID
+    installation_id: str = Field(pattern=r"^[A-Za-z0-9_.-]+$", max_length=96)
+    initialize_managed_library: bool = False
     confirmed: bool
 
 
