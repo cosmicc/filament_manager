@@ -511,6 +511,7 @@ def test_discovers_existing_material_settings_without_reporting_paths(
     <setting key="print temperature">225</setting>
     <cura:setting key="material_flow">98.5</cura:setting>
     <cura:setting key="klipper_pressure_advance_factor">0.035</cura:setting>
+    <cura:setting key="limit_support_retractions">True</cura:setting>
     <cura:setting key="machine_start_gcode">unsafe and unsupported</cura:setting>
   </settings>
 </fdmmaterial>
@@ -553,6 +554,7 @@ setting_version = 27
 [values]
 speed_print = 80
 material_print_temperature = 200
+limit_support_retractions = True
 machine_start_gcode = G28
 """,
         encoding="utf-8",

@@ -12,8 +12,13 @@ import respx
 from PIL import Image
 
 from filament_manager.api import dependencies
+from filament_manager.api.routes import operations
 from filament_manager.api.routes.plates import _sanitize_plate_image
-from filament_manager.clients.moonraker import MoonrakerClient, MoonrakerError
+from filament_manager.clients.moonraker import (
+    MoonrakerClient,
+    MoonrakerError,
+    MoonrakerOperationalState,
+)
 from filament_manager.config import PrinterConfig, Settings
 from filament_manager.domain.build_plates import (
     MAX_DISCOVERED_PLATE_SURFACES,
@@ -39,6 +44,28 @@ def printer_config() -> PrinterConfig:
             "websocket_url": "ws://moonraker.test:7125/websocket",
             "api_key": "test-api-key",
             "nozzle_diameter_mm": 0.4,
+        }
+    )
+
+
+def dashboard_test_settings() -> Settings:
+    """Return application settings for isolated dashboard-state tests."""
+
+    return Settings.model_validate(
+        {
+            "app": {
+                "base_url": "http://testserver",
+                "allowed_hosts": ["testserver"],
+                "secure_cookies": False,
+            },
+            "database": {"url": "postgresql+psycopg://user:password@database.test/app"},
+            "spoolman": {"base_url": "http://spoolman.test:8000"},
+            "moonraker": {"printers": [printer_config().model_dump()]},
+            "google": {"enabled": False},
+            "sync": {},
+            "plates": {"allowed_codes": ["P1", "P2", "P3", "P4", "P5"]},
+            "devices": {},
+            "security": {},
         }
     )
 
@@ -293,6 +320,195 @@ async def test_moonraker_printer_information_uses_documented_fields() -> None:
     assert route.calls.last.request.read() == (
         b'{"objects":{"configfile":["settings"],"toolhead":["axis_minimum","axis_maximum","cone_start_z"]}}'
     )
+
+
+@respx.mock
+@pytest.mark.asyncio
+async def test_moonraker_operational_state_reports_progress_and_temperatures() -> None:
+    """The dashboard reader uses only advertised Klipper objects and bounded values."""
+
+    respx.get("http://moonraker.test:7125/printer/info").mock(
+        return_value=httpx.Response(200, json={"result": {"state": "ready"}})
+    )
+    respx.get("http://moonraker.test:7125/printer/objects/list").mock(
+        return_value=httpx.Response(
+            200,
+            json={
+                "result": {
+                    "objects": [
+                        "print_stats",
+                        "virtual_sdcard",
+                        "extruder",
+                        "heater_bed",
+                        "temperature_sensor chamber",
+                        "temperature_sensor electronics",
+                    ]
+                }
+            },
+        )
+    )
+    query_route = respx.post("http://moonraker.test:7125/printer/objects/query").mock(
+        return_value=httpx.Response(
+            200,
+            json={
+                "result": {
+                    "status": {
+                        "print_stats": {"filename": "jobs/calibration_cube.gcode", "state": "printing"},
+                        "virtual_sdcard": {"progress": 0.427},
+                        "extruder": {"temperature": 214.6, "target": 220},
+                        "heater_bed": {"temperature": 59.8, "target": 60},
+                        "temperature_sensor chamber": {"temperature": 37.2},
+                    }
+                }
+            },
+        )
+    )
+
+    state = await MoonrakerClient(printer_config()).operational_state()
+
+    assert state.klipper_state == "ready"
+    assert state.print_state == "printing"
+    assert state.filename == "calibration_cube.gcode"
+    assert state.progress_percent == Decimal("42.700")
+    assert state.nozzle_temperature_c == Decimal("214.6")
+    assert state.nozzle_target_c == Decimal("220")
+    assert state.bed_temperature_c == Decimal("59.8")
+    assert state.chamber_temperature_c == Decimal("37.2")
+    assert state.chamber_target_c is None
+    assert json.loads(query_route.calls.last.request.content) == {
+        "objects": {
+            "print_stats": ["filename", "state"],
+            "extruder": ["temperature", "target"],
+            "heater_bed": ["temperature", "target"],
+            "virtual_sdcard": ["progress"],
+            "temperature_sensor chamber": ["temperature", "target"],
+        }
+    }
+
+
+@respx.mock
+@pytest.mark.asyncio
+async def test_moonraker_operational_state_keeps_klipper_startup_visible() -> None:
+    """A reachable Moonraker can report printer startup without querying unavailable objects."""
+
+    respx.get("http://moonraker.test:7125/printer/info").mock(
+        return_value=httpx.Response(200, json={"result": {"state": "startup"}})
+    )
+
+    state = await MoonrakerClient(printer_config()).operational_state()
+
+    assert state.klipper_state == "startup"
+    assert state.print_state is None
+    assert state.nozzle_temperature_c is None
+
+
+@pytest.mark.asyncio
+async def test_dashboard_maps_live_printing_state_without_exposing_connection_details(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Dashboard state includes useful live values and only the configured display name."""
+
+    settings = dashboard_test_settings()
+
+    class FakeMoonrakerClient:
+        def __init__(self, _printer: PrinterConfig, timeout: float) -> None:
+            assert timeout == 3
+
+        async def operational_state(self) -> MoonrakerOperationalState:
+            return MoonrakerOperationalState(
+                klipper_state="ready",
+                print_state="printing",
+                filename="test.gcode",
+                progress_percent=Decimal("64"),
+                nozzle_temperature_c=Decimal("220"),
+                nozzle_target_c=Decimal("220"),
+                bed_temperature_c=Decimal("60"),
+                bed_target_c=Decimal("60"),
+                chamber_temperature_c=Decimal("38"),
+                chamber_target_c=None,
+            )
+
+    monkeypatch.setattr(operations, "get_settings", lambda: settings)
+    monkeypatch.setattr(operations, "MoonrakerClient", FakeMoonrakerClient)
+
+    state = await operations._dashboard_printer_state()
+
+    assert state.printer_name == "Test Printer"
+    assert state.connection_status == "connected"
+    assert state.operational_status == "printing"
+    assert state.progress_percent == Decimal("64")
+    assert "moonraker.test" not in state.model_dump_json()
+
+
+@pytest.mark.parametrize(
+    ("klipper_state", "print_state", "expected"),
+    [
+        ("ready", "standby", "idle"),
+        ("ready", "paused", "paused"),
+        ("ready", "complete", "finished"),
+        ("ready", "cancelled", "cancelled"),
+        ("ready", "error", "error"),
+        ("startup", None, "starting"),
+        ("shutdown", None, "error"),
+    ],
+)
+@pytest.mark.asyncio
+async def test_dashboard_maps_bounded_operational_states(
+    monkeypatch: pytest.MonkeyPatch,
+    klipper_state: str,
+    print_state: str | None,
+    expected: str,
+) -> None:
+    """Every supported Klipper/print state receives a stable dashboard label."""
+
+    class FakeMoonrakerClient:
+        def __init__(self, _printer: PrinterConfig, timeout: float) -> None:
+            assert timeout == 3
+
+        async def operational_state(self) -> MoonrakerOperationalState:
+            return MoonrakerOperationalState(
+                klipper_state=klipper_state,
+                print_state=print_state,
+                filename=None,
+                progress_percent=None,
+                nozzle_temperature_c=None,
+                nozzle_target_c=None,
+                bed_temperature_c=None,
+                bed_target_c=None,
+                chamber_temperature_c=None,
+                chamber_target_c=None,
+            )
+
+    monkeypatch.setattr(operations, "get_settings", dashboard_test_settings)
+    monkeypatch.setattr(operations, "MoonrakerClient", FakeMoonrakerClient)
+
+    state = await operations._dashboard_printer_state()
+
+    assert state.connection_status == "connected"
+    assert state.operational_status == expected
+
+
+@pytest.mark.asyncio
+async def test_dashboard_degrades_only_live_telemetry_when_moonraker_is_unavailable(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A Moonraker outage produces bounded state instead of failing the dashboard route."""
+
+    class UnavailableMoonrakerClient:
+        def __init__(self, _printer: PrinterConfig, timeout: float) -> None:
+            assert timeout == 3
+
+        async def operational_state(self) -> MoonrakerOperationalState:
+            raise MoonrakerError("sanitized test outage")
+
+    monkeypatch.setattr(operations, "get_settings", dashboard_test_settings)
+    monkeypatch.setattr(operations, "MoonrakerClient", UnavailableMoonrakerClient)
+
+    state = await operations._dashboard_printer_state()
+
+    assert state.connection_status == "unavailable"
+    assert state.operational_status == "unavailable"
+    assert state.klipper_state is None
 
 
 @respx.mock

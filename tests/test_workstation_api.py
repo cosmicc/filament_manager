@@ -324,8 +324,8 @@ async def test_pair_queue_claim_and_complete_workstation_deployment(
                             "managed_library_checksum": "a" * 64,
                             "material_settings_sync": {
                                 "status": "healthy",
-                                "expected_count": 55,
-                                "exposed_count": 55,
+                                "expected_count": 54,
+                                "exposed_count": 54,
                                 "missing_keys": [],
                                 "unexpected_keys": [],
                                 "material_settings_plugin_ready": True,
@@ -389,8 +389,8 @@ async def test_pair_queue_claim_and_complete_workstation_deployment(
             assert agent.token_hash != agent_token
             assert agent.cura_installations[0]["material_settings_sync"] == {
                 "status": "healthy",
-                "expected_count": 55,
-                "exposed_count": 55,
+                "expected_count": 54,
+                "exposed_count": 54,
                 "missing_keys": [],
                 "unexpected_keys": [],
                 "material_settings_plugin_ready": True,

@@ -84,7 +84,7 @@ describe('Bugsnag browser privacy boundary', () => {
 
   it('replaces raw browser exception messages at the final delivery boundary', () => {
     const event = {
-      app: { releaseStage: 'testing', type: 'browser', version: '0.4.0' },
+      app: { releaseStage: 'testing', type: 'browser', version: '0.4.1' },
       device: { hostname: 'private-host', osName: 'Linux' },
       request: { url: 'http://localhost/private?password=secret', httpMethod: 'GET' },
       response: { headers: { authorization: 'secret' }, body: 'private response' },

@@ -1,5 +1,21 @@
 # User Changelog
 
+## 0.4.1 - 08.24.2026
+
+### Added
+
+- Added automatic cleanup of previously managed **Limit Support Retractions** values during the next Cura material-library synchronization.
+- Added a large live printer card to Dashboard showing whether Moonraker and Klipper are available, the current idle/printing/paused/finished state, print progress and filename, and available nozzle, bed, and chamber temperatures.
+
+### Changed
+
+- Removed **Limit Support Retractions** everywhere in Filament Manager and from the required Cura Material Settings list.
+
+### Fixed
+
+- Fixed the List/Cards/Detailed menu and its choices appearing white-on-white when using a dark color profile.
+- Fixed automatic and manual Cura backups failing on valid Cura setting-visibility files and improved the safe failure reason shown when a different Cura settings file cannot be captured.
+
 ## 0.4.0 - 08.24.2026
 
 ### Added

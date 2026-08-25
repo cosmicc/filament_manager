@@ -405,6 +405,8 @@ async def test_direct_template_save_updates_linked_product_profile(
             assert library["hide_bundled_materials"] is True
             assert "speed_print" in library["managed_material_setting_keys"]
             assert "material_flow_layer_0" in library["retired_material_setting_keys"]
+            assert "limit_support_retractions" not in library["managed_material_setting_keys"]
+            assert "limit_support_retractions" in library["retired_material_setting_keys"]
             template_material = next(
                 item
                 for item in materials

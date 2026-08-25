@@ -882,6 +882,35 @@ class PrinterUpdate(ApiModel):
         return normalized
 
 
+class DashboardPrinterStateResponse(ApiModel):
+    """Live, sanitized Moonraker state shown on the dashboard."""
+
+    printer_name: str
+    connection_status: Literal["connected", "unavailable", "not_configured"]
+    operational_status: Literal[
+        "idle",
+        "printing",
+        "paused",
+        "finished",
+        "cancelled",
+        "starting",
+        "error",
+        "unavailable",
+        "not_configured",
+    ]
+    klipper_state: Literal["ready", "startup", "shutdown", "error"] | None
+    print_state: Literal["standby", "printing", "paused", "error", "complete", "cancelled"] | None
+    filename: str | None
+    progress_percent: Decimal | None
+    nozzle_temperature_c: Decimal | None
+    nozzle_target_c: Decimal | None
+    bed_temperature_c: Decimal | None
+    bed_target_c: Decimal | None
+    chamber_temperature_c: Decimal | None
+    chamber_target_c: Decimal | None
+    checked_at: datetime
+
+
 class DashboardResponse(ApiModel):
     total_spools: int
     needs_weighing: int
@@ -890,6 +919,7 @@ class DashboardResponse(ApiModel):
     active_spool: SpoolResponse | None
     active_plate: BuildPlateResponse | None
     active_plate_surface: BuildPlateSurfaceResponse | None
+    printer_state: DashboardPrinterStateResponse
 
 
 class Page(ApiModel):

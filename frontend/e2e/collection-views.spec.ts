@@ -71,8 +71,24 @@ test.beforeEach(async ({ page }) => {
 })
 
 test('catalog views are independent, remembered, full-width, and action complete', async ({ page }) => {
+  await page.addInitScript(() => window.localStorage.setItem('filament-manager-theme', 'dark-navy'))
   await page.goto('/spools')
   await expect(page.getByLabel('Spools view')).toHaveValue('list')
+  const viewColors = await page.getByLabel('Spools view').evaluate((select) => {
+    const option = select.querySelector('option')
+    const selectStyle = window.getComputedStyle(select)
+    const optionStyle = option ? window.getComputedStyle(option) : null
+    return {
+      selectColor: selectStyle.color,
+      selectBackground: selectStyle.backgroundColor,
+      optionColor: optionStyle?.color,
+      optionBackground: optionStyle?.backgroundColor,
+    }
+  })
+  expect(viewColors.selectColor).not.toBe('rgb(255, 255, 255)')
+  expect(viewColors.selectBackground).not.toBe('rgba(0, 0, 0, 0)')
+  expect(viewColors.optionColor).toBe(viewColors.selectColor)
+  expect(viewColors.optionBackground).not.toBe('rgb(255, 255, 255)')
   await expect(page.locator('.inventory-layout')).toHaveCount(0)
   await expect(page.getByText('Select a spool')).toHaveCount(0)
   await page.getByLabel('Spools view').selectOption('detailed')
@@ -82,7 +98,7 @@ test('catalog views are independent, remembered, full-width, and action complete
   await expect(page.getByRole('dialog', { name: 'PLA-BLUE-01 details' })).toBeVisible()
   await expect(page.getByRole('button', { name: 'Weigh spool' })).toBeVisible()
   await page.getByRole('button', { name: 'Done' }).click()
-  await page.screenshot({ path: '../docs/design/validation/inventory-views-v040.png', fullPage: true })
+  await page.screenshot({ path: '../docs/design/validation/inventory-views-v041.png', fullPage: true })
 
   await page.goto('/filaments')
   await expect(page.getByLabel('Filaments view')).toHaveValue('cards')
@@ -109,5 +125,5 @@ test('catalog views are independent, remembered, full-width, and action complete
   await page.goto('/spools')
   await page.getByLabel('Spools view').selectOption('cards')
   await expect(page.locator('.collection-card--button')).toBeVisible()
-  await page.screenshot({ path: '../docs/design/validation/inventory-views-mobile-v040.png', fullPage: true })
+  await page.screenshot({ path: '../docs/design/validation/inventory-views-mobile-v041.png', fullPage: true })
 })

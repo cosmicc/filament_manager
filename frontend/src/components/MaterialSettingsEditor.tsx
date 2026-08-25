@@ -77,7 +77,6 @@ function curaSettingGroup(key: string): MaterialSettingGroup {
   if (
     key.startsWith('retraction_')
     || key.startsWith('retract_')
-    || key === 'limit_support_retractions'
   ) return 'retraction'
   if (key.startsWith('support_') || key.startsWith('tree_')) return 'support'
   if (key.startsWith('xy_offset') || key.startsWith('hole_xy_offset')) return 'dimensional'

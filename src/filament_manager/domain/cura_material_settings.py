@@ -62,7 +62,6 @@ CURA_MATERIAL_SETTINGS: tuple[CuraMaterialSetting, ...] = (
     _number("speed_travel_layer_0", "Initial Layer Travel Speed", "mm/s", template_only=True),
     _number("retraction_prime_speed", "Retraction Prime Speed", "mm/s"),
     _number("speed_print", "Print Speed", "mm/s", template_only=True),
-    _boolean("limit_support_retractions", "Limit Support Retractions"),
     _number("speed_travel", "Travel Speed", "mm/s", template_only=True),
     _number(
         "klipper_pressure_advance_factor",
@@ -220,6 +219,7 @@ CURA_RETIRED_SETTING_KEYS = frozenset(
         "material_initial_print_temperature",
         "material_print_temperature_layer_0",
         "material_standby_temperature",
+        "limit_support_retractions",
         "roofing_material_flow",
         "skirt_brim_material_flow",
         "support_material_flow",

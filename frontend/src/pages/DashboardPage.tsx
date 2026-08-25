@@ -1,5 +1,5 @@
 import { useQuery } from '@tanstack/react-query'
-import { AlertTriangle, ArrowRight, Boxes, FlaskConical, Layers3, PackageOpen, Plus, Scale } from 'lucide-react'
+import { AlertTriangle, ArrowRight, Boxes, FlaskConical, Gauge, Layers3, PackageOpen, Plus, Printer, Scale, Thermometer, WifiOff } from 'lucide-react'
 import { apiFetch } from '../api/client'
 import type { DashboardData } from '../api/types'
 import { EmptyState } from '../components/EmptyState'
@@ -8,7 +8,15 @@ import { PageHeader } from '../components/PageHeader'
 import { StatusPill } from '../components/StatusPill'
 import { Link } from '../context/RouterContext'
 import { filamentSwatchStyle } from '../lib/colors'
-import { grams, percent } from '../lib/format'
+import { compactNumber, dateTime, grams, percent, titleCase } from '../lib/format'
+
+function temperatureSummary(current: string | null, target: string | null) {
+  if (current == null) return 'Not reported'
+  const currentText = `${compactNumber(current, 0)} °C`
+  return target != null && Number(target) > 0
+    ? `${currentText} / ${compactNumber(target, 0)} °C target`
+    : currentText
+}
 
 function MetricCard({ icon: Icon, label, value, detail, tone = '' }: {
   icon: typeof Boxes
@@ -40,6 +48,36 @@ export default function DashboardPage() {
       </section>
 
       <section className="dashboard-grid">
+        <article className={`card printer-state-card printer-state-card--${data.printer_state.operational_status}`}>
+          <header className="printer-state-card__header">
+            <span className="printer-state-card__icon"><Printer size={30} /></span>
+            <div>
+              <p className="eyebrow">Live Moonraker status</p>
+              <h2>{data.printer_state.printer_name}</h2>
+              <p>{data.printer_state.connection_status === 'connected'
+                ? `Moonraker connected · Klipper ${data.printer_state.klipper_state ?? 'state unavailable'}`
+                : data.printer_state.connection_status === 'not_configured'
+                  ? 'No Moonraker printer is configured.'
+                  : 'Moonraker is unavailable; printer power and network state cannot be confirmed.'}</p>
+            </div>
+            <StatusPill status={data.printer_state.operational_status} label={titleCase(data.printer_state.operational_status)} />
+          </header>
+          {data.printer_state.connection_status === 'connected' ? <div className="printer-state-card__body">
+            <section className="printer-job-state" aria-label="Current print state">
+              <span><Gauge size={21} /></span>
+              <div><small>Printer state</small><strong>{titleCase(data.printer_state.operational_status)}</strong>{data.printer_state.filename ? <p title={data.printer_state.filename}>{data.printer_state.filename}</p> : null}</div>
+              {data.printer_state.progress_percent != null ? <strong className="printer-job-state__percent">{percent(data.printer_state.progress_percent)}</strong> : null}
+              {data.printer_state.progress_percent != null ? <div className="progress"><span style={{ width: `${Math.min(100, Math.max(0, Number(data.printer_state.progress_percent)))}%` }} /></div> : null}
+            </section>
+            <section className="printer-temperature-grid" aria-label="Live printer temperatures">
+              <div><span><Thermometer size={18} /></span><small>Nozzle</small><strong>{temperatureSummary(data.printer_state.nozzle_temperature_c, data.printer_state.nozzle_target_c)}</strong></div>
+              <div><span><Thermometer size={18} /></span><small>Bed</small><strong>{temperatureSummary(data.printer_state.bed_temperature_c, data.printer_state.bed_target_c)}</strong></div>
+              <div><span><Thermometer size={18} /></span><small>Chamber</small><strong>{temperatureSummary(data.printer_state.chamber_temperature_c, data.printer_state.chamber_target_c)}</strong></div>
+            </section>
+          </div> : <div className="printer-state-card__unavailable"><WifiOff size={24} /><span><strong>Live printer telemetry is unavailable</strong><small>The dashboard will retry automatically every 15 seconds.</small></span></div>}
+          <footer>Checked {dateTime(data.printer_state.checked_at)}</footer>
+        </article>
+
         <article className="card active-spool-card">
           <header className="card__header"><div><p className="eyebrow">Printing context</p><h2>Active spool</h2></div>{data.active_spool && <StatusPill status={data.active_spool.status} />}</header>
           {data.active_spool ? (

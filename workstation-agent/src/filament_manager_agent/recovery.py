@@ -131,8 +131,20 @@ class _CaseSensitiveConfigParser(configparser.ConfigParser):
         return optionstr
 
 
-def _parser() -> configparser.ConfigParser:
-    return _CaseSensitiveConfigParser(interpolation=None, strict=False)
+def _parser(*, allow_no_value: bool = False) -> configparser.ConfigParser:
+    """Create a Cura-compatible parser without evaluating interpolation tokens.
+
+    Cura setting-visibility presets are valid INI-like documents whose setting
+    names intentionally have no ``= value`` suffix. Other Cura configuration
+    files retain ordinary key/value parsing so malformed input still fails
+    closed.
+    """
+
+    return _CaseSensitiveConfigParser(
+        interpolation=None,
+        strict=False,
+        allow_no_value=allow_no_value,
+    )
 
 
 def _key_is_sensitive(key: str) -> bool:
@@ -194,13 +206,13 @@ def _sanitized_moonraker_instances(value: str) -> str | None:
     return json.dumps(sanitized, sort_keys=True, separators=(",", ":")) if sanitized else None
 
 
-def _sanitize_ini(content: str, *, preferences: bool) -> str:
-    source = _parser()
+def _sanitize_ini(content: str, *, preferences: bool, allow_no_value: bool = False) -> str:
+    source = _parser(allow_no_value=allow_no_value)
     try:
         source.read_string(content)
     except (configparser.Error, UnicodeError) as error:
         raise RuntimeError("A supported Cura configuration file is invalid.") from error
-    sanitized = _parser()
+    sanitized = _parser(allow_no_value=allow_no_value)
     for section in source.sections():
         normalized_section = section.casefold()
         allowed_keys = SAFE_CURA_PREFERENCE_KEYS.get(normalized_section)
@@ -217,7 +229,7 @@ def _sanitize_ini(content: str, *, preferences: bool) -> str:
         for key, value in source.items(section, raw=True):
             if preferences and allowed_keys is not None and key.casefold() not in allowed_keys:
                 continue
-            if _key_is_sensitive(key) or _value_is_sensitive(value):
+            if _key_is_sensitive(key) or (value is not None and _value_is_sensitive(value)):
                 continue
             sanitized.set(section, key, value)
     output = io.StringIO()
@@ -353,7 +365,11 @@ def capture_recovery_snapshot(installation: CuraInstallation) -> dict[str, objec
             sanitized = (
                 _sanitize_json(content)
                 if path.name.endswith(".json")
-                else _sanitize_ini(content, preferences=False)
+                else _sanitize_ini(
+                    content,
+                    preferences=False,
+                    allow_no_value=directory_name == "setting_visibility",
+                )
             )
             encoded_size = len(sanitized.encode("utf-8"))
             total_bytes += encoded_size
@@ -417,7 +433,11 @@ def _recovery_files(payload: dict[str, object]) -> list[dict[str, str]]:
         if relative_path.endswith(".json"):
             sanitized = _sanitize_json(content)
         else:
-            sanitized = _sanitize_ini(content, preferences=scope == "config")
+            sanitized = _sanitize_ini(
+                content,
+                preferences=scope == "config",
+                allow_no_value=scope == "data" and path.parts[0] == "setting_visibility",
+            )
         if sanitized != content:
             raise RuntimeError("The Cura recovery snapshot failed local sanitization.")
         seen.add(identity)

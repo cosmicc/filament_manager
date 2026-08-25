@@ -68,6 +68,22 @@ class MoonrakerPrintState:
 
 
 @dataclass(frozen=True, slots=True)
+class MoonrakerOperationalState:
+    """Bounded live printer state for the operator-facing dashboard."""
+
+    klipper_state: str
+    print_state: str | None
+    filename: str | None
+    progress_percent: Decimal | None
+    nozzle_temperature_c: Decimal | None
+    nozzle_target_c: Decimal | None
+    bed_temperature_c: Decimal | None
+    bed_target_c: Decimal | None
+    chamber_temperature_c: Decimal | None
+    chamber_target_c: Decimal | None
+
+
+@dataclass(frozen=True, slots=True)
 class MoonrakerGcodeFile:
     """Streaming G-code digest plus bounded header and tail samples."""
 
@@ -171,6 +187,153 @@ class MoonrakerClient:
             server_info=server_info,
             printer_info=printer_info,
             object_status=object_status,
+        )
+
+    @staticmethod
+    def _bounded_decimal(
+        value: object,
+        *,
+        minimum: Decimal,
+        maximum: Decimal,
+        label: str,
+    ) -> Decimal:
+        """Convert one external number while rejecting booleans and unsafe ranges."""
+
+        if isinstance(value, bool):
+            raise MoonrakerError(f"Moonraker returned an invalid {label}")
+        try:
+            parsed = Decimal(str(value))
+        except Exception as exc:
+            raise MoonrakerError(f"Moonraker returned an invalid {label}") from exc
+        if not parsed.is_finite() or parsed < minimum or parsed > maximum:
+            raise MoonrakerError(f"Moonraker returned an invalid {label}")
+        return parsed
+
+    async def operational_state(self) -> MoonrakerOperationalState:
+        """Read live Klipper, print-progress, and heater state from documented objects."""
+
+        printer_payload = await self._get("/printer/info")
+        printer_info = printer_payload.get("result")
+        klipper_state = printer_info.get("state") if isinstance(printer_info, dict) else None
+        if klipper_state not in {"ready", "startup", "shutdown", "error"}:
+            raise MoonrakerError("Moonraker returned an invalid Klipper state")
+        if klipper_state != "ready":
+            return MoonrakerOperationalState(
+                klipper_state=klipper_state,
+                print_state=None,
+                filename=None,
+                progress_percent=None,
+                nozzle_temperature_c=None,
+                nozzle_target_c=None,
+                bed_temperature_c=None,
+                bed_target_c=None,
+                chamber_temperature_c=None,
+                chamber_target_c=None,
+            )
+
+        object_payload = await self._get("/printer/objects/list")
+        object_result = object_payload.get("result")
+        raw_objects = object_result.get("objects") if isinstance(object_result, dict) else None
+        if not isinstance(raw_objects, list) or len(raw_objects) > 10_000:
+            raise MoonrakerError("Moonraker returned an invalid printer object list")
+        available_objects = {item for item in raw_objects if isinstance(item, str) and 1 <= len(item) <= 160}
+        required_objects = {"print_stats", "extruder"}
+        if not required_objects.issubset(available_objects):
+            raise MoonrakerError("Moonraker did not expose required dashboard objects")
+
+        query: dict[str, list[str]] = {
+            "print_stats": ["filename", "state"],
+            "extruder": ["temperature", "target"],
+        }
+        if "heater_bed" in available_objects:
+            query["heater_bed"] = ["temperature", "target"]
+        if "virtual_sdcard" in available_objects:
+            query["virtual_sdcard"] = ["progress"]
+        elif "display_status" in available_objects:
+            query["display_status"] = ["progress"]
+        chamber_object = next(
+            (
+                item
+                for item in sorted(available_objects)
+                if "chamber" in item.casefold()
+                and item.casefold().startswith(("temperature_sensor ", "heater_generic ", "temperature_fan "))
+            ),
+            None,
+        )
+        if chamber_object is not None:
+            query[chamber_object] = ["temperature", "target"]
+
+        status_payload = await self._post("/printer/objects/query", {"objects": query})
+        result = status_payload.get("result")
+        status = result.get("status") if isinstance(result, dict) else None
+        if not isinstance(status, dict):
+            raise MoonrakerError("Moonraker did not return dashboard status")
+        print_stats = status.get("print_stats")
+        extruder = status.get("extruder")
+        if not isinstance(print_stats, dict) or not isinstance(extruder, dict):
+            raise MoonrakerError("Moonraker did not return required dashboard status")
+        print_state = print_stats.get("state")
+        if print_state not in {"standby", "printing", "paused", "error", "complete", "cancelled"}:
+            raise MoonrakerError("Moonraker returned an invalid print state")
+        raw_filename = print_stats.get("filename")
+        if not isinstance(raw_filename, str) or len(raw_filename) > 512:
+            raise MoonrakerError("Moonraker returned an invalid print filename")
+        filename = raw_filename.replace("\\", "/").rsplit("/", 1)[-1].strip() or None
+        if filename is not None and any(ord(character) < 32 for character in filename):
+            filename = None
+        if print_state == "standby":
+            filename = None
+
+        progress_source = status.get("virtual_sdcard", status.get("display_status"))
+        progress_percent: Decimal | None = None
+        if (
+            print_state != "standby"
+            and isinstance(progress_source, dict)
+            and progress_source.get("progress") is not None
+        ):
+            progress_percent = self._bounded_decimal(
+                progress_source["progress"],
+                minimum=Decimal("0"),
+                maximum=Decimal("1"),
+                label="print progress",
+            ) * Decimal("100")
+
+        def temperatures(object_name: str | None) -> tuple[Decimal | None, Decimal | None]:
+            item = status.get(object_name) if object_name is not None else None
+            if not isinstance(item, dict) or item.get("temperature") is None:
+                return None, None
+            current = self._bounded_decimal(
+                item["temperature"],
+                minimum=Decimal("-100"),
+                maximum=Decimal("1000"),
+                label="heater temperature",
+            )
+            target = (
+                self._bounded_decimal(
+                    item["target"],
+                    minimum=Decimal("0"),
+                    maximum=Decimal("1000"),
+                    label="heater target",
+                )
+                if item.get("target") is not None
+                else None
+            )
+            return current, target
+
+        nozzle_temperature, nozzle_target = temperatures("extruder")
+        bed_temperature, bed_target = temperatures("heater_bed")
+        chamber_temperature, chamber_target = temperatures(chamber_object)
+        return MoonrakerOperationalState(
+            klipper_state=klipper_state,
+            print_state=print_state,
+            filename=filename,
+            progress_percent=progress_percent,
+            nozzle_temperature_c=nozzle_temperature,
+            nozzle_target_c=nozzle_target,
+            bed_temperature_c=bed_temperature,
+            bed_target_c=bed_target,
+            chamber_temperature_c=chamber_temperature,
+            chamber_target_c=chamber_target,
         )
 
     async def set_active_spool(self, spoolman_id: int | None) -> dict[str, Any]:

@@ -48,6 +48,21 @@ def _recovery_capture_message(error: BaseException | None = None, *, reason: obj
         "A supported Cura recovery directory is unsafe.": (
             "A supported Cura settings directory failed the local safety check."
         ),
+        "A supported Cura recovery file is unsafe or oversized.": (
+            "A supported Cura settings file failed the local safety or size check."
+        ),
+        "A supported Cura recovery file could not be read safely.": (
+            "A supported Cura settings file could not be read safely."
+        ),
+        "A supported Cura configuration file is invalid.": (
+            "A supported Cura settings file contains invalid syntax."
+        ),
+        "A supported Cura JSON configuration file is invalid.": (
+            "A supported Cura JSON settings file contains invalid syntax."
+        ),
+        "A supported Cura JSON configuration file has an invalid root.": (
+            "A supported Cura JSON settings file has an invalid structure."
+        ),
         "Cura recovery settings exceed the safe capture limit.": (
             "The Cura settings backup exceeds the safe file or size limit."
         ),

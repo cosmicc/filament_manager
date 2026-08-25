@@ -9,6 +9,7 @@
 - Diagnostics queues: actionable pending/running/failed/dead depth, attempts, and explicit Administrator retry; superseded recurring history is retained without counting as queue debt
 - Activity: append-only operational and security audit history
 - Cura workstations: pairing, detected Cura versions/machines, pre-takeover source selection, authoritative management controls, and exact-version recovery points
+- Dashboard: live 15-second Moonraker/Klipper state, bounded print progress and filename, and available nozzle, bed, and chamber temperatures; an unavailable printer degrades this card without blocking inventory
 - Build Plates: per-side Moonraker mesh checks, newly discovered physical plates/sides, unavailable mappings, and the active loaded side
 - Print History: current capture, supported Moonraker history progress, inspection status, unresolved legacy rows, M600 segments, and retained outcome history
 - Notifications: unread Moonraker, dead-job, low/empty spool, overdue plate, and failed Cura synchronization conditions
@@ -64,7 +65,7 @@ Quarterly, compare spool/product counts, effective weights, profile versions, pl
 
 Confirm `FILAMENT_MANAGER_DB_*` and `POSTGRES_*` stack variables assemble the intended non-SSL URL for `filament_user`, then inspect the web or worker logs for the automatic-migration result. Do not grant access to the `spoolman` database. Run `alembic current` and `alembic upgrade head` only with the application services stopped when following the recovery procedure below.
 
-The current 0.4.0 schema is `d6e7f8a9b012`. If Diagnostics reports an older revision, first confirm web and worker use the same current image and let automatic migration finish. Never downgrade or manually edit `alembic_version`; use the documented stopped-service recovery procedure if an upgrade genuinely failed.
+The current 0.4.1 schema is `d6e7f8a9b012`. If Diagnostics reports an older revision, first confirm web and worker use the same current image and let automatic migration finish. Never downgrade or manually edit `alembic_version`; use the documented stopped-service recovery procedure if an upgrade genuinely failed.
 
 ### Web or worker tasks repeatedly restart after startup
 
@@ -142,11 +143,11 @@ Confirm the per-user systemd service or Windows logon task is running and its la
 
 ### Cura was reset or must be rebuilt
 
-Deploy the updated server and allow the current schema `d6e7f8a9b012` to migrate before upgrading the workstation agent; a 0.4.0 agent requires the current recovery, nozzle, and reporting endpoints. For routine protection, leave the agent running and close Cura periodically. A healthy configuration containing at least one printer is captured automatically, and an Administrator can queue a named backup from Cura Workstations. The ten newest automatic or named points per installation/version are retained; a deleted automatic point stays suppressed until the configuration changes or an Administrator explicitly requests a named capture. A missing-printer or large-deletion capture is blocked so it cannot displace the last known-good point.
+Deploy the updated server and allow the current schema `d6e7f8a9b012` to migrate before upgrading the workstation agent; a 0.4.1 agent requires the current recovery, nozzle, and reporting endpoints. For routine protection, leave the agent running and close Cura periodically. A healthy configuration containing at least one printer is captured automatically, and an Administrator can queue a named backup from Cura Workstations. The ten newest automatic or named points per installation/version are retained; a deleted automatic point stays suppressed until the configuration changes or an Administrator explicitly requests a named capture. A missing-printer or large-deletion capture is blocked so it cannot displace the last known-good point.
 
 For recovery, install or reset the same Cura version, open it once, sign in to the Cura account, wait for the account-managed plugins to install, then close Cura completely. On **Cura Workstations**, choose **Restore Cura setup**, select and review the exact-version point, and confirm. Leave Cura closed until the workstation status returns to **Ready**. Safe Cura2Moonraker behavior choices are merged into the current local instance while its current URL and API key remain untouched; re-enter excluded credentials only if the reset Cura installation no longer has them. Filament Manager restores the bounded non-sensitive printer/extruder configuration—including start/end G-code and safe machine options—plus custom profile state and safe preferences. It then realigns Cura's extruder nozzle to the app's current physical nozzle before synchronizing canonical materials. It records plugin names and versions for verification but never installs plugin binaries.
 
-If recovery reports failure, inspect the workstation's local structured log. The agent restores its pre-recovery archive automatically after a write failure and reports only a generic path-free error to the server. Account sessions, credentials, URLs, paths, and plugin code are intentionally absent from server snapshots.
+If recovery reports failure, inspect the workstation's local structured log. On Arch Linux use `journalctl --user -u filament-manager-agent.service --since today --no-pager`; on Windows review the latest **Filament Manager Cura Agent** scheduled-task output. The agent restores its pre-recovery archive automatically after a write failure and reports only a bounded path-free reason to the server. Account sessions, credentials, URLs, paths, and plugin code are intentionally absent from server snapshots. Cura's key-only setting-visibility preset syntax is supported; a current agent no longer rejects those valid files as malformed configuration.
 
 ### A service stops during automatic database migration
 
@@ -158,7 +159,7 @@ The workstation reports only the approved settings exposed by the configured Mat
 
 ### Cura material print settings are waiting or incomplete
 
-Upgrade the workstation agent, allow the current managed library deployment to finish while Cura is closed, then open Cura once with the configured printer active. Cura Workstations should report **55 of 55 verified**. A waiting state means the current plugin has not yet produced a receipt for the deployed catalog. An error lists bounded missing keys and shows whether Material Settings and Klipper Settings are ready. Install or enable the named plugin, restart Cura, and recheck; do not manually remove keys from the plugin selection because Filament Manager will restore its authoritative list.
+Upgrade the workstation agent, allow the current managed library deployment to finish while Cura is closed, then open Cura once with the configured printer active. Cura Workstations should report **54 of 54 verified**. A waiting state means the current plugin has not yet produced a receipt for the deployed catalog. An error lists bounded missing keys and shows whether Material Settings and Klipper Settings are ready. Install or enable the named plugin, restart Cura, and recheck; do not manually remove keys from the plugin selection because Filament Manager will restore its authoritative list.
 
 ### A managed Cura edit does not appear
 

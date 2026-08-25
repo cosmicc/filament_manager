@@ -48,7 +48,6 @@ MATERIAL_SETTING_KEYS = frozenset(
         "klipper_pressure_advance_factor",
         "klipper_smooth_time_enable",
         "klipper_smooth_time_factor",
-        "limit_support_retractions",
         "material_bed_temperature",
         "material_flow",
         "material_print_temperature",

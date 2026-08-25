@@ -420,7 +420,7 @@ test('an empty Cura library can complete the one-time atomic takeover', async ({
 test('managed Cura workstations show verified material print setting coverage', async ({ page }) => {
   const agent = {
     id: 'agent-id', agent_code: 'WS-TEST', display_name: 'Arch Cura', hostname: 'workstation',
-    platform: 'arch_linux', architecture: 'x86_64', agent_version: '0.4.0', enabled: true,
+    platform: 'arch_linux', architecture: 'x86_64', agent_version: '0.4.1', enabled: true,
     cura_management_enabled: true,
     capabilities: { managed_material_count: 3, unmanaged_print_profile_count: 0, cura_recovery_snapshots: true },
     cura_installations: [{

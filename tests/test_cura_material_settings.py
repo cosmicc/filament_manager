@@ -22,11 +22,11 @@ def test_operator_material_settings_catalog_is_exact_and_unique() -> None:
 
     keys = [setting.key for setting in CURA_MATERIAL_SETTINGS]
 
-    assert len(keys) == 57
-    assert len(set(keys)) == 57
-    assert len(CURA_EDITABLE_SETTING_KEYS) == 51
+    assert len(keys) == 56
+    assert len(set(keys)) == 56
+    assert len(CURA_EDITABLE_SETTING_KEYS) == 50
     assert len(CURA_TYPED_SETTING_KEYS) == 26
-    assert len(CURA_EXTENSION_SETTING_KEYS) == 27
+    assert len(CURA_EXTENSION_SETTING_KEYS) == 26
     assert {setting.key for setting in CURA_MATERIAL_SETTINGS if not setting.editable} == {
         "acceleration_enabled",
         "acceleration_travel_enabled",
@@ -85,7 +85,9 @@ def test_operator_material_settings_catalog_is_exact_and_unique() -> None:
     assert {
         "default_material_bed_temperature",
         "default_material_print_temperature",
+        "limit_support_retractions",
     } <= CURA_RETIRED_SETTING_KEYS
+    assert "limit_support_retractions" not in keys
 
 
 def test_profile_mapping_places_klipper_values_in_the_material_settings() -> None:
@@ -118,6 +120,7 @@ def test_profile_mapping_places_klipper_values_in_the_material_settings() -> Non
             "klipper_smooth_time_enable": True,
             "klipper_smooth_time_factor": "0.04",
             "cool_fan_speed_0": "15",
+            "limit_support_retractions": True,
         },
     )
 
@@ -140,6 +143,7 @@ def test_profile_mapping_places_klipper_values_in_the_material_settings() -> Non
     assert settings["cool_fan_speed_0"] == "15"
     assert settings["cool_fan_speed"] == "70"
     assert settings["cool_fan_speed_max"] == "70"
+    assert "limit_support_retractions" not in settings
 
 
 def test_cura_aliases_resolve_to_one_canonical_setting_without_extension_overlap() -> None:

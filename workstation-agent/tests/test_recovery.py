@@ -11,6 +11,7 @@ from filament_manager_agent.recovery import (
     material_settings_plugin_inventory,
     restore_recovery_snapshot,
 )
+from filament_manager_agent.service import _recovery_capture_message
 
 
 def _installation(data_root: Path, config_root: Path) -> CuraInstallation:
@@ -181,6 +182,66 @@ def test_capture_keeps_operational_settings_but_excludes_secrets_and_paths(tmp_p
     assert "moonraker" in serialized.casefold()
     assert "upload_dialog" in serialized
     assert "upload_start_print_job" in serialized
+
+
+def test_capture_accepts_cura_setting_visibility_bare_keys(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Cura visibility presets use valid key-only lines instead of key/value pairs."""
+
+    installation = _installation(tmp_path / "data" / "5.13", tmp_path / "config" / "5.13")
+    _write_operational_settings(installation)
+    visibility_directory = installation.data_path / "setting_visibility"
+    visibility_directory.mkdir()
+    (visibility_directory / "workshop.cfg").write_text(
+        """[general]
+name = Workshop
+weight = 0
+version = 2
+
+[resolution]
+layer_height
+layer_height_0
+
+[material]
+material_print_temperature
+material_flow
+""",
+        encoding="utf-8",
+    )
+
+    snapshot = capture_recovery_snapshot(installation)
+    visibility = next(
+        item
+        for item in snapshot["payload"]["files"]  # type: ignore[index,union-attr]
+        if item["relative_path"] == "setting_visibility/workshop.cfg"
+    )
+
+    assert "layer_height\n" in visibility["content"]
+    assert "material_print_temperature\n" in visibility["content"]
+
+    target = _installation(tmp_path / "restored-data" / "5.13", tmp_path / "restored-config" / "5.13")
+    monkeypatch.setenv("FILAMENT_MANAGER_AGENT_DATA", str(tmp_path / "agent-data"))
+    restore_recovery_snapshot(
+        target,
+        "10000000-0000-0000-0000-000000000002",
+        str(snapshot["snapshot_checksum"]),
+        snapshot["payload"],  # type: ignore[arg-type]
+    )
+
+    restored = (target.data_path / "setting_visibility" / "workshop.cfg").read_text(encoding="utf-8")
+    assert "layer_height\n" in restored
+    assert "material_print_temperature\n" in restored
+
+
+def test_recovery_capture_errors_have_actionable_path_free_messages() -> None:
+    """The workstation page explains the failure class without exposing local paths."""
+
+    message = _recovery_capture_message(RuntimeError("A supported Cura configuration file is invalid."))
+
+    assert message == "A supported Cura settings file contains invalid syntax."
+    assert "/" not in message
 
 
 def test_reports_required_material_plugin_version_and_enabled_state(tmp_path: Path) -> None:

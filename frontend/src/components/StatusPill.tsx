@@ -12,11 +12,13 @@ export function StatusPill({ status, label }: { status: string; label?: string }
     'active',
     'validated',
     'healthy',
+    'printing',
+    'finished',
   ].includes(normalized)
     ? 'success'
-    : ['low', 'needs_weighing', 'needs_review', 'pending', 'claimed', 'in_progress', 'ready_to_apply', 'restore_pending', 'restoring', 'not_ready', 'capture_blocked'].includes(normalized)
+    : ['low', 'needs_weighing', 'needs_review', 'pending', 'claimed', 'in_progress', 'ready_to_apply', 'restore_pending', 'restoring', 'not_ready', 'capture_blocked', 'paused', 'starting', 'cancelled'].includes(normalized)
       ? 'warning'
-      : ['unavailable', 'failed', 'dead', 'empty', 'error', 'invalid', 'restore_failed'].includes(normalized)
+      : ['unavailable', 'offline', 'failed', 'dead', 'empty', 'error', 'invalid', 'restore_failed'].includes(normalized)
         ? 'danger'
         : 'neutral'
   return <span className={`status-pill status-pill--${tone}`}>{label ?? status.replaceAll('_', ' ')}</span>

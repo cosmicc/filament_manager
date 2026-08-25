@@ -53,8 +53,8 @@ def test_cura_material_setting_receipts_report_exact_health_and_safe_drift() -> 
             "version": "5.13",
             "material_settings_sync": {
                 "status": "healthy",
-                "expected_count": 55,
-                "exposed_count": 55,
+                "expected_count": 54,
+                "exposed_count": 54,
                 "missing_keys": [],
                 "material_settings_plugin_ready": True,
                 "klipper_settings_plugin_ready": True,
@@ -69,7 +69,7 @@ def test_cura_material_setting_receipts_report_exact_health_and_safe_drift() -> 
             "version": "5.13",
             "material_settings_sync": {
                 "status": "degraded",
-                "expected_count": 55,
+                "expected_count": 54,
                 "exposed_count": 53,
                 "missing_keys": ["speed_print", "not_a_managed_key"],
                 "material_settings_plugin_ready": True,
@@ -80,7 +80,7 @@ def test_cura_material_setting_receipts_report_exact_health_and_safe_drift() -> 
     )
 
     assert healthy["status"] == "healthy"
-    assert "55 of 55" in str(healthy["detail"])
+    assert "54 of 54" in str(healthy["detail"])
     assert degraded["status"] == "error"
     assert "speed_print" in str(degraded["detail"])
     assert "not_a_managed_key" not in str(degraded["detail"])

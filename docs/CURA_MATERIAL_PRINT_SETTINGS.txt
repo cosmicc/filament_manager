@@ -10,12 +10,12 @@ controls, and derived aliases that the workstation agent writes silently.
 In Cura, open Preferences > Materials > Print Settings and expose the editable
 settings supported by the Material Settings and Klipper Settings plugins.
 Filament Manager aligns the plugin selection automatically after takeover.
-The 55 non-metadata keys below are pushed to Cura; Material Type and Material
+The 54 non-metadata keys below are pushed to Cura; Material Type and Material
 Brand remain material XML metadata rather than selectable print settings. Cura
 Workstations and Diagnostics report the exact expected/exposed count, missing
 keys, required-plugin versions/readiness, and the last verification time.
 
-There are 57 tracked Cura keys: 51 editable controls and 6 derived or metadata
+There are 56 tracked Cura keys: 50 editable controls and 6 derived or metadata
 keys. The authoritative catalog is:
 src/filament_manager/domain/cura_material_settings.py
 
@@ -73,7 +73,6 @@ retraction_retract_speed | Retraction Retract Speed | number, mm/s | editable pr
 retraction_speed | Legacy Retraction Speed Alias | number, mm/s | derived from Retraction Retract Speed
 retraction_amount | Retraction Distance | number, mm | editable in templates and filament profiles
 retraction_prime_speed | Retraction Prime Speed | number, mm/s | editable in templates and filament profiles
-limit_support_retractions | Limit Support Retractions | boolean | editable in templates and filament profiles
 retraction_min_travel | Retraction Minimum Travel | number, mm | editable in templates and filament profiles
 retract_at_layer_change | Retract at Layer Change | boolean | editable in templates and filament profiles
 

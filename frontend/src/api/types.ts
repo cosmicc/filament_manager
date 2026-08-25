@@ -130,6 +130,24 @@ export interface DashboardData {
   active_spool: Spool | null
   active_plate: BuildPlate | null
   active_plate_surface: BuildPlateSurface | null
+  printer_state: DashboardPrinterState
+}
+
+export interface DashboardPrinterState {
+  printer_name: string
+  connection_status: 'connected' | 'unavailable' | 'not_configured'
+  operational_status: 'idle' | 'printing' | 'paused' | 'finished' | 'cancelled' | 'starting' | 'error' | 'unavailable' | 'not_configured'
+  klipper_state: 'ready' | 'startup' | 'shutdown' | 'error' | null
+  print_state: 'standby' | 'printing' | 'paused' | 'error' | 'complete' | 'cancelled' | null
+  filename: string | null
+  progress_percent: string | null
+  nozzle_temperature_c: string | null
+  nozzle_target_c: string | null
+  bed_temperature_c: string | null
+  bed_target_c: string | null
+  chamber_temperature_c: string | null
+  chamber_target_c: string | null
+  checked_at: string
 }
 
 export interface Filament {

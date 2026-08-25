@@ -32,6 +32,7 @@ from ..dependencies import Administrator, DatabaseSession, Operator, Viewer
 from ..errors import ApiError
 from ..schemas import (
     BuildPlateSurfaceResponse,
+    DashboardPrinterStateResponse,
     DashboardResponse,
     IntegrationStatus,
     OperationalSettingsResponse,
@@ -185,6 +186,81 @@ async def _integration_statuses() -> list[IntegrationStatus]:
     return list(await asyncio.gather(*checks))
 
 
+async def _dashboard_printer_state() -> DashboardPrinterStateResponse:
+    """Return live printer state without making dashboard inventory depend on Moonraker."""
+
+    checked_at = datetime.now(UTC)
+    configured_printers = get_settings().moonraker.printers
+    if not configured_printers:
+        return DashboardPrinterStateResponse(
+            printer_name="Printer",
+            connection_status="not_configured",
+            operational_status="not_configured",
+            klipper_state=None,
+            print_state=None,
+            filename=None,
+            progress_percent=None,
+            nozzle_temperature_c=None,
+            nozzle_target_c=None,
+            bed_temperature_c=None,
+            bed_target_c=None,
+            chamber_temperature_c=None,
+            chamber_target_c=None,
+            checked_at=checked_at,
+        )
+    configured = configured_printers[0]
+    try:
+        state = await MoonrakerClient(configured, timeout=3).operational_state()
+    except MoonrakerError:
+        return DashboardPrinterStateResponse(
+            printer_name=configured.name,
+            connection_status="unavailable",
+            operational_status="unavailable",
+            klipper_state=None,
+            print_state=None,
+            filename=None,
+            progress_percent=None,
+            nozzle_temperature_c=None,
+            nozzle_target_c=None,
+            bed_temperature_c=None,
+            bed_target_c=None,
+            chamber_temperature_c=None,
+            chamber_target_c=None,
+            checked_at=checked_at,
+        )
+
+    if state.klipper_state == "startup":
+        operational_status = "starting"
+    elif state.klipper_state in {"shutdown", "error"}:
+        operational_status = "error"
+    else:
+        operational_status = {
+            "standby": "idle",
+            "printing": "printing",
+            "paused": "paused",
+            "complete": "finished",
+            "cancelled": "cancelled",
+            "error": "error",
+            None: "idle",
+        }[state.print_state]
+    return DashboardPrinterStateResponse(
+        printer_name=configured.name,
+        connection_status="connected",
+        operational_status=operational_status,
+        klipper_state=state.klipper_state,
+        print_state=state.print_state,
+        filename=state.filename,
+        progress_percent=state.progress_percent,
+        nozzle_temperature_c=state.nozzle_temperature_c,
+        nozzle_target_c=state.nozzle_target_c,
+        bed_temperature_c=state.bed_temperature_c,
+        bed_target_c=state.bed_target_c,
+        chamber_temperature_c=state.chamber_temperature_c,
+        chamber_target_c=state.chamber_target_c,
+        checked_at=checked_at,
+    )
+
+
 @router.get("/dashboard", response_model=DashboardResponse)
 async def dashboard(_: Viewer, session: DatabaseSession) -> DashboardResponse:
     """Return the operational first-view data without fake metrics."""
@@ -252,6 +328,7 @@ async def dashboard(_: Viewer, session: DatabaseSession) -> DashboardResponse:
             rendered_surface
             or (BuildPlateSurfaceResponse.model_validate(plate_surface) if plate_surface else None)
         ),
+        printer_state=await _dashboard_printer_state(),
     )
 
 

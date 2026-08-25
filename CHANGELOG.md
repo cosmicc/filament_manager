@@ -1,5 +1,23 @@
 # Changelog
 
+## 0.4.1 - 08.24.2026
+
+### Added
+
+- Added regression coverage proving retired Cura material controls are excluded from the managed catalog, import, editor, and emitted profile while remaining available only for one-way workstation cleanup.
+- Added a large live printer-status card to Dashboard with Moonraker/Klipper availability, idle/printing/paused/finished/fault state, bounded print progress, current G-code filename, and available nozzle, bed, and chamber temperatures. The card refreshes every 15 seconds without making inventory data depend on printer availability.
+
+### Changed
+
+- Removed **Limit Support Retractions** from templates, filament profiles, managed Cura material output, takeover discovery, the required Material Settings plugin selection, and the operator checklist. Existing managed values are cleanup-only retired data and are removed from Cura during the next library synchronization.
+- Updated the compatible frontend build dependency from Vite 7.3.6 to 8.2.2 after full CI and isolated local validation.
+- Changed all server, frontend, and workstation-agent version surfaces to 0.4.1.
+
+### Fixed
+
+- Fixed the List/Cards/Detailed selector and its native option list rendering with white-on-white colors under dark GUI profiles; select controls now use the active theme's semantic text and surfaces.
+- Fixed automatic and named Cura recovery capture rejecting Cura's valid setting-visibility presets because their setting names intentionally use key-only lines rather than `key = value` pairs, and replaced the generic capture failure for malformed or unsafe files with a bounded actionable reason.
+
 ## 0.4.0 - 08.24.2026
 
 ### Added
