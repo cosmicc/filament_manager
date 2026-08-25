@@ -30,8 +30,8 @@ test('diagnostics consolidates operational status and recovery controls', async 
     body: 'Filament Manager diagnostics\nGenerated: 2026-08-14T12:00:00Z\n',
   }))
   await page.route('**/api/v1/diagnostics/version', (route) => route.fulfill({ json: {
-    running_version: '0.4.2', latest_version: '0.4.2', status: 'current',
-    release_url: 'https://github.com/cosmicc/filament_manager/releases/tag/v0.4.2',
+    running_version: '0.5.0', latest_version: '0.5.0', status: 'current',
+    release_url: 'https://github.com/cosmicc/filament_manager/releases/tag/v0.5.0',
     detail: 'This installation matches the newest published GitHub release.',
   } }))
   await page.route('**/api/v1/diagnostics', (route) => route.fulfill({ json: {
@@ -44,23 +44,41 @@ test('diagnostics consolidates operational status and recovery controls', async 
     ],
     queue_counts: { pending: 2, failed: 0, dead: 0 },
     job_type_counts: { 'spoolman.spool.upsert': 2 },
-    error_log: [],
+    error_log: [{
+      source: 'Cura backup request', severity: 'error', summary: 'RuntimeError',
+      detail: 'The earlier named backup did not complete safely.', occurred_at: checkedAt,
+      correlation_id: null, current: false,
+    }],
   } }))
-  await page.route('**/api/v1/diagnostics/validation-runs', (route) => route.fulfill({ json: [] }))
+  await page.route('**/api/v1/diagnostics/validation-runs', (route) => route.fulfill({ json: [{
+    id: 'validation-id', run_type: 'recovery_validation', status: 'completed', requested_by: 'administrator-id',
+    started_at: checkedAt, completed_at: checkedAt,
+    results: {
+      summary: { healthy: 1, warning: 1, error: 1, disabled: 0 },
+      checks: [
+        { key: 'recorded-recovery', label: 'Recorded recovery check', category: 'recovery', status: 'healthy', detail: 'Healthy when validation ran.', checked_at: checkedAt },
+        { key: 'recorded-cura', label: 'Recorded Cura error', category: 'synchronization', status: 'error', detail: 'Unavailable when validation ran.', checked_at: checkedAt },
+        { key: 'recorded-queue', label: 'Recorded queue warning', category: 'worker', status: 'warning', detail: 'Retrying when validation ran.', checked_at: checkedAt },
+      ],
+    },
+  }] }))
   await page.route('**/api/v1/jobs?limit=100', (route) => route.fulfill({ json: [] }))
 
   await page.goto('/diagnostics')
 
   await expect(page.getByRole('heading', { name: 'Diagnostics' })).toBeVisible()
-  await expect(page.getByRole('heading', { name: 'Filament Manager v0.4.2' })).toBeVisible()
-  await expect(page.getByText('Latest: v0.4.2')).toBeVisible()
-  await expect(page.getByText('v0.4.2', { exact: true }).first()).toBeVisible()
+  await expect(page.getByRole('heading', { name: 'Filament Manager v0.5.0' })).toBeVisible()
+  await expect(page.getByText('Latest: v0.5.0')).toBeVisible()
+  await expect(page.getByText('v0.5.0', { exact: true }).first()).toBeVisible()
   await expect(page.getByRole('button', { name: 'Logout' })).toBeVisible()
   await expect(page.getByRole('button', { name: 'Collapse navigation' })).toBeVisible()
   await expect(page.getByRole('heading', { name: 'Connections' })).toBeVisible()
   await expect(page.getByRole('heading', { name: 'Synchronizations' })).toBeVisible()
   await expect(page.getByRole('heading', { name: 'Workers and queues' })).toBeVisible()
   await expect(page.getByRole('heading', { name: 'Recent errors' })).toBeVisible()
+  await expect(page.getByText('Recorded Cura error')).toBeVisible()
+  await expect(page.getByText('Recorded queue warning')).toBeVisible()
+  await expect(page.getByText('History', { exact: true })).toBeVisible()
   const downloadPromise = page.waitForEvent('download')
   await page.getByRole('link', { name: 'Download log' }).click()
   await expect((await downloadPromise).suggestedFilename()).toBe('filament-manager-diagnostics-20260814T120000Z.txt')
@@ -90,7 +108,7 @@ test('theme control lives in Settings instead of the navigation', async ({ page 
   await page.getByRole('button', { name: 'Open navigation' }).click()
   await expect(page.locator('.app-shell')).not.toHaveClass(/app-shell--collapsed/)
   await expect.poll(() => page.locator('.sidebar').evaluate((element) => getComputedStyle(element).width)).toBe('310px')
-  await expect(page.locator('.sidebar').getByText('v0.4.2', { exact: true })).toBeVisible()
+  await expect(page.locator('.sidebar').getByText('v0.5.0', { exact: true })).toBeVisible()
   await expect(page.locator('.sidebar').getByRole('button', { name: 'Logout' })).toBeVisible()
   await expect(page.locator('.sidebar').getByRole('button', { name: /navigation/ })).toHaveCount(1)
   await page.waitForTimeout(250)

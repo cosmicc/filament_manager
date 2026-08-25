@@ -125,6 +125,7 @@ def test_diagnostics_text_contains_bounded_current_overview() -> None:
                     "detail": "Moonraker state synchronization had 2 failures: MoonrakerError x2",
                     "occurred_at": checked_at,
                     "correlation_id": None,
+                    "current": False,
                 }
             ],
         }
@@ -136,5 +137,6 @@ def test_diagnostics_text_contains_bounded_current_overview() -> None:
     assert "moonraker.state.reconcile: 2" in report
     assert "spoolman.spool.adjust_weight: 2 actionable failure(s)" in report
     assert "Spoolman PUT /spool/7/measure failed" in report
+    assert "[HISTORY ERROR]" in report
     assert "MoonrakerError x2" in report
     assert "credentials" in report

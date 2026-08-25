@@ -191,35 +191,44 @@ async def save_template_settings(
             .with_for_update()
         )
     )
-    product_ids = {product.id for product in products}
     for product in products:
         if product.source_template_revision_id != revision.id:
             product.source_template_revision_id = revision.id
             product.record_version += 1
 
-    if not product_ids:
-        return revision, []
-
+    # Determine the newest profile in every exact scope before deciding whether
+    # it still inherits from this template. Filtering by base revision first
+    # would incorrectly revive a historical profile after that scope rebased to
+    # another template identity.
     historical_profiles = list(
         await session.scalars(
             select(MaterialProfile)
             .where(
-                MaterialProfile.filament_product_id.in_(product_ids),
+                MaterialProfile.status == ProfileStatus.PUBLISHED,
                 MaterialProfile.printer_id == template.printer_id,
                 MaterialProfile.nozzle_diameter_mm == template.nozzle_diameter_mm,
             )
             .order_by(
                 MaterialProfile.filament_product_id,
+                MaterialProfile.printer_id,
+                MaterialProfile.nozzle_diameter_mm,
                 MaterialProfile.version.desc(),
             )
         )
     )
-    current_profiles: dict[UUID, MaterialProfile] = {}
+    current_profiles: dict[tuple[UUID, UUID, Decimal], MaterialProfile] = {}
     for profile in historical_profiles:
-        current_profiles.setdefault(profile.filament_product_id, profile)
+        scope = (
+            profile.filament_product_id,
+            profile.printer_id,
+            profile.nozzle_diameter_mm,
+        )
+        current_profiles.setdefault(scope, profile)
 
     inherited_profiles: list[MaterialProfile] = []
     for source in current_profiles.values():
+        if source.base_template_revision_id not in template_revision_ids:
+            continue
         overrides = dict(source.setting_overrides or {})
         effective_settings, overrides = resolve_profile_settings_for_template_update(
             validated,

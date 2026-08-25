@@ -18,7 +18,7 @@ const NozzlesPage = lazy(() => import('./pages/NozzlesPage'))
 const PrintersPage = lazy(() => import('./pages/PrintersPage'))
 const PrintHistoryPage = lazy(() => import('./pages/PrintHistoryPage'))
 const PasswordChangePage = lazy(() => import('./pages/PasswordChangePage'))
-const ProfilesPage = lazy(() => import('./pages/ProfilesPage'))
+const PrintSettingsPage = lazy(() => import('./pages/PrintSettingsPage'))
 const TemplatesPage = lazy(() => import('./pages/TemplatesPage'))
 const SettingsPage = lazy(() => import('./pages/SettingsPage'))
 const SpoolsPage = lazy(() => import('./pages/SpoolsPage'))
@@ -29,7 +29,7 @@ const pages: Record<string, LazyExoticComponent<ComponentType>> = {
   '/spools': SpoolsPage,
   '/filaments': FilamentsPage,
   '/filaments/new': FilamentsPage,
-  '/profiles': ProfilesPage,
+  '/filaments/settings': PrintSettingsPage,
   '/prints': PrintHistoryPage,
   '/templates': TemplatesPage,
   '/calibration': CalibrationPage,
@@ -55,6 +55,10 @@ export function App() {
     if (loading) return
     if (!user && path !== '/login') navigate('/login', true)
     if (user && path === '/login') navigate('/', true)
+    if (user && path === '/profiles') {
+      navigate('/filaments/settings', true)
+      return
+    }
     if (user && path !== '/login' && !pages[path] && !isFilamentDetail && !isFilamentDuplicate) navigate('/', true)
   }, [isFilamentDetail, isFilamentDuplicate, loading, navigate, path, user])
 

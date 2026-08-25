@@ -1,5 +1,40 @@
 # User Changelog
 
+## 0.5.0 - 08.25.2026
+
+### Added
+
+- Added **Catalog** and **Print settings** navigation under Filaments.
+- Added a print-settings view that clearly lists every filament's current printer and nozzle combinations.
+- Added an action on filament details to create another printer/nozzle print-settings configuration from a compatible template.
+
+### Changed
+
+- Filament details now keep product information separate from printer/nozzle print settings, with Edit, Compare, and Cura JSON export actions on each exact configuration.
+- The former Profiles page is now **Filaments → Print settings**; saved `/profiles` links continue to work through an automatic redirect.
+- The Dashboard printer status pill is substantially larger and easier to read without making its card larger.
+
+### Fixed
+
+- Fixed template, density, duplication, and editing changes selecting the wrong print settings when one filament has multiple printer or nozzle configurations.
+- Fixed inactive-template changes occasionally failing because the saved template could not be read back safely.
+
+## 0.4.3 - 08.25.2026
+
+### Added
+
+- Added clear History labels to retained Diagnostics failures that no longer represent current health.
+
+### Changed
+
+- Recovery points now lists saved Cura configurations before recent backup requests.
+- A saved validation now shows every check counted by its error and warning totals, while the live sections below continue showing current health.
+
+### Fixed
+
+- Fixed failed Cura backup requests appearing as several active Cura synchronization errors.
+- Fixed generic Cura synchronization notifications duplicating the detailed failure already retained in Diagnostics.
+
 ## 0.4.2 - 08.24.2026
 
 ### Added

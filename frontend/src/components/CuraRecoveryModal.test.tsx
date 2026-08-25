@@ -97,4 +97,29 @@ describe('CuraRecoveryModal', () => {
     expect(onQueued).toHaveBeenCalledWith(expect.stringContaining('Cura 5.13 recovery was queued'))
     expect(onClose).toHaveBeenCalled()
   })
+
+  it('shows saved configurations before recent backup requests', async () => {
+    apiFetchMock.mockImplementation((path: string) => {
+      if (path === '/workstation-agents/agent-id/cura-recovery-snapshots') return Promise.resolve([snapshot])
+      if (path === '/cura-deployments') return Promise.resolve([{
+        id: 'deployment-id',
+        agent_id: agent.id,
+        operation: 'recovery_capture',
+        status: 'failed',
+        attempts: 1,
+        last_error_message: 'Backup did not complete safely.',
+        created_at: '2026-08-18T12:02:00Z',
+      }])
+      return Promise.reject(new Error(`Unexpected API path: ${path}`))
+    })
+    const queryClient = new QueryClient({
+      defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
+    })
+
+    render(<QueryClientProvider client={queryClient}><CuraRecoveryModal agent={agent} onClose={vi.fn()} onQueued={vi.fn()} /></QueryClientProvider>)
+
+    const saved = await screen.findByRole('heading', { name: 'Saved Cura configurations' })
+    const requests = await screen.findByRole('heading', { name: 'Recent backup requests' })
+    expect(saved.compareDocumentPosition(requests) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+  })
 })

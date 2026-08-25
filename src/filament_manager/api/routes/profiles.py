@@ -53,6 +53,7 @@ from ..schemas import (
     MaterialTemplateUpdate,
     ProfileCreate,
     ProfileDirectUpdate,
+    ProfileFromTemplateRequest,
     ProfileResponse,
     ProfileRevisionCreate,
     ProfileTemplateRebaseRequest,
@@ -611,6 +612,7 @@ async def update_material_template(
         correlation_id=request.state.correlation_id,
     )
     await session.commit()
+    await session.refresh(template)
     return await _template_response(session, template)
 
 
@@ -853,6 +855,93 @@ async def list_profiles(_: Viewer, session: DatabaseSession) -> list[ProfileResp
         current.setdefault(key, profile)
     profiles = sorted(current.values(), key=lambda item: item.updated_at, reverse=True)
     return [await _profile_response(session, profile) for profile in profiles]
+
+
+@router.post(
+    "/from-template",
+    response_model=ProfileResponse,
+    status_code=status.HTTP_201_CREATED,
+)
+async def create_profile_from_template(
+    payload: ProfileFromTemplateRequest,
+    request: Request,
+    operator: Operator,
+    session: DatabaseSession,
+) -> ProfileResponse:
+    """Create a missing current profile scope from one active template."""
+
+    product = await session.get(FilamentProduct, payload.filament_product_id)
+    if product is None:
+        raise ApiError(status.HTTP_404_NOT_FOUND, "unknown_filament", "Filament not found")
+    revision = await session.get(
+        MaterialTemplateRevision,
+        payload.material_template_revision_id,
+    )
+    template = await session.get(MaterialTemplate, revision.material_template_id) if revision else None
+    if revision is None or revision.status != ProfileStatus.PUBLISHED or template is None:
+        raise ApiError(
+            status.HTTP_422_UNPROCESSABLE_ENTITY,
+            "template_revision_unavailable",
+            "Select a current material template",
+        )
+    if not template.active:
+        raise ApiError(
+            status.HTTP_422_UNPROCESSABLE_ENTITY,
+            "material_template_inactive",
+            "The selected material template is inactive",
+        )
+    if template.material_type.casefold() != product.material_type.casefold():
+        raise ApiError(
+            status.HTTP_422_UNPROCESSABLE_ENTITY,
+            "material_type_template_mismatch",
+            "The filament material type must match the selected template",
+        )
+    existing = await session.scalar(
+        select(MaterialProfile.id)
+        .where(
+            MaterialProfile.filament_product_id == product.id,
+            MaterialProfile.printer_id == template.printer_id,
+            MaterialProfile.nozzle_diameter_mm == template.nozzle_diameter_mm,
+            MaterialProfile.status == ProfileStatus.PUBLISHED,
+        )
+        .limit(1)
+    )
+    if existing is not None:
+        raise ApiError(
+            status.HTTP_409_CONFLICT,
+            "profile_scope_exists",
+            "Print settings already exist for this printer and nozzle",
+        )
+
+    settings = MaterialSettingsInput.model_validate(revision.settings).model_dump(mode="json")
+    settings["filament_density_g_cm3"] = format(product.density_g_cm3, "f")
+    profile = await create_published_profile_snapshot(
+        session,
+        filament_product_id=product.id,
+        printer_id=template.printer_id,
+        nozzle_diameter_mm=template.nozzle_diameter_mm,
+        base_revision=revision,
+        settings=settings,
+    )
+    add_audit_event(
+        session,
+        actor_id=operator.id,
+        source="web",
+        action="profile.create_from_template",
+        object_type="material_profile",
+        object_id=profile.id,
+        before=None,
+        after={
+            "filament_product_id": str(product.id),
+            "template_revision_id": str(revision.id),
+            "printer_id": str(template.printer_id),
+            "nozzle_diameter_mm": format(template.nozzle_diameter_mm, "f"),
+        },
+        correlation_id=request.state.correlation_id,
+    )
+    await queue_managed_cura_library(session, requested_by=operator.id)
+    await session.commit()
+    return await _profile_response(session, profile)
 
 
 @router.post("", response_model=ProfileResponse, status_code=status.HTTP_201_CREATED)

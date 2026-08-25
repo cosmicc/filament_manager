@@ -596,6 +596,13 @@ class ProfileCreate(MaterialSettingsInput):
     base_template_revision_id: UUID | None = None
 
 
+class ProfileFromTemplateRequest(ApiModel):
+    """Create one missing filament/printer/nozzle settings scope."""
+
+    filament_product_id: UUID
+    material_template_revision_id: UUID
+
+
 class ProfileRevisionCreate(ApiModel):
     """Compatibility request for directly saving one profile snapshot."""
 
@@ -1483,6 +1490,7 @@ class DiagnosticErrorEntry(ApiModel):
     detail: str | None
     occurred_at: datetime
     correlation_id: str | None = None
+    current: bool = True
 
 
 class DiagnosticOverviewResponse(ApiModel):

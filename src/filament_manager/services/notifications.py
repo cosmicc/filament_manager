@@ -91,6 +91,34 @@ async def _resolve_missing_category(session: AsyncSession, *, category: str, act
             notification.resolved_at = now
 
 
+def _cura_failure_notification(
+    deployment: CuraDeployment,
+    agent: WorkstationAgent,
+) -> tuple[str, str, str] | None:
+    """Return one operation-scoped alert, excluding recovery-request history.
+
+    Named recovery captures already retain their terminal status and sanitized
+    error on the Recovery points surface. Treating each failed request as a
+    material synchronization condition creates duplicate, permanently active
+    alerts even when the current Cura library and recovery snapshot are healthy.
+    """
+
+    operation = deployment.operation
+    if operation == "recovery_capture":
+        return None
+    if operation == "nozzle_update":
+        title = f"Cura nozzle synchronization failed on {agent.display_name}"
+        message = "Open Cura Workstations to review the sanitized failure and retry."
+    else:
+        title = f"Cura synchronization failed on {agent.display_name}"
+        message = "Open Cura Workstations to review the sanitized failure and retry."
+    return (
+        f"cura-deployment:{agent.id}:{operation}:failed",
+        title,
+        message,
+    )
+
+
 async def build_plate_maintenance_status(session: AsyncSession, plate: BuildPlate) -> dict[str, object]:
     """Calculate configured day/print due state from immutable print and event history."""
 
@@ -266,21 +294,41 @@ async def evaluate_operator_notifications(session: AsyncSession) -> int:
                 )
                 touched += 1
 
+    deployment_operation = func.coalesce(
+        CuraDeployment.payload["operation"].as_string(),
+        "material_library",
+    )
+    ranked_deployments = select(
+        CuraDeployment.id.label("deployment_id"),
+        func.row_number()
+        .over(
+            partition_by=(CuraDeployment.agent_id, deployment_operation),
+            order_by=(CuraDeployment.created_at.desc(), CuraDeployment.id.desc()),
+        )
+        .label("deployment_rank"),
+    ).subquery()
     failed_deployments = await session.execute(
         select(CuraDeployment, WorkstationAgent)
+        .join(ranked_deployments, ranked_deployments.c.deployment_id == CuraDeployment.id)
         .join(WorkstationAgent, WorkstationAgent.id == CuraDeployment.agent_id)
-        .where(CuraDeployment.status == CuraDeploymentStatus.FAILED)
+        .where(
+            ranked_deployments.c.deployment_rank == 1,
+            CuraDeployment.status == CuraDeploymentStatus.FAILED,
+        )
     )
     for deployment, agent in failed_deployments:
-        key = f"cura-deployment:{deployment.id}:failed"
+        notification_details = _cura_failure_notification(deployment, agent)
+        if notification_details is None:
+            continue
+        key, title, message = notification_details
         category_keys["cura_deployment_failed"].add(key)
         await upsert_notification(
             session,
             deduplication_key=key,
             category="cura_deployment_failed",
             severity=NotificationSeverity.ERROR,
-            title=f"Cura synchronization failed on {agent.display_name}",
-            message="Open Cura Workstations to review the sanitized failure and retry.",
+            title=title,
+            message=message,
             action_path="/workstations",
             object_type="cura_deployment",
             object_id=deployment.id,

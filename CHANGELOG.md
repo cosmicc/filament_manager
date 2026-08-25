@@ -1,5 +1,44 @@
 # Changelog
 
+## 0.5.0 - 08.25.2026
+
+### Added
+
+- Added a Filaments sub-navigation with separate **Catalog** and **Print settings** views, plus a current exact-scope matrix for every filament, printer, and nozzle combination.
+- Added creation of an additional filament print-settings scope from any compatible active material template.
+- Added PostgreSQL, frontend, and rendered workflow regression coverage for multiple current print-settings scopes, exact-scope editing, creation, duplication, inheritance, density changes, navigation, and responsive actions.
+
+### Changed
+
+- Changed filament details to separate physical product editing from printer/nozzle-specific print settings and to expose exact Edit, Compare, and Cura JSON export actions on every current scope.
+- Changed the former top-level **Profiles** page to **Filaments → Print settings**; the legacy `/profiles` browser path now redirects to `/filaments/settings` without changing backend API paths.
+- Enlarged the live printer status pill substantially inside the existing Dashboard printer card while preserving the card's dimensions and responsive layout.
+- Updated every server, browser, workstation-agent, documentation, and test version surface to 0.5.0.
+
+### Fixed
+
+- Fixed template saves updating profiles from a product-level template pointer instead of each current exact profile's inherited template revision.
+- Fixed template propagation reviving a historical profile after its printer/nozzle scope had been rebased, density changes updating only one scope, and duplication copying the globally newest profile instead of the selected exact scope.
+- Fixed template activation changes trying to serialize an expired asynchronous database record after commit.
+
+## 0.4.3 - 08.25.2026
+
+### Added
+
+- Added regression coverage for recovery-point ordering, complete stored-validation visibility, historical diagnostic labelling, and operation-scoped Cura failure notifications.
+
+### Changed
+
+- Changed Recovery points to show saved Cura configurations before recent backup-request history.
+- Changed Diagnostics to display every immutable check included in a stored validation summary and to distinguish the recorded validation time from current live checks.
+- Changed retained Cura deployment and recovery failures to appear as bounded history when they no longer represent a current condition.
+
+### Fixed
+
+- Fixed Diagnostics showing error and warning totals while hiding the non-recovery validation cards responsible for those counts.
+- Fixed failed named Cura backup requests creating duplicate, permanently active material-synchronization notifications; genuine synchronization alerts now converge by workstation and newest operation state.
+- Fixed generic Cura notification rows duplicating the more useful sanitized deployment cause in Recent errors.
+
 ## 0.4.2 - 08.24.2026
 
 ### Added

@@ -128,13 +128,6 @@ export function CuraRecoveryModal({ agent, onClose, onQueued }: {
     footer={footer}
   >
     {step === 'select' ? <div className="editor-form">
-      {backupRequests.length ? <EditorSection title="Recent backup requests" description="Queued captures update automatically while this window is open.">
-        <div className="mobile-card-list mobile-card-list--always">{backupRequests.map((deployment) => <article className="mobile-data-card" key={deployment.id}>
-          <div><strong>Full Cura backup</strong><StatusPill status={deployment.status} /></div>
-          <span>{deployment.status === 'pending' ? 'Waiting for the workstation agent' : deployment.status === 'claimed' ? 'Capturing settings now' : deployment.status === 'succeeded' ? 'Backup saved' : 'Backup did not complete'}</span>
-          <small>{deployment.last_error_message ?? `${deployment.attempts} attempt${deployment.attempts === 1 ? '' : 's'} · requested ${dateTime(deployment.created_at)}`}</small>
-        </article>)}</div>
-      </EditorSection> : null}
       <EditorSection title="Saved Cura configurations" description="Snapshots are captured automatically only while Cura is closed. Apparent resets are blocked from replacing the last known-good point.">
       {snapshots.isLoading ? <LoadingState /> : snapshots.error ? <p className="form-error" role="alert">{snapshots.error.message}</p> : !snapshots.data?.length ? <EmptyState icon={DatabaseBackup} title="No recovery points yet" description="Close Cura and leave the workstation agent running. An operational configuration with at least one printer will be captured automatically." /> : <div className="cura-recovery-list">{snapshots.data.map((snapshot, index) => <div className="cura-recovery-row" key={snapshot.id}><button
         className={`cura-recovery-item${snapshot.id === selectedId ? ' cura-recovery-item--selected' : ''}`}
@@ -146,6 +139,13 @@ export function CuraRecoveryModal({ agent, onClose, onQueued }: {
         <span className="cura-recovery-item__counts"><small>{snapshot.machine_count} printer{snapshot.machine_count === 1 ? '' : 's'}</small><small>{snapshot.quality_profile_count} quality file{snapshot.quality_profile_count === 1 ? '' : 's'}</small><small>{snapshot.plugin_count} plugin{snapshot.plugin_count === 1 ? '' : 's'}</small><small>{snapshot.file_count} files · {fileSize(snapshot.total_bytes)}</small></span>
       </button><span className="cura-recovery-row__actions"><button className="button button--small" type="button" aria-label={`Edit ${snapshot.name ?? 'backup'}`} onClick={() => editSnapshot(snapshot)}><Pencil size={15} /></button><button className="button button--small button--danger" type="button" aria-label={`Delete ${snapshot.name ?? 'backup'}`} onClick={() => { setSelectedId(snapshot.id); setStep('delete') }}><Trash2 size={15} /></button></span></div>)}</div>}
       </EditorSection>
+      {backupRequests.length ? <EditorSection title="Recent backup requests" description="Queued captures update automatically while this window is open.">
+        <div className="mobile-card-list mobile-card-list--always">{backupRequests.map((deployment) => <article className="mobile-data-card" key={deployment.id}>
+          <div><strong>Full Cura backup</strong><StatusPill status={deployment.status} /></div>
+          <span>{deployment.status === 'pending' ? 'Waiting for the workstation agent' : deployment.status === 'claimed' ? 'Capturing settings now' : deployment.status === 'succeeded' ? 'Backup saved' : 'Backup did not complete'}</span>
+          <small>{deployment.last_error_message ?? `${deployment.attempts} attempt${deployment.attempts === 1 ? '' : 's'} · requested ${dateTime(deployment.created_at)}`}</small>
+        </article>)}</div>
+      </EditorSection> : null}
     </div> : step === 'review' && selected ? <div className="editor-form">
       <EditorSection title="Recovery point" description="Recovery is limited to the same workstation and exact Cura version.">
         <dl className="definition-list">

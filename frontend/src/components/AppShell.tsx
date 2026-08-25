@@ -2,7 +2,7 @@ import {
   Activity, Bell, Boxes, ChevronLeft, ChevronRight, CircleGauge, FlaskConical,
   HeartPulse,
   Layers3, Library, LogOut, Menu, PackageOpen, Printer,
-  MonitorCog, QrCode, Settings, SlidersHorizontal, Unplug, Wrench, X, History,
+  MonitorCog, QrCode, Settings, Unplug, Wrench, X, History,
 } from 'lucide-react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { type ReactNode, useState } from 'react'
@@ -16,7 +16,6 @@ const primaryNavigation = [
   { to: '/', label: 'Dashboard', icon: CircleGauge },
   { to: '/spools', label: 'Spools', icon: Boxes },
   { to: '/filaments', label: 'Filaments', icon: PackageOpen },
-  { to: '/profiles', label: 'Profiles', icon: SlidersHorizontal },
   { to: '/prints', label: 'Print history', icon: History },
   { to: '/templates', label: 'Templates', icon: Library },
   { to: '/calibration', label: 'Calibration', icon: FlaskConical },

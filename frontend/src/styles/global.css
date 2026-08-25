@@ -69,6 +69,10 @@ svg { flex: 0 0 auto; }
 .eyebrow { margin-bottom: 5px; color: var(--blue-600); font-size: 11px; font-weight: 800; letter-spacing: .105em; text-transform: uppercase; }
 .page-header__description { max-width: 760px; margin-top: 6px; color: var(--text-muted); font-size: 14px; }
 .page-header__actions { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; justify-content: flex-end; }
+.filament-section-nav { width: fit-content; display: inline-flex; gap: 4px; margin-bottom: 18px; border: 1px solid var(--border); border-radius: var(--radius-sm); padding: 4px; background: var(--surface-muted); }
+.filament-section-nav__item { min-height: 38px; display: inline-flex; align-items: center; justify-content: center; border-radius: calc(var(--radius-sm) - 3px); padding: 8px 15px; color: var(--text-muted); font-weight: 750; }
+.filament-section-nav__item:hover { color: var(--blue-600); background: var(--surface); }
+.filament-section-nav__item--active { color: white; background: var(--blue-600); box-shadow: var(--shadow-sm); }
 .button { min-height: 39px; display: inline-flex; align-items: center; justify-content: center; gap: 8px; border: 1px solid var(--border-strong); border-radius: var(--radius-sm); padding: 8px 14px; color: var(--text); background: var(--surface); font-weight: 700; box-shadow: var(--shadow-sm); }
 .button:hover { border-color: var(--blue-600); color: var(--blue-600); }
 .button--primary { border-color: var(--blue-600); color: white; background: var(--blue-600); }
@@ -107,6 +111,7 @@ svg { flex: 0 0 auto; }
 .printer-state-card__header > div { min-width: 0; }
 .printer-state-card__header h2 { font-size: 1.45rem; }
 .printer-state-card__header p:not(.eyebrow) { margin-top: 4px; color: var(--text-muted); }
+.printer-state-card__header > .status-pill { min-width: 164px; min-height: 52px; padding: 13px 30px; font-size: 1.1rem; letter-spacing: .015em; }
 .printer-state-card__icon { width: 58px; height: 58px; display: grid; place-items: center; border-radius: 14px; color: var(--blue-600); background: var(--blue-50); }
 .printer-state-card__body { display: grid; grid-template-columns: minmax(260px, .8fr) minmax(420px, 1.2fr); gap: 14px; border-top: 1px solid var(--border); padding: 14px 20px 14px 24px; background: var(--surface-muted); }
 .printer-job-state { display: grid; grid-template-columns: 42px minmax(0, 1fr) auto; align-items: center; gap: 6px 11px; border: 1px solid var(--border); border-radius: var(--radius-sm); padding: 13px; background: var(--surface); }
@@ -125,6 +130,15 @@ svg { flex: 0 0 auto; }
 .printer-state-card__unavailable small { color: var(--text-muted); }
 .printer-state-card footer { border-top: 1px solid var(--border); padding: 8px 20px 9px 24px; color: var(--text-soft); font-size: 11px; }
 .active-spool-card, .integrations-card { min-height: 0; }
+.profile-scope-section { margin-top: 18px; }
+.profile-scope-section > .section-heading { align-items: flex-end; }
+.profile-scope-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 390px), 1fr)); gap: 14px; }
+.profile-scope-card { min-width: 0; display: flex; flex-direction: column; gap: 14px; }
+.profile-scope-card > header { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; }
+.profile-scope-card h3 { font-size: 1.18rem; }
+.profile-ownership { display: inline-flex; align-items: center; border-radius: 999px; padding: 5px 10px; color: var(--success); background: var(--success-bg); font-size: 11px; font-weight: 800; white-space: nowrap; }
+.profile-ownership--customized { color: var(--warning); background: var(--warning-bg); }
+.profile-scope-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: auto; padding-top: 2px; }
 .active-spool { display: grid; grid-template-columns: 58px 1fr; gap: 10px 14px; align-items: center; }
 .active-spool__identity { display: flex; flex-direction: column; }
 .active-spool__identity strong { font-size: 1.22rem; }
@@ -673,6 +687,7 @@ textarea { resize: vertical; }
   .printer-state-card__header { grid-template-columns: 48px minmax(0, 1fr); padding: 16px 16px 13px 20px; }
   .printer-state-card__icon { width: 46px; height: 46px; }
   .printer-state-card__header > .status-pill { grid-column: 2; justify-self: start; }
+  .printer-state-card__header > .status-pill { min-width: 132px; min-height: 44px; padding: 10px 20px; font-size: .95rem; }
   .printer-state-card__body { padding: 12px 14px 12px 18px; }
   .printer-temperature-grid { grid-template-columns: 1fr; }
   .quick-actions { grid-template-columns: 1fr; }
@@ -680,6 +695,8 @@ textarea { resize: vertical; }
   .quick-actions a:first-child { border-top: 0; }
   .metric-card { min-height: 96px; }
   .toolbar { align-items: stretch; flex-direction: column; }
+  .filament-section-nav { width: 100%; }
+  .filament-section-nav__item { flex: 1; min-height: 44px; }
   .toolbar__summary { margin: 0; }
   .search-field, .select-field { width: 100%; }
   .form-grid { grid-template-columns: 1fr; }

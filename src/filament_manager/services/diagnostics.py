@@ -224,7 +224,11 @@ def diagnostics_text(overview: dict[str, object]) -> str:
             occurred_at = cast(datetime, entry["occurred_at"])
             lines.extend(
                 [
-                    f"[{str(entry['severity']).upper()}] {entry['summary']}",
+                    (
+                        f"[{str(entry['severity']).upper()}] {entry['summary']}"
+                        if entry.get("current", True)
+                        else f"[HISTORY {str(entry['severity']).upper()}] {entry['summary']}"
+                    ),
                     f"  Source: {entry['source']}",
                     f"  Occurred: {occurred_at.isoformat()}",
                     f"  Detail: {entry.get('detail') or 'No additional detail retained.'}",
@@ -632,6 +636,27 @@ async def operational_overview(session: AsyncSession) -> dict[str, object]:
         for job in latest_failures
     ]
 
+    active_errors = list(
+        await session.scalars(
+            select(Notification)
+            .where(
+                Notification.active.is_(True),
+                Notification.severity == NotificationSeverity.ERROR,
+            )
+            .order_by(Notification.last_seen_at.desc())
+            .limit(10)
+        )
+    )
+    active_cura_deployment_ids = set(
+        await session.scalars(
+            select(Notification.object_id).where(
+                Notification.active.is_(True),
+                Notification.severity == NotificationSeverity.ERROR,
+                Notification.object_type == "cura_deployment",
+                Notification.object_id.is_not(None),
+            )
+        )
+    )
     error_log: list[dict[str, object]] = []
     failed_jobs = list(
         await session.scalars(
@@ -653,6 +678,7 @@ async def operational_overview(session: AsyncSession) -> dict[str, object]:
                 "detail": _sanitized_error_detail(job.last_error_class, job.last_error_message),
                 "occurred_at": job.last_error_at or job.created_at,
                 "correlation_id": None,
+                "current": True,
             }
         )
     failed_deployments = list(
@@ -664,9 +690,17 @@ async def operational_overview(session: AsyncSession) -> dict[str, object]:
         )
     )
     for deployment in failed_deployments:
+        operation = deployment.operation
+        source = (
+            "Cura backup request"
+            if operation == "recovery_capture"
+            else "Cura nozzle synchronization"
+            if operation == "nozzle_update"
+            else "Cura material synchronization"
+        )
         error_log.append(
             {
-                "source": "Cura deployment",
+                "source": source,
                 "severity": "error" if deployment.status == CuraDeploymentStatus.FAILED else "warning",
                 "summary": f"{deployment.last_error_class or 'Deployment error'}",
                 "detail": _sanitized_error_detail(
@@ -675,6 +709,7 @@ async def operational_overview(session: AsyncSession) -> dict[str, object]:
                 ),
                 "occurred_at": deployment.updated_at,
                 "correlation_id": None,
+                "current": deployment.id in active_cura_deployment_ids,
             }
         )
     failed_restores = list(
@@ -697,20 +732,14 @@ async def operational_overview(session: AsyncSession) -> dict[str, object]:
                 ),
                 "occurred_at": restore.updated_at,
                 "correlation_id": None,
+                "current": False,
             }
         )
-    active_errors = list(
-        await session.scalars(
-            select(Notification)
-            .where(
-                Notification.active.is_(True),
-                Notification.severity == NotificationSeverity.ERROR,
-            )
-            .order_by(Notification.last_seen_at.desc())
-            .limit(10)
-        )
-    )
     for notification in active_errors:
+        if notification.object_type == "cura_deployment":
+            # The deployment record above retains the specific sanitized cause;
+            # avoid repeating its generic operator notification in the log.
+            continue
         error_log.append(
             {
                 "source": "Operator notification",
@@ -719,6 +748,7 @@ async def operational_overview(session: AsyncSession) -> dict[str, object]:
                 "detail": notification.message,
                 "occurred_at": notification.last_seen_at,
                 "correlation_id": None,
+                "current": True,
             }
         )
     error_log.sort(key=lambda item: cast(datetime, item["occurred_at"]), reverse=True)

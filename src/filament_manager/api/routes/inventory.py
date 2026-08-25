@@ -406,6 +406,35 @@ def filament_response(product: FilamentProduct, *, color_editable: bool = True) 
     )
 
 
+async def _current_product_profiles(
+    session: DatabaseSession,
+    product_id: UUID,
+    *,
+    lock: bool = False,
+) -> list[MaterialProfile]:
+    """Return the newest published profile for every exact product scope."""
+
+    query = (
+        select(MaterialProfile)
+        .where(
+            MaterialProfile.filament_product_id == product_id,
+            MaterialProfile.status == ProfileStatus.PUBLISHED,
+        )
+        .order_by(
+            MaterialProfile.printer_id,
+            MaterialProfile.nozzle_diameter_mm,
+            MaterialProfile.version.desc(),
+        )
+    )
+    if lock:
+        query = query.with_for_update()
+    profiles = list(await session.scalars(query))
+    current: dict[tuple[UUID, Decimal], MaterialProfile] = {}
+    for profile in profiles:
+        current.setdefault((profile.printer_id, profile.nozzle_diameter_mm), profile)
+    return list(current.values())
+
+
 async def _get_spool(session: DatabaseSession, spool_id: UUID | str, *, lock: bool = False) -> Spool:
     query = select(Spool).options(joinedload(Spool.filament_product).joinedload(FilamentProduct.vendor))
     if isinstance(spool_id, UUID):
@@ -590,21 +619,6 @@ async def create_filament(
                 "duplicate_source_unavailable",
                 "The source filament is no longer available",
             )
-        duplicate_source_profile = await session.scalar(
-            select(MaterialProfile)
-            .where(
-                MaterialProfile.filament_product_id == duplicate_source.id,
-                MaterialProfile.status == ProfileStatus.PUBLISHED,
-            )
-            .order_by(MaterialProfile.version.desc())
-            .limit(1)
-        )
-        if duplicate_source_profile is None:
-            raise ApiError(
-                status.HTTP_422_UNPROCESSABLE_ENTITY,
-                "duplicate_source_profile_unavailable",
-                "The source filament does not have a current material profile",
-            )
         if payload.material_template_revision_id is None:
             raise ApiError(
                 status.HTTP_422_UNPROCESSABLE_ENTITY,
@@ -632,17 +646,30 @@ async def create_filament(
                 "material_type_template_mismatch",
                 "The filament material type must match the selected template",
             )
-        if duplicate_source_profile is not None and (
-            duplicate_source_profile.printer_id != template.printer_id
-            or duplicate_source_profile.nozzle_diameter_mm != template.nozzle_diameter_mm
-            or duplicate_source is None
-            or duplicate_source.material_type.casefold() != template.material_type.casefold()
-        ):
-            raise ApiError(
-                status.HTTP_422_UNPROCESSABLE_ENTITY,
-                "duplicate_template_scope_mismatch",
-                "The duplicate must use the source material, printer, and nozzle template scope",
+        if duplicate_source is not None:
+            if duplicate_source.material_type.casefold() != template.material_type.casefold():
+                raise ApiError(
+                    status.HTTP_422_UNPROCESSABLE_ENTITY,
+                    "duplicate_template_scope_mismatch",
+                    "The duplicate must use the source material, printer, and nozzle template scope",
+                )
+            duplicate_source_profile = await session.scalar(
+                select(MaterialProfile)
+                .where(
+                    MaterialProfile.filament_product_id == duplicate_source.id,
+                    MaterialProfile.printer_id == template.printer_id,
+                    MaterialProfile.nozzle_diameter_mm == template.nozzle_diameter_mm,
+                    MaterialProfile.status == ProfileStatus.PUBLISHED,
+                )
+                .order_by(MaterialProfile.version.desc())
+                .limit(1)
             )
+            if duplicate_source_profile is None:
+                raise ApiError(
+                    status.HTTP_422_UNPROCESSABLE_ENTITY,
+                    "duplicate_source_profile_unavailable",
+                    "The source filament does not have print settings for the selected scope",
+                )
 
     color = await _remember_color(
         session,
@@ -889,45 +916,65 @@ async def update_filament(
     if "archived" in payload.model_fields_set and payload.archived is not None:
         product.archived = payload.archived
 
-    created_profile: MaterialProfile | None = None
-    if target_revision is not None and target_template is not None:
-        current_profile = await session.scalar(
-            select(MaterialProfile)
-            .where(
-                MaterialProfile.filament_product_id == product.id,
-                MaterialProfile.status == ProfileStatus.PUBLISHED,
-            )
-            .order_by(MaterialProfile.version.desc())
-            .limit(1)
+    created_profiles: list[MaterialProfile] = []
+    density_changed = "density_g_cm3" in payload.model_fields_set
+    if density_changed or (target_revision is not None and target_template is not None):
+        current_profiles = await _current_product_profiles(session, product.id, lock=True)
+        target_scope = (
+            (target_template.printer_id, target_template.nozzle_diameter_mm)
+            if target_template is not None
+            else None
         )
-        if current_profile is not None and (
-            current_profile.printer_id != target_template.printer_id
-            or current_profile.nozzle_diameter_mm != target_template.nozzle_diameter_mm
-        ):
-            raise ApiError(
-                status.HTTP_422_UNPROCESSABLE_ENTITY,
-                "template_scope_mismatch",
-                "Select a template for the filament's current printer and nozzle",
+        matched_target_scope = False
+        for current_profile in current_profiles:
+            scope = (current_profile.printer_id, current_profile.nozzle_diameter_mm)
+            rebasing_scope = target_scope == scope and target_revision is not None
+            matched_target_scope = matched_target_scope or rebasing_scope
+            if not density_changed and not rebasing_scope:
+                continue
+            base_revision = (
+                target_revision
+                if rebasing_scope
+                else await session.get(
+                    MaterialTemplateRevision,
+                    current_profile.base_template_revision_id,
+                )
             )
-        if (
-            current_profile is None
-            or current_profile.base_template_revision_id != target_revision.id
-            or "density_g_cm3" in payload.model_fields_set
-        ):
-            overrides = dict(current_profile.setting_overrides or {}) if current_profile else {}
-            if "density_g_cm3" in payload.model_fields_set:
-                overrides["filament_density_g_cm3"] = format(product.density_g_cm3, "f")
-            resolved = resolve_profile_settings(target_revision.settings, overrides)
-            created_profile = await create_published_profile_snapshot(
-                session,
-                filament_product_id=product.id,
-                printer_id=target_template.printer_id,
-                nozzle_diameter_mm=target_template.nozzle_diameter_mm,
-                base_revision=target_revision,
-                settings=resolved,
-                setting_overrides=overrides,
+            if base_revision is None:
+                raise ApiError(
+                    status.HTTP_409_CONFLICT,
+                    "profile_template_missing",
+                    "The current print-settings template is unavailable",
+                )
+            if not density_changed and current_profile.base_template_revision_id == base_revision.id:
+                continue
+            overrides = dict(current_profile.setting_overrides or {})
+            if density_changed:
+                template_density = Decimal(str(base_revision.settings["filament_density_g_cm3"]))
+                if product.density_g_cm3 == template_density:
+                    overrides.pop("filament_density_g_cm3", None)
+                else:
+                    overrides["filament_density_g_cm3"] = format(product.density_g_cm3, "f")
+            resolved = resolve_profile_settings(base_revision.settings, overrides)
+            created_profiles.append(
+                await create_published_profile_snapshot(
+                    session,
+                    filament_product_id=product.id,
+                    printer_id=current_profile.printer_id,
+                    nozzle_diameter_mm=current_profile.nozzle_diameter_mm,
+                    base_revision=base_revision,
+                    settings=resolved,
+                    setting_overrides=overrides,
+                )
             )
-        product.source_template_revision_id = target_revision.id
+        if target_revision is not None and target_template is not None:
+            if not matched_target_scope:
+                raise ApiError(
+                    status.HTTP_422_UNPROCESSABLE_ENTITY,
+                    "template_scope_mismatch",
+                    "The filament does not have print settings for that printer and nozzle",
+                )
+            product.source_template_revision_id = target_revision.id
     product.record_version += 1
     add_audit_event(
         session,
@@ -949,7 +996,7 @@ async def update_filament(
                 if product.source_template_revision_id is not None
                 else None
             ),
-            "material_profile_id": str(created_profile.id) if created_profile else None,
+            "material_profile_ids": [str(profile.id) for profile in created_profiles],
             "archived": product.archived,
         },
         correlation_id=request.state.correlation_id,
@@ -963,7 +1010,7 @@ async def update_filament(
         aggregate_version=product.record_version,
         payload={"filament_product_id": str(product.id)},
     )
-    if created_profile is not None or "archived" in payload.model_fields_set:
+    if created_profiles or "archived" in payload.model_fields_set:
         await queue_managed_cura_library(session, requested_by=operator.id)
     await session.commit()
     await session.refresh(product, attribute_names=["vendor"])

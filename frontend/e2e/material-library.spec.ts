@@ -222,6 +222,8 @@ test('comparison shows only differences and warns across profile scopes', async 
   await dialog.getByRole('button', { name: 'Close comparison' }).click()
 
   await page.goto('/profiles')
+  await expect(page).toHaveURL(/\/filaments\/settings$/)
+  await expect(page.getByRole('heading', { name: 'Print settings' })).toBeVisible()
   await page.getByRole('button', { name: 'Compare settings', exact: true }).click()
   await expect(page.getByRole('dialog', { name: 'Compare material settings' })).toBeVisible()
 })
@@ -250,7 +252,7 @@ test('filament creation requires and submits a current template', async ({ page 
   await expect.poll(() => submitted?.material_type).toBe('PLA')
   await expect.poll(() => submitted?.color_mode).toBe('multicolor')
   await expect.poll(() => submitted?.color_hexes).toEqual(['FF0000', '00FF00', '0000FF'])
-  await expect(page.getByText(/current settings linked to its template/)).toBeVisible()
+  await expect(page.getByText(/first printer\/nozzle print-settings scope/)).toBeVisible()
 })
 
 test('filament details remember colors and save Cura settings directly', async ({ page }) => {
@@ -272,6 +274,16 @@ test('filament details remember colors and save Cura settings directly', async (
     base_template_settings: settings, latest_template_revision_id: 'revision-id',
     latest_template_version: 1, template_update_changes: [],
   }
+  const secondaryProfile = {
+    ...profile,
+    id: 'profile-06',
+    nozzle_diameter_mm: '0.6',
+    version: 2,
+    record_version: 2,
+    base_template_name: 'Template PLA 0.6',
+    extruder_temp_c: '220',
+    cura_settings: { material_print_temperature: '220', xy_offset: '0.05' },
+  }
   await page.route(`**/api/v1/filaments/${filament.id}`, async (route) => {
     if (route.request().method() === 'PATCH') {
       filamentUpdate = route.request().postDataJSON() as Record<string, unknown>
@@ -288,7 +300,7 @@ test('filament details remember colors and save Cura settings directly', async (
   })
   await page.route('**/api/v1/vendors', (route) => route.fulfill({ json: [] }))
   await page.route('**/api/v1/profiles/templates?include_inactive=false', (route) => route.fulfill({ json: [template] }))
-  await page.route('**/api/v1/profiles', (route) => route.fulfill({ json: [profile] }))
+  await page.route('**/api/v1/profiles', (route) => route.fulfill({ json: [profile, secondaryProfile] }))
   await page.route('**/api/v1/profiles/cura-settings/catalog', (route) => route.fulfill({ json: [
     { key: 'xy_offset', label: 'Horizontal Expansion', value_type: 'number', unit: 'mm', editable: true, template_only: false },
     { key: 'hole_xy_offset', label: 'Hole Horizontal Expansion', value_type: 'number', unit: 'mm', editable: true, template_only: false },
@@ -304,7 +316,9 @@ test('filament details remember colors and save Cura settings directly', async (
   await page.goto(`/filaments/${filament.id}`)
   await expect(page.getByRole('heading', { name: 'Workshop PLA' })).toBeVisible()
   await expect(page.getByText('Template PLA', { exact: true })).toBeVisible()
-  await page.getByRole('button', { name: 'Edit', exact: true }).click()
+  await expect(page.getByRole('heading', { name: '0.4 mm nozzle' })).toBeVisible()
+  await expect(page.getByRole('heading', { name: '0.6 mm nozzle' })).toBeVisible()
+  await page.getByRole('button', { name: 'Edit product' }).click()
   await expect(page.getByRole('dialog', { name: 'Edit filament product' })).toBeVisible()
   await page.getByRole('combobox', { name: /^Color name/ }).fill('Red')
   await page.getByLabel('Screen color sample').fill('#ff0000')
@@ -312,7 +326,8 @@ test('filament details remember colors and save Cura settings directly', async (
   await expect.poll(() => filamentUpdate?.color_name).toBe('Red')
   await expect.poll(() => filamentUpdate?.color_hex).toBe('FF0000')
 
-  await page.getByRole('button', { name: 'Edit settings' }).click()
+  const primaryProfileCard = page.getByRole('heading', { name: '0.4 mm nozzle' }).locator('xpath=ancestor::article')
+  await primaryProfileCard.getByRole('button', { name: 'Edit settings' }).click()
   await expect(page.getByText('Customized · Template: 210')).toBeVisible()
   await expect(page.locator('.setting-field--customized')).toHaveCount(2)
   await expect(page.getByLabel('Retraction Retract Speed (mm/s)')).toHaveCount(1)
@@ -334,6 +349,11 @@ test('filament details remember colors and save Cura settings directly', async (
   await expect.poll(() => (profileUpdate?.settings as Record<string, unknown>)?.extruder_temp_c).toBe('215')
   await expect.poll(() => (profileUpdate?.settings as Record<string, unknown>)?.pressure_advance).toBe('0.035')
   await expect.poll(() => (profileUpdate?.settings as Record<string, unknown>)?.cura_extensions).toEqual({ xy_offset: '0.05' })
+  await page.setViewportSize({ width: 390, height: 844 })
+  const secondaryProfileCard = page.getByRole('heading', { name: '0.6 mm nozzle' }).locator('xpath=ancestor::article')
+  await expect(secondaryProfileCard.getByRole('button', { name: 'Edit settings' })).toBeVisible()
+  await expect(secondaryProfileCard.getByRole('button', { name: 'Compare' })).toBeVisible()
+  await expect(secondaryProfileCard.getByRole('link', { name: 'Export Cura JSON' })).toBeVisible()
 })
 
 test('spool creation is available without opening Spoolman', async ({ page }) => {
@@ -420,7 +440,7 @@ test('an empty Cura library can complete the one-time atomic takeover', async ({
 test('managed Cura workstations show verified material print setting coverage', async ({ page }) => {
   const agent = {
     id: 'agent-id', agent_code: 'WS-TEST', display_name: 'Arch Cura', hostname: 'workstation',
-    platform: 'arch_linux', architecture: 'x86_64', agent_version: '0.4.2', enabled: true,
+    platform: 'arch_linux', architecture: 'x86_64', agent_version: '0.5.0', enabled: true,
     cura_management_enabled: true,
     capabilities: { managed_material_count: 3, unmanaged_print_profile_count: 0, cura_recovery_snapshots: true },
     cura_installations: [{
@@ -441,11 +461,35 @@ test('managed Cura workstations show verified material print setting coverage', 
   }
   await page.route('**/api/v1/workstation-agents', (route) => route.fulfill({ json: [agent] }))
   await page.route('**/api/v1/profiles/templates?include_inactive=true', (route) => route.fulfill({ json: [] }))
+  await page.route('**/api/v1/workstation-agents/agent-id/cura-recovery-snapshots', (route) => route.fulfill({ json: [{
+    id: 'snapshot-id', agent_id: 'agent-id', installation_id: 'cura-id', cura_version: '5.13', setting_version: 27,
+    snapshot_checksum: 'c'.repeat(64), file_count: 8, total_bytes: 12000, machine_count: 1,
+    quality_profile_count: 3, plugin_count: 1, capture_kind: 'automatic', name: 'Known good Cura setup',
+    description: null, record_version: 1, plugins: [], captured_at: '2026-08-22T03:00:00Z', created_at: '2026-08-22T03:00:00Z',
+  }] }))
+  await page.route('**/api/v1/cura-deployments', (route) => route.fulfill({ json: [{
+    id: 'capture-id', agent_id: 'agent-id', material_profile_id: null, requested_by: 'administrator-id',
+    operation: 'recovery_capture', status: 'failed', profile_checksum: 'd'.repeat(64), attempts: 1,
+    next_attempt_at: '2026-08-22T03:30:00Z', claimed_at: '2026-08-22T03:30:00Z', completed_at: '2026-08-22T03:31:00Z',
+    result: {}, last_error_class: 'RuntimeError', last_error_message: 'Backup did not complete safely.',
+    created_at: '2026-08-22T03:30:00Z', updated_at: '2026-08-22T03:31:00Z',
+  }] }))
 
   await page.goto('/workstations')
   await expect(page.getByText('54 of 54 verified')).toBeVisible()
   await expect(page.getByText('Material Settings and Klipper Settings are ready; managed values are enforced over Cura profiles.')).toBeVisible()
   await expect(page.getByText(/Verified Aug 22, 2026/)).toBeVisible()
+  await page.getByRole('button', { name: 'Recovery points' }).click()
+  const recovery = page.getByRole('dialog', { name: 'Recovery points for Arch Cura' })
+  const saved = recovery.getByRole('heading', { name: 'Saved Cura configurations' })
+  const requests = recovery.getByRole('heading', { name: 'Recent backup requests' })
+  await expect(saved).toBeVisible()
+  await expect(requests).toBeVisible()
+  await expect(recovery.getByText('Known good Cura setup')).toBeVisible()
+  expect(await recovery.locator('.editor-section__header h3').allTextContents()).toEqual([
+    'Saved Cura configurations',
+    'Recent backup requests',
+  ])
 })
 
 test('each reported Cura source can be mapped to a template or intentionally ignored', async ({ page }) => {

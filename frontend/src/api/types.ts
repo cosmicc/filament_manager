@@ -741,6 +741,7 @@ export interface DiagnosticErrorEntry {
   detail: string | null
   occurred_at: string
   correlation_id: string | null
+  current: boolean
 }
 
 export interface DiagnosticFailureGroup {
