@@ -256,10 +256,15 @@ class MaterialProfileValues(Protocol):
     cura_extensions: dict[str, object]
 
 
-def _decimal(value: Decimal | None) -> str | None:
-    """Serialize decimal settings without binary floating-point conversion."""
+def _decimal(value: Decimal | str | int | None) -> str | None:
+    """Serialize validated decimal-like settings without binary floating point.
 
-    return format(value, "f") if value is not None else None
+    Database-backed profiles provide ``Decimal`` values, while immutable JSON
+    template snapshots provide numeric strings. Both are trusted only after
+    ``MaterialSettingsInput`` validation and must produce identical Cura text.
+    """
+
+    return format(Decimal(str(value)), "f") if value is not None else None
 
 
 def cura_settings_for_profile(profile: MaterialProfileValues) -> dict[str, object]:

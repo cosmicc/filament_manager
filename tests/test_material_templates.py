@@ -21,6 +21,7 @@ from filament_manager.models.inventory import (
     Nozzle,
     Printer,
 )
+from filament_manager.models.workstations import WorkstationAgent
 from filament_manager.security import hash_password
 from filament_manager.services.cura_library import build_cura_library
 
@@ -83,6 +84,20 @@ async def test_direct_template_save_updates_linked_product_profile(
             )
             session.add_all([administrator, printer])
             await session.flush()
+            session.add(
+                WorkstationAgent(
+                    agent_code="paired-test-agent",
+                    display_name="Paired Cura workstation",
+                    hostname="cura-test",
+                    platform="linux",
+                    architecture="x86_64",
+                    agent_version="0.5.2",
+                    token_hash="a" * 64,
+                    enabled=True,
+                    cura_management_enabled=True,
+                    created_by=administrator.id,
+                )
+            )
             nozzle = Nozzle(
                 nozzle_code="NZ-040",
                 printer_id=printer.id,
@@ -255,12 +270,26 @@ async def test_direct_template_save_updates_linked_product_profile(
                 json={
                     "expected_template_version": current_template["record_version"],
                     "settings": {
+                        "chamber_temp_c": "40",
                         "extruder_temp_c": "250",
                         "bed_temp_c": "55",
                         "flow_percent": "100",
+                        "print_speed_mm_s": "120",
+                        "outer_wall_speed_mm_s": "60",
+                        "inner_wall_speed_mm_s": "90",
+                        "infill_speed_mm_s": "110",
+                        "top_bottom_speed_mm_s": "70",
+                        "initial_layer_speed_mm_s": "35",
+                        "travel_speed_mm_s": "300",
+                        "support_speed_mm_s": "80",
+                        "retraction_distance_mm": "0.8",
+                        "retraction_speed_mm_s": "45",
+                        "retraction_prime_speed_mm_s": "40",
                         "cooling_enabled": True,
                         "cooling_min_percent": "20",
                         "cooling_max_percent": "50",
+                        "support_overhang_angle_deg": "55",
+                        "tree_max_branch_angle_deg": "40",
                         "filament_density_g_cm3": "1.20",
                         "cura_extensions": {"acceleration_travel": "0"},
                     },
@@ -298,17 +327,48 @@ async def test_direct_template_save_updates_linked_product_profile(
                 json={
                     "expected_template_version": current_template["record_version"],
                     "settings": {
+                        "chamber_temp_c": "40",
                         "extruder_temp_c": "250",
                         "bed_temp_c": "55",
                         "flow_percent": "100",
+                        "print_speed_mm_s": "120",
+                        "outer_wall_speed_mm_s": "60",
+                        "inner_wall_speed_mm_s": "90",
+                        "infill_speed_mm_s": "110",
+                        "top_bottom_speed_mm_s": "70",
+                        "initial_layer_speed_mm_s": "35",
+                        "travel_speed_mm_s": "300",
+                        "support_speed_mm_s": "80",
+                        "retraction_distance_mm": "0.8",
+                        "retraction_speed_mm_s": "45",
+                        "retraction_prime_speed_mm_s": "40",
                         "cooling_enabled": True,
                         "cooling_min_percent": "20",
                         "cooling_max_percent": "50",
+                        "support_overhang_angle_deg": "55",
+                        "tree_max_branch_angle_deg": "40",
                         "pressure_advance": "0.05",
+                        "ironing_flow_percent": "12",
+                        "ironing_speed_mm_s": "25",
+                        "ironing_line_spacing_mm": "0.12",
                         "filament_density_g_cm3": "1.20",
                         "cura_extensions": {
                             "retraction_enable": True,
+                            "retract_at_layer_change": True,
                             "cool_fan_speed_0": "15",
+                            "cool_fan_full_layer": "4",
+                            "cool_min_layer_time": "8",
+                            "cool_min_layer_time_fan_speed_max": "20",
+                            "cool_min_speed": "10",
+                            "speed_roofing": "45",
+                            "speed_travel_layer_0": "100",
+                            "speed_wall": "70",
+                            "skirt_brim_speed": "35",
+                            "retraction_min_travel": "1.5",
+                            "xy_offset_layer_0": "-0.1",
+                            "xy_offset": "0.05",
+                            "hole_xy_offset": "0.1",
+                            "hole_xy_offset_max_diameter": "10",
                             "klipper_smooth_time_enable": True,
                             "klipper_smooth_time_factor": "0.04",
                             "acceleration_print": "5000",
@@ -336,6 +396,9 @@ async def test_direct_template_save_updates_linked_product_profile(
             assert Decimal(inherited_profile["extruder_temp_c"]) == Decimal("250")
             assert Decimal(inherited_profile["filament_density_g_cm3"]) == Decimal("1.21")
             assert Decimal(inherited_profile["pressure_advance"]) == Decimal("0.05")
+            assert Decimal(inherited_profile["ironing_flow_percent"]) == Decimal("12")
+            assert Decimal(inherited_profile["ironing_speed_mm_s"]) == Decimal("25")
+            assert Decimal(inherited_profile["ironing_line_spacing_mm"]) == Decimal("0.12")
             assert inherited_profile["cura_extensions"]["acceleration_travel"] == "8000"
             assert inherited_profile["override_keys"] == ["filament_density_g_cm3"]
             duplicate = await client.post(
@@ -379,6 +442,9 @@ async def test_direct_template_save_updates_linked_product_profile(
             assert exported.json()["cura"]["acceleration_topbottom"] == "2900"
             assert exported.json()["cura"]["acceleration_support"] == "3600"
             assert exported.json()["cura"]["acceleration_travel"] == "8000"
+            assert Decimal(exported.json()["cura"]["ironing_flow"]) == Decimal("12")
+            assert Decimal(exported.json()["cura"]["speed_ironing"]) == Decimal("25")
+            assert Decimal(exported.json()["cura"]["ironing_line_spacing"]) == Decimal("0.12")
 
         async with factory() as session:
             template_row = await session.scalar(

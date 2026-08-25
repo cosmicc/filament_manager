@@ -1,5 +1,26 @@
 # Changelog
 
+## 0.5.2 - 08.25.2026
+
+### Added
+
+- Added regression coverage for saving a completely populated template through a paired Cura workstation, including all three ironing values and every tracked settings group.
+- Added reusable sanitized form-error summaries that list each rejected field and include a diagnostic correlation reference for unexpected server failures.
+
+### Changed
+
+- Changed template, filament print-settings, and build-plate form failures to retain actionable server error codes, HTTP status, and safe diagnostic references instead of collapsing failures into a generic rejection.
+- Changed template-card grid tracks and metadata cells to enforce bounded widths for long printer, nozzle, and setting text.
+- Changed every blank template value to show an explicit **Copy from another template** selector; populated active templates are selectable, while the empty-source state explains why copying is unavailable.
+- Changed every server, browser, and workstation-agent version surface to 0.5.2.
+
+### Fixed
+
+- Fixed populated template ironing values failing during the paired-workstation Cura library build because immutable template numeric strings were formatted as database Decimal objects.
+- Fixed template card content overflowing past the right edge of its card.
+- Fixed validation summaries omitting the names and reasons for rejected settings even when the exact control was highlighted.
+- Fixed blank template values hiding the copy feature entirely when the page found no eligible source, which made the requested workflow appear missing.
+
 ## 0.5.1 - 08.25.2026
 
 ### Added

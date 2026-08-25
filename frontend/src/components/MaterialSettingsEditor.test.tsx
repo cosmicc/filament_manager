@@ -3,7 +3,7 @@
 import { fireEvent, render, screen, within } from '@testing-library/react'
 import { describe, expect, it } from 'vitest'
 import type { MaterialSettings } from '../api/types'
-import { MaterialSettingsEditor } from './MaterialSettingsEditor'
+import { MaterialSettingsEditor, settingsFromForm } from './MaterialSettingsEditor'
 
 const settings: MaterialSettings = {
   chamber_temp_c: null,
@@ -61,6 +61,27 @@ describe('MaterialSettingsEditor validation', () => {
     expect(flow.getAttribute('aria-invalid')).toBe('true')
     expect(flow.getAttribute('aria-describedby')).toBe(message.parentElement?.id)
     expect(message.parentElement?.className).toContain('field-validation')
+  })
+
+  it('serializes all editable ironing values from a template form', () => {
+    const rendered = render(
+      <form data-testid="settings-form">
+        <MaterialSettingsEditor settings={settings} catalog={[]} plates={[]} scope="template" />
+      </form>,
+    )
+    const controls = within(rendered.container)
+    fireEvent.change(controls.getByLabelText('Ironing flow (%)'), { target: { value: '12' } })
+    fireEvent.change(controls.getByLabelText('Ironing speed (mm/s)'), { target: { value: '25' } })
+    fireEvent.change(controls.getByLabelText('Ironing line spacing (mm)'), { target: { value: '0.12' } })
+
+    const serialized = settingsFromForm(
+      rendered.getByTestId('settings-form') as HTMLFormElement,
+      [],
+      'template',
+    )
+    expect(serialized.ironing_flow_percent).toBe('12')
+    expect(serialized.ironing_speed_mm_s).toBe('25')
+    expect(serialized.ironing_line_spacing_mm).toBe('0.12')
   })
 
   it('groups every requested Cura cooling control and allows initial fan speed editing', () => {
@@ -156,9 +177,19 @@ describe('MaterialSettingsEditor validation', () => {
     )
 
     expect(screen.queryByLabelText('Enable ironing')).toBeNull()
-    const chooser = within(rendered.container).getByLabelText('Copy chamber_temp_c from another template')
+    const chooser = within(rendered.container).getByLabelText('Copy Build volume temperature from another template')
     fireEvent.change(chooser, { target: { value: 'template-petg' } })
     expect((within(rendered.container).getByLabelText('Build volume temperature (°C)') as HTMLInputElement).value).toBe('45')
-    expect(within(rendered.container).queryByLabelText('Copy chamber_temp_c from another template')).toBeNull()
+    expect(within(rendered.container).queryByLabelText('Copy Build volume temperature from another template')).toBeNull()
+  })
+
+  it('explains when a blank value has no populated active template source', () => {
+    const rendered = render(
+      <MaterialSettingsEditor settings={settings} plates={[]} catalog={[]} scope="template" />,
+    )
+
+    const chooser = within(rendered.container).getByLabelText('Copy Build volume temperature from another template')
+    expect((chooser as HTMLSelectElement).disabled).toBe(true)
+    expect(within(chooser).getByText('No other active template has a value')).toBeTruthy()
   })
 })

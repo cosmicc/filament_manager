@@ -58,6 +58,24 @@ const coreFields: Array<{
   { key: 'filament_density_g_cm3', label: 'Filament density', unit: 'g/cm³', required: true, defaultValue: '1.24', precision: 2 },
 ]
 
+const identityLabels: Record<string, string> = {
+  material_type: 'Material type',
+  printer_id: 'Printer',
+  nozzle_id: 'Physical nozzle',
+  filament_diameter_mm: 'Filament diameter',
+  description: 'Description',
+  preferred_build_plate_surface_id: 'Preferred plate side',
+}
+
+export function materialSettingLabel(field: string, catalog: CuraSettingCatalogItem[] = []): string {
+  const normalized = field.replace(/^settings\./, '')
+  const extensionKey = normalized.replace(/^cura_extensions\./, '')
+  return coreFields.find((item) => item.key === normalized)?.label
+    ?? catalog.find((item) => item.key === extensionKey)?.label
+    ?? identityLabels[normalized]
+    ?? normalized.replaceAll('_', ' ')
+}
+
 export const canonicalMaterialFieldCount = coreFields.length + 2
 
 type MaterialSettingGroup =
@@ -252,12 +270,14 @@ export function MaterialSettingsEditor({
   ) => {
     const options = copyOptions(key, extension)
     const currentlyPresent = liveValuePresence.get(key) ?? hasSettingValue(initialValue)
-    if (scope !== 'template' || currentlyPresent || !options.length) return null
+    if (scope !== 'template' || currentlyPresent) return null
+    const label = materialSettingLabel(extension ? `cura_extensions.${key}` : key, catalog)
     return <label className="setting-copy-control">
-      Copy from
+      <span>Missing value · Copy from another template</span>
       <select
         value=""
-        aria-label={`Copy ${key} from another template`}
+        disabled={!options.length}
+        aria-label={`Copy ${label} from another template`}
         onChange={(event) => {
           const selected = options.find((option) => option.source.id === event.currentTarget.value)
           const field = event.currentTarget.closest('.setting-field')
@@ -272,7 +292,7 @@ export function MaterialSettingsEditor({
           markValuePresence(key, selected.value)
         }}
       >
-        <option value="">Choose a template…</option>
+        <option value="">{options.length ? 'Choose a populated template…' : 'No other active template has a value'}</option>
         {options.map(({ source, value }) => <option key={source.id} value={source.id}>{source.label} · {String(value)}</option>)}
       </select>
     </label>

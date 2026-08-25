@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { ApiClientError, validationMessagesFor } from './client'
+import { actionableApiError, ApiClientError, validationMessagesFor } from './client'
 
 describe('validationMessagesFor', () => {
   it('maps nested API validation details into editor-relative fields', () => {
@@ -18,5 +18,19 @@ describe('validationMessagesFor', () => {
         'Klipper smooth time must be between 0.001 and 0.2',
       ],
     })
+  })
+
+  it('includes a safe diagnostic reference for unexpected server failures', () => {
+    const error = new ApiClientError(
+      500,
+      'internal_error',
+      'The request could not be completed',
+      [],
+      'safe-correlation-reference',
+    )
+
+    expect(actionableApiError(error)).toContain('internal_error · HTTP 500')
+    expect(actionableApiError(error)).toContain('reference safe-correlation-reference')
+    expect(actionableApiError(error)).toContain('Diagnostics')
   })
 })

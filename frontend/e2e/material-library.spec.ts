@@ -29,6 +29,7 @@ const settings = {
   retraction_speed_mm_s: '40', retraction_prime_speed_mm_s: '36', cooling_enabled: true, cooling_min_percent: '30',
   cooling_max_percent: '100', support_overhang_angle_deg: '55',
   tree_max_branch_angle_deg: '40', pressure_advance: '0.035',
+  ironing_flow_percent: null, ironing_speed_mm_s: null, ironing_line_spacing_mm: null,
   filament_density_g_cm3: '1.24', preferred_build_plate_surface_id: null,
   cura_extensions: { retraction_enable: true, klipper_smooth_time_enable: true },
 }
@@ -137,6 +138,8 @@ test('template library is usable at desktop and mobile sizes', async ({ page }) 
   await expect(page.getByText('Workshop Printer')).toBeVisible()
   await expect(page.getByText('NZ-040 · 0.4 mm Hardened steel')).toBeVisible()
   await expect(page.getByText('Starting settings for ordinary PLA')).toHaveCount(0)
+  const templateCard = page.locator('.catalog-card--template')
+  await expect.poll(() => templateCard.evaluate((card) => card.scrollWidth <= card.clientWidth)).toBe(true)
   await page.getByRole('button', { name: 'Edit template' }).click()
   await expect(page.getByRole('dialog', { name: 'Edit Template PLA' })).toBeVisible()
   await expect(page.getByLabel('Printing temperature (°C)')).toHaveValue('210')
@@ -148,9 +151,60 @@ test('template library is usable at desktop and mobile sizes', async ({ page }) 
   await page.setViewportSize({ width: 390, height: 844 })
   await expect(page.getByRole('dialog', { name: 'Edit Template PLA' })).toBeVisible()
   await page.getByLabel('Printing temperature (°C)').fill('212')
+  await page.getByLabel('Ironing flow (%)').fill('12')
+  await page.getByLabel('Ironing speed (mm/s)').fill('25')
+  await page.getByLabel('Ironing line spacing (mm)').fill('0.12')
   await page.getByRole('button', { name: 'Save template' }).click()
   await expect.poll(() => templateUpdate?.expected_template_version).toBe(3)
   await expect.poll(() => (templateUpdate?.settings as Record<string, unknown>)?.extruder_temp_c).toBe('212')
+  await expect.poll(() => (templateUpdate?.settings as Record<string, unknown>)?.ironing_flow_percent).toBe('12')
+  await expect.poll(() => (templateUpdate?.settings as Record<string, unknown>)?.ironing_speed_mm_s).toBe('25')
+  await expect.poll(() => (templateUpdate?.settings as Record<string, unknown>)?.ironing_line_spacing_mm).toBe('0.12')
+})
+
+test('blank template values expose and persist copy choices from other templates', async ({ page }) => {
+  let templateUpdate: Record<string, unknown> | null = null
+  const sourceTemplate = {
+    ...template,
+    id: 'source-template-id',
+    name: 'Template PETG',
+    material_type: 'PETG',
+    revisions: [{
+      ...template.revisions[0],
+      id: 'source-revision-id',
+      material_template_id: 'source-template-id',
+      settings: { ...settings, chamber_temp_c: '45' },
+    }],
+  }
+  await page.route('**/api/v1/profiles/templates?include_inactive=true', (route) => route.fulfill({ json: [template, sourceTemplate] }))
+  await page.route('**/api/v1/profiles/templates/template-id/settings', async (route) => {
+    templateUpdate = route.request().postDataJSON() as Record<string, unknown>
+    await route.fulfill({ json: template })
+  })
+  await page.route('**/api/v1/profiles', (route) => route.fulfill({ json: [] }))
+  await page.route('**/api/v1/filaments', (route) => route.fulfill({ json: [] }))
+  await page.route('**/api/v1/profiles/cura-settings/catalog', (route) => route.fulfill({ json: [] }))
+
+  await page.goto('/templates')
+  const targetCard = page.locator('.catalog-card--template').filter({ hasText: 'Template PLA' })
+  await targetCard.getByRole('button', { name: 'Edit template' }).click()
+  const dialog = page.getByRole('dialog', { name: 'Edit Template PLA' })
+  const copyTemperature = dialog.getByLabel('Copy Build volume temperature from another template')
+  await expect(copyTemperature).toBeVisible()
+  await expect(copyTemperature).toBeEnabled()
+  await expect(copyTemperature.locator('option')).toHaveText(['Choose a populated template…', 'Template PETG · Workshop Printer · 0.4 mm · 45'])
+  await page.setViewportSize({ width: 390, height: 844 })
+  await copyTemperature.scrollIntoViewIfNeeded()
+  await copyTemperature.selectOption('source-template-id')
+  await expect(dialog.getByLabel('Build volume temperature (°C)')).toHaveValue('45')
+  await expect(copyTemperature).toHaveCount(0)
+
+  const noIroningSource = dialog.getByLabel('Copy Ironing flow from another template')
+  await expect(noIroningSource).toBeVisible()
+  await expect(noIroningSource).toBeDisabled()
+  await expect(noIroningSource).toContainText('No other active template has a value')
+  await dialog.getByRole('button', { name: 'Save template' }).click()
+  await expect.poll(() => (templateUpdate?.settings as Record<string, unknown>)?.chamber_temp_c).toBe('45')
 })
 
 test('template validation centers, focuses, and highlights the rejected setting', async ({ page }) => {
@@ -182,8 +236,9 @@ test('template validation centers, focuses, and highlights the rejected setting'
 
   await expect(maximumFan).toHaveAttribute('aria-invalid', 'true')
   await expect(maximumFan).toBeFocused()
-  await expect(page.getByText('Maximum fan must be at least the minimum fan')).toBeVisible()
-  await expect(page.getByText('Correct the highlighted value and save again.')).toBeVisible()
+  await expect(page.getByText('Maximum fan must be at least the minimum fan', { exact: true })).toBeVisible()
+  await expect(page.getByText('Correct the following values and save again:')).toBeVisible()
+  await expect(page.locator('.form-error--summary')).toContainText('Maximum fan speed: Maximum fan must be at least the minimum fan')
   const invalidSetting = maximumFan.locator('xpath=ancestor::div[contains(@class, "setting-field")][1]')
   await expect(invalidSetting).toHaveClass(/setting-field--invalid/)
   await expect.poll(async () => {
@@ -451,7 +506,7 @@ test('an empty Cura library can complete the one-time atomic takeover', async ({
 test('managed Cura workstations show verified material print setting coverage', async ({ page }) => {
   const agent = {
     id: 'agent-id', agent_code: 'WS-TEST', display_name: 'Arch Cura', hostname: 'workstation',
-    platform: 'arch_linux', architecture: 'x86_64', agent_version: '0.5.1', enabled: true,
+    platform: 'arch_linux', architecture: 'x86_64', agent_version: '0.5.2', enabled: true,
     cura_management_enabled: true,
     capabilities: { managed_material_count: 3, unmanaged_print_profile_count: 0, cura_recovery_snapshots: true },
     cura_installations: [{

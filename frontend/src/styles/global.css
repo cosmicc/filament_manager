@@ -283,18 +283,23 @@ svg { flex: 0 0 auto; }
 .plate-illustration--table { width: 46px; height: 46px; background-size: 8px 8px; }
 .plate-illustration--table span { padding: 2px 4px; font-size: 11px; }
 .catalog-card, .label-card, .integration-card { border: 1px solid var(--border); border-radius: var(--radius-md); padding: 16px; background: var(--surface); box-shadow: var(--shadow-sm); }
-.catalog-card { height: 100%; display: grid; grid-template-columns: 64px 1fr; gap: 13px; overflow: hidden; }
+.catalog-card { min-width: 0; height: 100%; display: grid; grid-template-columns: 64px minmax(0, 1fr); gap: 13px; overflow: hidden; }
 .catalog-card--link { color: var(--text); text-decoration: none; transition: border-color .15s, transform .15s, box-shadow .15s; }
 .catalog-card--link:hover { border-color: var(--blue-600); box-shadow: var(--shadow-md); transform: translateY(-2px); }
-.catalog-card--template { grid-template-columns: 1fr; }
-.template-card__identity { min-height: 58px; }
+.catalog-card--template { grid-template-columns: minmax(0, 1fr); }
+.template-card__identity { min-width: 0; min-height: 58px; }
 .catalog-card > .success-note { grid-column: 1 / -1; margin-top: 0; }
 .catalog-card h2 { font-size: 1.12rem; }
 .catalog-card > div > p:last-child { margin-top: 5px; color: var(--text-muted); }
-.catalog-meta { grid-column: 1 / -1; display: grid; grid-template-columns: repeat(2, 1fr); gap: 8px; margin: 5px 0 0; }
-.catalog-meta div { border-radius: var(--radius-sm); padding: 8px 10px; background: var(--surface-muted); }
+.catalog-meta { min-width: 0; max-width: 100%; grid-column: 1 / -1; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; margin: 5px 0 0; }
+.catalog-meta div { min-width: 0; overflow: hidden; border-radius: var(--radius-sm); padding: 8px 10px; background: var(--surface-muted); }
 .catalog-meta dt { color: var(--text-muted); font-size: 11px; }
 .catalog-meta dd { margin: 2px 0 0; font-weight: 700; }
+.template-card__actions { min-width: 0; max-width: 100%; }
+.template-card__actions .button { min-width: 0; max-width: 100%; }
+.form-error--summary ul { display: grid; gap: 4px; margin: 8px 0; padding-left: 20px; }
+.form-error--summary li { overflow-wrap: anywhere; }
+.form-error--summary small { display: block; margin-top: 7px; }
 .automatic-sync-note { display: flex; align-items: flex-start; gap: 9px; margin: -9px 0 18px; border: 1px solid var(--border); border-radius: var(--radius-sm); padding: 11px 13px; color: var(--text-muted); background: var(--surface-muted); font-size: 12px; }
 .automatic-sync-note svg { flex: 0 0 auto; color: var(--blue-600); }
 .automatic-sync-note span { display: flex; flex-wrap: wrap; gap: 0 4px; }
@@ -541,7 +546,9 @@ textarea { resize: vertical; }
 .setting-field { display: grid; gap: 6px; align-content: start; }
 .setting-field > label { display: grid; gap: 6px; }
 .setting-copy-control { margin-top: 2px; padding-top: 7px; border-top: 1px dashed var(--border); color: var(--text-muted); font-size: 0.76rem; }
+.setting-copy-control > span { color: var(--blue-700); font-weight: 750; }
 .setting-copy-control select { padding-block: 8px; font-size: 0.82rem; }
+.setting-copy-control select:disabled { cursor: not-allowed; opacity: .72; }
 .setting-field--customized { margin: -9px; border: 2px solid var(--blue-600); border-radius: var(--radius-sm); padding: 8px; background: var(--blue-50); box-shadow: inset 4px 0 0 var(--blue-600), 0 0 0 2px color-mix(in srgb, var(--blue-600) 12%, transparent); }
 .setting-field--invalid { margin: -9px; border: 2px solid var(--danger); border-radius: var(--radius-sm); padding: 8px; background: var(--danger-bg); box-shadow: inset 4px 0 0 var(--danger), 0 0 0 3px color-mix(in srgb, var(--danger) 18%, transparent); }
 .setting-field--invalid input,

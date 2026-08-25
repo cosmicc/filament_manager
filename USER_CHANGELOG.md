@@ -1,5 +1,22 @@
 # User Changelog
 
+## 0.5.2 - 08.25.2026
+
+### Added
+
+- Save errors now list every rejected field and reason; unexpected failures include a safe reference that matches Diagnostics and application logs.
+- Every blank template value now visibly offers **Copy from another template** and explains when no other active template has that value.
+
+### Changed
+
+- Template cards now keep long printer, nozzle, and settings text inside their card boundaries.
+
+### Fixed
+
+- Fixed valid ironing flow, speed, and line-spacing values failing a template save when a Cura workstation was paired.
+- Fixed template and filament print-settings validation falling back to an unhelpful general rejection.
+- Fixed blank template values hiding the copy option instead of showing the available source templates.
+
 ## 0.5.1 - 08.25.2026
 
 ### Added

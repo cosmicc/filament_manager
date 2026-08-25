@@ -10,10 +10,30 @@ export class ApiClientError extends Error {
     public code: string,
     message: string,
     public validationErrors: ApiValidationError[] = [],
+    public correlationId?: string,
   ) {
     super(message)
     this.name = 'ApiClientError'
   }
+}
+
+export function actionableApiError(error: unknown): string {
+  if (!(error instanceof ApiClientError)) {
+    return error instanceof Error ? error.message : 'The request could not be completed.'
+  }
+  const generic = error.message === 'The request could not be completed'
+    || error.message === 'Request validation failed'
+  const explanation = generic
+    ? error.status === 0
+      ? 'The application service could not be reached.'
+      : error.status >= 500
+        ? 'The server could not finish this request. Use the reference below to find the matching Diagnostics entry.'
+        : 'The server rejected this request.'
+    : error.message
+  const details = [error.code, error.status ? `HTTP ${error.status}` : null, error.correlationId ? `reference ${error.correlationId}` : null]
+    .filter(Boolean)
+    .join(' · ')
+  return details ? `${explanation} ${details}.` : explanation
 }
 
 export function validationMessagesFor(
@@ -97,6 +117,7 @@ export async function apiFetch<T>(path: string, init: RequestInit = {}): Promise
       body?.code ?? 'request_failed',
       body?.message ?? 'The request could not be completed',
       validationErrors,
+      typeof body?.correlation_id === 'string' ? body.correlation_id : correlationId ?? undefined,
     )
   }
   return body as T

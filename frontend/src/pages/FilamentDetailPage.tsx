@@ -1,14 +1,15 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { ArrowLeft, Copy, Download, GitCompareArrows, Pencil, Plus, Save, Trash2 } from 'lucide-react'
 import { useEffect, useMemo, useState } from 'react'
-import { apiFetch, validationMessagesFor } from '../api/client'
+import { actionableApiError, apiFetch, validationMessagesFor } from '../api/client'
 import type { BuildPlate, CuraSettingCatalogItem, Filament, FilamentColor, MaterialProfile, MaterialTemplate, Printer, Vendor } from '../api/types'
 import { EditorSection } from '../components/EditorSection'
+import { FormSubmissionError } from '../components/FormSubmissionError'
 import { EmptyState } from '../components/EmptyState'
 import { FilamentColorEditor, type FilamentColorMode } from '../components/FilamentColorEditor'
 import { LoadingState } from '../components/LoadingState'
 import { MaterialComparisonModal } from '../components/MaterialComparisonModal'
-import { MaterialSettingsEditor, settingsFromForm } from '../components/MaterialSettingsEditor'
+import { materialSettingLabel, MaterialSettingsEditor, settingsFromForm } from '../components/MaterialSettingsEditor'
 import { Modal } from '../components/Modal'
 import { PageHeader } from '../components/PageHeader'
 import { useAuth } from '../context/AuthContext'
@@ -104,7 +105,7 @@ export default function FilamentDetailPage() {
         client.invalidateQueries({ queryKey: ['spools'] }),
       ])
     },
-    onError: (error: Error) => setMessage(error.message),
+    onError: (error: Error) => setMessage(actionableApiError(error)),
   })
   const remove = useMutation({
     mutationFn: () => apiFetch<{ disposition: string }>(`/filaments/${filamentId}`, { method: 'DELETE' }),
@@ -116,7 +117,7 @@ export default function FilamentDetailPage() {
       ])
       navigate('/filaments')
     },
-    onError: (error: Error) => setMessage(error.message),
+    onError: (error: Error) => setMessage(actionableApiError(error)),
   })
   const saveProfile = useMutation({
     mutationFn: ({ profile, form }: { profile: MaterialProfile; form: HTMLFormElement }) => apiFetch<MaterialProfile>(`/profiles/${profile.id}/settings`, {
@@ -144,7 +145,6 @@ export default function FilamentDetailPage() {
     onError: (error: Error) => setMessage(error.message),
   })
   const profileValidationErrors = validationMessagesFor(saveProfile.error, 'settings')
-  const hasProfileValidationErrors = Object.keys(profileValidationErrors).length > 0
 
   if (filament.isLoading) return <LoadingState label="Loading filament details" />
   if (!filament.data) return <div><Link className="button" to="/filaments"><ArrowLeft size={16} /> Filaments</Link><p className="form-error">{filament.error?.message ?? 'Filament not found'}</p></div>
@@ -186,7 +186,7 @@ export default function FilamentDetailPage() {
     {editingProduct ? <Modal title="Edit filament product" description="Update the canonical product identity and physical specifications. Print-setting templates are managed per printer/nozzle card." onClose={closeProductEditor} size="wide" footer={<><button className="button" type="button" onClick={closeProductEditor}>Cancel</button><button className="button button--primary" form="edit-filament-product" disabled={update.isPending}><Save size={17} />{update.isPending ? 'Saving…' : 'Save filament'}</button></>}>
       <form id="edit-filament-product" className="editor-form" onSubmit={(event) => { event.preventDefault(); setMessage(''); update.mutate(event.currentTarget) }}><EditorSection title="Product identity" description="Names and the shared screen color sample used throughout the application."><div className="form-grid"><label>Vendor<select name="vendor_id" defaultValue={item.vendor_id ?? ''} autoFocus><option value="">Unspecified vendor</option>{vendors.data?.map((vendor) => <option key={vendor.id} value={vendor.id}>{vendor.name}</option>)}</select></label><label>Display name<input name="product_name" defaultValue={item.product_name ?? ''} maxLength={160} /></label><label>Material type<input name="material_type" value={materialType} onChange={(event) => setMaterialType(event.target.value)} maxLength={48} required /></label><FilamentColorEditor name={colorName} mode={colorMode} colorHexes={colorHexes} rememberedColors={colors.data ?? []} onNameChange={setColorName} onModeChange={setColorMode} onColorsChange={setColorHexes} disabled={!item.color_editable} />{!item.color_editable ? <p className="security-note form-grid__wide">Color is locked because this filament already has recorded spool use or print history.</p> : null}</div></EditorSection><EditorSection title="Physical specifications" description="Dimensions, density, packaged mass, and material modifiers."><div className="form-grid"><label>Filament diameter (mm)<input name="diameter_mm" type="number" min="0.1" step="0.01" defaultValue={inputNumber(item.diameter_mm, 2)} required /></label><label>Diameter tolerance (mm)<input name="tolerance_mm" type="number" min="0" step="0.01" defaultValue={inputNumber(item.tolerance_mm, 2)} /></label><label>Density (g/cm³)<input name="density_g_cm3" type="number" min="0.01" step="0.01" defaultValue={inputNumber(item.density_g_cm3, 2)} required /></label><label>Nominal net mass (g)<input name="nominal_net_mass_g" type="number" min="1" step="1" defaultValue={inputNumber(item.nominal_net_mass_g, 0)} required /></label><label>Filler<input name="filler" defaultValue={item.filler ?? ''} maxLength={96} /></label><label>Finish<input name="finish" defaultValue={item.finish ?? ''} maxLength={96} /></label><label className="form-grid__wide">Notes<textarea name="notes" defaultValue={item.notes ?? ''} maxLength={4000} rows={3} /></label></div></EditorSection>{update.error ? <p className="form-error" role="alert">{update.error.message}</p> : null}</form>
     </Modal> : null}
-    {editingProfile ? <Modal title={`Edit ${printerName(editingProfile.printer_id)} · ${compactNumber(editingProfile.nozzle_diameter_mm, 1)} mm settings`} description={`Edit values inherited from ${editingProfile.base_template_name ?? 'the linked template'}. Only explicit differences are stored as filament customizations.`} onClose={() => setEditingProfileId(null)} size="wide" footer={<><button className="button" type="button" onClick={() => setEditingProfileId(null)}>Cancel</button><button className="button button--primary" form="edit-material-profile" disabled={saveProfile.isPending}><Save size={16} />{saveProfile.isPending ? 'Saving…' : 'Save settings'}</button></>}><form id="edit-material-profile" className="editor-form" onSubmit={(event) => { event.preventDefault(); saveProfile.mutate({ profile: editingProfile, form: event.currentTarget }) }} key={editingProfile.id}><MaterialSettingsEditor settings={editingProfile} baseSettings={editingProfile.base_template_settings} overrideKeys={editingProfile.override_keys} validationErrors={profileValidationErrors} catalog={catalog.data ?? []} plates={plates.data ?? []} scope="profile" />{saveProfile.error ? <p className="form-error" role="alert">{hasProfileValidationErrors ? 'Correct the highlighted values and save again.' : saveProfile.error.message}</p> : null}</form></Modal> : null}
+    {editingProfile ? <Modal title={`Edit ${printerName(editingProfile.printer_id)} · ${compactNumber(editingProfile.nozzle_diameter_mm, 1)} mm settings`} description={`Edit values inherited from ${editingProfile.base_template_name ?? 'the linked template'}. Only explicit differences are stored as filament customizations.`} onClose={() => setEditingProfileId(null)} size="wide" footer={<><button className="button" type="button" onClick={() => setEditingProfileId(null)}>Cancel</button><button className="button button--primary" form="edit-material-profile" disabled={saveProfile.isPending}><Save size={16} />{saveProfile.isPending ? 'Saving…' : 'Save settings'}</button></>}><form id="edit-material-profile" className="editor-form" onSubmit={(event) => { event.preventDefault(); saveProfile.mutate({ profile: editingProfile, form: event.currentTarget }) }} key={editingProfile.id}><MaterialSettingsEditor settings={editingProfile} baseSettings={editingProfile.base_template_settings} overrideKeys={editingProfile.override_keys} validationErrors={profileValidationErrors} catalog={catalog.data ?? []} plates={plates.data ?? []} scope="profile" /><FormSubmissionError error={saveProfile.error} fieldLabel={(field) => materialSettingLabel(field, catalog.data ?? [])} /></form></Modal> : null}
     {addingSettings ? <Modal title="Add print settings" description="Choose one active material template for a printer/nozzle scope this filament does not already have." onClose={() => setAddingSettings(false)} footer={<><button className="button" type="button" onClick={() => setAddingSettings(false)}>Cancel</button><button className="button button--primary" disabled={addProfile.isPending || !addTemplateRevisionId} onClick={() => addProfile.mutate(addTemplateRevisionId)}><Plus size={16} />{addProfile.isPending ? 'Adding…' : 'Add settings'}</button></>}><EditorSection title="Compatible template" description="The filament density is applied automatically while all other values begin from this template."><label>Printer and nozzle<select value={addTemplateRevisionId} onChange={(event) => setAddTemplateRevisionId(event.target.value)} autoFocus>{availableTemplateOptions.map(({ template, revision }) => <option key={revision.id} value={revision.id}>{template.name} · {printerName(template.printer_id)} · {compactNumber(template.nozzle_diameter_mm, 1)} mm</option>)}</select></label></EditorSection>{addProfile.error ? <p className="form-error" role="alert">{addProfile.error.message}</p> : null}</Modal> : null}
     {comparisonProfileId ? <MaterialComparisonModal profiles={profiles.data ?? []} templates={templates.data ?? []} printers={printers.data ?? []} filaments={[item]} plates={plates.data ?? []} catalog={catalog.data ?? []} initialProfileId={comparisonProfileId} onClose={() => setComparisonProfileId(null)} /> : null}
   </div>

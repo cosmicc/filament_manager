@@ -61,6 +61,9 @@ def settings_from_template(snapshot: dict[str, object]) -> dict[str, object]:
         "cooling_max_percent",
         "support_overhang_angle_deg",
         "pressure_advance",
+        "ironing_flow_percent",
+        "ironing_speed_mm_s",
+        "ironing_line_spacing_mm",
     }
     values = dict(snapshot)
     values.setdefault("retraction_prime_speed_mm_s", values.get("retraction_speed_mm_s"))

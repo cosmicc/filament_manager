@@ -1,7 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { FileInput, GitCompareArrows, Library, Pencil, Plus } from 'lucide-react'
 import { type FormEvent, type InvalidEvent, useEffect, useRef, useState } from 'react'
-import { ApiClientError, apiFetch, validationMessagesFor } from '../api/client'
+import { apiFetch, validationMessagesFor } from '../api/client'
 import type {
   BuildPlate,
   CuraSettingCatalogItem,
@@ -13,9 +13,10 @@ import type {
 } from '../api/types'
 import { EditorSection } from '../components/EditorSection'
 import { EmptyState } from '../components/EmptyState'
+import { FormSubmissionError } from '../components/FormSubmissionError'
 import { LoadingState } from '../components/LoadingState'
 import { MaterialComparisonModal } from '../components/MaterialComparisonModal'
-import { canonicalMaterialFieldCount, MaterialSettingsEditor, settingsFromForm } from '../components/MaterialSettingsEditor'
+import { canonicalMaterialFieldCount, materialSettingLabel, MaterialSettingsEditor, settingsFromForm } from '../components/MaterialSettingsEditor'
 import { Modal } from '../components/Modal'
 import { PageHeader } from '../components/PageHeader'
 import { useAuth } from '../context/AuthContext'
@@ -96,11 +97,6 @@ export default function TemplatesPage() {
     </span>
   ) : null
   const hasValidationErrors = Object.keys(allValidationErrors).length > 0
-  const validationIssueCount = Object.values(allValidationErrors).reduce(
-    (count, errors) => count + errors.length,
-    0,
-  )
-  const hasVersionConflict = save.error instanceof ApiClientError && save.error.code === 'version_conflict'
   const loading = templates.isLoading || printers.isLoading || nozzles.isLoading || plates.isLoading || catalog.isLoading
 
   useEffect(() => {
@@ -199,7 +195,11 @@ export default function TemplatesPage() {
           }))}
           scope="template"
         />
-        {save.error ? <p className="form-error" role="alert">{hasValidationErrors ? `Correct the highlighted ${validationIssueCount === 1 ? 'value' : 'values'} and save again.` : hasVersionConflict ? 'This template changed after the editor opened. Close and reopen it to load the current values before saving.' : save.error.message}</p> : null}
+        <FormSubmissionError
+          error={save.error}
+          fieldLabel={(field) => materialSettingLabel(field, catalog.data ?? [])}
+          conflictMessage="This template changed after the editor opened. Close and reopen it to load the current values before saving."
+        />
       </form>
     </Modal> : null}
   </div>
