@@ -682,6 +682,7 @@ export interface PrintJob {
       profile_value: string
     }>
     warnings?: string[]
+    printer_gate?: 'active' | 'not_active'
     file_metadata?: Record<string, string | number>
   }
   slicer: string | null

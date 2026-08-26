@@ -2,9 +2,11 @@
 
 ## Recommended policy
 
-Use **Warn and continue** under **Settings → G-code inspection policy** while testing 0.5.5. Filament Manager still records every mismatch in Print History. Change the setting to **Block mismatches** after the Cura material library, printer macros, and first exact-state records have been verified.
+Use **Warn and continue** under **Settings → G-code inspection policy** while testing 0.5.6. Filament Manager still records every mismatch in Print History. Change the setting to **Block mismatches** after the Cura material library, printer macros, and first exact-state records have been verified.
 
 Blocking pauses virtual-SD execution in Fluidd until Filament Manager can resolve the managed material profile, safely inspect the G-code, and confirm that supported values match. Missing inspection data and an unresolved exact profile also block. The setting is synchronized into Klipper automatically.
+
+`Blocked` in Print History means the inspection found a condition that the blocking policy would reject. The printer pauses only when Cura entered the required `FILAMENT_MANAGER_START_PRINT ... MATERIAL_GUID={material_guid}` macro gate. A print started through another machine start sequence can still be inspected and recorded, but Filament Manager cannot retroactively pause it; Print History identifies this case explicitly.
 
 ## Print sequence
 

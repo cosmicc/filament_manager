@@ -1,6 +1,7 @@
 import { type FormEvent, useState } from 'react'
 import { ApiClientError } from '../api/client'
 import { useAuth } from '../context/AuthContext'
+import { APP_VERSION } from '../lib/version'
 
 export default function LoginPage() {
   const { login } = useAuth()
@@ -40,6 +41,7 @@ export default function LoginPage() {
           {error && <p className="form-error" role="alert">{error}</p>}
           <button className="button button--primary button--full" disabled={submitting}>{submitting ? 'Signing in…' : 'Sign in'}</button>
         </form>
+        <p className="login-card__version">Filament Manager v{APP_VERSION}</p>
       </section>
       <aside className="login-art" aria-hidden="true">
         <img src="/assets/login-delta-workshop.webp" alt="" />

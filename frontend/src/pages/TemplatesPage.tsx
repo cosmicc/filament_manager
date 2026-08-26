@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { Download, FileUp, GitCompareArrows, Library, Pencil, Plus } from 'lucide-react'
+import { AlertTriangle, Download, FileUp, GitCompareArrows, Library, Pencil, Plus, Trash2 } from 'lucide-react'
 import { type FormEvent, type InvalidEvent, useEffect, useRef, useState } from 'react'
 import { apiFetch, validationMessagesFor } from '../api/client'
 import type {
@@ -72,9 +72,11 @@ export default function TemplatesPage() {
   const [importNozzleId, setImportNozzleId] = useState('')
   const [importMaterialType, setImportMaterialType] = useState('')
   const [confirmOverwrite, setConfirmOverwrite] = useState(false)
+  const [deleteTarget, setDeleteTarget] = useState<MaterialTemplate | null>(null)
+  const [deleteConfirmation, setDeleteConfirmation] = useState('')
   const editorFormRef = useRef<HTMLFormElement>(null)
   const nativeInvalidPending = useRef(false)
-  const templates = useQuery({ queryKey: ['material-templates'], queryFn: () => apiFetch<MaterialTemplate[]>('/profiles/templates?include_inactive=true') })
+  const templates = useQuery({ queryKey: ['material-templates'], queryFn: () => apiFetch<MaterialTemplate[]>('/profiles/templates') })
   const profiles = useQuery({ queryKey: ['profiles'], queryFn: () => apiFetch<MaterialProfile[]>('/profiles') })
   const filaments = useQuery({ queryKey: ['filaments'], queryFn: () => apiFetch<Filament[]>('/filaments') })
   const printers = useQuery({ queryKey: ['printers'], queryFn: () => apiFetch<Printer[]>('/printers') })
@@ -87,7 +89,16 @@ export default function TemplatesPage() {
       const settings = settingsFromForm(form, catalog.data ?? [])
       if (template) return apiFetch(`/profiles/templates/${template.id}/settings`, {
         method: 'PUT',
-        body: JSON.stringify({ expected_template_version: template.record_version, settings }),
+        body: JSON.stringify({
+          expected_template_version: template.record_version,
+          material_type: String(data.get('material_type')).trim(),
+          description: nullable(data.get('description')),
+          printer_id: String(data.get('printer_id')),
+          nozzle_id: String(data.get('nozzle_id')),
+          nozzle_diameter_mm: nozzles.data?.find((nozzle) => nozzle.id === data.get('nozzle_id'))?.diameter_mm,
+          filament_diameter_mm: String(data.get('filament_diameter_mm')),
+          settings,
+        }),
       })
       return apiFetch('/profiles/templates', {
         method: 'POST',
@@ -108,6 +119,21 @@ export default function TemplatesPage() {
       setShowEditor(false)
       setEditSource(null)
       await queryClient.invalidateQueries({ queryKey: ['material-templates'] })
+    },
+  })
+  const deleteTemplate = useMutation({
+    mutationFn: (template: MaterialTemplate) => apiFetch<MaterialTemplate>(`/profiles/templates/${template.id}`, {
+      method: 'DELETE',
+      body: JSON.stringify({ expected_version: template.record_version, confirmation_name: deleteConfirmation }),
+    }),
+    onSuccess: async (template) => {
+      setDeleteTarget(null)
+      setDeleteConfirmation('')
+      setMessage(`${template.name} was deleted from active templates and Cura. Its immutable history and existing filament snapshots were retained.`)
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ['material-templates'] }),
+        queryClient.invalidateQueries({ queryKey: ['profiles'] }),
+      ])
     },
   })
   const importTemplate = useMutation({
@@ -153,14 +179,16 @@ export default function TemplatesPage() {
 
   useEffect(() => {
     if (newPrinterId || !printers.data?.length) return
-    setNewPrinterId(printers.data[0].id)
+    const installed = printers.data.find((printer) => printer.active_nozzle_id)
+    setNewPrinterId(installed?.id ?? printers.data[0].id)
   }, [newPrinterId, printers.data])
 
   useEffect(() => {
     const compatible = (nozzles.data ?? []).filter((nozzle) => nozzle.printer_id === newPrinterId)
     if (compatible.some((nozzle) => nozzle.id === newNozzleId)) return
-    setNewNozzleId(compatible[0]?.id ?? '')
-  }, [newNozzleId, newPrinterId, nozzles.data])
+    const installedNozzleId = printers.data?.find((printer) => printer.id === newPrinterId)?.active_nozzle_id
+    setNewNozzleId(compatible.find((nozzle) => nozzle.id === installedNozzleId)?.id ?? compatible[0]?.id ?? '')
+  }, [newNozzleId, newPrinterId, nozzles.data, printers.data])
 
   useEffect(() => {
     if (!importPrinterId && printers.data?.length) setImportPrinterId(printers.data[0].id)
@@ -189,6 +217,17 @@ export default function TemplatesPage() {
     setEditSource(null)
     save.reset()
   }
+  const openNewEditor = () => {
+    const defaultPrinter = printers.data?.find((printer) => printer.active_nozzle_id) ?? printers.data?.[0]
+    const defaultNozzle = nozzles.data?.find((nozzle) => nozzle.id === defaultPrinter?.active_nozzle_id)
+      ?? nozzles.data?.find((nozzle) => nozzle.printer_id === defaultPrinter?.id)
+    save.reset()
+    setEditSource(null)
+    setNewPrinterId(defaultPrinter?.id ?? '')
+    setNewNozzleId(defaultNozzle?.id ?? '')
+    setShowEditor(true)
+    setMessage('')
+  }
   const openEditor = async (template: MaterialTemplate) => {
     setMessage('')
     save.reset()
@@ -201,6 +240,8 @@ export default function TemplatesPage() {
       return
     }
     setEditSource(current)
+    setNewPrinterId(current.printer_id)
+    setNewNozzleId(current.nozzle_id)
     setShowEditor(true)
   }
   const submit = (event: FormEvent<HTMLFormElement>) => {
@@ -240,14 +281,14 @@ export default function TemplatesPage() {
   }
 
   return <div>
-    <PageHeader eyebrow="Reusable inherited bases" title="Material templates" description="Templates synchronize to Cura under the Template brand. A direct template save immediately updates linked filament profiles while preserving their explicit customizations." actions={user && user.role !== 'viewer' ? <><button className="button" onClick={() => { importTemplate.reset(); setImportFileError(''); setShowImport(true) }}><FileUp size={17} /> Import template</button><button className="button button--primary" onClick={() => { save.reset(); setEditSource(null); setShowEditor(true); setMessage('') }}><Plus size={17} /> Add template</button></> : undefined} />
+    <PageHeader eyebrow="Reusable inherited bases" title="Material templates" description="Templates synchronize to Cura under the Template brand. A direct template save immediately updates linked filament profiles while preserving their explicit customizations." actions={user && user.role !== 'viewer' ? <><button className="button" onClick={() => { importTemplate.reset(); setImportFileError(''); setShowImport(true) }}><FileUp size={17} /> Import template</button><button className="button button--primary" onClick={openNewEditor}><Plus size={17} /> Add template</button></> : undefined} />
     {message && <div className="deployment-note" role="status">{message}</div>}
     <section className="toolbar"><CollectionViewSelector label="Templates" value={view} onChange={setView} /><span className="toolbar__summary">{templates.data?.length ?? 0} templates</span></section>
-    {loading ? <LoadingState /> : !templates.data?.length ? <EmptyState icon={Library} title="No material templates" description="Add Template PLA, Template PETG, Template ASA, and the other material bases you use." /> : view === 'list' ? <div className="table-card collection-table"><table><thead><tr><th>Template</th><th>Printer / nozzle</th><th>Temperatures</th><th>Material flow</th><th>Actions</th></tr></thead><tbody>{templates.data.map((template) => { const latest = template.revisions[0]; const nozzle = nozzles.data?.find((item) => item.id === template.nozzle_id); const printer = printers.data?.find((item) => item.id === template.printer_id); return <tr key={template.id}><td><strong>{template.name}</strong><small className="table-subtext">{template.material_type}</small></td><td>{printer?.name ?? 'Unknown printer'}<small className="table-subtext">{nozzle ? `${nozzle.nozzle_code} · ${compactNumber(nozzle.diameter_mm, 1)} mm` : 'Unknown nozzle'}</small></td><td>{compactNumber(latest.settings.extruder_temp_c, 0)}° / {compactNumber(latest.settings.bed_temp_c, 0)}°</td><td>{compactNumber(latest.settings.flow_percent, 0)}%</td><td><div className="table-actions">{profiles.data?.length ? <button className="icon-button" onClick={() => setComparisonTargetKey(`template:${latest.id}`)} title="Compare settings" aria-label={`Compare ${template.name}`}><GitCompareArrows size={17} /></button> : null}<a className="icon-button" href={`/api/v1/profiles/templates/${template.id}/exports/json`} title="Export template JSON" aria-label={`Export ${template.name}`}><Download size={17} /></a>{user?.role !== 'viewer' ? <button className="icon-button" disabled={openingTemplateId === template.id} onClick={() => { void openEditor(template) }} title="Edit template" aria-label={`Edit ${template.name}`}><Pencil size={17} /></button> : null}</div></td></tr>})}</tbody></table></div> : <section className={`collection-grid collection-grid--${view}`}>{templates.data.map((template) => {
+    {loading ? <LoadingState /> : !templates.data?.length ? <EmptyState icon={Library} title="No material templates" description="Add Template PLA, Template PETG, Template ASA, and the other material bases you use." /> : view === 'list' ? <div className="table-card collection-table"><table><thead><tr><th>Template</th><th>Printer / nozzle</th><th>Temperatures</th><th>Material flow</th><th>Actions</th></tr></thead><tbody>{templates.data.map((template) => { const latest = template.revisions[0]; const nozzle = nozzles.data?.find((item) => item.id === template.nozzle_id); const printer = printers.data?.find((item) => item.id === template.printer_id); return <tr key={template.id}><td><strong>{template.name}</strong><small className="table-subtext">{template.material_type}</small></td><td>{printer?.name ?? 'Unknown printer'}<small className="table-subtext">{nozzle ? `${nozzle.nozzle_code} · ${compactNumber(nozzle.diameter_mm, 1)} mm` : 'Unknown nozzle'}</small></td><td>{compactNumber(latest.settings.extruder_temp_c, 0)}° / {compactNumber(latest.settings.bed_temp_c, 0)}°</td><td>{compactNumber(latest.settings.flow_percent, 0)}%</td><td><div className="table-actions">{profiles.data?.length ? <button className="icon-button" onClick={() => setComparisonTargetKey(`template:${latest.id}`)} title="Compare settings" aria-label={`Compare ${template.name}`}><GitCompareArrows size={17} /></button> : null}<a className="icon-button" href={`/api/v1/profiles/templates/${template.id}/exports/json`} title="Export template JSON" aria-label={`Export ${template.name}`}><Download size={17} /></a>{user?.role !== 'viewer' ? <><button className="icon-button" disabled={openingTemplateId === template.id} onClick={() => { void openEditor(template) }} title="Edit template" aria-label={`Edit ${template.name}`}><Pencil size={17} /></button><button className="icon-button" onClick={() => { deleteTemplate.reset(); setDeleteConfirmation(''); setDeleteTarget(template) }} title="Delete template" aria-label={`Delete ${template.name}`}><Trash2 size={17} /></button></> : null}</div></td></tr>})}</tbody></table></div> : <section className={`collection-grid collection-grid--${view}`}>{templates.data.map((template) => {
       const latest = template.revisions[0]
       const nozzle = nozzles.data?.find((item) => item.id === template.nozzle_id)
       const printer = printers.data?.find((item) => item.id === template.printer_id)
-      return <article className={`catalog-card catalog-card--template${view === 'detailed' ? ' collection-card--detailed' : ''}`} key={template.id}><div className="template-card__identity"><p className="eyebrow">{template.material_type} · {nozzle?.nozzle_code ?? 'Unknown nozzle'}</p><h2>{template.name}</h2><p>{printer?.name ?? 'Unknown printer'}</p></div><dl className="catalog-meta"><div><dt>Physical nozzle</dt><dd>{nozzle ? `${nozzle.nozzle_code} · ${compactNumber(nozzle.diameter_mm, 1)} mm ${nozzle.material}` : `${compactNumber(template.nozzle_diameter_mm, 1)} mm · unavailable`}</dd></div><div><dt>Linked behavior</dt><dd>Automatic inheritance</dd></div><div><dt>Temperatures</dt><dd>{compactNumber(latest.settings.extruder_temp_c, 0)}° / {compactNumber(latest.settings.bed_temp_c, 0)}°</dd></div><div><dt>Material flow</dt><dd>{compactNumber(latest.settings.flow_percent, 0)}%</dd></div>{view === 'detailed' ? <><div><dt>Filament diameter</dt><dd>{compactNumber(template.filament_diameter_mm, 2)} mm</dd></div><div><dt>Status</dt><dd>{template.active ? 'Active' : 'Inactive'}</dd></div></> : null}</dl><div className="template-card__actions">{profiles.data?.length ? <button className="button" onClick={() => setComparisonTargetKey(`template:${latest.id}`)}><GitCompareArrows size={16} /> Compare settings</button> : null}<a className="button" href={`/api/v1/profiles/templates/${template.id}/exports/json`} aria-label={`Export ${template.name}`}><Download size={16} /> Export JSON</a>{user?.role !== 'viewer' && <button className="button" disabled={openingTemplateId === template.id} onClick={() => { void openEditor(template) }}><Pencil size={16} /> {openingTemplateId === template.id ? 'Refreshing…' : 'Edit template'}</button>}</div></article>
+      return <article className={`catalog-card catalog-card--template${view === 'detailed' ? ' collection-card--detailed' : ''}`} key={template.id}><div className="template-card__identity"><p className="eyebrow">{template.material_type} · {nozzle?.nozzle_code ?? 'Unknown nozzle'}</p><h2>{template.name}</h2><p>{printer?.name ?? 'Unknown printer'}</p></div><dl className="catalog-meta"><div><dt>Physical nozzle</dt><dd>{nozzle ? `${nozzle.nozzle_code} · ${compactNumber(nozzle.diameter_mm, 1)} mm ${nozzle.material}` : `${compactNumber(template.nozzle_diameter_mm, 1)} mm · unavailable`}</dd></div><div><dt>Linked behavior</dt><dd>Automatic inheritance</dd></div><div><dt>Temperatures</dt><dd>{compactNumber(latest.settings.extruder_temp_c, 0)}° / {compactNumber(latest.settings.bed_temp_c, 0)}°</dd></div><div><dt>Material flow</dt><dd>{compactNumber(latest.settings.flow_percent, 0)}%</dd></div>{view === 'detailed' ? <><div><dt>Filament diameter</dt><dd>{compactNumber(template.filament_diameter_mm, 2)} mm</dd></div><div><dt>Status</dt><dd>{template.active ? 'Active' : 'Inactive'}</dd></div></> : null}</dl><div className="template-card__actions">{profiles.data?.length ? <button className="button" onClick={() => setComparisonTargetKey(`template:${latest.id}`)}><GitCompareArrows size={16} /> Compare settings</button> : null}<a className="button" href={`/api/v1/profiles/templates/${template.id}/exports/json`} aria-label={`Export ${template.name}`}><Download size={16} /> Export JSON</a>{user?.role !== 'viewer' ? <><button className="button" disabled={openingTemplateId === template.id} onClick={() => { void openEditor(template) }}><Pencil size={16} /> {openingTemplateId === template.id ? 'Refreshing…' : 'Edit template'}</button><button className="button button--danger" onClick={() => { deleteTemplate.reset(); setDeleteConfirmation(''); setDeleteTarget(template) }}><Trash2 size={16} /> Delete</button></> : null}</div></article>
     })}</section>}
     {comparisonTargetKey && profiles.data ? <MaterialComparisonModal
       profiles={profiles.data}
@@ -271,15 +312,15 @@ export default function TemplatesPage() {
     </Modal> : null}
     {showEditor ? <Modal title={editSource ? `Edit ${editSource.name}` : 'Add material template'} description={editSource ? 'Save current settings directly. Linked profiles inherit the change immediately unless a value is customized.' : 'Group the template identity and all Cura settings in one guided editor.'} onClose={closeEditor} size="wide" footer={<><button type="button" className="button" onClick={closeEditor}>Cancel</button><button type="submit" className="button button--primary" form="edit-material-template" disabled={save.isPending}>{editSource ? <Pencil size={17} /> : <Plus size={17} />}{save.isPending ? 'Saving…' : 'Save template'}</button></>}>
       <form ref={editorFormRef} id="edit-material-template" className="editor-form" onSubmit={submit} onInvalid={centerNativeInvalid} key={editSource?.revisions[0]?.id ?? 'new-template'}>
-        {!editSource ? <EditorSection title="Template identity" description="Scope the reusable starting point to a printer, nozzle, and filament diameter.">
+        <EditorSection title="Template identity" description="Scope the reusable starting point to a printer, physical nozzle, and filament diameter. Linked profiles move with a changed scope when no conflicting profile exists.">
           <div className="form-grid">
-            <label>Material type<input name="material_type" list="common-material-types" placeholder="PLA, PEBA, PP…" required autoFocus aria-invalid={identityError('material_type').length ? true : undefined} aria-describedby={identityError('material_type').length ? identityErrorId('material_type') : undefined} /><small className="field-help">Cura name: Template + material type; brand: Template.</small>{identityFieldError('material_type')}<datalist id="common-material-types">{['PLA', 'PLA+', 'PETG', 'ASA', 'ABS', 'TPU', 'PEBA', 'PP', 'PCTPE', 'Nylon 645'].map((material) => <option key={material} value={material} />)}</datalist></label>
+            <label>Material type<input name="material_type" list="common-material-types" placeholder="PLA, PEBA, PP…" defaultValue={editSource?.material_type ?? ''} required autoFocus aria-invalid={identityError('material_type').length ? true : undefined} aria-describedby={identityError('material_type').length ? identityErrorId('material_type') : undefined} /><small className="field-help">Cura name: Template + material type; brand: Template.</small>{identityFieldError('material_type')}<datalist id="common-material-types">{['PLA', 'PLA+', 'PETG', 'ASA', 'ABS', 'TPU', 'PEBA', 'PP', 'PCTPE', 'Nylon 645'].map((material) => <option key={material} value={material} />)}</datalist></label>
             <label>Printer<select name="printer_id" value={newPrinterId} onChange={(event) => setNewPrinterId(event.target.value)} required aria-invalid={identityError('printer_id').length ? true : undefined} aria-describedby={identityError('printer_id').length ? identityErrorId('printer_id') : undefined}>{printers.data?.map((printer) => <option key={printer.id} value={printer.id}>{printer.name}</option>)}</select>{identityFieldError('printer_id')}</label>
             <label>Physical nozzle<select name="nozzle_id" value={newNozzleId} onChange={(event) => setNewNozzleId(event.target.value)} required aria-invalid={identityError('nozzle_id').length ? true : undefined} aria-describedby={identityError('nozzle_id').length ? identityErrorId('nozzle_id') : undefined}><option value="" disabled>No nozzle available</option>{nozzles.data?.filter((nozzle) => nozzle.printer_id === newPrinterId).map((nozzle) => <option key={nozzle.id} value={nozzle.id}>{nozzle.nozzle_code} · {compactNumber(nozzle.diameter_mm, 1)} mm · {nozzle.material}</option>)}</select>{identityFieldError('nozzle_id')}</label>
-            <label>Filament diameter<input name="filament_diameter_mm" type="number" min="0.1" step="0.01" defaultValue="1.75" required aria-invalid={identityError('filament_diameter_mm').length ? true : undefined} aria-describedby={identityError('filament_diameter_mm').length ? identityErrorId('filament_diameter_mm') : undefined} />{identityFieldError('filament_diameter_mm')}</label>
-            <label className="form-grid__wide">Description<textarea name="description" rows={2} placeholder="Purpose, behavior, and calibration notes" aria-invalid={identityError('description').length ? true : undefined} aria-describedby={identityError('description').length ? identityErrorId('description') : undefined} />{identityFieldError('description')}</label>
+            <label>Filament diameter<input name="filament_diameter_mm" type="number" min="0.1" step="0.01" defaultValue={editSource?.filament_diameter_mm ?? '1.75'} required aria-invalid={identityError('filament_diameter_mm').length ? true : undefined} aria-describedby={identityError('filament_diameter_mm').length ? identityErrorId('filament_diameter_mm') : undefined} />{identityFieldError('filament_diameter_mm')}</label>
+            <label className="form-grid__wide">Description<textarea name="description" rows={2} defaultValue={editSource?.description ?? ''} placeholder="Purpose, behavior, and calibration notes" aria-invalid={identityError('description').length ? true : undefined} aria-describedby={identityError('description').length ? identityErrorId('description') : undefined} />{identityFieldError('description')}</label>
           </div>
-        </EditorSection> : null}
+        </EditorSection>
         <MaterialSettingsEditor
           settings={sourceSettings}
           validationErrors={settingsValidationErrors}
@@ -298,6 +339,13 @@ export default function TemplatesPage() {
           conflictMessage="This template changed after the editor opened. Close and reopen it to load the current values before saving."
         />
       </form>
+    </Modal> : null}
+    {deleteTarget ? <Modal title={`Delete ${deleteTarget.name}?`} description="This is a destructive catalog action. The template will be removed from active choices and from the managed Cura library." onClose={() => setDeleteTarget(null)} footer={<><button type="button" className="button" onClick={() => setDeleteTarget(null)}>Cancel</button><button type="button" className="button button--danger" disabled={deleteConfirmation !== deleteTarget.name || deleteTemplate.isPending} onClick={() => deleteTemplate.mutate(deleteTarget)}><Trash2 size={17} /> {deleteTemplate.isPending ? 'Deleting…' : 'Delete template'}</button></>}>
+      <div className="editor-form">
+        <p className="form-error"><AlertTriangle size={17} /> Existing filament and print-history snapshots are preserved for recovery and audit, but this template will no longer be editable or synchronized to Cura.</p>
+        <label>Type <strong>{deleteTarget.name}</strong> to confirm<input value={deleteConfirmation} onChange={(event) => setDeleteConfirmation(event.target.value)} autoComplete="off" autoFocus /></label>
+        {deleteTemplate.error ? <FormSubmissionError error={deleteTemplate.error} /> : null}
+      </div>
     </Modal> : null}
   </div>
 }

@@ -398,7 +398,7 @@ def test_apply_is_idempotent_and_rollback_restores_original(tmp_path: Path, monk
     assert first["status"] == "installed"
     manifest = json.loads((version / ".filament-manager" / "manifest.json").read_text())
     assert manifest["library_checksum"] == "a" * 64
-    assert manifest["renderer_revision"] == 10
+    assert manifest["renderer_revision"] == 11
     waiting_status = material_settings_sync_status(version)
     assert waiting_status["status"] == "waiting_for_cura"
     expected_keys = sorted(_payload()["managed_material_setting_keys"])
@@ -443,12 +443,60 @@ def test_apply_is_idempotent_and_rollback_restores_original(tmp_path: Path, monk
     )
     assert upgraded["status"] == "installed"
     upgraded_manifest = json.loads((version / ".filament-manager" / "manifest.json").read_text())
-    assert upgraded_manifest["renderer_revision"] == 10
+    assert upgraded_manifest["renderer_revision"] == 11
 
     assert rollback(deployment_id) == ["Cura 5.10"]
     assert (version / "definition_changes" / "flsun-v400_settings.inst.cfg").read_bytes() == original
     assert unmanaged_material.read_text(encoding="utf-8") == "legacy"
     assert not (version / ".filament-manager" / "manifest.json").exists()
+
+
+def test_apply_repairs_legacy_material_references_before_removing_old_file(
+    tmp_path: Path,
+    monkeypatch: object,
+) -> None:
+    """Immutable profile revisions must not leave Cura extruder stacks corrupt."""
+
+    version = _cura_fixture(tmp_path, monkeypatch)
+    payload = _payload()
+    entry = payload["materials"][0]
+    assert isinstance(entry, dict)
+    entry["legacy_source_ids"] = ["ddd45307-2f04-4f27-9b4c-b2126f0db753"]
+    installation = discover_installations()[0]
+    rendered = render_deployment(installation, payload)
+    old_container_id, new_container_id = next(iter(rendered.material_id_migrations.items()))
+    materials = version / "materials"
+    materials.mkdir()
+    old_material = materials / f"{old_container_id}.xml.fdm_material"
+    old_material.write_text("old managed material", encoding="utf-8")
+    extruders = version / "extruders"
+    extruders.mkdir()
+    extruder = extruders / "flsun_qq_s_extruder_0+%232.extruder.cfg"
+    extruder.write_text(
+        """[general]
+version = 4
+name = flsun_qq_s_extruder_0 #2
+
+[metadata]
+type = extruder_train
+
+[containers]
+0 = normal
+4 = """
+        + old_container_id
+        + "\n",
+        encoding="utf-8",
+    )
+
+    deployment_id = "146544fd-64e0-49cf-9514-34f70421f397"
+    result = apply_rendered(installation, deployment_id, "b" * 64, rendered)
+
+    assert result["material_references_repaired"] == 1
+    assert f"4 = {new_container_id}" in extruder.read_text(encoding="utf-8")
+    assert not old_material.exists()
+    assert rollback(deployment_id) == ["Cura 5.10"]
+    assert f"4 = {old_container_id}" in extruder.read_text(encoding="utf-8")
+    assert old_material.read_text(encoding="utf-8") == "old managed material"
 
 
 def test_apply_sanitizes_repairs_and_quarantines_user_quality_profiles(

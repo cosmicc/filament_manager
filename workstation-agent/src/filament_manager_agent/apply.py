@@ -1,5 +1,6 @@
 """Atomic Cura file installation, manifest tracking, backup, and rollback."""
 
+import configparser
 import hashlib
 import json
 import os
@@ -25,7 +26,8 @@ MATERIAL_SETTINGS_STATUS_PATH = (
     / "material-settings-status.json"
 )
 MATERIAL_SETTINGS_STATUS_SCHEMA_VERSION = 1
-DEPLOYMENT_RENDERER_REVISION = 10
+DEPLOYMENT_RENDERER_REVISION = 11
+MAX_EXTRUDER_CONFIG_BYTES = 256 * 1024
 
 
 def _sha256(data: bytes) -> str:
@@ -323,6 +325,71 @@ def _quarantine_profile(
     return f"{deployment_id}/{installation_key}/{PurePosixPath(relative).as_posix()}"
 
 
+def _material_reference_replacements(
+    root: Path,
+    migrations: dict[str, str],
+) -> dict[Path, bytes]:
+    """Plan exact managed material-ID repairs in bounded Cura extruder stacks."""
+
+    if not migrations:
+        return {}
+    replacements: dict[Path, bytes] = {}
+    extruders_root = root / "extruders"
+    if not extruders_root.is_dir():
+        return replacements
+    for path in sorted(extruders_root.glob("*.extruder.cfg")):
+        relative = Path("extruders") / path.name
+        safe_path = _safe_target(root, relative)
+        if not safe_path.is_file():
+            continue
+        if safe_path.stat().st_size > MAX_EXTRUDER_CONFIG_BYTES:
+            raise RuntimeError(f"Cura extruder configuration is too large: {relative}")
+        try:
+            original = safe_path.read_text(encoding="utf-8")
+        except (OSError, UnicodeError) as error:
+            raise RuntimeError(f"Cura extruder configuration cannot be read safely: {relative}") from error
+        if not any(old_id in original for old_id in migrations):
+            continue
+        parser = configparser.RawConfigParser(strict=True, interpolation=None)
+        try:
+            parser.read_string(original)
+        except configparser.Error as error:
+            raise RuntimeError(f"Cura extruder configuration is malformed: {relative}") from error
+        if not parser.has_section("containers"):
+            continue
+        lines = original.splitlines(keepends=True)
+        section = ""
+        changed = False
+        for index, line in enumerate(lines):
+            section_match = re.match(r"^\s*\[([^\]]+)\]\s*(?:\r?\n)?$", line)
+            if section_match:
+                section = section_match.group(1).strip().casefold()
+                continue
+            if section != "containers":
+                continue
+            value_match = re.match(r"^(\s*\d+\s*=\s*)([^\r\n]+?)(\s*)(\r?\n)?$", line)
+            if value_match is None:
+                continue
+            current_id = value_match.group(2).strip()
+            replacement = migrations.get(current_id)
+            if replacement is None:
+                continue
+            lines[index] = (
+                f"{value_match.group(1)}{replacement}{value_match.group(3)}{value_match.group(4) or ''}"
+            )
+            changed = True
+        if not changed:
+            continue
+        updated = "".join(lines)
+        verification = configparser.RawConfigParser(strict=True, interpolation=None)
+        try:
+            verification.read_string(updated)
+        except configparser.Error as error:
+            raise RuntimeError(f"Cura extruder configuration repair was invalid: {relative}") from error
+        replacements[relative] = updated.encode("utf-8")
+    return replacements
+
+
 def apply_rendered(
     installation: CuraInstallation,
     deployment_id: str,
@@ -333,7 +400,11 @@ def apply_rendered(
 
     root = installation.data_path.resolve(strict=True)
     deployment_id = _deployment_key(deployment_id)
-    if _already_current(root, profile_checksum):
+    material_reference_replacements = _material_reference_replacements(
+        root,
+        rendered.material_id_migrations,
+    )
+    if _already_current(root, profile_checksum) and not material_reference_replacements:
         return {
             "installation_id": installation.installation_id,
             "version": installation.version,
@@ -355,7 +426,7 @@ def apply_rendered(
         cleanup_targets.update(Path(value) for value in previous_files if Path(value) not in desired_targets)
     quality_targets = set(quality_cleanup.replacements) | set(quality_cleanup.quarantines)
     relative_targets = sorted(
-        desired_targets | cleanup_targets | quality_targets,
+        desired_targets | cleanup_targets | quality_targets | set(material_reference_replacements),
         key=lambda item: item.as_posix(),
     )
     for relative in relative_targets:
@@ -365,6 +436,8 @@ def apply_rendered(
         for relative, content in rendered.files.items():
             _atomic_write(_safe_target(root, relative), content)
         for relative, content in quality_cleanup.replacements.items():
+            _atomic_write(_safe_target(root, relative), content)
+        for relative, content in material_reference_replacements.items():
             _atomic_write(_safe_target(root, relative), content)
         quarantined_profiles: list[str] = []
         for relative, content in quality_cleanup.quarantines.items():
@@ -389,6 +462,7 @@ def apply_rendered(
                 "removed_material_settings": quality_cleanup.removed_setting_count,
                 "quarantined_profiles": len(quality_cleanup.quarantines),
             },
+            "material_references_repaired": len(material_reference_replacements),
             "files": {
                 PurePosixPath(relative).as_posix(): _sha256(content)
                 for relative, content in rendered.files.items()
@@ -412,6 +486,7 @@ def apply_rendered(
         "quality_profiles_repaired": quality_cleanup.repaired_profile_count,
         "quality_profile_settings_removed": quality_cleanup.removed_setting_count,
         "quality_profiles_quarantined": len(quality_cleanup.quarantines),
+        "material_references_repaired": len(material_reference_replacements),
         "quarantine_ids": quarantined_profiles,
         "warnings": rendered.warnings,
     }

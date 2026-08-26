@@ -1,5 +1,27 @@
 # Changelog
 
+## 0.5.6 - 08.26.2026
+
+### Added
+
+- Added the running version to the login page.
+- Added exact-name confirmed material-template deletion that removes a template from active use and Cura while retaining immutable profile and audit history.
+- Added editable printer/nozzle scope controls to existing templates; linked current filament profiles move atomically when the target scope has no conflict.
+- Added workstation migration coverage for repairing legacy Cura extruder-stack material references before stale managed material files are removed.
+
+### Changed
+
+- Changed managed Cura product and template identities from revision-specific IDs to stable semantic scope IDs so ordinary settings edits no longer invalidate Cura container stacks or previously sliced managed GUIDs.
+- Changed new-template defaults to prefer the printer's currently installed physical nozzle.
+- Changed blocked Print History results to distinguish a detected block condition from an actual printer pause and to explain when the required printer-side start gate was not active.
+- Changed every server, browser, and workstation-agent version surface to 0.5.6.
+
+### Fixed
+
+- Fixed Cura reporting a managed material and its extruder stack as corrupt after a filament/template settings revision removed the revision-specific material container referenced by Cura.
+- Fixed newly sliced G-code becoming unable to resolve an exact managed material profile after an otherwise valid profile edit.
+- Fixed template editing omitting the associated printer and physical nozzle.
+
 ## 0.5.5 - 08.26.2026
 
 ### Added

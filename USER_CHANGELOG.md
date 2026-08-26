@@ -1,5 +1,23 @@
 # User Changelog
 
+## 0.5.6 - 08.26.2026
+
+### Added
+
+- The login page now shows the running Filament Manager version.
+- Material templates can be deleted after typing the exact template name; history remains safely retained.
+- Existing templates can change their printer and physical nozzle association.
+
+### Changed
+
+- New templates now default to the currently installed nozzle when one is available.
+- A blocked G-code result now explains whether the printer-side inspection gate was actually active.
+
+### Fixed
+
+- Fixed Cura reporting managed materials and extruder profiles as corrupt after a material settings edit.
+- Fixed current managed G-code losing its exact material-profile match after later profile revisions.
+
 ## 0.5.5 - 08.26.2026
 
 ### Added

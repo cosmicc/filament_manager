@@ -12,6 +12,8 @@ from filament_manager.domain.spool_preflight import (
     SpoolPreflightCatalog,
     build_catalog_revision,
     cura_material_guid,
+    cura_product_material_guid,
+    cura_product_scope_id,
     spool_prompt_label,
 )
 
@@ -28,6 +30,23 @@ def test_cura_material_guid_matches_the_workstation_material_identity() -> None:
     )
     with pytest.raises(ValueError, match="unsupported"):
         cura_material_guid("unmanaged", source_id)
+
+
+def test_product_material_guid_is_stable_across_profile_snapshots() -> None:
+    """Semantic product scope, rather than immutable revision ID, owns Cura identity."""
+
+    product_id = UUID("a8111abe-1bf9-45d6-9303-cd4b328b08c4")
+    printer_id = UUID("c27538ec-763a-4f5e-9e28-c2921652329d")
+
+    assert cura_product_scope_id(product_id, printer_id, "0.40000") == cura_product_scope_id(
+        product_id,
+        printer_id,
+        "0.4",
+    )
+    assert cura_product_material_guid(product_id, printer_id, "0.4") == cura_material_guid(
+        "product",
+        cura_product_scope_id(product_id, printer_id, "0.4"),
+    )
 
 
 def test_prompt_label_removes_command_characters_and_bounds_length() -> None:

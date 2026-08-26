@@ -24,7 +24,10 @@ from filament_manager.clients.moonraker import (
 from filament_manager.config import get_settings
 from filament_manager.domain.gcode_inspection import InspectionResult, inspect_gcode
 from filament_manager.domain.profile_inheritance import settings_snapshot_from_profile
-from filament_manager.domain.spool_preflight import cura_material_guid
+from filament_manager.domain.spool_preflight import (
+    cura_material_guid,
+    cura_product_material_guid,
+)
 from filament_manager.models.enums import (
     GcodeInspectionStatus,
     PrintJobStatus,
@@ -199,17 +202,36 @@ async def _profile_for_guid(
 
     if not material_guid:
         return None
-    profiles = await session.scalars(
-        select(MaterialProfile).where(
-            MaterialProfile.printer_id == printer_id,
-            MaterialProfile.status.in_((ProfileStatus.PUBLISHED, ProfileStatus.SUPERSEDED)),
+    profiles = list(
+        await session.scalars(
+            select(MaterialProfile)
+            .where(
+                MaterialProfile.printer_id == printer_id,
+                MaterialProfile.status.in_((ProfileStatus.PUBLISHED, ProfileStatus.SUPERSEDED)),
+            )
+            .order_by(MaterialProfile.published_at.desc(), MaterialProfile.version.desc())
         )
     )
+    expected = material_guid.casefold()
+    # Preserve exact historical resolution for G-code sliced before stable
+    # scope IDs were introduced, then resolve the current stable scope GUID.
+    legacy = next(
+        (profile for profile in profiles if cura_material_guid("product", profile.id) == expected),
+        None,
+    )
+    if legacy is not None:
+        return legacy
     return next(
         (
             profile
             for profile in profiles
-            if cura_material_guid("product", profile.id) == material_guid.casefold()
+            if profile.status == ProfileStatus.PUBLISHED
+            and cura_product_material_guid(
+                profile.filament_product_id,
+                profile.printer_id,
+                profile.nozzle_diameter_mm,
+            )
+            == expected
         ),
         None,
     )
@@ -687,6 +709,9 @@ async def synchronize_live_print(
             job.inspection = {
                 "mismatches": [],
                 "warnings": ["Moonraker could not provide a safely bounded G-code inspection."],
+                "printer_gate": (
+                    "active" if preflight_state and preflight_state.phase == "inspecting" else "not_active"
+                ),
             }
         else:
             _apply_extracted(job, result.extracted)
@@ -698,11 +723,22 @@ async def synchronize_live_print(
                 if result.mismatches or result.warnings
                 else GcodeInspectionStatus.PASSED
             )
+            inspection_warnings = list(result.warnings)
+            printer_gate = (
+                "active" if preflight_state and preflight_state.phase == "inspecting" else "not_active"
+            )
+            if blocked and printer_gate == "not_active":
+                inspection_warnings.append(
+                    "A blocking condition was recorded, but the printer-side inspection gate was not active. "
+                    "Cura must start the print through FILAMENT_MANAGER_START_PRINT with the managed "
+                    "material GUID."
+                )
             job.inspection = {
                 "extracted": result.extracted,
                 "mismatches": list(result.mismatches),
-                "warnings": list(result.warnings),
+                "warnings": inspection_warnings,
                 "file_metadata": _safe_file_metadata(metadata),
+                "printer_gate": printer_gate,
             }
         job.inspected_at = now
         add_audit_event(
