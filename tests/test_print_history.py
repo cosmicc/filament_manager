@@ -1,5 +1,6 @@
 """Exact print-state calculation and Moonraker status tests."""
 
+from datetime import UTC, datetime
 from decimal import Decimal
 from types import SimpleNamespace
 from uuid import UUID, uuid4
@@ -8,6 +9,7 @@ import pytest
 
 from filament_manager.models.enums import PrintJobStatus
 from filament_manager.services import print_history
+from filament_manager.services.print_costs import print_cost_summary, segment_cost
 from filament_manager.services.print_history import (
     _actual_weight_g,
     _history_status,
@@ -78,6 +80,68 @@ def test_terminal_usage_aggregates_reused_spools_from_immutable_segments() -> No
     }
 
 
+def test_print_cost_uses_each_segment_immutable_purchase_basis() -> None:
+    """A material change totals compatible captured rates without current inventory reads."""
+
+    segments = [
+        SimpleNamespace(
+            actual_filament_weight_g=Decimal("12.5"),
+            state_snapshot={"spool": {"cost_per_gram": "0.025", "currency": "usd"}},
+        ),
+        SimpleNamespace(
+            actual_filament_weight_g=Decimal("7.5"),
+            state_snapshot={"spool": {"cost_per_gram": "0.04", "currency": "USD"}},
+        ),
+    ]
+    job = SimpleNamespace(
+        segments=segments,
+        actual_filament_weight_g=Decimal("20"),
+        predicted_filament_weight_g=Decimal("25"),
+        state_snapshot={"spool": {"cost_per_gram": "0.025", "currency": "USD"}},
+    )
+
+    assert segment_cost(segments[0]) == (Decimal("0.025"), Decimal("0.31"), "USD")
+    assert print_cost_summary(job) == {
+        "actual_filament_cost": Decimal("0.61"),
+        "predicted_filament_cost": Decimal("0.63"),
+        "cost_currency": "USD",
+        "cost_currency_conflict": False,
+        "cost_complete": True,
+        "priced_filament_weight_g": Decimal("20.0"),
+        "unpriced_filament_weight_g": Decimal("0"),
+    }
+
+
+def test_print_cost_reports_unpriced_or_mixed_currency_weight_without_inventing_a_total() -> None:
+    """Partial and mixed-currency jobs remain explicit instead of returning a misleading cost."""
+
+    job = SimpleNamespace(
+        segments=[
+            SimpleNamespace(
+                actual_filament_weight_g=Decimal("10"),
+                state_snapshot={"spool": {"cost_per_gram": "0.02", "currency": "USD"}},
+            ),
+            SimpleNamespace(
+                actual_filament_weight_g=Decimal("5"),
+                state_snapshot={"spool": {"cost_per_gram": "0.03", "currency": "CAD"}},
+            ),
+            SimpleNamespace(actual_filament_weight_g=Decimal("2"), state_snapshot={"spool": {}}),
+        ],
+        actual_filament_weight_g=Decimal("17"),
+        predicted_filament_weight_g=None,
+        state_snapshot={},
+    )
+
+    summary = print_cost_summary(job)
+
+    assert summary["actual_filament_cost"] is None
+    assert summary["cost_currency"] is None
+    assert summary["cost_currency_conflict"] is True
+    assert summary["cost_complete"] is False
+    assert summary["priced_filament_weight_g"] == Decimal("15")
+    assert summary["unpriced_filament_weight_g"] == Decimal("2")
+
+
 @pytest.mark.asyncio
 async def test_malformed_history_record_does_not_block_success_checkpoint(
     monkeypatch: pytest.MonkeyPatch,
@@ -117,7 +181,10 @@ async def test_malformed_history_record_does_not_block_success_checkpoint(
         calls += 1
         if calls == 1:
             raise TypeError("malformed historical segment")
-        return object()
+        return SimpleNamespace(
+            filename="good.gcode",
+            thumbnail_checked_at=datetime.now(UTC),
+        )
 
     monkeypatch.setattr(print_history, "_upsert_history_job", upsert)
     printer = SimpleNamespace(

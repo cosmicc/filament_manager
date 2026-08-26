@@ -356,6 +356,7 @@ async def commit_approved_run(
                     "chamber_temp_c": str(values["Chamber Temp (°C)"] or 0),
                     "extruder_temp_c": str(values["Nozzle Temp (°C)"]),
                     "bed_temp_c": str(values["Bed Temp (°C)"]),
+                    "initial_bed_temp_c": str(values["Bed Temp (°C)"]),
                     "flow_percent": str(values["Flow (%)"] or 100),
                     "print_speed_mm_s": None,
                     "outer_wall_speed_mm_s": None,

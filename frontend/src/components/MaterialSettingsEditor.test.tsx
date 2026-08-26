@@ -9,6 +9,7 @@ const settings: MaterialSettings = {
   chamber_temp_c: null,
   extruder_temp_c: '210',
   bed_temp_c: '60',
+  initial_bed_temp_c: '65',
   flow_percent: '98',
   print_speed_mm_s: '120',
   outer_wall_speed_mm_s: null,
@@ -36,12 +37,13 @@ const settings: MaterialSettings = {
 }
 
 describe('MaterialSettingsEditor validation', () => {
-  it('shows only the three requested temperature controls', () => {
+  it('shows only the four managed temperature controls', () => {
     const rendered = render(<MaterialSettingsEditor settings={settings} catalog={[]} plates={[]} />)
 
     expect(screen.getByLabelText('Printing temperature (°C)')).toBeTruthy()
     expect(screen.getByLabelText('Build volume temperature (°C)')).toBeTruthy()
     expect(screen.getByLabelText('Build plate temperature (°C)')).toBeTruthy()
+    expect(screen.getByLabelText('Initial layer build plate temperature (°C)')).toBeTruthy()
     expect(screen.queryByText(/Default .*temperature/i)).toBeNull()
     expect(screen.queryByLabelText('Chamber temperature (°C)')).toBeNull()
     rendered.unmount()

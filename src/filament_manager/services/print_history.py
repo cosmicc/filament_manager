@@ -47,11 +47,40 @@ from filament_manager.models.inventory import (
 from filament_manager.models.operations import ApplicationSetting
 from filament_manager.models.printing import PrintJob, PrintMaterialSegment
 from filament_manager.services.events import add_audit_event, add_outbox_job
+from filament_manager.services.print_thumbnails import sanitize_print_thumbnail
 
 MAX_INITIAL_HISTORY_JOBS = 10_000
 HISTORY_PAGE_SIZE = 100
 MASS_QUANTUM = Decimal("0.001")
 logger = structlog.get_logger()
+
+
+async def _capture_print_thumbnail(
+    job: PrintJob,
+    *,
+    client: MoonrakerClient,
+    filename: str,
+    metadata: dict[str, Any],
+) -> None:
+    """Persist one sanitized thumbnail without making print ingestion depend on it."""
+
+    if job.thumbnail_checked_at is not None:
+        return
+    if not isinstance(metadata.get("thumbnails"), list):
+        return
+    job.thumbnail_checked_at = datetime.now(UTC)
+    try:
+        downloaded = await client.gcode_thumbnail(filename, metadata)
+        if downloaded is None:
+            return
+        thumbnail = sanitize_print_thumbnail(downloaded.data)
+    except (MoonrakerError, ValueError):
+        return
+    job.thumbnail_data = thumbnail.data
+    job.thumbnail_media_type = thumbnail.media_type
+    job.thumbnail_sha256 = thumbnail.sha256
+    job.thumbnail_width = thumbnail.width
+    job.thumbnail_height = thumbnail.height
 
 
 def _safe_file_metadata(metadata: dict[str, Any]) -> dict[str, object]:
@@ -279,6 +308,11 @@ async def _state_snapshot(
         else None
     )
     nozzle = await session.get(Nozzle, printer.active_nozzle_id) if printer.active_nozzle_id else None
+    cost_per_gram = (
+        spool.purchase_cost / spool.nominal_net_mass_g
+        if spool is not None and spool.purchase_cost is not None and spool.nominal_net_mass_g > 0
+        else None
+    )
     return {
         "printer": {
             "id": str(printer.id),
@@ -304,6 +338,8 @@ async def _state_snapshot(
                 "code": spool.spool_code,
                 "spoolman_id": spool.spoolman_id,
                 "remaining_mass_g": format(spool.remaining_mass_effective_g, "f"),
+                "cost_per_gram": format(cost_per_gram, "f") if cost_per_gram is not None else None,
+                "currency": spool.currency if cost_per_gram is not None else None,
             }
             if spool
             else None
@@ -371,6 +407,25 @@ def _terminal_usage_targets(job: PrintJob) -> dict[UUID, tuple[Decimal, Decimal]
             (previous[1] if previous is not None else Decimal("0")) + used,
         )
     return targets
+
+
+def _update_open_segment_usage(
+    job: PrintJob,
+    segment: PrintMaterialSegment,
+    total_length_mm: Decimal,
+) -> None:
+    """Refresh the current segment from Moonraker's cumulative actual-use counter."""
+
+    used_before = sum(
+        (item.actual_filament_length_mm or Decimal("0"))
+        for item in job.segments
+        if item.id != segment.id and item.ended_at is not None
+    )
+    segment.actual_filament_length_mm = max(Decimal("0"), total_length_mm - used_before)
+    segment.actual_filament_weight_g = _actual_weight_g(
+        segment.actual_filament_length_mm,
+        segment.state_snapshot,
+    )
 
 
 async def _apply_terminal_spool_usage(
@@ -475,6 +530,7 @@ def _apply_extracted(job: PrintJob, extracted: dict[str, object]) -> None:
         "line_width_mm",
         "extruder_temp_c",
         "bed_temp_c",
+        "initial_bed_temp_c",
         "chamber_temp_c",
         "print_speed_mm_s",
         "flow_percent",
@@ -702,6 +758,12 @@ async def synchronize_live_print(
                     segment.material_profile_version = profile.version
         job.gcode_sha256 = sha256
         job.moonraker_file_uuid = _bounded(metadata.get("uuid"), 96)
+        await _capture_print_thumbnail(
+            job,
+            client=client,
+            filename=print_state.filename,
+            metadata=metadata,
+        )
         if result is None:
             job.inspection_status = (
                 GcodeInspectionStatus.BLOCKED if policy == "block" else GcodeInspectionStatus.UNAVAILABLE
@@ -805,18 +867,8 @@ async def synchronize_live_print(
             open_segment = first_segment
         if (open_segment.spool_id if open_segment else None) != (spool.id if spool else None):
             if open_segment:
+                _update_open_segment_usage(job, open_segment, print_state.filament_used_mm)
                 open_segment.ended_at = now
-                used_before = sum(
-                    (segment.actual_filament_length_mm or Decimal("0"))
-                    for segment in job.segments
-                    if segment.id != open_segment.id and segment.ended_at is not None
-                )
-                open_segment.actual_filament_length_mm = max(
-                    Decimal("0"), print_state.filament_used_mm - used_before
-                )
-                open_segment.actual_filament_weight_g = _actual_weight_g(
-                    open_segment.actual_filament_length_mm, open_segment.state_snapshot
-                )
             if spool:
                 segment_profile = await _latest_profile_for_product(
                     session, printer=printer, filament_product_id=spool.filament_product_id
@@ -842,22 +894,13 @@ async def synchronize_live_print(
                 )
                 job.segments.append(next_segment)
                 open_segment = next_segment
+        if open_segment:
+            _update_open_segment_usage(job, open_segment, print_state.filament_used_mm)
         if observed_status in terminal_statuses:
             job.status = observed_status
             job.ended_at = now
             if open_segment:
                 open_segment.ended_at = now
-                used_before = sum(
-                    (segment.actual_filament_length_mm or Decimal("0"))
-                    for segment in job.segments
-                    if segment.id != open_segment.id and segment.ended_at is not None
-                )
-                open_segment.actual_filament_length_mm = max(
-                    Decimal("0"), print_state.filament_used_mm - used_before
-                )
-                open_segment.actual_filament_weight_g = _actual_weight_g(
-                    open_segment.actual_filament_length_mm, open_segment.state_snapshot
-                )
         job.record_version += 1
         if observed_status in terminal_statuses:
             await _apply_terminal_spool_usage(
@@ -865,6 +908,18 @@ async def synchronize_live_print(
                 job=job,
                 correlation_id=correlation_id,
             )
+        if job.thumbnail_checked_at is None:
+            try:
+                metadata = await client.gcode_metadata(print_state.filename)
+            except MoonrakerError:
+                pass
+            else:
+                await _capture_print_thumbnail(
+                    job,
+                    client=client,
+                    filename=print_state.filename,
+                    metadata=metadata,
+                )
         await session.commit()
     return job
 
@@ -1019,6 +1074,21 @@ async def synchronize_print_history(
                     )
                 if reconciled is not None:
                     imported += 1
+                    raw_metadata = remote.get("metadata")
+                    history_metadata = raw_metadata if isinstance(raw_metadata, dict) else {}
+                    if reconciled.thumbnail_checked_at is None and not isinstance(
+                        history_metadata.get("thumbnails"), list
+                    ):
+                        try:
+                            history_metadata = await client.gcode_metadata(reconciled.filename)
+                        except MoonrakerError:
+                            history_metadata = {}
+                    await _capture_print_thumbnail(
+                        reconciled,
+                        client=client,
+                        filename=reconciled.filename,
+                        metadata=history_metadata,
+                    )
             except (InvalidOperation, TypeError, ValueError) as exc:
                 # One malformed legacy Moonraker row must not poison every
                 # subsequent history pass or prevent the success checkpoint.

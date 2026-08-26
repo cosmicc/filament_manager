@@ -189,8 +189,12 @@ def test_discovers_and_renders_complete_profile(tmp_path: Path, monkeypatch: obj
     plugin_init = rendered.files[
         Path("plugins/FilamentManagerVisibility/FilamentManagerVisibility/__init__.py")
     ]
+    plugin_metadata = rendered.files[
+        Path("plugins/FilamentManagerVisibility/FilamentManagerVisibility/plugin.json")
+    ]
     compile(plugin, str(plugin_path), "exec")
     assert b"FilamentManagerVisibility(app)" in plugin_init
+    assert b'"version": "2.2.0"' in plugin_metadata
     assert b'preferences.setValue("cura/favorite_materials", updated)' in plugin
     assert b"selected | MANAGED_SETTING_KEYS" in plugin
     assert b'preferences.setValue("cura/material_settings", updated)' in plugin
@@ -198,7 +202,13 @@ def test_discovers_and_renders_complete_profile(tmp_path: Path, monkeypatch: obj
     assert b"'spool_weight': 1000.0" in plugin
     assert b'"speed_print"' not in plugin
     assert b"'speed_print'" in plugin
-    assert b'user_changes.setProperty(key, "value", material_value)' in plugin
+    assert b"_install_runtime_material_overlay()" in plugin
+    assert b"FILAMENT_MANAGER_START_PRINT" in plugin
+    assert b"MATERIAL_GUID={material_guid}" in plugin
+    assert b'MANAGED_MACHINE_END_GCODE = "END_PRINT"' in plugin
+    assert b"original_get_property(stack, key, property_name" in plugin
+    assert b"user_changes.setProperty" not in plugin
+    assert b"user_changes.removeInstance(key, postpone_emit=True)" in plugin
 
 
 def test_generated_plugin_defers_machine_manager_until_cura_initialization(
@@ -244,6 +254,10 @@ def test_generated_plugin_defers_machine_manager_until_cura_initialization(
 
     class FakeBaseMaterialsModel:
         def _update(self) -> None:
+            return None
+
+    class FakeCuraContainerStack:
+        def getProperty(self, _key: str, _property_name: str) -> None:
             return None
 
     class FakeMachineManager:
@@ -300,6 +314,8 @@ def test_generated_plugin_defers_machine_manager_until_cura_initialization(
     logger_module.Logger = FakeLogger  # type: ignore[attr-defined]
     model_module = ModuleType("cura.Machines.Models.BaseMaterialsModel")
     model_module.BaseMaterialsModel = FakeBaseMaterialsModel  # type: ignore[attr-defined]
+    container_stack_module = ModuleType("cura.Settings.CuraContainerStack")
+    container_stack_module.CuraContainerStack = FakeCuraContainerStack  # type: ignore[attr-defined]
     for module_name, module in {
         "PyQt6": ModuleType("PyQt6"),
         "PyQt6.QtCore": qt_module,
@@ -310,6 +326,8 @@ def test_generated_plugin_defers_machine_manager_until_cura_initialization(
         "cura.Machines": ModuleType("cura.Machines"),
         "cura.Machines.Models": ModuleType("cura.Machines.Models"),
         "cura.Machines.Models.BaseMaterialsModel": model_module,
+        "cura.Settings": ModuleType("cura.Settings"),
+        "cura.Settings.CuraContainerStack": container_stack_module,
     }.items():
         monkeypatch.setitem(sys.modules, module_name, module)
 
@@ -351,8 +369,9 @@ def test_generated_plugin_defers_machine_manager_until_cura_initialization(
     }
 
     class FakeMaterial:
-        def __init__(self, brand: str) -> None:
+        def __init__(self, brand: str, material_id: str = "filament_manager_test") -> None:
             self.brand = brand
+            self.material_id = material_id
 
         def getMetaDataEntry(self, key: str, default: str = "") -> str:
             if key == "GUID":
@@ -362,11 +381,26 @@ def test_generated_plugin_defers_machine_manager_until_cura_initialization(
             return default
 
         def getId(self) -> str:
-            return "filament_manager_test"
+            return self.material_id
 
     class FakeStack:
         def __init__(self, brand: str) -> None:
             self.material = FakeMaterial(brand)
+
+    managed_stack = FakeCuraContainerStack()
+    managed_stack.material = FakeMaterial("Polymaker")  # type: ignore[attr-defined]
+    assert managed_stack.getProperty("machine_start_gcode", "value") == (
+        "FILAMENT_MANAGER_START_PRINT "
+        "MATERIAL_GUID={material_guid} "
+        "BED_TEMP={material_bed_temperature_layer_0} "
+        "EXTRUDER_TEMP={material_print_temperature_layer_0} "
+        "CHAMBER_TEMP={build_volume_temperature}"
+    )
+    assert managed_stack.getProperty("machine_end_gcode", "value") == "END_PRINT"
+
+    unmanaged_stack = FakeCuraContainerStack()
+    unmanaged_stack.material = FakeMaterial("Generic", "generic_pla")  # type: ignore[attr-defined]
+    assert unmanaged_stack.getProperty("machine_start_gcode", "value") is None
 
     plugin_module._record_pending_material_edit(  # type: ignore[attr-defined]
         FakeStack("Polymaker"), "material_print_temperature", "228"
@@ -398,7 +432,7 @@ def test_apply_is_idempotent_and_rollback_restores_original(tmp_path: Path, monk
     assert first["status"] == "installed"
     manifest = json.loads((version / ".filament-manager" / "manifest.json").read_text())
     assert manifest["library_checksum"] == "a" * 64
-    assert manifest["renderer_revision"] == 11
+    assert manifest["renderer_revision"] == 13
     waiting_status = material_settings_sync_status(version)
     assert waiting_status["status"] == "waiting_for_cura"
     expected_keys = sorted(_payload()["managed_material_setting_keys"])
@@ -443,7 +477,7 @@ def test_apply_is_idempotent_and_rollback_restores_original(tmp_path: Path, monk
     )
     assert upgraded["status"] == "installed"
     upgraded_manifest = json.loads((version / ".filament-manager" / "manifest.json").read_text())
-    assert upgraded_manifest["renderer_revision"] == 11
+    assert upgraded_manifest["renderer_revision"] == 13
 
     assert rollback(deployment_id) == ["Cura 5.10"]
     assert (version / "definition_changes" / "flsun-v400_settings.inst.cfg").read_bytes() == original

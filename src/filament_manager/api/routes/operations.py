@@ -13,7 +13,7 @@ from filament_manager.clients.moonraker import MoonrakerClient, MoonrakerError
 from filament_manager.clients.spoolman import SpoolmanClient, SpoolmanError
 from filament_manager.config import PrinterConfig, get_settings
 from filament_manager.models.auth import User
-from filament_manager.models.enums import JobStatus, SpoolStatus
+from filament_manager.models.enums import JobStatus, PrintJobStatus, SpoolStatus
 from filament_manager.models.inventory import (
     BuildPlate,
     BuildPlateSurface,
@@ -22,10 +22,12 @@ from filament_manager.models.inventory import (
     Spool,
 )
 from filament_manager.models.operations import ApplicationSetting, AuditEvent, Device, OutboxJob
+from filament_manager.models.printing import PrintJob
 from filament_manager.services.events import add_audit_event, add_outbox_job
 from filament_manager.services.moonraker_sync import (
     synchronize_printer_information as apply_printer_information,
 )
+from filament_manager.services.print_costs import print_cost_summary
 from filament_manager.services.seed import seed_configured_system
 
 from ..dependencies import Administrator, DatabaseSession, Operator, Viewer
@@ -186,7 +188,7 @@ async def _integration_statuses() -> list[IntegrationStatus]:
     return list(await asyncio.gather(*checks))
 
 
-async def _dashboard_printer_state() -> DashboardPrinterStateResponse:
+async def _dashboard_printer_state(session: DatabaseSession) -> DashboardPrinterStateResponse:
     """Return live printer state without making dashboard inventory depend on Moonraker."""
 
     checked_at = datetime.now(UTC)
@@ -243,6 +245,22 @@ async def _dashboard_printer_state() -> DashboardPrinterStateResponse:
             "error": "error",
             None: "idle",
         }[state.print_state]
+    job: PrintJob | None = None
+    if state.filename:
+        printer = await session.scalar(select(Printer).where(Printer.printer_code == configured.id).limit(1))
+        if printer is not None:
+            job = await session.scalar(
+                select(PrintJob)
+                .where(
+                    PrintJob.printer_id == printer.id,
+                    PrintJob.filename == state.filename,
+                    PrintJob.status == PrintJobStatus.IN_PROGRESS,
+                )
+                .options(selectinload(PrintJob.segments))
+                .order_by(PrintJob.created_at.desc())
+                .limit(1)
+            )
+    costs = print_cost_summary(job) if job is not None else {}
     return DashboardPrinterStateResponse(
         printer_name=configured.name,
         connection_status="connected",
@@ -257,6 +275,20 @@ async def _dashboard_printer_state() -> DashboardPrinterStateResponse:
         bed_target_c=state.bed_target_c,
         chamber_temperature_c=state.chamber_temperature_c,
         chamber_target_c=state.chamber_target_c,
+        print_job_id=job.id if job is not None else None,
+        thumbnail_url=(
+            f"/api/v1/prints/{job.id}/thumbnail"
+            if job is not None and job.thumbnail_data is not None
+            else None
+        ),
+        estimated_duration_seconds=job.estimated_duration_seconds if job is not None else None,
+        print_duration_seconds=job.print_duration_seconds if job is not None else None,
+        predicted_filament_weight_g=(job.predicted_filament_weight_g if job is not None else None),
+        actual_filament_weight_g=job.actual_filament_weight_g if job is not None else None,
+        actual_filament_cost=costs.get("actual_filament_cost"),
+        predicted_filament_cost=costs.get("predicted_filament_cost"),
+        cost_currency=costs.get("cost_currency"),
+        cost_complete=bool(costs.get("cost_complete", False)),
         checked_at=checked_at,
     )
 
@@ -328,7 +360,7 @@ async def dashboard(_: Viewer, session: DatabaseSession) -> DashboardResponse:
             rendered_surface
             or (BuildPlateSurfaceResponse.model_validate(plate_surface) if plate_surface else None)
         ),
-        printer_state=await _dashboard_printer_state(),
+        printer_state=await _dashboard_printer_state(session),
     )
 
 

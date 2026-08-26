@@ -15,7 +15,8 @@ from sqlalchemy import delete, or_, select, update
 from filament_manager.config import get_settings
 from filament_manager.domain.cura_import import material_settings_from_cura, merge_cura_settings
 from filament_manager.domain.cura_recovery import (
-    RECOVERY_HISTORY_LIMIT,
+    AUTOMATIC_RECOVERY_HISTORY_LIMIT,
+    RECOVERY_LIST_LIMIT,
     recovery_checksum,
     suspected_reset,
     validate_recovery_payload,
@@ -618,22 +619,24 @@ async def upload_cura_recovery_snapshot(
         )
         session.add(existing)
         await session.flush()
-        history_ids = list(
-            await session.scalars(
-                select(CuraRecoverySnapshot.id)
-                .where(
-                    CuraRecoverySnapshot.agent_id == agent.id,
-                    CuraRecoverySnapshot.installation_id == installation_id,
-                    CuraRecoverySnapshot.cura_version == cura_version,
+        if capture_request is None:
+            history_ids = list(
+                await session.scalars(
+                    select(CuraRecoverySnapshot.id)
+                    .where(
+                        CuraRecoverySnapshot.agent_id == agent.id,
+                        CuraRecoverySnapshot.installation_id == installation_id,
+                        CuraRecoverySnapshot.cura_version == cura_version,
+                        CuraRecoverySnapshot.capture_request_id.is_(None),
+                    )
+                    .order_by(CuraRecoverySnapshot.captured_at.desc())
+                    .offset(AUTOMATIC_RECOVERY_HISTORY_LIMIT)
                 )
-                .order_by(CuraRecoverySnapshot.captured_at.desc())
-                .offset(RECOVERY_HISTORY_LIMIT)
             )
-        )
-        if history_ids:
-            await session.execute(
-                delete(CuraRecoverySnapshot).where(CuraRecoverySnapshot.id.in_(history_ids))
-            )
+            if history_ids:
+                await session.execute(
+                    delete(CuraRecoverySnapshot).where(CuraRecoverySnapshot.id.in_(history_ids))
+                )
         add_audit_event(
             session,
             actor_id=None,
@@ -694,7 +697,7 @@ async def list_cura_recovery_snapshots(
     else:
         query = query.where(CuraRecoverySnapshot.agent_id == agent_id)
     snapshots = await session.scalars(
-        query.order_by(CuraRecoverySnapshot.captured_at.desc()).limit(RECOVERY_HISTORY_LIMIT * 20)
+        query.order_by(CuraRecoverySnapshot.captured_at.desc()).limit(RECOVERY_LIST_LIMIT)
     )
     return [_recovery_snapshot_response(snapshot) for snapshot in snapshots]
 

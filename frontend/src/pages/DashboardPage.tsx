@@ -8,7 +8,7 @@ import { PageHeader } from '../components/PageHeader'
 import { StatusPill } from '../components/StatusPill'
 import { Link } from '../context/RouterContext'
 import { filamentSwatchStyle } from '../lib/colors'
-import { compactNumber, dateTime, grams, percent, titleCase } from '../lib/format'
+import { compactNumber, currencyAmount, dateTime, grams, percent, titleCase } from '../lib/format'
 
 function temperatureSummary(current: string | null, target: string | null) {
   if (current == null) return 'Not reported'
@@ -16,6 +16,14 @@ function temperatureSummary(current: string | null, target: string | null) {
   return target != null && Number(target) > 0
     ? `${currentText} / ${compactNumber(target, 0)} °C target`
     : currentText
+}
+
+function duration(value: string | null) {
+  if (value == null) return '—'
+  const totalMinutes = Math.max(0, Math.round(Number(value) / 60))
+  const hours = Math.floor(totalMinutes / 60)
+  const minutes = totalMinutes % 60
+  return hours ? `${hours} hr ${minutes} min` : `${minutes} min`
 }
 
 function MetricCard({ icon: Icon, label, value, detail, tone = '' }: {
@@ -63,11 +71,22 @@ export default function DashboardPage() {
             <StatusPill status={data.printer_state.operational_status} label={titleCase(data.printer_state.operational_status)} />
           </header>
           {data.printer_state.connection_status === 'connected' ? <div className="printer-state-card__body">
-            <section className="printer-job-state" aria-label="Current print state">
-              <span><Gauge size={21} /></span>
-              <div><small>Printer state</small><strong>{titleCase(data.printer_state.operational_status)}</strong>{data.printer_state.filename ? <p title={data.printer_state.filename}>{data.printer_state.filename}</p> : null}</div>
-              {data.printer_state.progress_percent != null ? <strong className="printer-job-state__percent">{percent(data.printer_state.progress_percent)}</strong> : null}
-              {data.printer_state.progress_percent != null ? <div className="progress"><span style={{ width: `${Math.min(100, Math.max(0, Number(data.printer_state.progress_percent)))}%` }} /></div> : null}
+            <section className="printer-current-print" aria-label="Current print state">
+              {data.printer_state.thumbnail_url ? <img className="printer-current-print__thumbnail" src={data.printer_state.thumbnail_url} alt={`Preview of ${data.printer_state.filename ?? 'current print'}`} /> : null}
+              <div className="printer-current-print__content">
+                <div className="printer-job-state">
+                  <span><Gauge size={21} /></span>
+                  <div><small>Printer state</small><strong>{titleCase(data.printer_state.operational_status)}</strong>{data.printer_state.filename ? <p title={data.printer_state.filename}>{data.printer_state.filename}</p> : null}</div>
+                  {data.printer_state.progress_percent != null ? <strong className="printer-job-state__percent">{percent(data.printer_state.progress_percent)}</strong> : null}
+                  {data.printer_state.progress_percent != null ? <div className="progress"><span style={{ width: `${Math.min(100, Math.max(0, Number(data.printer_state.progress_percent)))}%` }} /></div> : null}
+                </div>
+                {data.printer_state.print_job_id ? <dl className="printer-live-stats">
+                  <div><dt>Elapsed</dt><dd>{duration(data.printer_state.print_duration_seconds)}</dd></div>
+                  <div><dt>Estimated</dt><dd>{duration(data.printer_state.estimated_duration_seconds)}</dd></div>
+                  <div><dt>Filament used</dt><dd>{grams(data.printer_state.actual_filament_weight_g, 1)}</dd></div>
+                  <div><dt>Cost so far</dt><dd>{currencyAmount(data.printer_state.actual_filament_cost, data.printer_state.cost_currency ?? 'USD')}</dd></div>
+                </dl> : null}
+              </div>
             </section>
             <section className="printer-temperature-grid" aria-label="Live printer temperatures">
               <div><span><Thermometer size={18} /></span><small>Nozzle</small><strong>{temperatureSummary(data.printer_state.nozzle_temperature_c, data.printer_state.nozzle_target_c)}</strong></div>

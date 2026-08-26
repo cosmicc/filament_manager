@@ -19,7 +19,7 @@ vi.mock('../context/AuthContext', () => ({
 }))
 
 const settings = {
-  chamber_temp_c: null, extruder_temp_c: '215', bed_temp_c: '60', flow_percent: '100',
+  chamber_temp_c: null, extruder_temp_c: '215', bed_temp_c: '60', initial_bed_temp_c: '65', flow_percent: '100',
   print_speed_mm_s: '60', outer_wall_speed_mm_s: '30', inner_wall_speed_mm_s: '60',
   infill_speed_mm_s: '60', top_bottom_speed_mm_s: '30', initial_layer_speed_mm_s: '20',
   travel_speed_mm_s: '150', support_speed_mm_s: '50', retraction_distance_mm: '0.8',

@@ -135,7 +135,12 @@ def extract_gcode_metadata(metadata: dict[str, Any], header: str, tail: str) -> 
         or settings.get("material_print_temperature")
         or _first_match(header, r"\bEXTRUDER_TEMP=([0-9.]+)\b")
         or _first_match(header, r"^M10[49]\s+S([0-9.]+)\b"),
-        "bed_temp_c": metadata.get("first_layer_bed_temp")
+        "bed_temp_c": settings.get("material_bed_temperature")
+        or metadata.get("first_layer_bed_temp")
+        or _first_match(header, r"\bBED_TEMP=([0-9.]+)\b")
+        or _first_match(header, r"^M1(?:40|90)\s+S([0-9.]+)\b"),
+        "initial_bed_temp_c": metadata.get("first_layer_bed_temp")
+        or settings.get("material_bed_temperature_layer_0")
         or settings.get("material_bed_temperature")
         or _first_match(header, r"\bBED_TEMP=([0-9.]+)\b")
         or _first_match(header, r"^M1(?:40|90)\s+S([0-9.]+)\b"),
@@ -194,6 +199,11 @@ def inspect_gcode(
         ("nozzle_diameter_mm", "nozzle diameter", Decimal("0.001")),
         ("extruder_temp_c", "printing temperature", Decimal("0.5")),
         ("bed_temp_c", "build plate temperature", Decimal("0.5")),
+        (
+            "initial_bed_temp_c",
+            "initial layer build plate temperature",
+            Decimal("0.5"),
+        ),
         ("chamber_temp_c", "chamber temperature", Decimal("0.5")),
         ("print_speed_mm_s", "print speed", Decimal("0.01")),
         ("flow_percent", "flow", Decimal("0.01")),

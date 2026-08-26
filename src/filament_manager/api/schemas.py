@@ -484,6 +484,7 @@ class MaterialSettingsInput(ApiModel):
     chamber_temp_c: Decimal | None = None
     extruder_temp_c: Decimal
     bed_temp_c: Decimal
+    initial_bed_temp_c: Decimal | None = None
     flow_percent: Decimal = Field(gt=0)
     print_speed_mm_s: Decimal | None = Field(default=None, gt=0)
     outer_wall_speed_mm_s: Decimal | None = Field(default=None, gt=0)
@@ -508,6 +509,14 @@ class MaterialSettingsInput(ApiModel):
     filament_density_g_cm3: Decimal = Field(gt=0)
     preferred_build_plate_surface_id: UUID | None = None
     cura_extensions: dict[str, Any] = Field(default_factory=dict)
+
+    @model_validator(mode="after")
+    def default_initial_bed_temperature(self) -> "MaterialSettingsInput":
+        """Default older snapshots to the normal bed temperature at layer zero."""
+
+        if self.initial_bed_temp_c is None:
+            self.initial_bed_temp_c = self.bed_temp_c
+        return self
 
     @field_validator("cura_extensions")
     @classmethod
@@ -974,6 +983,16 @@ class DashboardPrinterStateResponse(ApiModel):
     bed_target_c: Decimal | None
     chamber_temperature_c: Decimal | None
     chamber_target_c: Decimal | None
+    print_job_id: UUID | None = None
+    thumbnail_url: str | None = None
+    estimated_duration_seconds: Decimal | None = None
+    print_duration_seconds: Decimal | None = None
+    predicted_filament_weight_g: Decimal | None = None
+    actual_filament_weight_g: Decimal | None = None
+    actual_filament_cost: Decimal | None = None
+    predicted_filament_cost: Decimal | None = None
+    cost_currency: str | None = None
+    cost_complete: bool = False
     checked_at: datetime
 
 
@@ -1463,6 +1482,9 @@ class PrintMaterialSegmentResponse(ApiModel):
     ended_at: datetime | None
     actual_filament_length_mm: Decimal | None
     actual_filament_weight_g: Decimal | None
+    cost_per_gram: Decimal | None = None
+    actual_filament_cost: Decimal | None = None
+    cost_currency: str | None = None
 
 
 class PrintJobResponse(ApiModel):
@@ -1498,6 +1520,7 @@ class PrintJobResponse(ApiModel):
     line_width_mm: Decimal | None
     extruder_temp_c: Decimal | None
     bed_temp_c: Decimal | None
+    initial_bed_temp_c: Decimal | None
     chamber_temp_c: Decimal | None
     print_speed_mm_s: Decimal | None
     pressure_advance: Decimal | None
@@ -1514,6 +1537,16 @@ class PrintJobResponse(ApiModel):
     support_configuration: dict[str, Any]
     machine_name: str | None
     timelapse_url: str | None
+    thumbnail_url: str | None = None
+    thumbnail_width: int | None
+    thumbnail_height: int | None
+    actual_filament_cost: Decimal | None = None
+    predicted_filament_cost: Decimal | None = None
+    cost_currency: str | None = None
+    cost_currency_conflict: bool = False
+    cost_complete: bool = False
+    priced_filament_weight_g: Decimal = Decimal("0")
+    unpriced_filament_weight_g: Decimal = Decimal("0")
     started_at: datetime | None
     ended_at: datetime | None
     record_version: int
