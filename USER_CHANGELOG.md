@@ -1,5 +1,22 @@
 # User Changelog
 
+## 0.5.3 - 08.25.2026
+
+### Added
+
+- Filament and spool identities now prominently show Type, Color, Filler, and Finish together.
+
+### Changed
+
+- Every cooling setting can now be customized for an individual filament profile while still inheriting its template value until changed.
+- Regular and Maximum Fan Speed now allow 0%; Regular Fan Speed at Layer starts at 1.
+
+### Fixed
+
+- Fixed filament profiles showing only one of the available cooling controls.
+- Fixed spool and filament cards omitting important filler or finish information from their main identity.
+- Fixed a Cura backup capture warning incorrectly making the entire connected workstation agent appear unhealthy.
+
 ## 0.5.2 - 08.25.2026
 
 ### Added

@@ -78,6 +78,7 @@ def heartbeat_payload(
     last_error: str | None = None,
     *,
     recovery_capture_state: str = "waiting_for_cura_close",
+    recovery_capture_message: str | None = None,
 ) -> dict[str, Any]:
     """Build bounded capability and discovery metadata."""
 
@@ -98,28 +99,31 @@ def heartbeat_payload(
     # sources with no literal tracked values are still included because mapping them
     # to a template is a valid reviewed no-op and keeps the one-time takeover complete.
     material_count = len(materials)
+    capabilities: dict[str, object] = {
+        "atomic_install": True,
+        "automatic_backup": True,
+        "rollback": True,
+        "cura_process_guard": True,
+        "material_profiles": True,
+        "material_settings_plugin": True,
+        "klipper_settings_plugin": True,
+        "material_settings_verification_receipt": True,
+        "authoritative_material_library": True,
+        "hide_bundled_materials": True,
+        "unmanaged_material_count": material_count,
+        "unmanaged_material_file_count": material_file_count,
+        "cura_print_profile_import": True,
+        "unmanaged_print_profile_count": len(print_profiles),
+        "managed_material_count": len(managed_materials),
+        "unmanaged_import_source_count": len(import_sources),
+        "cura_recovery_snapshots": True,
+        "cura_recovery_capture_state": recovery_capture_state,
+    }
+    if recovery_capture_message is not None:
+        capabilities["cura_recovery_capture_message"] = recovery_capture_message
     return {
         "agent_version": __version__,
-        "capabilities": {
-            "atomic_install": True,
-            "automatic_backup": True,
-            "rollback": True,
-            "cura_process_guard": True,
-            "material_profiles": True,
-            "material_settings_plugin": True,
-            "klipper_settings_plugin": True,
-            "material_settings_verification_receipt": True,
-            "authoritative_material_library": True,
-            "hide_bundled_materials": True,
-            "unmanaged_material_count": material_count,
-            "unmanaged_material_file_count": material_file_count,
-            "cura_print_profile_import": True,
-            "unmanaged_print_profile_count": len(print_profiles),
-            "managed_material_count": len(managed_materials),
-            "unmanaged_import_source_count": len(import_sources),
-            "cura_recovery_snapshots": True,
-            "cura_recovery_capture_state": recovery_capture_state,
-        },
+        "capabilities": capabilities,
         "cura_installations": installation_reports,
         "cura_materials": [source.report() for source in import_sources],
         "cura_managed_materials": [material.report() for material in managed_materials],
@@ -153,8 +157,9 @@ def run_once() -> bool:
     client.heartbeat(
         heartbeat_payload(
             installations,
-            recovery_error,
+            None,
             recovery_capture_state=capture_state,
+            recovery_capture_message=recovery_error,
         )
     )
     if not running:

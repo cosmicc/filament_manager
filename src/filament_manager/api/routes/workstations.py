@@ -88,6 +88,21 @@ SAFE_AGENT_ERROR_MESSAGES = frozenset(
         "Cura settings could not be captured safely on the workstation.",
     }
 )
+SAFE_RECOVERY_CAPTURE_MESSAGES = frozenset(
+    {
+        "No Cura printer configuration was found to back up.",
+        "Cura appears to have been reset; the last known-good automatic backup was preserved.",
+        "This automatic backup was previously deleted and remains suppressed.",
+        "A supported Cura settings directory failed the local safety check.",
+        "A supported Cura settings file failed the local safety or size check.",
+        "A supported Cura settings file could not be read safely.",
+        "A supported Cura settings file contains invalid syntax.",
+        "A supported Cura JSON settings file contains invalid syntax.",
+        "A supported Cura JSON settings file has an invalid structure.",
+        "The Cura settings backup exceeds the safe file or size limit.",
+        "Cura settings could not be captured safely on the workstation.",
+    }
+)
 
 
 def _sanitized_agent_error(value: str | None) -> str | None:
@@ -99,6 +114,21 @@ def _sanitized_agent_error(value: str | None) -> str | None:
     if normalized in SAFE_AGENT_ERROR_MESSAGES:
         return normalized
     return "The workstation agent reported an error. Review its local service log."
+
+
+def _apply_recovery_capture_report(agent: WorkstationAgent, capabilities: dict[str, object]) -> None:
+    """Keep an isolated automatic-backup failure on the recovery health surface."""
+
+    if capabilities.get("cura_recovery_capture_state") != "error":
+        return
+    raw_message = capabilities.get("cura_recovery_capture_message")
+    normalized = " ".join(raw_message.split()) if isinstance(raw_message, str) else ""
+    agent.cura_recovery_status = "capture_blocked" if agent.last_recovery_snapshot_at else "not_ready"
+    agent.cura_recovery_message = (
+        normalized
+        if normalized in SAFE_RECOVERY_CAPTURE_MESSAGES
+        else "Cura settings could not be captured safely on the workstation."
+    )
 
 
 class PairingRateLimiter:
@@ -345,6 +375,7 @@ async def workstation_heartbeat(
     agent.cura_materials = [item.model_dump(mode="json") for item in payload.cura_materials]
     agent.last_seen_at = datetime.now(UTC)
     agent.last_error = _sanitized_agent_error(payload.last_error)
+    _apply_recovery_capture_report(agent, payload.capabilities)
     if (
         not agent.cura_management_enabled
         and payload.cura_installations

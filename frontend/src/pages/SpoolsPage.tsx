@@ -32,6 +32,7 @@ import { useAuth } from "../context/AuthContext";
 import { useCollectionView } from "../hooks/useCollectionView";
 import { filamentSwatchStyle } from "../lib/colors";
 import { costPerGram, currencyAmount, dateTime, grams, inputNumber, percent } from "../lib/format";
+import { materialIdentitySummary } from "../lib/materialIdentity";
 
 function WeighModal({ spool, onClose }: { spool: Spool; onClose: () => void }) {
   const queryClient = useQueryClient();
@@ -97,7 +98,7 @@ function WeighModal({ spool, onClose }: { spool: Spool; onClose: () => void }) {
   return (
     <Modal
       title={`Weigh ${spool.spool_code}`}
-      description="Enter the complete spool weight. Tare is deducted automatically."
+      description={`${materialIdentitySummary(spool)}. Enter the complete spool weight; tare is deducted automatically.`}
       onClose={onClose}
       footer={
         <>
@@ -126,11 +127,9 @@ function WeighModal({ spool, onClose }: { spool: Spool; onClose: () => void }) {
             style={filamentSwatchStyle(spool.color_mode, spool.color_hexes, spool.color_hex ?? "2F80A5")}
           />
           <div>
-            <strong>
-              {spool.vendor_name ?? "Unspecified"} {spool.material_type}
-            </strong>
+            <strong>{materialIdentitySummary(spool)}</strong>
             <span>
-              {spool.color_name} · expected{" "}
+              {spool.vendor_name ?? "Unspecified vendor"} · expected{" "}
               {grams(spool.remaining_mass_expected_g)}
             </span>
           </div>
@@ -360,7 +359,7 @@ function CreateSpoolModal({
                 {filaments.map((filament) => (
                   <option key={filament.id} value={filament.id}>
                     {filament.vendor_name ?? "Unspecified"} ·{" "}
-                    {filament.material_type} · {filament.color_name}
+                    {materialIdentitySummary(filament)}
                   </option>
                 ))}
               </select>
@@ -538,7 +537,7 @@ function EditSpoolModal({
   return (
     <Modal
       title={`Edit ${spool.spool_code}`}
-      description="Correct any setup field. Remaining-mass corrections are retained as immutable adjustment history."
+      description={`${materialIdentitySummary(spool)}. Correct any setup field; remaining-mass corrections are retained as immutable adjustment history.`}
       onClose={onClose}
       size="wide"
       footer={
@@ -582,7 +581,7 @@ function EditSpoolModal({
         >
           <div className="form-grid">
             <label>Spool code<input name="spool_code" defaultValue={spool.spool_code} pattern={'[A-Za-z0-9_\\-]+'} maxLength={64} required autoFocus /></label>
-            <label>Filament product<select name="filament_product_id" defaultValue={spool.filament_product_id} required>{filaments.map((filament) => <option key={filament.id} value={filament.id}>{filament.vendor_name ?? 'Unspecified'} · {filament.material_type} · {filament.color_name}</option>)}</select></label>
+            <label>Filament product<select name="filament_product_id" defaultValue={spool.filament_product_id} required>{filaments.map((filament) => <option key={filament.id} value={filament.id}>{filament.vendor_name ?? 'Unspecified'} · {materialIdentitySummary(filament)}</option>)}</select></label>
             <label>Filament purchase weight (g)<input name="nominal_net_mass_g" type="number" min="0.1" step="0.1" value={purchaseWeight} onChange={(event) => setPurchaseWeight(event.target.value)} required /><small className="field-help">Net filament purchased, excluding the empty physical spool.</small></label>
             <label>Empty spool weight (g)<input name="tare_mass_g" type="number" min="0" step="0.1" defaultValue={inputNumber(spool.tare_mass_g, 1)} required /></label>
             <label>Current filament remaining (g)<input name="remaining_mass_g" type="number" min="0" step="1" defaultValue={inputNumber(spool.remaining_mass_effective_g, 0)} required /><small className="field-help">Changing this records an operator correction and updates Spoolman.</small></label>
@@ -805,12 +804,9 @@ export default function SpoolsPage() {
                       </div>
                     </td>
                     <td>
-                      <strong>
-                        {spool.material_type}
-                        {spool.filler ? ` ${spool.filler}` : ""}
-                      </strong>
+                      <strong>{spool.material_type} · {spool.color_name}</strong>
                       <small className="table-subtext">
-                        {spool.color_name}
+                        {spool.filler ?? "No filler"} · {spool.finish ?? "Standard finish"}
                       </small>
                     </td>
                     <td>
@@ -854,14 +850,14 @@ export default function SpoolsPage() {
               <div className="table-identity"><span className={`filament-swatch${view === "detailed" ? " filament-swatch--large" : ""}`} style={filamentSwatchStyle(spool.color_mode, spool.color_hexes, spool.color_hex ?? "2F80A5")} /><span><strong>{spool.spool_code}</strong><small>{spool.vendor_name ?? "No vendor"}</small></span></div>
               <span className="status-stack">{spool.active_printer_id ? <StatusPill status="active" /> : null}<StatusPill status={spool.status} /></span>
             </header>
-            <div className="collection-card__body"><h2>{spool.material_type}{spool.filler ? ` ${spool.filler}` : ""} · {spool.color_name}</h2><div className="table-progress"><span><strong>{grams(spool.remaining_mass_effective_g)}</strong><small>{percent(spool.remaining_percent)}</small></span><div className="progress progress--small"><span style={{ width: `${Math.min(100, Number(spool.remaining_percent))}%` }} /></div></div></div>
+            <div className="collection-card__body"><h2>{materialIdentitySummary(spool)}</h2><div className="table-progress"><span><strong>{grams(spool.remaining_mass_effective_g)}</strong><small>{percent(spool.remaining_percent)}</small></span><div className="progress progress--small"><span style={{ width: `${Math.min(100, Number(spool.remaining_percent))}%` }} /></div></div></div>
             <dl className="catalog-meta"><div><dt>Cost / gram</dt><dd>{costPerGram(spool.cost_per_gram, spool.currency)}</dd></div><div><dt>Location</dt><dd>{spool.location ?? "Not set"}</dd></div>{view === "detailed" ? <><div><dt>Completed prints</dt><dd>{spool.completed_print_count.toLocaleString()}</dd></div><div><dt>Last weighed</dt><dd>{dateTime(spool.last_measurement_at)}</dd></div><div><dt>Confidence</dt><dd>{spool.weight_confidence}</dd></div><div><dt>Printer</dt><dd>{spool.active_printer_id ? printerNames.get(spool.active_printer_id) ?? "Assigned printer" : "Not active"}</dd></div></> : null}</dl>
             <span className="collection-card__link">Open details and actions</span>
           </button>)}
         </section>
       )}
 
-      {selected ? <Modal title={`${selected.spool_code} details`} description="Inspect this spool and use the same inventory actions from any catalog view." size="wide" onClose={() => setSelected(null)} footer={<button className="button button--primary" onClick={() => setSelected(null)}>Done</button>}>
+      {selected ? <Modal title={`${selected.spool_code} details`} description={`${materialIdentitySummary(selected)}. Inspect this spool and use the same inventory actions from any catalog view.`} size="wide" onClose={() => setSelected(null)} footer={<button className="button button--primary" onClick={() => setSelected(null)}>Done</button>}>
                 <header className="collection-detail-heading">
                   <div className="table-identity">
                     <span
@@ -871,6 +867,7 @@ export default function SpoolsPage() {
                     <span>
                       <p className="eyebrow">Physical spool</p>
                       <h2>{selected.spool_code}</h2>
+                      <small>{materialIdentitySummary(selected)}</small>
                     </span>
                   </div>
                   <StatusPill
@@ -884,8 +881,8 @@ export default function SpoolsPage() {
                     <div>
                       <dt>Filament</dt>
                       <dd>
-                        {selected.vendor_name} {selected.material_type} ·{" "}
-                        {selected.color_name}
+                        {selected.vendor_name ?? "Unspecified vendor"} ·{" "}
+                        {materialIdentitySummary(selected)}
                       </dd>
                     </div>
                     <div>

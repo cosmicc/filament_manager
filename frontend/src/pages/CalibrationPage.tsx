@@ -13,8 +13,6 @@ import { useAuth } from '../context/AuthContext'
 import { compactNumber, inputNumber, titleCase } from '../lib/format'
 
 const templateOnlyCalibrationSettings = new Set([
-  'pressure_advance',
-  'cura_extensions.klipper_pressure_advance_factor',
   'cura_extensions.klipper_smooth_time_enable',
   'cura_extensions.klipper_smooth_time_factor',
   'cura_extensions.acceleration_print',

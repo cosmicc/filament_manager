@@ -2,6 +2,11 @@ import { expect, test, type Page } from '@playwright/test'
 
 const browserErrors = new WeakMap<Page, string[]>()
 
+async function captureEvidence(page: Page, name: string): Promise<void> {
+  const directory = process.env.FILAMENT_MANAGER_E2E_EVIDENCE_DIR
+  if (directory) await page.screenshot({ path: `${directory}/${name}.png`, fullPage: false })
+}
+
 const user = {
   id: 'administrator-id', username: 'admin', display_name: 'Administrator',
   role: 'administrator', is_active: true, must_change_password: false, record_version: 1,
@@ -50,7 +55,7 @@ const template = {
 
 const filament = {
   id: 'd1e1d7ce-f0bc-46f5-86b2-d2c74f272f00', vendor_id: null, vendor_name: null, material_type: 'PLA',
-  filler: null, finish: null, color_name: 'Blue', color_hex: '2F80A5',
+  filler: 'Carbon Fiber', finish: 'Silk', color_name: 'Blue', color_hex: '2F80A5',
   color_mode: 'solid', color_hexes: ['2F80A5'],
   product_name: 'Workshop PLA', diameter_mm: '1.75', tolerance_mm: null,
   density_g_cm3: '1.24', nominal_net_mass_g: '1000', notes: null,
@@ -80,7 +85,7 @@ const differentScopeProfile = {
 
 const spool = {
   id: 'spool-id', spool_code: 'PLA-BLUE-01', filament_product_id: filament.id,
-  material_type: 'PLA', filler: null, finish: null, color_name: 'Blue',
+  material_type: 'PLA', filler: 'Carbon Fiber', finish: 'Silk', color_name: 'Blue',
   color_hex: '2F80A5', color_mode: 'solid', color_hexes: ['2F80A5'], vendor_name: null, product_name: 'Workshop PLA',
   nominal_net_mass_g: '1000', tare_mass_g: '200', remaining_mass_expected_g: '800',
   remaining_mass_measured_g: '800', remaining_mass_effective_g: '800',
@@ -372,7 +377,12 @@ test('filament details remember colors and save Cura settings directly', async (
     { key: 'hole_xy_offset', label: 'Hole Horizontal Expansion', value_type: 'number', unit: 'mm', editable: true, template_only: false },
     { key: 'retraction_retract_speed', label: 'Retraction Retract Speed', value_type: 'number', unit: 'mm/s', editable: true, template_only: false },
     { key: 'retraction_prime_speed', label: 'Retraction Prime Speed', value_type: 'number', unit: 'mm/s', editable: true, template_only: false },
-    { key: 'cool_fan_speed_max', label: 'Maximum Fan Speed', value_type: 'number', unit: '%', editable: true, template_only: true },
+    { key: 'cool_fan_speed_max', label: 'Maximum Fan Speed', value_type: 'number', unit: '%', editable: true, template_only: false },
+    { key: 'cool_fan_full_layer', label: 'Regular Fan Speed at Layer', value_type: 'number', unit: null, editable: true, template_only: false },
+    { key: 'cool_min_layer_time', label: 'Minimum Layer Time', value_type: 'number', unit: 's', editable: true, template_only: false },
+    { key: 'cool_min_layer_time_fan_speed_max', label: 'Minimum Layer Time at Maximum Fan', value_type: 'number', unit: 's', editable: true, template_only: false },
+    { key: 'cool_min_speed', label: 'Minimum Speed', value_type: 'number', unit: 'mm/s', editable: true, template_only: false },
+    { key: 'cool_fan_speed_0', label: 'Initial Fan Speed', value_type: 'number', unit: '%', editable: true, template_only: false },
   ] }))
   await page.route('**/api/v1/profiles/profile-id/settings', async (route) => {
     profileUpdate = route.request().postDataJSON() as Record<string, unknown>
@@ -398,13 +408,21 @@ test('filament details remember colors and save Cura settings directly', async (
   await expect(page.locator('.setting-field--customized')).toHaveCount(2)
   await expect(page.getByLabel('Retraction Retract Speed (mm/s)')).toHaveCount(1)
   await expect(page.getByLabel('Retraction Prime Speed (mm/s)')).toHaveCount(1)
-  await expect(page.getByLabel('Maximum Fan Speed (%)')).toHaveCount(0)
+  await expect(page.getByLabel('Maximum fan speed (%)')).toHaveCount(1)
+  await expect(page.getByLabel(/^Regular fan speed/)).toHaveAttribute('min', '0')
+  await expect(page.getByLabel('Maximum fan speed (%)')).toHaveAttribute('min', '0')
+  await expect(page.getByLabel(/^Regular Fan Speed at Layer/)).toHaveAttribute('min', '1')
+  await expect(page.getByLabel(/^Minimum Layer Time \(s\)/)).toHaveCount(1)
+  await expect(page.getByLabel(/^Minimum Layer Time at Maximum Fan/)).toHaveCount(1)
+  await expect(page.getByLabel(/^Minimum Speed/)).toHaveCount(1)
   await expect(page.getByLabel(/^Retraction Speed/)).toHaveCount(0)
-  await expect(page.getByLabel(/^Initial Fan Speed/)).toHaveCount(0)
+  await expect(page.getByLabel(/^Initial Fan Speed/)).toHaveCount(1)
   await expect(page.getByLabel('Printing temperature (°C)')).toHaveCount(1)
   await expect(page.getByLabel('Build volume temperature (°C)')).toHaveCount(1)
   await expect(page.getByLabel('Build plate temperature (°C)')).toHaveCount(1)
   await expect(page.getByLabel(/^Default print temperature/)).toHaveCount(0)
+  await page.getByRole('heading', { name: 'Cooling' }).scrollIntoViewIfNeeded()
+  await captureEvidence(page, 'filament-profile-cooling')
   await page.getByLabel('Build plate temperature (°C)').fill('61')
   await expect(page.locator('.setting-field--customized')).toHaveCount(3)
   await page.getByLabel('Build plate temperature (°C)').fill('60')
@@ -436,7 +454,9 @@ test('spool creation is available without opening Spoolman', async ({ page }) =>
     await route.fulfill({ status: 201, json: {} })
   })
   await page.goto('/spools')
+  await expect(page.getByRole('option', { name: /PLA · Blue · Carbon Fiber · Silk/ })).toHaveCount(0)
   await page.getByRole('button', { name: 'Add spool' }).click()
+  await expect(page.getByRole('option', { name: /PLA · Blue · Carbon Fiber · Silk/ })).toHaveCount(1)
   await page.getByLabel('Spool code').fill('PLA-BLUE-01')
   await page.getByLabel('Purchase cost').fill('15')
   await expect(page.getByText('1.5¢/g using filament weight only.')).toBeVisible()
@@ -460,6 +480,9 @@ test('free-text bucket location is editable from Filament Manager', async ({ pag
   })
 
   await page.goto('/spools')
+  await expect(page.getByText('PLA · Blue', { exact: true })).toBeVisible()
+  await expect(page.getByText('Carbon Fiber · Silk', { exact: true })).toBeVisible()
+  await captureEvidence(page, 'spool-material-identity')
   await expect(page.getByText('1.5¢/g', { exact: true }).first()).toBeVisible()
   await page.getByText('PLA-BLUE-01', { exact: true }).click()
   await expect(page.getByText('Bucket 3', { exact: true }).last()).toBeVisible()
@@ -506,7 +529,7 @@ test('an empty Cura library can complete the one-time atomic takeover', async ({
 test('managed Cura workstations show verified material print setting coverage', async ({ page }) => {
   const agent = {
     id: 'agent-id', agent_code: 'WS-TEST', display_name: 'Arch Cura', hostname: 'workstation',
-    platform: 'arch_linux', architecture: 'x86_64', agent_version: '0.5.2', enabled: true,
+    platform: 'arch_linux', architecture: 'x86_64', agent_version: '0.5.3', enabled: true,
     cura_management_enabled: true,
     capabilities: { managed_material_count: 3, unmanaged_print_profile_count: 0, cura_recovery_snapshots: true },
     cura_installations: [{

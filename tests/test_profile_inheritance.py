@@ -49,6 +49,7 @@ def test_sparse_overrides_ignore_equivalent_decimals_and_resolve_removals() -> N
         "flow_percent": "100.0000",
         "cura_extensions": {
             "retraction_enable": True,
+            "cool_min_layer_time": "10",
             "material_flow_layer_0": "98",
         },
     }
@@ -103,8 +104,8 @@ def test_template_update_preserves_profile_overrides_but_owns_template_only_sett
     assert override_setting_keys(overrides) == {"extruder_temp_c", "pressure_advance"}
 
 
-def test_template_update_replaces_legacy_custom_regular_fan() -> None:
-    """Cooling values are template owned even when an old profile customized them."""
+def test_template_update_preserves_custom_regular_fan() -> None:
+    """A calibrated filament may retain a custom regular fan speed."""
 
     current = _settings()
     overrides = {"cooling_min_percent": "90"}
@@ -113,13 +114,13 @@ def test_template_update_replaces_legacy_custom_regular_fan() -> None:
 
     resolved, adjusted = resolve_profile_settings_for_template_update(newer, current, overrides)
 
-    assert resolved["cooling_min_percent"] == "50"
+    assert resolved["cooling_min_percent"] == "90"
     assert resolved["cooling_max_percent"] == "80"
-    assert adjusted == {}
+    assert adjusted == {"cooling_min_percent": "90"}
 
 
-def test_template_update_replaces_legacy_custom_maximum_fan() -> None:
-    """Both fan range controls inherit from the latest template."""
+def test_template_update_preserves_custom_maximum_fan() -> None:
+    """A calibrated filament may retain a custom maximum fan speed."""
 
     base = {**_settings(), "cooling_min_percent": "20"}
     overrides = {"cooling_max_percent": "60"}
@@ -129,5 +130,40 @@ def test_template_update_replaces_legacy_custom_maximum_fan() -> None:
     resolved, adjusted = resolve_profile_settings_for_template_update(newer, current, overrides)
 
     assert resolved["cooling_min_percent"] == "70"
-    assert resolved["cooling_max_percent"] == "100"
-    assert adjusted == {}
+    assert resolved["cooling_max_percent"] == "60"
+    assert adjusted == {"cooling_max_percent": "60"}
+
+
+def test_profile_can_override_every_cooling_extension() -> None:
+    """Cooling calibration values remain filament-owned through inheritance."""
+
+    base = _settings()
+    base_extensions = base["cura_extensions"]
+    assert isinstance(base_extensions, dict)
+    desired = {
+        **base,
+        "cooling_enabled": False,
+        "cooling_min_percent": "0",
+        "cooling_max_percent": "0",
+        "cura_extensions": {
+            **base_extensions,
+            "cool_fan_full_layer": "2",
+            "cool_min_layer_time": "6",
+            "cool_min_layer_time_fan_speed_max": "12",
+            "cool_min_speed": "8",
+            "cool_fan_speed_0": "0",
+        },
+    }
+
+    overrides = sparse_profile_overrides(base, desired)
+
+    assert overrides["cooling_enabled"] is False
+    assert overrides["cooling_min_percent"] == "0"
+    assert overrides["cooling_max_percent"] == "0"
+    assert overrides["cura_extensions"] == {
+        "cool_fan_full_layer": "2",
+        "cool_fan_speed_0": "0",
+        "cool_min_layer_time": "6",
+        "cool_min_layer_time_fan_speed_max": "12",
+        "cool_min_speed": "8",
+    }

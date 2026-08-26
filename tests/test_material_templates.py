@@ -91,7 +91,7 @@ async def test_direct_template_save_updates_linked_product_profile(
                     hostname="cura-test",
                     platform="linux",
                     architecture="x86_64",
-                    agent_version="0.5.2",
+                    agent_version="0.5.3",
                     token_hash="a" * 64,
                     enabled=True,
                     cura_management_enabled=True,

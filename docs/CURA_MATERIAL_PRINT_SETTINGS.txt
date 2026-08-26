@@ -15,7 +15,7 @@ Brand remain material XML metadata rather than selectable print settings. Cura
 Workstations and Diagnostics report the exact expected/exposed count, missing
 keys, required-plugin versions/readiness, and the last verification time.
 
-There are 56 tracked Cura keys: 50 editable controls and 6 derived or metadata
+There are 55 tracked Cura keys: 49 editable controls and 6 derived or metadata
 keys. The authoritative catalog is:
 src/filament_manager/domain/cura_material_settings.py
 
@@ -86,14 +86,14 @@ ironing_line_spacing | Ironing Line Spacing | number, mm | editable in templates
 
 COOLING
 -------
-cool_fan_enabled | Enable Print Cooling | boolean | template only
-cool_fan_speed_min | Regular Fan Speed | number, percent | template only
-cool_fan_speed_max | Maximum Fan Speed | number, percent | template only
+cool_fan_enabled | Enable Print Cooling | boolean | editable in templates and filament profiles
+cool_fan_speed_min | Regular Fan Speed | number, percent | editable in templates and filament profiles; accepts 0 through 100
+cool_fan_speed_max | Maximum Fan Speed | number, percent | editable in templates and filament profiles; accepts 0 through 100
 cool_fan_speed | Maximum Fan Speed Alias | number, percent | derived from Maximum Fan Speed
-cool_fan_full_layer | Regular Fan Speed at Layer | number | template only
-cool_min_layer_time | Minimum Layer Time | number, s | template only
-cool_min_layer_time_fan_speed_max | Minimum Layer Time at Maximum Fan | number, s | template only
-cool_min_speed | Minimum Speed | number, mm/s | template only
+cool_fan_full_layer | Regular Fan Speed at Layer | number | editable in templates and filament profiles; minimum 1
+cool_min_layer_time | Minimum Layer Time | number, s | editable in templates and filament profiles
+cool_min_layer_time_fan_speed_max | Minimum Layer Time at Maximum Fan | number, s | editable in templates and filament profiles
+cool_min_speed | Minimum Speed | number, mm/s | editable in templates and filament profiles
 cool_fan_speed_0 | Initial Fan Speed | number, percent | editable in templates and filament profiles; legacy snapshots start at 0 until changed
 
 

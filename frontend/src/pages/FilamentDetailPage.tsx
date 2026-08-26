@@ -16,6 +16,7 @@ import { useAuth } from '../context/AuthContext'
 import { Link, useRouter } from '../context/RouterContext'
 import { filamentSwatchStyle } from '../lib/colors'
 import { compactNumber, inputNumber } from '../lib/format'
+import { materialIdentitySummary } from '../lib/materialIdentity'
 
 function optional(data: FormData, key: string) {
   const value = String(data.get(key) ?? '').trim()
@@ -167,7 +168,7 @@ export default function FilamentDetailPage() {
   }
 
   return <div>
-    <PageHeader eyebrow={`${item.vendor_name ?? 'Unspecified vendor'} · ${item.material_type}`} title={item.product_name ?? `${item.material_type} ${item.color_name}`} description="Manage the physical filament identity separately from its printer/nozzle-specific print settings." actions={<><Link className="button" to="/filaments"><ArrowLeft size={16} /> All filaments</Link>{canEdit ? <Link className="button button--primary" to={`/filaments/duplicate/${item.id}`}><Copy size={16} /> Duplicate</Link> : null}</>} />
+    <PageHeader eyebrow={item.vendor_name ?? 'Unspecified vendor'} title={item.product_name ?? `${item.material_type} ${item.color_name}`} description={`${materialIdentitySummary(item)}. Manage the physical filament identity separately from its printer/nozzle-specific print settings.`} actions={<><Link className="button" to="/filaments"><ArrowLeft size={16} /> All filaments</Link>{canEdit ? <Link className="button button--primary" to={`/filaments/duplicate/${item.id}`}><Copy size={16} /> Duplicate</Link> : null}</>} />
     {message && <div className="deployment-note" role="status">{message}</div>}
     <section className="card product-editor">
       <header className="card__header"><div><p className="eyebrow">Canonical filament</p><h2>Product details</h2></div><div className="card-header-actions"><span className="filament-swatch" style={filamentSwatchStyle(item.color_mode, item.color_hexes, item.color_hex ?? '808080')} />{canEdit ? <><button className="button" onClick={() => setEditingProduct(true)}><Pencil size={16} /> Edit product</button><button className="button button--danger" disabled={remove.isPending} onClick={() => { if (window.confirm('Delete this filament? It will be archived instead if retained history prevents safe deletion.')) remove.mutate() }}><Trash2 size={16} /> {remove.isPending ? 'Removing…' : 'Delete or archive'}</button></> : null}</div></header>

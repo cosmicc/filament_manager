@@ -108,6 +108,34 @@ describe('MaterialSettingsEditor validation', () => {
     expect(controls.getByLabelText(/^Initial Fan Speed/)).toBeTruthy()
   })
 
+  it('shows every cooling control in filament profiles with the correct minimums', () => {
+    const rendered = render(
+      <MaterialSettingsEditor
+        settings={settings}
+        baseSettings={settings}
+        plates={[]}
+        scope="profile"
+        catalog={[
+          { key: 'cool_fan_full_layer', label: 'Regular Fan Speed at Layer', value_type: 'number', unit: null, editable: true, template_only: false },
+          { key: 'cool_min_layer_time', label: 'Minimum Layer Time', value_type: 'number', unit: 's', editable: true, template_only: false },
+          { key: 'cool_min_layer_time_fan_speed_max', label: 'Minimum Layer Time at Maximum Fan', value_type: 'number', unit: 's', editable: true, template_only: false },
+          { key: 'cool_min_speed', label: 'Minimum Speed', value_type: 'number', unit: 'mm/s', editable: true, template_only: false },
+          { key: 'cool_fan_speed_0', label: 'Initial Fan Speed', value_type: 'number', unit: '%', editable: true, template_only: false },
+        ]}
+      />,
+    )
+    const controls = within(rendered.container)
+
+    expect(controls.getByLabelText(/^Enable print cooling/)).toBeTruthy()
+    expect(controls.getByLabelText(/^Regular fan speed/).getAttribute('min')).toBe('0')
+    expect(controls.getByLabelText(/^Maximum fan speed/).getAttribute('min')).toBe('0')
+    expect(controls.getByLabelText(/^Regular Fan Speed at Layer/).getAttribute('min')).toBe('1')
+    expect(controls.getByLabelText(/^Minimum Layer Time \(s\)/)).toBeTruthy()
+    expect(controls.getByLabelText(/^Minimum Layer Time at Maximum Fan/)).toBeTruthy()
+    expect(controls.getByLabelText(/^Minimum Speed/)).toBeTruthy()
+    expect(controls.getByLabelText(/^Initial Fan Speed/)).toBeTruthy()
+  })
+
   it('marks explicit filament customizations with the stronger ownership state', () => {
     const rendered = render(
       <MaterialSettingsEditor

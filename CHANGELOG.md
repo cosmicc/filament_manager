@@ -1,5 +1,24 @@
 # Changelog
 
+## 0.5.3 - 08.25.2026
+
+### Added
+
+- Added shared Type, Color, Filler, and Finish identity summaries across filament and spool lists, cards, selectors, measurement context, and details.
+- Added regression coverage for profile-level cooling overrides and Cura fan boundary validation.
+
+### Changed
+
+- Changed every tracked cooling control from template-only ownership to editable filament-profile settings while retaining template inheritance for unchanged values.
+- Changed Regular and Maximum Fan Speed to accept 0 through 100 percent and Regular Fan Speed at Layer to require 1 or greater.
+- Changed every server, browser, and workstation-agent version surface to 0.5.3.
+
+### Fixed
+
+- Fixed filament profiles hiding most cooling controls even though those values can be material-specific.
+- Fixed filament and spool titles/subtitles omitting important filler and finish identity.
+- Fixed an isolated automatic Cura settings capture failure incorrectly marking the entire connected workstation agent as errored; capture failures now remain recovery-specific and expose bounded actionable guidance.
+
 ## 0.5.2 - 08.25.2026
 
 ### Added

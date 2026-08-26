@@ -47,8 +47,8 @@ const coreFields: Array<{
   { key: 'retraction_distance_mm', label: 'Retraction distance', unit: 'mm', precision: 1 },
   { key: 'retraction_speed_mm_s', label: 'Retraction retract speed', unit: 'mm/s', precision: 0 },
   { key: 'retraction_prime_speed_mm_s', label: 'Retraction prime speed', unit: 'mm/s', precision: 0 },
-  { key: 'cooling_min_percent', label: 'Regular fan speed', unit: '%', required: true, defaultValue: '0', precision: 0, templateOnly: true },
-  { key: 'cooling_max_percent', label: 'Maximum fan speed', unit: '%', required: true, defaultValue: '100', precision: 0, templateOnly: true },
+  { key: 'cooling_min_percent', label: 'Regular fan speed', unit: '%', required: true, defaultValue: '0', precision: 0 },
+  { key: 'cooling_max_percent', label: 'Maximum fan speed', unit: '%', required: true, defaultValue: '100', precision: 0 },
   { key: 'support_overhang_angle_deg', label: 'Support overhang angle', unit: '°', precision: 0 },
   { key: 'tree_max_branch_angle_deg', label: 'Tree maximum branch angle', unit: '°', precision: 0 },
   { key: 'pressure_advance', label: 'Klipper pressure advance', unit: 's', precision: 2 },
@@ -109,6 +109,7 @@ function curaSettingGroup(key: string): MaterialSettingGroup {
 }
 
 function extensionPrecision(item: CuraSettingCatalogItem): number {
+  if (item.key === 'cool_fan_full_layer') return 0
   if (item.unit === '%' || item.unit === '°C' || item.unit === 'mm/s' || item.unit === 'mm/s²' || item.unit === '°') return 0
   if (item.key.startsWith('xy_offset') || item.key.startsWith('hole_xy_offset')) return 2
   if (item.key.startsWith('klipper_')) return 2
@@ -121,10 +122,22 @@ function hasSettingValue(value: unknown): boolean {
 }
 
 function minimumForCoreField(key: keyof MaterialSettings, precision: number): string | undefined {
+  if (['cooling_min_percent', 'cooling_max_percent'].includes(key)) return '0'
   if (['retraction_distance_mm', 'retraction_speed_mm_s', 'retraction_prime_speed_mm_s', 'pressure_advance', 'ironing_flow_percent'].includes(key)) return '0'
   if (['support_overhang_angle_deg', 'tree_max_branch_angle_deg'].includes(key)) return '0'
   if (key === 'chamber_temp_c') return undefined
   return precision === 0 ? '1' : precision === 1 ? '0.1' : '0.01'
+}
+
+function minimumForExtensionField(key: string): string | undefined {
+  if (key === 'cool_fan_full_layer') return '1'
+  if (['cool_fan_speed_0', 'cool_fan_speed_min', 'cool_fan_speed_max'].includes(key)) return '0'
+  return undefined
+}
+
+function maximumForExtensionField(key: string): string | undefined {
+  if (['cool_fan_speed_0', 'cool_fan_speed_min', 'cool_fan_speed_max'].includes(key)) return '100'
+  return undefined
 }
 
 function maximumForCoreField(key: keyof MaterialSettings): string | undefined {
@@ -187,9 +200,7 @@ export function settingsFromForm(
     retraction_distance_mm: nullable(preservedNumericValue(form, 'retraction_distance_mm', data.get('retraction_distance_mm'))),
     retraction_speed_mm_s: nullable(preservedNumericValue(form, 'retraction_speed_mm_s', data.get('retraction_speed_mm_s'))),
     retraction_prime_speed_mm_s: nullable(preservedNumericValue(form, 'retraction_prime_speed_mm_s', data.get('retraction_prime_speed_mm_s'))),
-    cooling_enabled: scope === 'profile'
-      ? data.get('cooling_enabled') === 'true'
-      : data.get('cooling_enabled') === 'on',
+    cooling_enabled: data.get('cooling_enabled') === 'on',
     cooling_min_percent: String(preservedNumericValue(form, 'cooling_min_percent', data.get('cooling_min_percent'))),
     cooling_max_percent: String(preservedNumericValue(form, 'cooling_max_percent', data.get('cooling_max_percent'))),
     support_overhang_angle_deg: nullable(preservedNumericValue(form, 'support_overhang_angle_deg', data.get('support_overhang_angle_deg'))),
@@ -437,7 +448,6 @@ export function MaterialSettingsEditor({
             data-exact-value={String(effectiveValue(field.key) ?? field.defaultValue ?? '')}
           />
         ))}
-        <input type="hidden" name="cooling_enabled" value={String(Boolean(effectiveValue('cooling_enabled')))} />
       </> : null}
       {visibleGroups.map((group) => (
         <EditorSection key={group.title} title={group.title} description={group.description}>
@@ -467,11 +477,11 @@ export function MaterialSettingsEditor({
                 {ownership(field.key, baseSettings?.[field.key] as string | number | boolean | null | undefined)}
               </div>
             ))}
-            {group.id === 'cooling' && scope === 'template' ? (
+            {group.id === 'cooling' ? (
               <div className={`setting-field${customized('cooling_enabled') ? ' setting-field--customized' : ''}${errorsFor('cooling_enabled').length ? ' setting-field--invalid' : ''}`}>
                 <label className="check-row">
                   <input name="cooling_enabled" type="checkbox" defaultChecked={effectiveValue('cooling_enabled') == null ? true : Boolean(effectiveValue('cooling_enabled'))} aria-invalid={errorsFor('cooling_enabled').length ? true : undefined} aria-describedby={errorsFor('cooling_enabled').length ? errorId('cooling_enabled') : undefined} onChange={(event) => markOwnership('cooling_enabled', event.currentTarget.checked, baseSettings?.cooling_enabled)} />
-                  <span><strong>Enable print cooling</strong><small>Stored with the current material settings.</small></span>
+                  <span><strong>Enable print cooling</strong><small>Stored with this material's print settings.</small></span>
                 </label>
                 {fieldErrors('cooling_enabled')}
                 {ownership('cooling_enabled', baseSettings?.cooling_enabled)}
@@ -491,6 +501,8 @@ export function MaterialSettingsEditor({
                       name={`cura__${item.key}`}
                       type={item.value_type === 'number' ? 'number' : 'text'}
                       step={item.value_type === 'number' ? 10 ** -extensionPrecision(item) : undefined}
+                      min={item.value_type === 'number' ? minimumForExtensionField(item.key) : undefined}
+                      max={item.value_type === 'number' ? maximumForExtensionField(item.key) : undefined}
                       defaultValue={effectiveExtensionValue(item.key) == null ? '' : item.value_type === 'number' ? inputNumber(effectiveExtensionValue(item.key) as string | number, extensionPrecision(item)) : String(effectiveExtensionValue(item.key))}
                       data-exact-value={item.value_type === 'number' ? String(effectiveExtensionValue(item.key) ?? '') : undefined}
                       aria-invalid={extensionErrorsFor(item.key).length ? true : undefined}

@@ -63,6 +63,37 @@ def test_agent_error_detail_is_bounded_to_safe_operator_guidance() -> None:
     )
 
 
+def test_recovery_capture_failure_is_scoped_to_recovery_health() -> None:
+    """A backup parser failure must not make a connected Cura agent unhealthy."""
+
+    snapshot_time = datetime.now(UTC)
+    agent = WorkstationAgent(
+        agent_code="WS-RECOVERY",
+        display_name="Recovery workstation",
+        hostname="recovery-workstation",
+        platform="arch_linux",
+        architecture="x86_64",
+        agent_version="0.5.3",
+        token_hash="a" * 64,
+        capabilities={},
+        cura_installations=[],
+        cura_materials=[],
+        last_recovery_snapshot_at=snapshot_time,
+    )
+
+    workstations._apply_recovery_capture_report(
+        agent,
+        {
+            "cura_recovery_capture_state": "error",
+            "cura_recovery_capture_message": ("A supported Cura settings file contains invalid syntax."),
+        },
+    )
+
+    assert agent.last_error is None
+    assert agent.cura_recovery_status == "capture_blocked"
+    assert agent.cura_recovery_message == "A supported Cura settings file contains invalid syntax."
+
+
 @pytest.mark.integration
 @pytest.mark.asyncio
 async def test_pair_queue_claim_and_complete_workstation_deployment(

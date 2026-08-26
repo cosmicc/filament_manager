@@ -60,9 +60,6 @@ TEMPLATE_ONLY_PROFILE_SETTING_KEYS = frozenset(
         "initial_layer_speed_mm_s",
         "travel_speed_mm_s",
         "support_speed_mm_s",
-        "cooling_enabled",
-        "cooling_min_percent",
-        "cooling_max_percent",
     }
 )
 TEMPLATE_ONLY_CURA_EXTENSION_KEYS = CURA_TEMPLATE_ONLY_SETTING_KEYS & CURA_EXTENSION_SETTING_KEYS

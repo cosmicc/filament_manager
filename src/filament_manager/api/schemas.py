@@ -551,8 +551,14 @@ class MaterialSettingsInput(ApiModel):
                     Decimal("0") < numeric_value <= Decimal("1000000")
                 ):
                     raise ValueError(f"Cura extension {key} must be greater than 0 and at most 1000000")
-                if key == "cool_fan_speed_0" and not (Decimal("0") <= numeric_value <= Decimal("100")):
-                    raise ValueError("Cura extension cool_fan_speed_0 must be between 0 and 100")
+                if key in {
+                    "cool_fan_speed_0",
+                    "cool_fan_speed_min",
+                    "cool_fan_speed_max",
+                } and not (Decimal("0") <= numeric_value <= Decimal("100")):
+                    raise ValueError(f"Cura extension {key} must be between 0 and 100")
+                if key == "cool_fan_full_layer" and numeric_value < Decimal("1"):
+                    raise ValueError("Cura extension cool_fan_full_layer must be at least 1")
                 if key == "klipper_smooth_time_factor" and not (
                     Decimal("0.001") <= numeric_value <= Decimal("0.2")
                 ):

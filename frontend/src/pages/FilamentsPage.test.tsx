@@ -54,7 +54,7 @@ describe('FilamentsPage', () => {
     window.localStorage.clear()
   })
 
-  it('uses the requested three-line identity and retains manual-entry focus', async () => {
+  it('prominently shows the four-part material identity and retains manual-entry focus', async () => {
     apiFetchMock.mockImplementation((path: string) => {
       if (path === '/filaments') return Promise.resolve([filament])
       if (path === '/profiles/templates') return Promise.resolve([{
@@ -72,9 +72,9 @@ describe('FilamentsPage', () => {
     })
     renderPage()
 
-    expect(await screen.findByRole('heading', { name: 'PLA · Midnight · Workshop Blue' })).toBeTruthy()
+    expect(await screen.findByRole('heading', { name: 'PLA · Midnight · Carbon fiber · Matte' })).toBeTruthy()
     expect(screen.getByText('Workshop Vendor')).toBeTruthy()
-    expect(screen.getByText('Carbon fiber / Matte')).toBeTruthy()
+    expect(screen.getByText('Workshop Blue')).toBeTruthy()
 
     fireEvent.change(screen.getByLabelText('Filaments view'), { target: { value: 'list' } })
     expect(screen.getByRole('table')).toBeTruthy()

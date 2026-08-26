@@ -3,6 +3,10 @@
 from decimal import Decimal
 from types import SimpleNamespace
 
+import pytest
+from pydantic import ValidationError
+
+from filament_manager.api.schemas import MaterialSettingsInput
 from filament_manager.domain.cura_import import material_settings_from_cura
 from filament_manager.domain.cura_material_settings import (
     CURA_ALWAYS_EMITTED_SETTING_VALUES,
@@ -58,13 +62,6 @@ def test_operator_material_settings_catalog_is_exact_and_unique() -> None:
         "acceleration_wall",
         "klipper_smooth_time_enable",
         "klipper_smooth_time_factor",
-        "cool_fan_enabled",
-        "cool_fan_full_layer",
-        "cool_fan_speed_max",
-        "cool_fan_speed_min",
-        "cool_min_layer_time",
-        "cool_min_layer_time_fan_speed_max",
-        "cool_min_speed",
         "skirt_brim_speed",
         "speed_infill",
         "speed_layer_0",
@@ -93,6 +90,38 @@ def test_operator_material_settings_catalog_is_exact_and_unique() -> None:
     assert "ironing_speed" not in keys
     assert "ironing_enabled" not in keys
     assert "limit_support_retractions" not in keys
+
+
+def test_fan_percentages_allow_zero_but_regular_layer_starts_at_one() -> None:
+    """Match Cura's valid zero-speed range and one-based layer numbering."""
+
+    validated = MaterialSettingsInput.model_validate(
+        {
+            "extruder_temp_c": "210",
+            "bed_temp_c": "60",
+            "flow_percent": "100",
+            "cooling_min_percent": "0",
+            "cooling_max_percent": "0",
+            "filament_density_g_cm3": "1.24",
+            "cura_extensions": {
+                "cool_fan_speed_0": "0",
+                "cool_fan_full_layer": "1",
+            },
+        }
+    )
+    assert validated.cooling_min_percent == Decimal("0")
+    assert validated.cooling_max_percent == Decimal("0")
+
+    with pytest.raises(ValidationError, match="cool_fan_full_layer must be at least 1"):
+        MaterialSettingsInput.model_validate(
+            {
+                **validated.model_dump(mode="json"),
+                "cura_extensions": {
+                    **validated.cura_extensions,
+                    "cool_fan_full_layer": "0",
+                },
+            }
+        )
 
 
 def test_profile_mapping_places_klipper_values_in_the_material_settings() -> None:
