@@ -131,6 +131,18 @@ def _apply_recovery_capture_report(agent: WorkstationAgent, capabilities: dict[s
     )
 
 
+def _apply_deployment_agent_error(
+    agent: WorkstationAgent,
+    deployment: CuraDeployment,
+    payload: CuraDeploymentCompletion,
+) -> None:
+    """Keep named backup-request history off the live agent health surface."""
+
+    if deployment.operation == "recovery_capture":
+        return
+    agent.last_error = payload.error_message if payload.outcome == "failed" else None
+
+
 class PairingRateLimiter:
     """Bound enrollment attempts by client address without retaining request data."""
 
@@ -1594,7 +1606,7 @@ async def complete_cura_deployment(
         deployment.status = CuraDeploymentStatus.FAILED
         deployment.completed_at = now
     agent.last_seen_at = now
-    agent.last_error = payload.error_message if payload.outcome == "failed" else None
+    _apply_deployment_agent_error(agent, deployment, payload)
     add_audit_event(
         session,
         actor_id=None,

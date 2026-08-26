@@ -192,6 +192,27 @@ test('templates switch views and import portable JSON with explicit scope', asyn
   await expect(page.getByRole('cell', { name: 'Template PLA PLA', exact: true })).toBeVisible()
   await page.getByLabel('Templates view').selectOption('detailed')
   await expect(page.locator('.collection-grid--detailed')).toBeVisible()
+  const detailedTemplate = page.locator('.catalog-card--template')
+  await expect(detailedTemplate.getByText('Material flow')).toBeVisible()
+  await expect(detailedTemplate.getByText('100%')).toBeVisible()
+  await expect(detailedTemplate.getByText(/unique controls/)).toHaveCount(0)
+  const detailedLayout = await detailedTemplate.evaluate((card) => {
+    const title = card.querySelector('h2')
+    const printerName = card.querySelector('.template-card__identity > p:last-child')
+    return {
+      columns: window.getComputedStyle(card).gridTemplateColumns.split(' ').length,
+      titleWhiteSpace: title ? window.getComputedStyle(title).whiteSpace : '',
+      printerWhiteSpace: printerName ? window.getComputedStyle(printerName).whiteSpace : '',
+      fits: card.scrollWidth <= card.clientWidth,
+    }
+  })
+  expect(detailedLayout).toEqual({
+    columns: 1,
+    titleWhiteSpace: 'normal',
+    printerWhiteSpace: 'normal',
+    fits: true,
+  })
+  await captureEvidence(page, 'template-detailed')
   await expect(page.getByRole('link', { name: 'Export Template PLA' })).toHaveAttribute('href', '/api/v1/profiles/templates/template-id/exports/json')
 
   await page.getByRole('button', { name: 'Import template' }).click()
@@ -487,6 +508,72 @@ test('filament details remember colors and save Cura settings directly', async (
   await expect(secondaryProfileCard.getByRole('button', { name: 'Edit settings' })).toBeVisible()
   await expect(secondaryProfileCard.getByRole('button', { name: 'Compare' })).toBeVisible()
   await expect(secondaryProfileCard.getByRole('link', { name: 'Export Cura JSON' })).toBeVisible()
+})
+
+test('Rainbow display-name edits succeed and rejected product fields are explicit', async ({ page }) => {
+  const rainbow = {
+    ...filament,
+    color_name: 'Rainbow',
+    color_hex: 'E53935',
+    color_mode: 'rainbow',
+    color_hexes: ['E53935', 'FB8C00', 'FDD835', '43A047', '1E88E5', '8E24AA'],
+  }
+  let currentFilament = rainbow
+  const submissions: Record<string, unknown>[] = []
+  let rejectNextSave = false
+  await page.route(`**/api/v1/filaments/${filament.id}`, async (route) => {
+    if (route.request().method() === 'PATCH') {
+      submissions.push(route.request().postDataJSON() as Record<string, unknown>)
+      if (rejectNextSave) {
+        await route.fulfill({
+          status: 422,
+          json: {
+            code: 'validation_error',
+            message: 'Request validation failed',
+            correlation_id: 'rendered-validation-reference',
+            errors: [{
+              field: 'density_g_cm3',
+              message: 'Density must be greater than zero.',
+              type: 'greater_than',
+            }],
+          },
+        })
+        return
+      }
+      currentFilament = { ...currentFilament, product_name: null, record_version: 2 }
+    }
+    await route.fulfill({ json: currentFilament })
+  })
+  await page.route('**/api/v1/vendors', (route) => route.fulfill({ json: [] }))
+  await page.route('**/api/v1/profiles/templates?include_inactive=false', (route) => route.fulfill({ json: [] }))
+  await page.route('**/api/v1/profiles', (route) => route.fulfill({ json: [] }))
+  await page.route('**/api/v1/profiles/cura-settings/catalog', (route) => route.fulfill({ json: [] }))
+
+  await page.goto(`/filaments/${filament.id}`)
+  await page.getByRole('button', { name: 'Edit product' }).click()
+  await page.getByLabel('Display name').fill('')
+  await page.getByRole('button', { name: 'Save filament' }).click()
+  await expect.poll(() => submissions.length).toBe(1)
+  expect(submissions[0].product_name).toBeNull()
+  expect(submissions[0].color_mode).toBe('rainbow')
+  expect(submissions[0].color_hexes).toEqual([])
+  await expect(page.getByRole('dialog', { name: 'Edit filament product' })).toHaveCount(0)
+
+  rejectNextSave = true
+  await page.getByRole('button', { name: 'Edit product' }).click()
+  await page.getByRole('button', { name: 'Save filament' }).click()
+  const density = page.getByLabel('Density (g/cm³)')
+  await expect(density).toHaveAttribute('aria-invalid', 'true')
+  await expect(density).toBeFocused()
+  await expect(page.getByText('Density must be greater than zero.').first()).toBeVisible()
+  await expect(page.getByText('Diagnostic reference: rendered-validation-reference')).toBeVisible()
+  await density.scrollIntoViewIfNeeded()
+  await captureEvidence(page, 'filament-product-validation')
+  const expectedValidationLogs = browserErrors.get(page) ?? []
+  expect(expectedValidationLogs).toHaveLength(2)
+  expect(expectedValidationLogs.join('\n')).toContain('422')
+  expect(expectedValidationLogs.join('\n')).toContain('validation_error')
+  browserErrors.set(page, [])
 })
 
 test('spool creation is available without opening Spoolman', async ({ page }) => {

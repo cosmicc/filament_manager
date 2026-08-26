@@ -57,6 +57,9 @@ describe('FilamentsPage', () => {
   it('prominently shows the four-part material identity and retains manual-entry focus', async () => {
     apiFetchMock.mockImplementation((path: string) => {
       if (path === '/filaments') return Promise.resolve([filament])
+      if (path === '/profiles') return Promise.resolve([{
+        id: 'profile-id', filament_product_id: filament.id, extruder_temp_c: '215',
+      }])
       if (path === '/profiles/templates') return Promise.resolve([{
         id: 'template-id', name: 'Template PLA', material_type: 'PLA', description: null,
         printer_id: 'printer-id', nozzle_id: 'nozzle-id', nozzle_diameter_mm: '0.4', filament_diameter_mm: '1.75',
@@ -75,6 +78,10 @@ describe('FilamentsPage', () => {
     expect(await screen.findByRole('heading', { name: 'PLA · Midnight · Carbon fiber · Matte' })).toBeTruthy()
     expect(screen.getByText('Workshop Vendor')).toBeTruthy()
     expect(screen.getByText('Workshop Blue')).toBeTruthy()
+    expect(screen.getByText('± 0.02 mm')).toBeTruthy()
+    expect(screen.getByText('215 °C')).toBeTruthy()
+    expect(screen.queryByText('1.75 mm')).toBeNull()
+    expect(screen.queryByText('1,000 g')).toBeNull()
 
     fireEvent.change(screen.getByLabelText('Filaments view'), { target: { value: 'list' } })
     expect(screen.getByRole('table')).toBeTruthy()

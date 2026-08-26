@@ -88,6 +88,8 @@ describe('SpoolsPage', () => {
     fireEvent.click(await screen.findByText('FM-001'))
     expect(screen.getByRole('dialog', { name: 'FM-001 details' })).toBeTruthy()
     expect(screen.queryByText('Select a spool')).toBeNull()
+    expect(screen.queryByText(/No filler/i)).toBeNull()
+    expect(screen.queryByText(/Standard finish/i)).toBeNull()
     fireEvent.click(await screen.findByRole('button', { name: 'Load spool' }))
 
     await waitFor(() => {

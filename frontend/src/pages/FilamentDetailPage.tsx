@@ -1,6 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { ArrowLeft, Copy, Download, GitCompareArrows, Pencil, Plus, Save, Trash2 } from 'lucide-react'
-import { useEffect, useMemo, useState } from 'react'
+import { type InvalidEvent, useEffect, useMemo, useRef, useState } from 'react'
 import { actionableApiError, apiFetch, validationMessagesFor } from '../api/client'
 import type { BuildPlate, CuraSettingCatalogItem, Filament, FilamentColor, MaterialProfile, MaterialTemplate, Printer, Vendor } from '../api/types'
 import { EditorSection } from '../components/EditorSection'
@@ -16,11 +16,38 @@ import { useAuth } from '../context/AuthContext'
 import { Link, useRouter } from '../context/RouterContext'
 import { filamentSwatchStyle } from '../lib/colors'
 import { compactNumber, inputNumber } from '../lib/format'
-import { materialIdentitySummary } from '../lib/materialIdentity'
+import { materialIdentitySummary, materialModifierSummary } from '../lib/materialIdentity'
 
 function optional(data: FormData, key: string) {
   const value = String(data.get(key) ?? '').trim()
   return value || null
+}
+
+function centerAndFocus(control: HTMLElement) {
+  const reduceMotion = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches ?? false
+  control.scrollIntoView({
+    behavior: reduceMotion ? 'auto' : 'smooth',
+    block: 'center',
+    inline: 'nearest',
+  })
+  control.focus({ preventScroll: true })
+}
+
+const productFieldLabels: Record<string, string> = {
+  vendor_id: 'Vendor',
+  product_name: 'Display name',
+  material_type: 'Material type',
+  color_name: 'Color name',
+  color_mode: 'Display type',
+  color_hex: 'Screen color sample',
+  color_hexes: 'Color samples',
+  diameter_mm: 'Filament diameter',
+  tolerance_mm: 'Diameter tolerance',
+  density_g_cm3: 'Density',
+  nominal_net_mass_g: 'Nominal net mass',
+  filler: 'Filler',
+  finish: 'Finish',
+  notes: 'Notes',
 }
 
 export default function FilamentDetailPage() {
@@ -46,6 +73,8 @@ export default function FilamentDetailPage() {
   const [addingSettings, setAddingSettings] = useState(false)
   const [addTemplateRevisionId, setAddTemplateRevisionId] = useState('')
   const [message, setMessage] = useState('')
+  const productFormRef = useRef<HTMLFormElement>(null)
+  const nativeInvalidPending = useRef(false)
 
   useEffect(() => {
     if (!filament.data) return
@@ -84,7 +113,9 @@ export default function FilamentDetailPage() {
           color_name: colorName.trim(),
           color_hex: colorHexes[0],
           color_mode: colorMode,
-          color_hexes: colorHexes,
+          // Do not send Rainbow's fixed six-sample response palette through
+          // the one-to-three user-defined multicolor request contract.
+          color_hexes: colorMode === 'rainbow' ? [] : colorHexes,
           diameter_mm: String(data.get('diameter_mm')),
           tolerance_mm: optional(data, 'tolerance_mm'),
           density_g_cm3: String(data.get('density_g_cm3')),
@@ -106,7 +137,6 @@ export default function FilamentDetailPage() {
         client.invalidateQueries({ queryKey: ['spools'] }),
       ])
     },
-    onError: (error: Error) => setMessage(actionableApiError(error)),
   })
   const remove = useMutation({
     mutationFn: () => apiFetch<{ disposition: string }>(`/filaments/${filamentId}`, { method: 'DELETE' }),
@@ -146,10 +176,28 @@ export default function FilamentDetailPage() {
     onError: (error: Error) => setMessage(error.message),
   })
   const profileValidationErrors = validationMessagesFor(saveProfile.error, 'settings')
+  const productValidationErrors = useMemo(() => validationMessagesFor(update.error), [update.error])
+  const productErrorsFor = (field: string) => productValidationErrors[field] ?? []
+  const productErrorId = (field: string) => `filament-product-${field}-error`
+  const productFieldError = (field: string) => productErrorsFor(field).length ? (
+    <span className="field-validation" id={productErrorId(field)} role="alert">
+      {productErrorsFor(field).map((error) => <span key={error}>{error}</span>)}
+    </span>
+  ) : null
+
+  useEffect(() => {
+    if (!update.error || !Object.keys(productValidationErrors).length) return undefined
+    const frame = window.requestAnimationFrame(() => {
+      const control = productFormRef.current?.querySelector<HTMLElement>('[aria-invalid="true"]')
+      if (control) centerAndFocus(control)
+    })
+    return () => window.cancelAnimationFrame(frame)
+  }, [productValidationErrors, update.error])
 
   if (filament.isLoading) return <LoadingState label="Loading filament details" />
   if (!filament.data) return <div><Link className="button" to="/filaments"><ArrowLeft size={16} /> Filaments</Link><p className="form-error">{filament.error?.message ?? 'Filament not found'}</p></div>
   const item = filament.data
+  const itemModifiers = materialModifierSummary(item)
   const occupiedScopes = new Set(currentProfiles.map((profile) => `${profile.printer_id}:${Number(profile.nozzle_diameter_mm)}`))
   const availableTemplateOptions = (templates.data ?? []).flatMap((template) => {
     const revision = template.revisions[0]
@@ -165,14 +213,24 @@ export default function FilamentDetailPage() {
     setColorHexes(item.color_hexes.length ? item.color_hexes : [item.color_hex ?? '808080'])
     setMaterialType(item.material_type)
     setEditingProduct(false)
+    update.reset()
+  }
+  const centerNativeInvalid = (event: InvalidEvent<HTMLFormElement>) => {
+    if (nativeInvalidPending.current || !(event.target instanceof HTMLElement)) return
+    nativeInvalidPending.current = true
+    const control = event.target
+    window.requestAnimationFrame(() => {
+      centerAndFocus(control)
+      nativeInvalidPending.current = false
+    })
   }
 
   return <div>
     <PageHeader eyebrow={item.vendor_name ?? 'Unspecified vendor'} title={item.product_name ?? `${item.material_type} ${item.color_name}`} description={`${materialIdentitySummary(item)}. Manage the physical filament identity separately from its printer/nozzle-specific print settings.`} actions={<><Link className="button" to="/filaments"><ArrowLeft size={16} /> All filaments</Link>{canEdit ? <Link className="button button--primary" to={`/filaments/duplicate/${item.id}`}><Copy size={16} /> Duplicate</Link> : null}</>} />
     {message && <div className="deployment-note" role="status">{message}</div>}
     <section className="card product-editor">
-      <header className="card__header"><div><p className="eyebrow">Canonical filament</p><h2>Product details</h2></div><div className="card-header-actions"><span className="filament-swatch" style={filamentSwatchStyle(item.color_mode, item.color_hexes, item.color_hex ?? '808080')} />{canEdit ? <><button className="button" onClick={() => setEditingProduct(true)}><Pencil size={16} /> Edit product</button><button className="button button--danger" disabled={remove.isPending} onClick={() => { if (window.confirm('Delete this filament? It will be archived instead if retained history prevents safe deletion.')) remove.mutate() }}><Trash2 size={16} /> {remove.isPending ? 'Removing…' : 'Delete or archive'}</button></> : null}</div></header>
-      <dl className="definition-list"><div><dt>Vendor and product</dt><dd>{item.vendor_name ?? 'Unspecified vendor'} · {item.product_name ?? 'No product name'}</dd></div><div><dt>Material</dt><dd>{item.material_type}{item.filler ? ` · ${item.filler}` : ''}{item.finish ? ` · ${item.finish}` : ''}</dd></div><div><dt>Color</dt><dd>{item.color_name} · {item.color_mode === 'rainbow' ? 'Rainbow' : item.color_hexes.map((color) => `#${color}`).join(' / ')}</dd></div><div><dt>Diameter</dt><dd>{compactNumber(item.diameter_mm, 2)} mm{item.tolerance_mm ? ` ± ${compactNumber(item.tolerance_mm, 2)} mm` : ''}</dd></div><div><dt>Density</dt><dd>{compactNumber(item.density_g_cm3, 2)} g/cm³</dd></div><div><dt>Nominal net mass</dt><dd>{compactNumber(item.nominal_net_mass_g, 0)} g</dd></div><div><dt>Notes</dt><dd>{item.notes ?? 'No notes'}</dd></div></dl>
+      <header className="card__header"><div><p className="eyebrow">Canonical filament</p><h2>Product details</h2></div><div className="card-header-actions"><span className="filament-swatch" style={filamentSwatchStyle(item.color_mode, item.color_hexes, item.color_hex ?? '808080')} />{canEdit ? <><button className="button" onClick={() => { update.reset(); setEditingProduct(true) }}><Pencil size={16} /> Edit product</button><button className="button button--danger" disabled={remove.isPending} onClick={() => { if (window.confirm('Delete this filament? It will be archived instead if retained history prevents safe deletion.')) remove.mutate() }}><Trash2 size={16} /> {remove.isPending ? 'Removing…' : 'Delete or archive'}</button></> : null}</div></header>
+      <dl className="definition-list"><div><dt>Vendor and product</dt><dd>{item.vendor_name ?? 'Unspecified vendor'} · {item.product_name ?? 'No product name'}</dd></div><div><dt>Material</dt><dd>{item.material_type}{itemModifiers ? ` · ${itemModifiers}` : ''}</dd></div><div><dt>Color</dt><dd>{item.color_name} · {item.color_mode === 'rainbow' ? 'Rainbow' : item.color_hexes.map((color) => `#${color}`).join(' / ')}</dd></div><div><dt>Diameter</dt><dd>{compactNumber(item.diameter_mm, 2)} mm{item.tolerance_mm ? ` ± ${compactNumber(item.tolerance_mm, 2)} mm` : ''}</dd></div><div><dt>Density</dt><dd>{compactNumber(item.density_g_cm3, 2)} g/cm³</dd></div><div><dt>Nominal net mass</dt><dd>{compactNumber(item.nominal_net_mass_g, 0)} g</dd></div><div><dt>Notes</dt><dd>{item.notes ?? 'No notes'}</dd></div></dl>
     </section>
 
     <section className="profile-scope-section" aria-labelledby="filament-print-settings-heading">
@@ -185,7 +243,29 @@ export default function FilamentDetailPage() {
     </section>
 
     {editingProduct ? <Modal title="Edit filament product" description="Update the canonical product identity and physical specifications. Print-setting templates are managed per printer/nozzle card." onClose={closeProductEditor} size="wide" footer={<><button className="button" type="button" onClick={closeProductEditor}>Cancel</button><button className="button button--primary" form="edit-filament-product" disabled={update.isPending}><Save size={17} />{update.isPending ? 'Saving…' : 'Save filament'}</button></>}>
-      <form id="edit-filament-product" className="editor-form" onSubmit={(event) => { event.preventDefault(); setMessage(''); update.mutate(event.currentTarget) }}><EditorSection title="Product identity" description="Names and the shared screen color sample used throughout the application."><div className="form-grid"><label>Vendor<select name="vendor_id" defaultValue={item.vendor_id ?? ''} autoFocus><option value="">Unspecified vendor</option>{vendors.data?.map((vendor) => <option key={vendor.id} value={vendor.id}>{vendor.name}</option>)}</select></label><label>Display name<input name="product_name" defaultValue={item.product_name ?? ''} maxLength={160} /></label><label>Material type<input name="material_type" value={materialType} onChange={(event) => setMaterialType(event.target.value)} maxLength={48} required /></label><FilamentColorEditor name={colorName} mode={colorMode} colorHexes={colorHexes} rememberedColors={colors.data ?? []} onNameChange={setColorName} onModeChange={setColorMode} onColorsChange={setColorHexes} disabled={!item.color_editable} />{!item.color_editable ? <p className="security-note form-grid__wide">Color is locked because this filament already has recorded spool use or print history.</p> : null}</div></EditorSection><EditorSection title="Physical specifications" description="Dimensions, density, packaged mass, and material modifiers."><div className="form-grid"><label>Filament diameter (mm)<input name="diameter_mm" type="number" min="0.1" step="0.01" defaultValue={inputNumber(item.diameter_mm, 2)} required /></label><label>Diameter tolerance (mm)<input name="tolerance_mm" type="number" min="0" step="0.01" defaultValue={inputNumber(item.tolerance_mm, 2)} /></label><label>Density (g/cm³)<input name="density_g_cm3" type="number" min="0.01" step="0.01" defaultValue={inputNumber(item.density_g_cm3, 2)} required /></label><label>Nominal net mass (g)<input name="nominal_net_mass_g" type="number" min="1" step="1" defaultValue={inputNumber(item.nominal_net_mass_g, 0)} required /></label><label>Filler<input name="filler" defaultValue={item.filler ?? ''} maxLength={96} /></label><label>Finish<input name="finish" defaultValue={item.finish ?? ''} maxLength={96} /></label><label className="form-grid__wide">Notes<textarea name="notes" defaultValue={item.notes ?? ''} maxLength={4000} rows={3} /></label></div></EditorSection>{update.error ? <p className="form-error" role="alert">{update.error.message}</p> : null}</form>
+      <form ref={productFormRef} id="edit-filament-product" className="editor-form" onSubmit={(event) => { event.preventDefault(); setMessage(''); update.mutate(event.currentTarget) }} onInvalid={centerNativeInvalid}>
+        <EditorSection title="Product identity" description="Names and the shared screen color sample used throughout the application.">
+          <div className="form-grid">
+            <label>Vendor<select name="vendor_id" defaultValue={item.vendor_id ?? ''} autoFocus aria-invalid={productErrorsFor('vendor_id').length ? true : undefined} aria-describedby={productErrorsFor('vendor_id').length ? productErrorId('vendor_id') : undefined}><option value="">Unspecified vendor</option>{vendors.data?.map((vendor) => <option key={vendor.id} value={vendor.id}>{vendor.name}</option>)}</select>{productFieldError('vendor_id')}</label>
+            <label>Display name<input name="product_name" defaultValue={item.product_name ?? ''} maxLength={160} aria-invalid={productErrorsFor('product_name').length ? true : undefined} aria-describedby={productErrorsFor('product_name').length ? productErrorId('product_name') : undefined} />{productFieldError('product_name')}</label>
+            <label>Material type<input name="material_type" value={materialType} onChange={(event) => setMaterialType(event.target.value)} maxLength={48} required aria-invalid={productErrorsFor('material_type').length ? true : undefined} aria-describedby={productErrorsFor('material_type').length ? productErrorId('material_type') : undefined} />{productFieldError('material_type')}</label>
+            <FilamentColorEditor name={colorName} mode={colorMode} colorHexes={colorHexes} rememberedColors={colors.data ?? []} onNameChange={setColorName} onModeChange={setColorMode} onColorsChange={setColorHexes} validationErrors={productValidationErrors} errorIdPrefix="filament-product-color" disabled={!item.color_editable} />
+            {!item.color_editable ? <p className="security-note form-grid__wide">Color is locked because this filament already has recorded spool use or print history.</p> : null}
+          </div>
+        </EditorSection>
+        <EditorSection title="Physical specifications" description="Dimensions, density, packaged mass, and material modifiers.">
+          <div className="form-grid">
+            <label>Filament diameter (mm)<input name="diameter_mm" type="number" min="0.1" step="0.01" defaultValue={inputNumber(item.diameter_mm, 2)} required aria-invalid={productErrorsFor('diameter_mm').length ? true : undefined} aria-describedby={productErrorsFor('diameter_mm').length ? productErrorId('diameter_mm') : undefined} />{productFieldError('diameter_mm')}</label>
+            <label>Diameter tolerance (mm)<input name="tolerance_mm" type="number" min="0" step="0.01" defaultValue={inputNumber(item.tolerance_mm, 2)} aria-invalid={productErrorsFor('tolerance_mm').length ? true : undefined} aria-describedby={productErrorsFor('tolerance_mm').length ? productErrorId('tolerance_mm') : undefined} />{productFieldError('tolerance_mm')}</label>
+            <label>Density (g/cm³)<input name="density_g_cm3" type="number" min="0.01" step="0.01" defaultValue={inputNumber(item.density_g_cm3, 2)} required aria-invalid={productErrorsFor('density_g_cm3').length ? true : undefined} aria-describedby={productErrorsFor('density_g_cm3').length ? productErrorId('density_g_cm3') : undefined} />{productFieldError('density_g_cm3')}</label>
+            <label>Nominal net mass (g)<input name="nominal_net_mass_g" type="number" min="1" step="1" defaultValue={inputNumber(item.nominal_net_mass_g, 0)} required aria-invalid={productErrorsFor('nominal_net_mass_g').length ? true : undefined} aria-describedby={productErrorsFor('nominal_net_mass_g').length ? productErrorId('nominal_net_mass_g') : undefined} />{productFieldError('nominal_net_mass_g')}</label>
+            <label>Filler<input name="filler" defaultValue={item.filler ?? ''} maxLength={96} aria-invalid={productErrorsFor('filler').length ? true : undefined} aria-describedby={productErrorsFor('filler').length ? productErrorId('filler') : undefined} />{productFieldError('filler')}</label>
+            <label>Finish<input name="finish" defaultValue={item.finish ?? ''} maxLength={96} aria-invalid={productErrorsFor('finish').length ? true : undefined} aria-describedby={productErrorsFor('finish').length ? productErrorId('finish') : undefined} />{productFieldError('finish')}</label>
+            <label className="form-grid__wide">Notes<textarea name="notes" defaultValue={item.notes ?? ''} maxLength={4000} rows={3} aria-invalid={productErrorsFor('notes').length ? true : undefined} aria-describedby={productErrorsFor('notes').length ? productErrorId('notes') : undefined} />{productFieldError('notes')}</label>
+          </div>
+        </EditorSection>
+        <FormSubmissionError error={update.error} fieldLabel={(field) => productFieldLabels[field] ?? field.replaceAll('_', ' ')} conflictMessage="This filament changed after the editor opened. Close the editor, review the latest values, and try again." />
+      </form>
     </Modal> : null}
     {editingProfile ? <Modal title={`Edit ${printerName(editingProfile.printer_id)} · ${compactNumber(editingProfile.nozzle_diameter_mm, 1)} mm settings`} description={`Edit values inherited from ${editingProfile.base_template_name ?? 'the linked template'}. Only explicit differences are stored as filament customizations.`} onClose={() => setEditingProfileId(null)} size="wide" footer={<><button className="button" type="button" onClick={() => setEditingProfileId(null)}>Cancel</button><button className="button button--primary" form="edit-material-profile" disabled={saveProfile.isPending}><Save size={16} />{saveProfile.isPending ? 'Saving…' : 'Save settings'}</button></>}><form id="edit-material-profile" className="editor-form" onSubmit={(event) => { event.preventDefault(); saveProfile.mutate({ profile: editingProfile, form: event.currentTarget }) }} key={editingProfile.id}><MaterialSettingsEditor settings={editingProfile} baseSettings={editingProfile.base_template_settings} overrideKeys={editingProfile.override_keys} validationErrors={profileValidationErrors} catalog={catalog.data ?? []} plates={plates.data ?? []} scope="profile" /><FormSubmissionError error={saveProfile.error} fieldLabel={(field) => materialSettingLabel(field, catalog.data ?? [])} /></form></Modal> : null}
     {addingSettings ? <Modal title="Add print settings" description="Choose one active material template for a printer/nozzle scope this filament does not already have." onClose={() => setAddingSettings(false)} footer={<><button className="button" type="button" onClick={() => setAddingSettings(false)}>Cancel</button><button className="button button--primary" disabled={addProfile.isPending || !addTemplateRevisionId} onClick={() => addProfile.mutate(addTemplateRevisionId)}><Plus size={16} />{addProfile.isPending ? 'Adding…' : 'Add settings'}</button></>}><EditorSection title="Compatible template" description="The filament density is applied automatically while all other values begin from this template."><label>Printer and nozzle<select value={addTemplateRevisionId} onChange={(event) => setAddTemplateRevisionId(event.target.value)} autoFocus>{availableTemplateOptions.map(({ template, revision }) => <option key={revision.id} value={revision.id}>{template.name} · {printerName(template.printer_id)} · {compactNumber(template.nozzle_diameter_mm, 1)} mm</option>)}</select></label></EditorSection>{addProfile.error ? <p className="form-error" role="alert">{addProfile.error.message}</p> : null}</Modal> : null}

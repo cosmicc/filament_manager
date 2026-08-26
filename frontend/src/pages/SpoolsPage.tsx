@@ -32,7 +32,7 @@ import { useAuth } from "../context/AuthContext";
 import { useCollectionView } from "../hooks/useCollectionView";
 import { filamentSwatchStyle } from "../lib/colors";
 import { costPerGram, currencyAmount, dateTime, grams, inputNumber, percent } from "../lib/format";
-import { materialIdentitySummary } from "../lib/materialIdentity";
+import { materialIdentitySummary, materialModifierSummary } from "../lib/materialIdentity";
 
 function WeighModal({ spool, onClose }: { spool: Spool; onClose: () => void }) {
   const queryClient = useQueryClient();
@@ -805,9 +805,9 @@ export default function SpoolsPage() {
                     </td>
                     <td>
                       <strong>{spool.material_type} · {spool.color_name}</strong>
-                      <small className="table-subtext">
-                        {spool.filler ?? "No filler"} · {spool.finish ?? "Standard finish"}
-                      </small>
+                      {materialModifierSummary(spool) ? (
+                        <small className="table-subtext">{materialModifierSummary(spool)}</small>
+                      ) : null}
                     </td>
                     <td>
                       <div className="table-progress">

@@ -1,5 +1,23 @@
 # User Changelog
 
+## 0.5.5 - 08.26.2026
+
+### Added
+
+- Filament product save errors now highlight the exact rejected field, explain the reason, and move focus to it.
+
+### Changed
+
+- Detailed template cards now use their available width without unnecessary title or fact truncation.
+- Template cards show material Flow instead of the identical number of managed settings.
+- Filament cards now show tolerance and printing temperature instead of diameter and nominal spool weight.
+- Filament and spool titles omit filler when it is `None` and finish when it is `Standard`.
+
+### Fixed
+
+- Fixed clearing a Rainbow filament's optional display name failing because its fixed six-color display palette was submitted as a user-defined multicolor palette.
+- Fixed a failed named Cura backup request temporarily appearing as a current Cura-agent failure after the agent itself had recovered.
+
 ## 0.5.4 - 08.25.2026
 
 ### Added

@@ -13,6 +13,8 @@ export function FilamentColorEditor({
   onNameChange,
   onModeChange,
   onColorsChange,
+  validationErrors = {},
+  errorIdPrefix = 'filament-color',
   disabled = false,
 }: {
   name: string
@@ -22,6 +24,8 @@ export function FilamentColorEditor({
   onNameChange: (value: string) => void
   onModeChange: (value: FilamentColorMode) => void
   onColorsChange: (value: string[]) => void
+  validationErrors?: Record<string, string[]>
+  errorIdPrefix?: string
   disabled?: boolean
 }) {
   const [open, setOpen] = useState(false)
@@ -60,6 +64,15 @@ export function FilamentColorEditor({
     onColorsChange(next)
   }
   const visibleColors = mode === 'multicolor' ? colorHexes.slice(0, 3) : colorHexes.slice(0, 1)
+  const errorsFor = (...fields: string[]) => fields.flatMap((field) => validationErrors[field] ?? [])
+  const errorBlock = (id: string, messages: string[]) => messages.length ? (
+    <span className="field-validation" id={`${errorIdPrefix}-${id}-error`} role="alert">
+      {messages.map((message) => <span key={message}>{message}</span>)}
+    </span>
+  ) : null
+  const colorNameErrors = errorsFor('color_name')
+  const colorModeErrors = errorsFor('color_mode', 'color_hexes')
+  const colorSampleErrors = errorsFor('color_hex')
 
   return <>
     <label>
@@ -77,20 +90,24 @@ export function FilamentColorEditor({
           aria-controls={listId}
           aria-expanded={open}
           aria-autocomplete="list"
+          aria-invalid={colorNameErrors.length ? true : undefined}
+          aria-describedby={colorNameErrors.length ? `${errorIdPrefix}-name-error` : undefined}
         />
         <button type="button" aria-label="Show color choices" disabled={disabled} onClick={() => setOpen((current) => !current)}><ChevronDown size={17} /></button>
         {open ? <div className="color-combobox__menu" id={listId} role="listbox">
           {colorOptions.map((color) => <button type="button" role="option" aria-selected={color.normalized_name === name.normalize('NFKC').trim().toLocaleLowerCase()} key={color.id} onClick={() => { selectRemembered(color.name); setOpen(false) }}><span className="filament-swatch" style={filamentSwatchStyle(color.color_mode, color.color_hexes, color.color_hex)} />{color.name}</button>)}
         </div> : null}
       </div>
+      {errorBlock('name', colorNameErrors)}
       <small className="field-help">Choose a remembered color or type any custom color name.</small>
     </label>
     <label>
       Display type
-      <select value={mode === 'rainbow' ? 'solid' : mode} onChange={(event) => changeMode(event.target.value as FilamentColorMode)} disabled={disabled || mode === 'rainbow'}>
+      <select value={mode === 'rainbow' ? 'solid' : mode} onChange={(event) => changeMode(event.target.value as FilamentColorMode)} disabled={disabled || mode === 'rainbow'} aria-invalid={colorModeErrors.length ? true : undefined} aria-describedby={colorModeErrors.length ? `${errorIdPrefix}-mode-error` : undefined}>
         <option value="solid">Solid</option>
         <option value="multicolor">Multicolor (1 to 3 colors)</option>
       </select>
+      {errorBlock('mode', colorModeErrors)}
     </label>
     {mode === 'multicolor' ? <label>
       Number of colors
@@ -111,7 +128,8 @@ export function FilamentColorEditor({
     </label> : null}
     {mode !== 'rainbow' ? visibleColors.map((color, index) => <label key={index}>
       {mode === 'solid' ? 'Screen color sample' : `Color ${index + 1}`}
-      <input type="color" value={`#${color || '808080'}`} onChange={(event) => setColor(index, event.target.value)} disabled={disabled} />
+      <input type="color" value={`#${color || '808080'}`} onChange={(event) => setColor(index, event.target.value)} disabled={disabled} aria-invalid={colorSampleErrors.length ? true : undefined} aria-describedby={colorSampleErrors.length ? `${errorIdPrefix}-sample-error` : undefined} />
+      {index === 0 ? errorBlock('sample', colorSampleErrors) : null}
     </label>) : <div className="setting-field"><span>Rainbow display</span><small className="field-help">The spool swatch uses the full rainbow spectrum.</small></div>}
     <div className="setting-field">
       <span>Preview</span>

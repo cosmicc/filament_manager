@@ -1,5 +1,25 @@
 # Changelog
 
+## 0.5.5 - 08.26.2026
+
+### Added
+
+- Added field-specific filament product validation that highlights, explains, centers, and focuses every rejected control while retaining a safe request reference in the complete error summary.
+- Added regression coverage for clearing a Rainbow filament display name, conditional material modifiers, useful filament-card facts, detailed template wrapping, and recovery-request health isolation.
+
+### Changed
+
+- Changed detailed material-template cards to use their full width and wrap titles, printer names, nozzle facts, and values instead of truncating available text.
+- Replaced identical material-setting counts on template records with the template's material Flow value.
+- Changed filament cards to show diameter tolerance and current printing-temperature scope/range instead of filament diameter and nominal mass.
+- Changed filament and spool identities to omit implied `None` filler and `Standard` finish values while retaining every meaningful modifier.
+- Changed every server, browser, and workstation-agent version surface to 0.5.5.
+
+### Fixed
+
+- Fixed a valid Rainbow filament edit resubmitting the server-owned six-sample palette through the one-to-three user multicolor request contract, which could make clearing an optional display name appear to fail.
+- Fixed failed named Cura backup requests temporarily marking the connected Cura agent unhealthy; those failures remain clearly retained under Recovery points and Diagnostics history.
+
 ## 0.5.4 - 08.25.2026
 
 ### Added
