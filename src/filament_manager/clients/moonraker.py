@@ -1,6 +1,7 @@
 """Supported Moonraker HTTP client for spool, plate, and bed-mesh operations."""
 
 import hashlib
+import posixpath
 import re
 from dataclasses import dataclass
 from decimal import Decimal
@@ -91,6 +92,15 @@ class MoonrakerGcodeFile:
     header: str
     tail: str
     size: int
+
+
+@dataclass(frozen=True, slots=True)
+class MoonrakerThumbnail:
+    """One bounded thumbnail downloaded from Moonraker's G-code file root."""
+
+    data: bytes
+    declared_width: int
+    declared_height: int
 
 
 SPOOL_PROMPT_LABEL_PATTERN = re.compile(r"[A-Za-z0-9._#-]{1,96}")
@@ -538,6 +548,85 @@ class MoonrakerClient:
         if not isinstance(result, dict):
             raise MoonrakerError("Moonraker returned invalid G-code metadata")
         return result
+
+    async def gcode_thumbnail(
+        self,
+        filename: str,
+        metadata: dict[str, Any],
+        *,
+        max_bytes: int = 5 * 1024 * 1024,
+    ) -> MoonrakerThumbnail | None:
+        """Download the largest safe thumbnail declared by Moonraker metadata."""
+
+        validated_filename = self._validated_gcode_filename(filename)
+        entries = metadata.get("thumbnails")
+        if not isinstance(entries, list) or len(entries) > 32:
+            return None
+        candidates: list[tuple[int, int, int, str]] = []
+        for entry in entries:
+            if not isinstance(entry, dict):
+                continue
+            relative_path = entry.get("relative_path")
+            width = entry.get("width")
+            height = entry.get("height")
+            size = entry.get("size")
+            if (
+                not isinstance(relative_path, str)
+                or not isinstance(width, int)
+                or isinstance(width, bool)
+                or not isinstance(height, int)
+                or isinstance(height, bool)
+                or not isinstance(size, int)
+                or isinstance(size, bool)
+                or width < 1
+                or height < 1
+                or width * height > 16_000_000
+                or size < 1
+                or size > max_bytes
+            ):
+                continue
+            normalized_relative = relative_path.replace("\\", "/")
+            if (
+                len(normalized_relative) > 512
+                or normalized_relative.startswith("/")
+                or any(ord(character) < 32 for character in normalized_relative)
+                or any(part in {"", ".", ".."} for part in normalized_relative.split("/"))
+                or not normalized_relative.casefold().endswith((".png", ".jpg", ".jpeg", ".webp"))
+            ):
+                continue
+            parent = posixpath.dirname(validated_filename)
+            combined = posixpath.join(parent, normalized_relative) if parent else normalized_relative
+            try:
+                thumbnail_path = self._validated_gcode_filename(combined)
+            except ValueError:
+                continue
+            candidates.append((width * height, width, height, thumbnail_path))
+        if not candidates:
+            return None
+        _, width, height, thumbnail_path = max(candidates)
+        encoded = quote(thumbnail_path, safe="/")
+        payload = bytearray()
+        try:
+            async with httpx.AsyncClient(
+                timeout=max(self.timeout, 30),
+                headers=self._headers(),
+            ) as client:
+                async with client.stream(
+                    "GET",
+                    f"{self.base_url}/server/files/gcodes/{encoded}",
+                ) as response:
+                    response.raise_for_status()
+                    async for chunk in response.aiter_bytes():
+                        payload.extend(chunk)
+                        if len(payload) > max_bytes:
+                            raise MoonrakerError("G-code thumbnail exceeds the size limit")
+        except MoonrakerError:
+            raise
+        except httpx.HTTPError as exc:
+            raise MoonrakerError("Moonraker G-code thumbnail download failed") from exc
+        if not payload:
+            return None
+        return MoonrakerThumbnail(bytes(payload), width, height)
 
     @staticmethod
     def validated_timelapse_filename(filename: str) -> str:

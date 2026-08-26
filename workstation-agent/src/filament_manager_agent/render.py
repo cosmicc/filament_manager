@@ -200,10 +200,21 @@ MATERIAL_SETTINGS_STATUS_SCHEMA_VERSION = 1
 MATERIAL_SETTINGS_STATUS_PATH = Path(__file__).with_name("material-settings-status.json")
 MANAGED_MATERIAL_EDITS_SCHEMA_VERSION = 1
 MANAGED_MATERIAL_EDITS_PATH = Path(__file__).with_name("managed-material-edits.json")
+MANAGED_MACHINE_START_GCODE = (
+    "FILAMENT_MANAGER_START_PRINT "
+    "MATERIAL_GUID={material_guid} "
+    "BED_TEMP={material_bed_temperature_layer_0} "
+    "EXTRUDER_TEMP={material_print_temperature_layer_0} "
+    "CHAMBER_TEMP={build_volume_temperature}"
+)
+MANAGED_MACHINE_END_GCODE = "END_PRINT"
 GUID_PATTERN = re.compile(
     r"^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
     re.IGNORECASE,
 )
+MISSING_VALUE = object()
+_PENDING_MATERIAL_EDITS_CACHE = {}
+_PENDING_MATERIAL_EDITS_SIGNATURE = None
 
 
 def _catalog_checksum():
@@ -337,20 +348,29 @@ def _material_guid(stack):
 def _load_pending_material_edits():
     """Load the bounded local edit receipt without exposing values in logs."""
 
+    global _PENDING_MATERIAL_EDITS_CACHE, _PENDING_MATERIAL_EDITS_SIGNATURE
     try:
         if MANAGED_MATERIAL_EDITS_PATH.is_symlink():
             return {}
         if not MANAGED_MATERIAL_EDITS_PATH.exists():
+            _PENDING_MATERIAL_EDITS_CACHE = {}
+            _PENDING_MATERIAL_EDITS_SIGNATURE = None
             return {}
-        if MANAGED_MATERIAL_EDITS_PATH.stat().st_size > 128 * 1024:
+        stat = MANAGED_MATERIAL_EDITS_PATH.stat()
+        if stat.st_size > 128 * 1024:
             return {}
+        signature = (stat.st_mtime_ns, stat.st_size)
+        if signature == _PENDING_MATERIAL_EDITS_SIGNATURE:
+            return _PENDING_MATERIAL_EDITS_CACHE
         payload = json.loads(MANAGED_MATERIAL_EDITS_PATH.read_text(encoding="utf-8"))
     except (OSError, TypeError, ValueError):
         return {}
     if not isinstance(payload, dict) or payload.get("schema_version") != 1:
         return {}
     materials = payload.get("materials")
-    return materials if isinstance(materials, dict) else {}
+    _PENDING_MATERIAL_EDITS_CACHE = materials if isinstance(materials, dict) else {}
+    _PENDING_MATERIAL_EDITS_SIGNATURE = signature
+    return _PENDING_MATERIAL_EDITS_CACHE
 
 
 def _write_pending_material_edits(materials):
@@ -404,6 +424,66 @@ def _record_pending_material_edit(stack, key, value):
     material_edits[key] = rendered_value
     if len(materials) <= 100 and len(material_edits) <= len(EDITABLE_SETTING_KEYS):
         _write_pending_material_edits(materials)
+
+
+def _is_managed_material(stack):
+    """Return whether one Cura stack selected a Filament Manager material."""
+
+    material = getattr(stack, "material", None)
+    if material is None:
+        return False
+    material_id = str(material.getMetaDataEntry("base_file", material.getId()) or "")
+    return material_id.startswith(MANAGED_PREFIX)
+
+
+def _managed_material_value(stack, key):
+    """Resolve an explicit canonical material value without dirtying the quality profile."""
+
+    if key not in MANAGED_SETTING_KEYS or not _is_managed_material(stack):
+        return MISSING_VALUE
+    material = stack.material
+    material_guid = _material_guid(stack)
+    pending = _load_pending_material_edits().get(material_guid, {})
+    if isinstance(pending, dict) and key in pending:
+        return pending[key]
+    if key not in material.getAllKeys():
+        return MISSING_VALUE
+    return material.getProperty(key, "value")
+
+
+def _managed_machine_gcode(stack, key):
+    """Return the app-owned print boundary for a managed material only."""
+
+    if not _is_managed_material(stack):
+        return MISSING_VALUE
+    if key == "machine_start_gcode":
+        return MANAGED_MACHINE_START_GCODE
+    if key == "machine_end_gcode":
+        return MANAGED_MACHINE_END_GCODE
+    return MISSING_VALUE
+
+
+def _install_runtime_material_overlay():
+    """Make managed values authoritative without placing them in Cura user changes."""
+
+    from cura.Settings.CuraContainerStack import CuraContainerStack
+
+    if getattr(CuraContainerStack, "_filament_manager_overlay_patched", False):
+        return
+    original_get_property = CuraContainerStack.getProperty
+
+    def managed_get_property(stack, key, property_name, *args, **kwargs):
+        if property_name == "value":
+            machine_gcode = _managed_machine_gcode(stack, key)
+            if machine_gcode is not MISSING_VALUE:
+                return machine_gcode
+            value = _managed_material_value(stack, key)
+            if value is not MISSING_VALUE:
+                return value
+        return original_get_property(stack, key, property_name, *args, **kwargs)
+
+    CuraContainerStack.getProperty = managed_get_property
+    CuraContainerStack._filament_manager_overlay_patched = True
 
 
 def _configure_material_costs(application):
@@ -461,6 +541,7 @@ class FilamentManagerVisibility(Extension):
         try:
             _configure_material_settings_plugin(self._application)
             _configure_material_costs(self._application)
+            _install_runtime_material_overlay()
             preference_signal = getattr(
                 self._application.getPreferences(), "preferenceChanged", None
             )
@@ -519,14 +600,6 @@ class FilamentManagerVisibility(Extension):
         self._scheduled = True
         QTimer.singleShot(0, self._enforce_material_settings)
 
-    @staticmethod
-    def _is_managed_material(stack):
-        material = getattr(stack, "material", None)
-        if material is None:
-            return False
-        material_id = str(material.getMetaDataEntry("base_file", material.getId()) or "")
-        return material_id.startswith(MANAGED_PREFIX)
-
     def _watch(self, container, stack, *, capture_edits=False):
         identity = id(container)
         if identity in self._connected_containers:
@@ -565,6 +638,8 @@ class FilamentManagerVisibility(Extension):
                 quality_changes = stack.qualityChanges
                 self._watch(stack.userChanges, stack, capture_edits=True)
                 self._watch(quality_changes, stack)
+                if _is_managed_material(stack):
+                    self._watch(stack.material, stack, capture_edits=True)
                 changed = False
                 for key in MANAGED_SETTING_KEYS.intersection(quality_changes.getAllKeys()):
                     quality_changes.removeInstance(key, postpone_emit=True)
@@ -572,11 +647,10 @@ class FilamentManagerVisibility(Extension):
                 if changed:
                     quality_changes.sendPostponedEmits()
 
-            # Remove stale top-layer values from the global stack and any
-            # extruder that is no longer using a managed material.
+            # Managed values are resolved by the runtime material overlay. Keep
+            # Cura's top user layer reserved for genuine quality-profile edits
+            # so Save Profile never includes application-owned material values.
             for stack in stacks:
-                if stack is not global_stack and self._is_managed_material(stack):
-                    continue
                 user_changes = stack.userChanges
                 changed = False
                 for key in MANAGED_SETTING_KEYS.intersection(user_changes.getAllKeys()):
@@ -585,30 +659,6 @@ class FilamentManagerVisibility(Extension):
                 if changed:
                     user_changes.sendPostponedEmits()
 
-            # Cura's built-in and custom quality layers sit above its material
-            # layer. Mirror only values explicitly supplied by the selected
-            # managed material into the supported top user layer so the material
-            # remains authoritative without modifying bundled quality profiles.
-            for stack in extruders:
-                if not self._is_managed_material(stack):
-                    continue
-                material = stack.material
-                user_changes = stack.userChanges
-                material_guid = _material_guid(stack)
-                pending = _load_pending_material_edits().get(material_guid, {})
-                if not isinstance(pending, dict):
-                    pending = {}
-                material_keys = MANAGED_SETTING_KEYS.intersection(material.getAllKeys())
-                stale_keys = MANAGED_SETTING_KEYS.intersection(user_changes.getAllKeys()) - material_keys
-                for key in stale_keys:
-                    user_changes.removeInstance(key, postpone_emit=True)
-                if stale_keys:
-                    user_changes.sendPostponedEmits()
-                for key in material_keys:
-                    material_value = pending.get(key, material.getProperty(key, "value"))
-                    current_value = user_changes.getProperty(key, "value")
-                    if str(current_value) != str(material_value):
-                        user_changes.setProperty(key, "value", material_value)
             Logger.log("d", "Filament Manager material settings enforced")
             _write_material_settings_status(self._application)
         except Exception:
@@ -620,8 +670,8 @@ class FilamentManagerVisibility(Extension):
 PLUGIN_METADATA = b"""{
   "name": "Filament Manager Material Visibility",
   "author": "Filament Manager",
-  "version": "2.0.5",
-  "description": "Shows, favorites, and enforces the authoritative Filament Manager material library.",
+  "version": "2.2.0",
+  "description": "Enforces the Filament Manager material library and print boundary.",
   "api": 5,
   "supported_sdk_versions": ["8.0.0"]
 }

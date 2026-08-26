@@ -1,5 +1,32 @@
 # Changelog
 
+## 0.5.7 - 08.26.2026
+
+### Added
+
+- Added separately managed Initial Layer Build Plate Temperature across templates, filament profiles, Cura import/export, G-code inspection, and the workstation material catalog.
+- Added bounded Moonraker G-code thumbnail capture, metadata-free WebP storage, authenticated thumbnail delivery, and current/history thumbnail presentation.
+- Added current and historical estimated/actual print statistics plus immutable segment-derived filament cost, including explicit partial and mixed-currency handling.
+- Added schema migration `a9b0c1d2e345` to backfill initial-layer bed temperature and add stored print-thumbnail fields.
+
+### Changed
+
+- Changed Cura material enforcement to resolve managed values through a post-initialization runtime overlay while keeping Cura's user and quality layers reserved for Cura-only quality settings.
+- Changed managed Cura slicing to supply the exact `FILAMENT_MANAGER_START_PRINT` and `END_PRINT` boundaries at runtime without rewriting stored machine scripts.
+- Changed Cura recovery rotation to retain the newest 15 automatic points per installation/version without counting or pruning named Administrator points.
+- Changed template rows and cards to open editing directly, with JSON export and confirmed deletion moved into the template editor.
+- Changed live material-segment capture to refresh actual use during printing so Dashboard filament use and cost-so-far remain current.
+- Changed the complete Cura catalog to 56 entries and the required non-metadata Material Settings subset to 54.
+- Changed every server, browser, and workstation-agent version surface to 0.5.7 and incremented the workstation renderer revision to 13 to force safe plugin replacement.
+
+### Fixed
+
+- Fixed managed material settings being copied into Cura's top user-change layer and then included when saving a custom quality profile.
+- Fixed the reference Klipper configuration failing startup when no pre-existing `M600` command was available to rename.
+- Fixed managed Cura prints bypassing `FILAMENT_MANAGER_START_PRINT`, which left inspection outside the pause gate and prevented exact managed-profile resolution.
+- Fixed first-layer bed temperature being forced to the regular bed temperature by an incomplete material-setting contract.
+- Fixed Print History omitting available Moonraker thumbnails, captured filament costs, and useful predicted-versus-actual results.
+
 ## 0.5.6 - 08.26.2026
 
 ### Added

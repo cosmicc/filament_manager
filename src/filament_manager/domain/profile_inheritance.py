@@ -21,6 +21,7 @@ PROFILE_SETTING_KEYS = (
     "chamber_temp_c",
     "extruder_temp_c",
     "bed_temp_c",
+    "initial_bed_temp_c",
     "flow_percent",
     "print_speed_mm_s",
     "outer_wall_speed_mm_s",

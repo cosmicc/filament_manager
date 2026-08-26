@@ -1,5 +1,28 @@
 # User Changelog
 
+## 0.5.7 - 08.26.2026
+
+### Added
+
+- Material templates and filament settings now have a separate Initial Layer Build Plate Temperature that synchronizes with Cura.
+- The Dashboard and Print History now show stored print thumbnails when Moonraker provides them.
+- Current and past prints now show useful time and filament comparisons plus actual filament cost when purchase pricing is available.
+
+### Changed
+
+- Filament Manager material settings stay authoritative in Cura without being added to the custom quality profile you are editing or saving.
+- Managed material-setting edits made in Cura still save back to Filament Manager and synchronize to the other managed Cura installations.
+- Managed Cura materials now use the required Filament Manager start and end print macros automatically without changing your saved machine scripts.
+- Cura recovery keeps the latest 15 automatic backups, while named backups stay until you delete them.
+- Clicking a template row or card now opens its editor; Export JSON and Delete are available inside that editor.
+
+### Fixed
+
+- Fixed Cura custom quality profiles trying to save Filament Manager's material settings as part of the quality profile.
+- Fixed Klipper refusing to start because the Filament Manager M600 macro tried to rename an M600 command that did not exist.
+- Fixed managed prints missing the Filament Manager inspection gate and exact material-profile match.
+- Fixed initial-layer bed temperature being unable to differ from the regular build-plate temperature.
+
 ## 0.5.6 - 08.26.2026
 
 ### Added

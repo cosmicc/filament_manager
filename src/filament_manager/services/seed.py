@@ -21,6 +21,7 @@ DEFAULT_ASA_SETTINGS: dict[str, object] = {
     "chamber_temp_c": "45",
     "extruder_temp_c": "245",
     "bed_temp_c": "95",
+    "initial_bed_temp_c": "95",
     "flow_percent": "100",
     "print_speed_mm_s": "50",
     "outer_wall_speed_mm_s": None,

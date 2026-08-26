@@ -10,12 +10,12 @@ controls, and derived aliases that the workstation agent writes silently.
 In Cura, open Preferences > Materials > Print Settings and expose the editable
 settings supported by the Material Settings and Klipper Settings plugins.
 Filament Manager aligns the plugin selection automatically after takeover.
-The 53 non-metadata keys below are pushed to Cura; Material Type and Material
+The 54 non-metadata keys below are pushed to Cura; Material Type and Material
 Brand remain material XML metadata rather than selectable print settings. Cura
 Workstations and Diagnostics report the exact expected/exposed count, missing
 keys, required-plugin versions/readiness, and the last verification time.
 
-There are 55 tracked Cura keys: 49 editable controls and 6 derived or metadata
+There are 56 tracked Cura keys: 50 editable controls and 6 derived or metadata
 keys. The authoritative catalog is:
 src/filament_manager/domain/cura_material_settings.py
 
@@ -28,6 +28,7 @@ TEMPERATURE
 -----------
 material_print_temperature | Printing Temperature | number, C | editable in templates and filament profiles
 material_bed_temperature | Build Plate Temperature | number, C | editable in templates and filament profiles
+material_bed_temperature_layer_0 | Initial Layer Build Plate Temperature | number, C | editable in templates and filament profiles
 build_volume_temperature | Build Volume Temperature | number, C | editable in templates and filament profiles
 
 
@@ -125,8 +126,8 @@ material_brand | Material Brand | string | derived from the canonical vendor
 
 RETIRED CONTROLS
 ----------------
-Filament Manager no longer tracks default, standby, initial, final, or
-initial-bed temperature controls. Printing Temperature, Build Volume
-Temperature, and Build Plate Temperature are the only managed temperature
-settings. Feature-specific flow controls are also retired; Cura inherits them
-from the one primary Flow setting.
+Filament Manager no longer tracks default, standby, or final temperature
+controls. Printing Temperature, Build Volume Temperature, Build Plate
+Temperature, and Initial Layer Build Plate Temperature are the only managed
+temperature settings. Feature-specific flow controls are also retired; Cura
+inherits them from the one primary Flow setting.

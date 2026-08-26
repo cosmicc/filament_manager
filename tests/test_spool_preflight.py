@@ -94,7 +94,7 @@ def test_catalog_literals_survive_klipper_extended_parameter_parsing() -> None:
 
 
 def test_macro_reference_compiles_and_preserves_existing_motion_macros() -> None:
-    """The shipped reference wraps, rather than replaces, printer motion routines."""
+    """The reference owns M600 and wraps the printer's other motion routines."""
 
     parser = configparser.RawConfigParser(strict=True)
     assert parser.read(MACRO_PATH)
@@ -118,7 +118,8 @@ def test_macro_reference_compiles_and_preserves_existing_motion_macros() -> None
 
     assert not parser.has_section("gcode_macro START_PRINT")
     assert not parser.has_section("gcode_macro END_PRINT")
-    assert parser.get("gcode_macro M600", "rename_existing") == "M600.1"
+    assert not parser.has_option("gcode_macro M600", "rename_existing")
+    assert "M600.1" not in MACRO_PATH.read_text(encoding="utf-8")
     assert parser.get("gcode_macro LOAD_FILAMENT", "rename_existing") == "_FILAMENT_MANAGER_HARDWARE_LOAD"
     assert parser.get("gcode_macro UNLOAD_FILAMENT", "rename_existing") == "_FILAMENT_MANAGER_HARDWARE_UNLOAD"
 

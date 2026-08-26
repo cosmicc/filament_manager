@@ -32,6 +32,16 @@ const dashboard = {
     bed_target_c: '60',
     chamber_temperature_c: '37.2',
     chamber_target_c: null,
+    print_job_id: 'print-id',
+    thumbnail_url: '/api/v1/prints/print-id/thumbnail',
+    estimated_duration_seconds: '5400',
+    print_duration_seconds: '1800',
+    predicted_filament_weight_g: '24',
+    actual_filament_weight_g: '8.4',
+    actual_filament_cost: '0.48',
+    predicted_filament_cost: '1.37',
+    cost_currency: 'USD',
+    cost_complete: true,
     checked_at: '2026-08-25T00:30:00Z',
   },
 }
@@ -59,6 +69,10 @@ describe('DashboardPage', () => {
     expect(screen.getByText('215 °C / 220 °C target')).toBeTruthy()
     expect(screen.getByText('60 °C / 60 °C target')).toBeTruthy()
     expect(screen.getByText('37 °C')).toBeTruthy()
+    expect(screen.getByAltText('Preview of calibration_cube.gcode')).toBeTruthy()
+    expect(screen.getByText('30 min')).toBeTruthy()
+    expect(screen.getByText('8.4 g')).toBeTruthy()
+    expect(screen.getByText('$0.48')).toBeTruthy()
   })
 
   it('explains that an unavailable connection cannot confirm printer power', async () => {

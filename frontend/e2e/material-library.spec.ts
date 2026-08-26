@@ -27,7 +27,7 @@ const nozzle = {
 }
 
 const settings = {
-  chamber_temp_c: null, extruder_temp_c: '210', bed_temp_c: '60', flow_percent: '100',
+  chamber_temp_c: null, extruder_temp_c: '210', bed_temp_c: '60', initial_bed_temp_c: '60', flow_percent: '100',
   print_speed_mm_s: '120', outer_wall_speed_mm_s: '60', inner_wall_speed_mm_s: '90',
   infill_speed_mm_s: '110', top_bottom_speed_mm_s: '70', initial_layer_speed_mm_s: '30',
   travel_speed_mm_s: '200', support_speed_mm_s: '80', retraction_distance_mm: '0.8',
@@ -123,7 +123,7 @@ test.afterEach(async ({ page }) => {
 test('template library is usable at desktop and mobile sizes', async ({ page }) => {
   let templateUpdate: Record<string, unknown> | null = null
   let templateFetchCount = 0
-  await page.route('**/api/v1/profiles/templates?include_inactive=true', (route) => {
+  await page.route('**/api/v1/profiles/templates', (route) => {
     templateFetchCount += 1
     return route.fulfill({ json: [{ ...template, record_version: templateFetchCount === 1 ? 2 : 3 }] })
   })
@@ -147,8 +147,13 @@ test('template library is usable at desktop and mobile sizes', async ({ page }) 
   await expect(page.getByText('Starting settings for ordinary PLA')).toHaveCount(0)
   const templateCard = page.locator('.catalog-card--template')
   await expect.poll(() => templateCard.evaluate((card) => card.scrollWidth <= card.clientWidth)).toBe(true)
-  await page.getByRole('button', { name: 'Edit template' }).click()
+  await expect(page.getByRole('link', { name: 'Export Template PLA' })).toHaveCount(0)
+  await expect(page.getByRole('button', { name: 'Delete template' })).toHaveCount(0)
+  await templateCard.click()
   await expect(page.getByRole('dialog', { name: 'Edit Template PLA' })).toBeVisible()
+  await expect(page.getByRole('link', { name: 'Export Template PLA' })).toHaveAttribute('href', '/api/v1/profiles/templates/template-id/exports/json')
+  await expect(page.getByRole('button', { name: 'Delete template' })).toBeVisible()
+  await captureEvidence(page, 'template-editor-desktop-v057')
   await expect(page.getByLabel('Printing temperature (°C)')).toHaveValue('210')
   await expect(page.getByRole('heading', { name: 'Retraction' })).toBeVisible()
   await expect(page.getByRole('heading', { name: 'Klipper' })).toBeVisible()
@@ -164,6 +169,7 @@ test('template library is usable at desktop and mobile sizes', async ({ page }) 
 
   await page.setViewportSize({ width: 390, height: 844 })
   await expect(page.getByRole('dialog', { name: 'Edit Template PLA' })).toBeVisible()
+  await captureEvidence(page, 'template-editor-mobile-v057')
   await printingTemperature.fill('212')
   await page.getByLabel('Ironing flow (%)').fill('12')
   await page.getByLabel('Ironing speed (mm/s)').fill('25')
@@ -178,7 +184,7 @@ test('template library is usable at desktop and mobile sizes', async ({ page }) 
 
 test('templates switch views and import portable JSON with explicit scope', async ({ page }) => {
   let imported: Record<string, unknown> | null = null
-  await page.route('**/api/v1/profiles/templates?include_inactive=true', (route) => route.fulfill({ json: [template] }))
+  await page.route('**/api/v1/profiles/templates', (route) => route.fulfill({ json: [template] }))
   await page.route('**/api/v1/profiles/templates/imports', async (route) => {
     imported = route.request().postDataJSON() as Record<string, unknown>
     await route.fulfill({ json: { ...template, id: 'imported-template-id', name: 'Template PEBA', material_type: 'PEBA' } })
@@ -213,7 +219,9 @@ test('templates switch views and import portable JSON with explicit scope', asyn
     fits: true,
   })
   await captureEvidence(page, 'template-detailed')
+  await detailedTemplate.click()
   await expect(page.getByRole('link', { name: 'Export Template PLA' })).toHaveAttribute('href', '/api/v1/profiles/templates/template-id/exports/json')
+  await page.getByRole('button', { name: 'Cancel' }).click()
 
   await page.getByRole('button', { name: 'Import template' }).click()
   const document = {
@@ -251,7 +259,7 @@ test('blank template values expose and persist copy choices from other templates
       settings: { ...settings, chamber_temp_c: '45' },
     }],
   }
-  await page.route('**/api/v1/profiles/templates?include_inactive=true', (route) => route.fulfill({ json: [template, sourceTemplate] }))
+  await page.route('**/api/v1/profiles/templates', (route) => route.fulfill({ json: [template, sourceTemplate] }))
   await page.route('**/api/v1/profiles/templates/template-id/settings', async (route) => {
     templateUpdate = route.request().postDataJSON() as Record<string, unknown>
     await route.fulfill({ json: template })
@@ -262,7 +270,7 @@ test('blank template values expose and persist copy choices from other templates
 
   await page.goto('/templates')
   const targetCard = page.locator('.catalog-card--template').filter({ hasText: 'Template PLA' })
-  await targetCard.getByRole('button', { name: 'Edit template' }).click()
+  await targetCard.click()
   const dialog = page.getByRole('dialog', { name: 'Edit Template PLA' })
   const copyTemperature = dialog.getByLabel('Copy Build volume temperature from another template')
   await expect(copyTemperature).toBeVisible()
@@ -285,7 +293,7 @@ test('blank template values expose and persist copy choices from other templates
 test('template validation centers, focuses, and highlights the rejected setting', async ({ page }) => {
   await page.emulateMedia({ reducedMotion: 'reduce' })
   await page.setViewportSize({ width: 390, height: 844 })
-  await page.route('**/api/v1/profiles/templates?include_inactive=true', (route) => route.fulfill({ json: [template] }))
+  await page.route('**/api/v1/profiles/templates', (route) => route.fulfill({ json: [template] }))
   await page.route('**/api/v1/profiles/templates/template-id/settings', (route) => route.fulfill({
     status: 422,
     json: {
@@ -303,7 +311,7 @@ test('template validation centers, focuses, and highlights the rejected setting'
   await page.route('**/api/v1/profiles/cura-settings/catalog', (route) => route.fulfill({ json: [] }))
 
   await page.goto('/templates')
-  await page.getByRole('button', { name: 'Edit template' }).click()
+  await page.locator('.catalog-card--template').click()
   await page.getByLabel('Regular fan speed (%)').fill('90')
   const maximumFan = page.getByLabel('Maximum fan speed (%)')
   await maximumFan.fill('20')
@@ -330,7 +338,7 @@ test('template validation centers, focuses, and highlights the rejected setting'
 })
 
 test('comparison shows only differences and warns across profile scopes', async ({ page }) => {
-  await page.route('**/api/v1/profiles/templates?include_inactive=true', (route) => route.fulfill({ json: [template] }))
+  await page.route('**/api/v1/profiles/templates', (route) => route.fulfill({ json: [template] }))
   await page.route('**/api/v1/profiles', (route) => route.fulfill({ json: [comparisonProfile, differentScopeProfile] }))
   await page.route('**/api/v1/filaments', (route) => route.fulfill({ json: [filament] }))
   await page.route('**/api/v1/workstation-agents', (route) => route.fulfill({ json: [] }))
