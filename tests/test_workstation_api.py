@@ -73,7 +73,7 @@ def test_recovery_capture_failure_is_scoped_to_recovery_health() -> None:
         hostname="recovery-workstation",
         platform="arch_linux",
         architecture="x86_64",
-        agent_version="0.5.3",
+        agent_version="0.5.4",
         token_hash="a" * 64,
         capabilities={},
         cura_installations=[],

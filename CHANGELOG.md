@@ -1,5 +1,26 @@
 # Changelog
 
+## 0.5.4 - 08.25.2026
+
+### Added
+
+- Added List, Cards, and Detailed presentations for material templates with an independently remembered view preference.
+- Added versioned per-template JSON downloads and an Administrator workflow to import those files into a newly scoped material type or explicitly confirmed existing-template overwrite.
+- Added PEBA, ABS, and PP to the suggested material types while retaining free-form material names.
+- Added regression coverage for the exact Rainbow edit/catalog failure, portable template create/overwrite operations, template catalog views, and number-input wheel safety.
+
+### Changed
+
+- Changed mouse-wheel gestures over focused numeric controls to scroll normally without changing the stored control value.
+- Removed the Templates-page Cura-import shortcut; existing Cura materials remain available through the reviewed workstation-takeover workflow.
+- Changed filament create and update transactions to validate their exact response representation before committing canonical changes.
+- Changed every server, browser, and workstation-agent version surface to 0.5.4.
+
+### Fixed
+
+- Fixed Rainbow's valid six-color palette violating the three-color multicolor response limit, which made the entire filament catalog unreadable and caused Print settings to display `Unknown filament` even though canonical products and settings were not deleted.
+- Fixed a successful filament edit being committed before a later response-serialization failure could be detected.
+
 ## 0.5.3 - 08.25.2026
 
 ### Added
