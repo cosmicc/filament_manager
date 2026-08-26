@@ -1,5 +1,23 @@
 # User Changelog
 
+## 0.5.4 - 08.25.2026
+
+### Added
+
+- Material templates now have List, Cards, and Detailed views.
+- Templates can be downloaded as JSON and imported to create a new material template or replace one explicitly selected template after confirmation.
+- PEBA, ABS, and PP are included in the common material suggestions.
+
+### Changed
+
+- Mouse-wheel scrolling no longer changes a focused numeric field.
+- Template creation from existing Cura sources remains part of Cura workstation takeover instead of a separate Templates-page shortcut.
+
+### Fixed
+
+- Fixed selecting Rainbow making all filaments disappear from the interface and making print settings show `Unknown filament`; the underlying filament and template work was not deleted and becomes visible again after upgrading.
+- Filament edits now fail safely before saving if the server cannot return the edited product correctly.
+
 ## 0.5.3 - 08.25.2026
 
 ### Added

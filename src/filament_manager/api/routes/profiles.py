@@ -48,6 +48,8 @@ from ..schemas import (
     MaterialSettingsInput,
     MaterialTemplateCreate,
     MaterialTemplateDirectUpdate,
+    MaterialTemplateImportRequest,
+    MaterialTemplatePortableDocument,
     MaterialTemplateResponse,
     MaterialTemplateRevisionCreate,
     MaterialTemplateRevisionResponse,
@@ -300,6 +302,238 @@ async def list_material_templates(
         query = query.where(MaterialTemplate.active.is_(True))
     templates = list(await session.scalars(query))
     return [await _template_response(session, item) for item in templates]
+
+
+@router.get("/templates/{template_id}/exports/json")
+async def export_material_template(
+    template_id: UUID,
+    _: Viewer,
+    session: DatabaseSession,
+) -> JSONResponse:
+    """Download one portable, versioned material-template JSON document."""
+
+    template = await session.get(MaterialTemplate, template_id)
+    if template is None:
+        raise ApiError(status.HTTP_404_NOT_FOUND, "unknown_template", "Template not found")
+    response = await _template_response(session, template)
+    if not response.revisions:
+        raise ApiError(
+            status.HTTP_409_CONFLICT,
+            "template_settings_unavailable",
+            "The template does not have current settings to export",
+        )
+    current_settings = response.revisions[0].settings
+    preferred_surface = (
+        await session.get(
+            BuildPlateSurface,
+            current_settings.preferred_build_plate_surface_id,
+        )
+        if current_settings.preferred_build_plate_surface_id
+        else None
+    )
+    portable_settings = current_settings.model_copy(update={"preferred_build_plate_surface_id": None})
+    document = MaterialTemplatePortableDocument(
+        schema_version=1,
+        kind="filament_manager_material_template",
+        template={
+            "material_type": response.material_type,
+            "name": response.name,
+            "description": response.description,
+            "filament_diameter_mm": response.filament_diameter_mm,
+            "preferred_build_plate_surface_code": (
+                preferred_surface.surface_code if preferred_surface else None
+            ),
+            "settings": portable_settings,
+        },
+    )
+    safe_type = (
+        "".join(
+            character.lower() if character.isalnum() else "-" for character in template.material_type
+        ).strip("-")
+        or "material"
+    )
+    return JSONResponse(
+        document.model_dump(mode="json"),
+        headers={
+            "Content-Disposition": (f'attachment; filename="filament-manager-template-{safe_type}.json"')
+        },
+    )
+
+
+@router.post("/templates/imports", response_model=MaterialTemplateResponse)
+async def import_material_template(
+    payload: MaterialTemplateImportRequest,
+    request: Request,
+    operator: Operator,
+    session: DatabaseSession,
+) -> MaterialTemplateResponse:
+    """Create or explicitly overwrite a template from a portable JSON export."""
+
+    imported = payload.document.template
+    imported_settings = imported.settings.model_dump(mode="json")
+    if imported.preferred_build_plate_surface_code:
+        preferred_surface = await session.scalar(
+            select(BuildPlateSurface).where(
+                BuildPlateSurface.surface_code == imported.preferred_build_plate_surface_code
+            )
+        )
+        if preferred_surface is None:
+            raise ApiError(
+                status.HTTP_422_UNPROCESSABLE_ENTITY,
+                "unknown_build_plate_surface",
+                "The imported preferred build plate side is not available in this installation",
+            )
+        imported_settings["preferred_build_plate_surface_id"] = str(preferred_surface.id)
+    if payload.mode == "overwrite":
+        if not payload.confirmed:
+            raise ApiError(
+                status.HTTP_422_UNPROCESSABLE_ENTITY,
+                "template_import_confirmation_required",
+                "Confirm the selected template overwrite before importing",
+            )
+        if payload.target_template_id is None or payload.expected_template_version is None:
+            raise ApiError(
+                status.HTTP_422_UNPROCESSABLE_ENTITY,
+                "template_import_target_required",
+                "Select the existing template to overwrite and confirm its current version",
+            )
+        template = await session.scalar(
+            select(MaterialTemplate)
+            .where(MaterialTemplate.id == payload.target_template_id)
+            .with_for_update()
+        )
+        if template is None:
+            raise ApiError(status.HTTP_404_NOT_FOUND, "unknown_template", "Template not found")
+        if template.record_version != payload.expected_template_version:
+            raise ApiError(
+                status.HTTP_409_CONFLICT,
+                "version_conflict",
+                "The target template changed; review it again before overwriting",
+            )
+        if (
+            imported.settings.preferred_build_plate_surface_id
+            and await session.get(
+                BuildPlateSurface,
+                imported.settings.preferred_build_plate_surface_id,
+            )
+            is None
+        ):
+            raise ApiError(
+                status.HTTP_422_UNPROCESSABLE_ENTITY,
+                "unknown_build_plate_surface",
+                "The imported preferred build plate side is not available in this installation",
+            )
+        previous = await session.scalar(
+            select(MaterialTemplateRevision)
+            .where(
+                MaterialTemplateRevision.material_template_id == template.id,
+                MaterialTemplateRevision.status == ProfileStatus.PUBLISHED,
+            )
+            .order_by(MaterialTemplateRevision.version.desc())
+            .limit(1)
+        )
+        revision, inherited_profiles = await save_template_settings(
+            session,
+            template=template,
+            settings=imported_settings,
+        )
+        add_audit_event(
+            session,
+            actor_id=operator.id,
+            source="web",
+            action="material_template.import.overwrite",
+            object_type="material_template",
+            object_id=template.id,
+            before={"settings_snapshot_id": str(previous.id)} if previous else None,
+            after={
+                "settings_snapshot_id": str(revision.id),
+                "linked_profiles_updated": len(inherited_profiles),
+                "portable_schema_version": payload.document.schema_version,
+            },
+            correlation_id=request.state.correlation_id,
+        )
+    else:
+        if payload.printer_id is None or payload.nozzle_id is None:
+            raise ApiError(
+                status.HTTP_422_UNPROCESSABLE_ENTITY,
+                "template_import_scope_required",
+                "Select a printer and physical nozzle for the new template",
+            )
+        if await session.get(Printer, payload.printer_id) is None:
+            raise ApiError(status.HTTP_422_UNPROCESSABLE_ENTITY, "unknown_printer", "Printer not found")
+        nozzle = await session.get(Nozzle, payload.nozzle_id)
+        if nozzle is None:
+            raise ApiError(status.HTTP_422_UNPROCESSABLE_ENTITY, "unknown_nozzle", "Nozzle not found")
+        if nozzle.printer_id != payload.printer_id:
+            raise ApiError(
+                status.HTTP_422_UNPROCESSABLE_ENTITY,
+                "nozzle_printer_mismatch",
+                "The selected nozzle belongs to a different printer",
+            )
+        material_type = (payload.material_type or imported.material_type).strip()
+        existing = await session.scalar(
+            select(MaterialTemplate.id).where(
+                MaterialTemplate.active.is_(True),
+                func.lower(MaterialTemplate.material_type) == material_type.casefold(),
+                MaterialTemplate.nozzle_id == nozzle.id,
+            )
+        )
+        if existing is not None:
+            raise ApiError(
+                status.HTTP_409_CONFLICT,
+                "material_template_scope_exists",
+                "A template already exists for this material, printer, and nozzle",
+            )
+        if (
+            imported.settings.preferred_build_plate_surface_id
+            and await session.get(
+                BuildPlateSurface,
+                imported.settings.preferred_build_plate_surface_id,
+            )
+            is None
+        ):
+            raise ApiError(
+                status.HTTP_422_UNPROCESSABLE_ENTITY,
+                "unknown_build_plate_surface",
+                "The imported preferred build plate side is not available in this installation",
+            )
+        template = MaterialTemplate(
+            name=_template_name(material_type),
+            material_type=material_type,
+            description=imported.description,
+            printer_id=payload.printer_id,
+            nozzle_id=nozzle.id,
+            nozzle_diameter_mm=nozzle.diameter_mm,
+            filament_diameter_mm=imported.filament_diameter_mm,
+            active=True,
+        )
+        session.add(template)
+        await session.flush()
+        revision, _ = await save_template_settings(
+            session,
+            template=template,
+            settings=imported_settings,
+            increment_template_record=False,
+        )
+        add_audit_event(
+            session,
+            actor_id=operator.id,
+            source="web",
+            action="material_template.import.create",
+            object_type="material_template",
+            object_id=template.id,
+            before=None,
+            after={
+                "material_type": material_type,
+                "settings_snapshot_id": str(revision.id),
+                "portable_schema_version": payload.document.schema_version,
+            },
+            correlation_id=request.state.correlation_id,
+        )
+    await queue_managed_cura_library(session, requested_by=operator.id)
+    await session.commit()
+    await session.refresh(template)
+    return await _template_response(session, template)
 
 
 @router.post(

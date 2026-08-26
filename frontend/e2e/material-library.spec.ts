@@ -139,7 +139,9 @@ test('template library is usable at desktop and mobile sizes', async ({ page }) 
   ] }))
   await page.goto('/templates')
   await expect(page.getByRole('heading', { name: 'Template PLA' })).toBeVisible()
-  await expect(page.getByRole('link', { name: 'Import from Cura' })).toHaveAttribute('href', '/workstations')
+  await expect(page.getByRole('button', { name: 'Import template' })).toBeVisible()
+  await expect(page.getByRole('link', { name: 'Import from Cura' })).toHaveCount(0)
+  await expect(page.getByLabel('Templates view')).toHaveValue('cards')
   await expect(page.getByText('Workshop Printer')).toBeVisible()
   await expect(page.getByText('NZ-040 · 0.4 mm Hardened steel')).toBeVisible()
   await expect(page.getByText('Starting settings for ordinary PLA')).toHaveCount(0)
@@ -153,9 +155,16 @@ test('template library is usable at desktop and mobile sizes', async ({ page }) 
   await expect(page.getByRole('heading', { name: /Advanced Cura-only Settings/ })).toHaveCount(0)
   await expect(page.getByText('Enable Klipper Smooth Time', { exact: true })).toBeVisible()
 
+  const printingTemperature = page.getByLabel('Printing temperature (°C)')
+  await printingTemperature.hover()
+  await printingTemperature.focus()
+  await page.mouse.wheel(0, 600)
+  await expect(printingTemperature).toHaveValue('210')
+  await expect(printingTemperature).not.toBeFocused()
+
   await page.setViewportSize({ width: 390, height: 844 })
   await expect(page.getByRole('dialog', { name: 'Edit Template PLA' })).toBeVisible()
-  await page.getByLabel('Printing temperature (°C)').fill('212')
+  await printingTemperature.fill('212')
   await page.getByLabel('Ironing flow (%)').fill('12')
   await page.getByLabel('Ironing speed (mm/s)').fill('25')
   await page.getByLabel('Ironing line spacing (mm)').fill('0.12')
@@ -165,6 +174,46 @@ test('template library is usable at desktop and mobile sizes', async ({ page }) 
   await expect.poll(() => (templateUpdate?.settings as Record<string, unknown>)?.ironing_flow_percent).toBe('12')
   await expect.poll(() => (templateUpdate?.settings as Record<string, unknown>)?.ironing_speed_mm_s).toBe('25')
   await expect.poll(() => (templateUpdate?.settings as Record<string, unknown>)?.ironing_line_spacing_mm).toBe('0.12')
+})
+
+test('templates switch views and import portable JSON with explicit scope', async ({ page }) => {
+  let imported: Record<string, unknown> | null = null
+  await page.route('**/api/v1/profiles/templates?include_inactive=true', (route) => route.fulfill({ json: [template] }))
+  await page.route('**/api/v1/profiles/templates/imports', async (route) => {
+    imported = route.request().postDataJSON() as Record<string, unknown>
+    await route.fulfill({ json: { ...template, id: 'imported-template-id', name: 'Template PEBA', material_type: 'PEBA' } })
+  })
+  await page.route('**/api/v1/profiles', (route) => route.fulfill({ json: [] }))
+  await page.route('**/api/v1/filaments', (route) => route.fulfill({ json: [] }))
+  await page.route('**/api/v1/profiles/cura-settings/catalog', (route) => route.fulfill({ json: [] }))
+
+  await page.goto('/templates')
+  await page.getByLabel('Templates view').selectOption('list')
+  await expect(page.getByRole('cell', { name: 'Template PLA PLA', exact: true })).toBeVisible()
+  await page.getByLabel('Templates view').selectOption('detailed')
+  await expect(page.locator('.collection-grid--detailed')).toBeVisible()
+  await expect(page.getByRole('link', { name: 'Export Template PLA' })).toHaveAttribute('href', '/api/v1/profiles/templates/template-id/exports/json')
+
+  await page.getByRole('button', { name: 'Import template' }).click()
+  const document = {
+    schema_version: 1,
+    kind: 'filament_manager_material_template',
+    template: {
+      material_type: 'PEBA', name: 'Template PEBA', description: null,
+      filament_diameter_mm: '1.75', settings,
+    },
+  }
+  await page.getByLabel('Template JSON file').setInputFiles({
+    name: 'template-peba.json',
+    mimeType: 'application/json',
+    buffer: Buffer.from(JSON.stringify(document)),
+  })
+  await expect(page.getByLabel('Material type')).toHaveValue('PEBA')
+  await page.getByRole('button', { name: 'Create template' }).click()
+  await expect.poll(() => imported?.mode).toBe('create')
+  await expect.poll(() => imported?.material_type).toBe('PEBA')
+  await expect.poll(() => imported?.printer_id).toBe(printer.id)
+  await expect.poll(() => imported?.nozzle_id).toBe(nozzle.id)
 })
 
 test('blank template values expose and persist copy choices from other templates', async ({ page }) => {
@@ -529,7 +578,7 @@ test('an empty Cura library can complete the one-time atomic takeover', async ({
 test('managed Cura workstations show verified material print setting coverage', async ({ page }) => {
   const agent = {
     id: 'agent-id', agent_code: 'WS-TEST', display_name: 'Arch Cura', hostname: 'workstation',
-    platform: 'arch_linux', architecture: 'x86_64', agent_version: '0.5.3', enabled: true,
+    platform: 'arch_linux', architecture: 'x86_64', agent_version: '0.5.4', enabled: true,
     cura_management_enabled: true,
     capabilities: { managed_material_count: 3, unmanaged_print_profile_count: 0, cura_recovery_snapshots: true },
     cura_installations: [{

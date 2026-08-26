@@ -91,7 +91,7 @@ async def test_direct_template_save_updates_linked_product_profile(
                     hostname="cura-test",
                     platform="linux",
                     architecture="x86_64",
-                    agent_version="0.5.3",
+                    agent_version="0.5.4",
                     token_hash="a" * 64,
                     enabled=True,
                     cura_management_enabled=True,
@@ -445,6 +445,41 @@ async def test_direct_template_save_updates_linked_product_profile(
             assert Decimal(exported.json()["cura"]["ironing_flow"]) == Decimal("12")
             assert Decimal(exported.json()["cura"]["speed_ironing"]) == Decimal("25")
             assert Decimal(exported.json()["cura"]["ironing_line_spacing"]) == Decimal("0.12")
+            template_export = await client.get(f"/api/v1/profiles/templates/{template['id']}/exports/json")
+            assert template_export.status_code == 200, template_export.text
+            assert template_export.headers["content-disposition"].startswith(
+                'attachment; filename="filament-manager-template-pctpe.json"'
+            )
+            portable_document = template_export.json()
+            assert portable_document["schema_version"] == 1
+            assert portable_document["kind"] == "filament_manager_material_template"
+            assert portable_document["template"]["settings"]["extruder_temp_c"] == "250"
+            imported_new = await client.post(
+                "/api/v1/profiles/templates/imports",
+                json={
+                    "mode": "create",
+                    "document": portable_document,
+                    "printer_id": str(printer_id),
+                    "nozzle_id": str(nozzle_id),
+                    "material_type": "PEBA",
+                },
+            )
+            assert imported_new.status_code == 200, imported_new.text
+            assert imported_new.json()["name"] == "Template PEBA"
+            assert imported_new.json()["revisions"][0]["settings"]["extruder_temp_c"] == "250"
+            imported_overwrite = await client.post(
+                "/api/v1/profiles/templates/imports",
+                json={
+                    "mode": "overwrite",
+                    "document": portable_document,
+                    "target_template_id": second_template.json()["id"],
+                    "expected_template_version": second_template.json()["record_version"],
+                    "confirmed": True,
+                },
+            )
+            assert imported_overwrite.status_code == 200, imported_overwrite.text
+            assert imported_overwrite.json()["material_type"] == "TPU"
+            assert imported_overwrite.json()["revisions"][0]["settings"]["extruder_temp_c"] == "250"
 
         async with factory() as session:
             template_row = await session.scalar(
@@ -469,7 +504,7 @@ async def test_direct_template_save_updates_linked_product_profile(
             library = await build_cura_library(session)
             assert library["schema_version"] == 3
             materials = library["materials"]
-            assert isinstance(materials, list) and len(materials) == 4
+            assert isinstance(materials, list) and len(materials) == 5
             product_material = next(
                 item
                 for item in materials

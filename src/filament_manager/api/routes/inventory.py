@@ -772,12 +772,17 @@ async def create_filament(
     )
     if profile is not None:
         await queue_managed_cura_library(session, requested_by=operator.id)
-    await session.commit()
+    # Validate the exact API representation before committing. This keeps a
+    # future response-contract regression from persisting a mutation that the
+    # client is subsequently unable to read back.
+    await session.flush()
     await session.refresh(product, attribute_names=["vendor"])
-    return filament_response(
+    response = filament_response(
         product,
         color_editable=not await _filaments_have_recorded_use(session, [product.id]),
     )
+    await session.commit()
+    return response
 
 
 @router.patch("/filaments/{filament_id}", response_model=FilamentResponse)
@@ -1012,12 +1017,16 @@ async def update_filament(
     )
     if created_profiles or "archived" in payload.model_fields_set:
         await queue_managed_cura_library(session, requested_by=operator.id)
-    await session.commit()
+    # Build and validate the response inside the transaction so a serialization
+    # failure rolls the edit back instead of leaving the catalog unreadable.
+    await session.flush()
     await session.refresh(product, attribute_names=["vendor"])
-    return filament_response(
+    response = filament_response(
         product,
         color_editable=not await _filaments_have_recorded_use(session, [product.id]),
     )
+    await session.commit()
+    return response
 
 
 @router.delete("/filaments/{filament_id}")

@@ -251,6 +251,27 @@ async def test_seed_system_route_creates_configured_resources(monkeypatch: pytes
                     "nominal_net_mass_g": "1000",
                 },
             )
+            rainbow_source = await client.post(
+                "/api/v1/filaments",
+                json={
+                    "material_type": "PLA",
+                    "color_name": "Blue",
+                    "color_hex": "0000FF",
+                    "diameter_mm": "1.75",
+                    "density_g_cm3": "1.24",
+                    "nominal_net_mass_g": "1000",
+                },
+            )
+            rainbow = await client.patch(
+                f"/api/v1/filaments/{rainbow_source.json()['id']}",
+                json={
+                    "expected_version": rainbow_source.json()["record_version"],
+                    "color_name": "Rainbow",
+                    "color_mode": "rainbow",
+                    "color_hexes": [],
+                },
+            )
+            catalog_after_rainbow = await client.get("/api/v1/filaments")
             multicolor_one = await client.post(
                 "/api/v1/filaments",
                 json={
@@ -387,6 +408,11 @@ async def test_seed_system_route_creates_configured_resources(monkeypatch: pytes
         assert seeded_again.json() == {"plates": 0, "printers": 0, "templates": 0}
         assert red_one.status_code == 201, red_one.text
         assert red_two.status_code == 201, red_two.text
+        assert rainbow.status_code == 200, rainbow.text
+        assert rainbow.json()["color_mode"] == "rainbow"
+        assert len(rainbow.json()["color_hexes"]) == 6
+        assert catalog_after_rainbow.status_code == 200, catalog_after_rainbow.text
+        assert rainbow.json()["id"] in {item["id"] for item in catalog_after_rainbow.json()}
         assert multicolor_one.status_code == 201, multicolor_one.text
         assert multicolor_two.status_code == 201, multicolor_two.text
         assert multicolor_one.json()["color_hexes"] == ["FF0000", "0000FF"]
@@ -403,7 +429,10 @@ async def test_seed_system_route_creates_configured_resources(monkeypatch: pytes
         assert archived_spool.json() == {"disposition": "archived"}
         assert locked_color.status_code == 409, locked_color.text
         assert locked_color.json()["code"] == "filament_color_locked"
-        assert remembered_colors.json()[0]["color_hex"] == "A00000"
+        remembered_red = next(
+            color for color in remembered_colors.json() if color["name"].casefold() == "red"
+        )
+        assert remembered_red["color_hex"] == "A00000"
         assert profile.status_code == 201, profile.text
         assert profile_revision.status_code == 201, profile_revision.text
         assert profile_revision.json()["version"] == 2
@@ -433,7 +462,7 @@ async def test_seed_system_route_creates_configured_resources(monkeypatch: pytes
             assert asa_revision.settings["extruder_temp_c"] == "245"
             assert asa_revision.settings["bed_temp_c"] == "95"
             assert asa_revision.settings["filament_density_g_cm3"] == "1.07"
-            assert await session.scalar(select(func.count(FilamentColor.id))) == 1
+            assert await session.scalar(select(func.count(FilamentColor.id))) == 3
             products = list(
                 await session.scalars(select(FilamentProduct).order_by(FilamentProduct.material_type))
             )

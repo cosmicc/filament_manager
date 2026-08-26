@@ -113,6 +113,10 @@ class FilamentCreate(ApiModel):
 
 
 class FilamentResponse(FilamentCreate):
+    # Rainbow is a fixed six-color application palette. Create/update requests
+    # remain capped at three operator-selected samples for multicolor products,
+    # while responses must faithfully represent the complete Rainbow palette.
+    color_hexes: list[ColorHex] = Field(default_factory=list, max_length=6)
     id: UUID
     vendor_name: str | None = None
     archived: bool = False
@@ -718,6 +722,38 @@ class MaterialTemplateDirectUpdate(ApiModel):
 
     expected_template_version: int = Field(ge=1)
     settings: MaterialSettingsInput
+
+
+class MaterialTemplatePortableData(ApiModel):
+    """Portable template values without environment-specific database IDs."""
+
+    material_type: str = Field(min_length=1, max_length=48)
+    name: str = Field(min_length=1, max_length=160)
+    description: str | None = Field(default=None, max_length=4000)
+    filament_diameter_mm: Decimal = Field(gt=0)
+    preferred_build_plate_surface_code: str | None = Field(default=None, max_length=32)
+    settings: MaterialSettingsInput
+
+
+class MaterialTemplatePortableDocument(ApiModel):
+    """Versioned JSON contract accepted by template import."""
+
+    schema_version: Literal[1]
+    kind: Literal["filament_manager_material_template"]
+    template: MaterialTemplatePortableData
+
+
+class MaterialTemplateImportRequest(ApiModel):
+    """Explicitly create or overwrite a template from a portable document."""
+
+    mode: Literal["create", "overwrite"]
+    document: MaterialTemplatePortableDocument
+    target_template_id: UUID | None = None
+    expected_template_version: int | None = Field(default=None, ge=1)
+    printer_id: UUID | None = None
+    nozzle_id: UUID | None = None
+    material_type: str | None = Field(default=None, min_length=1, max_length=48)
+    confirmed: bool = False
 
 
 class MaterialTemplateRevisionResponse(ApiModel):
