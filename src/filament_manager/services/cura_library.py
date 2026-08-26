@@ -18,7 +18,11 @@ from filament_manager.domain.cura_material_settings import (
     cura_settings_for_profile,
 )
 from filament_manager.domain.profile_inheritance import resolve_profile_settings
-from filament_manager.domain.spool_preflight import cura_material_guid
+from filament_manager.domain.spool_preflight import (
+    cura_material_guid,
+    cura_product_material_guid,
+    cura_product_scope_id,
+)
 from filament_manager.models.enums import CuraDeploymentStatus, ProfileStatus, SpoolStatus
 from filament_manager.models.inventory import (
     BuildPlate,
@@ -183,11 +187,19 @@ async def build_cura_library(session: AsyncSession) -> dict[str, object]:
         if not revisions:
             continue
         revision = revisions[0]
+        legacy_revision_ids = list(
+            await session.scalars(
+                select(MaterialTemplateRevision.id).where(
+                    MaterialTemplateRevision.material_template_id == template.id,
+                )
+            )
+        )
         entries.append(
             {
                 "source_kind": "template",
-                "source_id": str(revision.id),
-                "cura_material_guid": cura_material_guid("template", revision.id),
+                "source_id": str(template.id),
+                "legacy_source_ids": [str(item) for item in legacy_revision_ids],
+                "cura_material_guid": cura_material_guid("template", template.id),
                 "profile": {
                     "id": str(revision.id),
                     "version": revision.version,
@@ -217,7 +229,7 @@ async def build_cura_library(session: AsyncSession) -> dict[str, object]:
     profiles = list(
         await session.scalars(
             select(MaterialProfile)
-            .where(MaterialProfile.status == ProfileStatus.PUBLISHED)
+            .where(MaterialProfile.status.in_((ProfileStatus.PUBLISHED, ProfileStatus.SUPERSEDED)))
             .order_by(
                 MaterialProfile.filament_product_id,
                 MaterialProfile.printer_id,
@@ -227,14 +239,17 @@ async def build_cura_library(session: AsyncSession) -> dict[str, object]:
         )
     )
     latest_profiles: dict[tuple[UUID, UUID, Decimal], MaterialProfile] = {}
+    historical_profile_ids: dict[tuple[UUID, UUID, Decimal], list[UUID]] = {}
     for profile in profiles:
         key = (
             profile.filament_product_id,
             profile.printer_id,
             profile.nozzle_diameter_mm,
         )
-        latest_profiles.setdefault(key, profile)
-    for profile in latest_profiles.values():
+        historical_profile_ids.setdefault(key, []).append(profile.id)
+        if profile.status == ProfileStatus.PUBLISHED:
+            latest_profiles.setdefault(key, profile)
+    for scope, profile in latest_profiles.items():
         product = await session.get(FilamentProduct, profile.filament_product_id)
         printer = await session.get(Printer, profile.printer_id)
         base_revision = await session.get(
@@ -250,11 +265,13 @@ async def build_cura_library(session: AsyncSession) -> dict[str, object]:
             base_revision.settings,
             dict(profile.setting_overrides or {}),
         )
+        stable_source_id = cura_product_scope_id(*scope)
         entries.append(
             {
                 "source_kind": "product",
-                "source_id": str(profile.id),
-                "cura_material_guid": cura_material_guid("product", profile.id),
+                "source_id": str(stable_source_id),
+                "legacy_source_ids": [str(item) for item in historical_profile_ids[scope]],
+                "cura_material_guid": cura_product_material_guid(*scope),
                 "profile": {
                     "id": str(profile.id),
                     "version": profile.version,

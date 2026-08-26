@@ -11,6 +11,10 @@ from testcontainers.community.postgres import PostgresContainer
 
 from filament_manager.api import dependencies
 from filament_manager.config import Settings
+from filament_manager.domain.spool_preflight import (
+    cura_product_material_guid,
+    cura_product_scope_id,
+)
 from filament_manager.models import Base
 from filament_manager.models.auth import User
 from filament_manager.models.enums import NozzleStatus, ProfileStatus, UserRole
@@ -105,12 +109,20 @@ async def test_direct_template_save_updates_linked_product_profile(
                 material="Brass",
                 status=NozzleStatus.INSTALLED,
             )
-            session.add(nozzle)
+            larger_nozzle = Nozzle(
+                nozzle_code="NZ-060",
+                printer_id=printer.id,
+                diameter_mm=Decimal("0.6"),
+                material="Hardened steel",
+                status=NozzleStatus.AVAILABLE,
+            )
+            session.add_all([nozzle, larger_nozzle])
             await session.flush()
             printer.active_nozzle_id = nozzle.id
             await session.commit()
             printer_id = printer.id
             nozzle_id = nozzle.id
+            larger_nozzle_id = larger_nozzle.id
 
         async def session_override() -> AsyncIterator[AsyncSession]:
             async with factory() as session:
@@ -480,6 +492,52 @@ async def test_direct_template_save_updates_linked_product_profile(
             assert imported_overwrite.status_code == 200, imported_overwrite.text
             assert imported_overwrite.json()["material_type"] == "TPU"
             assert imported_overwrite.json()["revisions"][0]["settings"]["extruder_temp_c"] == "250"
+            wrong_delete = await client.request(
+                "DELETE",
+                f"/api/v1/profiles/templates/{imported_new.json()['id']}",
+                json={
+                    "expected_version": imported_new.json()["record_version"],
+                    "confirmation_name": "wrong template",
+                },
+            )
+            assert wrong_delete.status_code == 422, wrong_delete.text
+            deleted = await client.request(
+                "DELETE",
+                f"/api/v1/profiles/templates/{imported_new.json()['id']}",
+                json={
+                    "expected_version": imported_new.json()["record_version"],
+                    "confirmation_name": imported_new.json()["name"],
+                },
+            )
+            assert deleted.status_code == 200, deleted.text
+            assert deleted.json()["active"] is False
+            active_templates = await client.get("/api/v1/profiles/templates")
+            assert imported_new.json()["id"] not in {item["id"] for item in active_templates.json()}
+
+            refreshed_templates = await client.get("/api/v1/profiles/templates")
+            refreshed_pctpe = next(
+                item for item in refreshed_templates.json() if item["id"] == template["id"]
+            )
+            moved = await client.put(
+                f"/api/v1/profiles/templates/{template['id']}/settings",
+                json={
+                    "expected_template_version": refreshed_pctpe["record_version"],
+                    "material_type": "PCTPE",
+                    "printer_id": str(printer_id),
+                    "nozzle_id": str(larger_nozzle_id),
+                    "nozzle_diameter_mm": "0.6",
+                    "filament_diameter_mm": "1.75",
+                    "description": "Moved to the larger installed scope",
+                    "settings": refreshed_pctpe["revisions"][0]["settings"],
+                },
+            )
+            assert moved.status_code == 200, moved.text
+            assert moved.json()["nozzle_id"] == str(larger_nozzle_id)
+            moved_profiles = await client.get("/api/v1/profiles")
+            moved_product_profile = next(
+                item for item in moved_profiles.json() if item["filament_product_id"] == product_id
+            )
+            assert moved_product_profile["nozzle_diameter_mm"] == "0.60000"
 
         async with factory() as session:
             template_row = await session.scalar(
@@ -488,7 +546,10 @@ async def test_direct_template_save_updates_linked_product_profile(
             product = await session.get(FilamentProduct, product_id)
             profile = await session.scalar(
                 select(MaterialProfile)
-                .where(MaterialProfile.filament_product_id == product_id)
+                .where(
+                    MaterialProfile.filament_product_id == product_id,
+                    MaterialProfile.status == ProfileStatus.PUBLISHED,
+                )
                 .order_by(MaterialProfile.version.desc())
                 .limit(1)
             )
@@ -496,7 +557,8 @@ async def test_direct_template_save_updates_linked_product_profile(
             assert product is not None and product.source_template_revision_id is not None
             assert profile is not None
             assert profile.status == ProfileStatus.PUBLISHED
-            assert profile.version == 2
+            assert profile.version == 1
+            assert profile.nozzle_diameter_mm == Decimal("0.60000")
             assert profile.base_template_revision_id == product.source_template_revision_id
             assert profile.extruder_temp_c == Decimal("250.00000")
             assert profile.filament_density_g_cm3 == Decimal("1.21000")
@@ -504,7 +566,7 @@ async def test_direct_template_save_updates_linked_product_profile(
             library = await build_cura_library(session)
             assert library["schema_version"] == 3
             materials = library["materials"]
-            assert isinstance(materials, list) and len(materials) == 5
+            assert isinstance(materials, list) and len(materials) == 4
             product_material = next(
                 item
                 for item in materials
@@ -512,6 +574,15 @@ async def test_direct_template_save_updates_linked_product_profile(
             )
             assert product_material["material"]["filler"] is None
             assert product_material["material"]["finish"] == "Silk"
+            assert product_material["source_id"] == str(
+                cura_product_scope_id(product.id, printer_id, Decimal("0.6"))
+            )
+            assert product_material["cura_material_guid"] == cura_product_material_guid(
+                product.id,
+                printer_id,
+                Decimal("0.6"),
+            )
+            assert str(profile.id) in product_material["legacy_source_ids"]
             assert product_material["material"]["cura_cost_basis"] == {
                 "spool_weight_g": "1000",
                 "spool_cost": "25.00",

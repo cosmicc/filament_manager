@@ -18,7 +18,10 @@ from filament_manager.clients.moonraker import (
     MoonrakerSpoolPreflightState,
 )
 from filament_manager.config import Settings
-from filament_manager.domain.spool_preflight import cura_material_guid
+from filament_manager.domain.spool_preflight import (
+    cura_material_guid,
+    cura_product_material_guid,
+)
 from filament_manager.models import Base
 from filament_manager.models.enums import NozzleStatus, ProfileStatus, SpoolStatus
 from filament_manager.models.inventory import (
@@ -236,11 +239,19 @@ async def test_active_spool_selection_and_clear_follow_moonraker(
             await session.commit()
 
             catalog = await build_spool_preflight_catalog(session, printer=printer)
-            material_guid = cura_material_guid("product", profile.id)
+            material_guid = cura_product_material_guid(
+                profile.filament_product_id,
+                profile.printer_id,
+                profile.nozzle_diameter_mm,
+            )
             assert catalog.materials[material_guid] == [
                 [10, "FIRST-Filament-Manager-PLA-Blue"],
                 [20, "SECOND-Filament-Manager-PLA-Blue"],
             ]
+            assert (
+                catalog.materials[cura_material_guid("product", profile.id)]
+                == catalog.materials[material_guid]
+            )
             assert catalog.manual_spools == [
                 [10, "FIRST-Filament-Manager-PLA-Blue"],
                 [20, "SECOND-Filament-Manager-PLA-Blue"],

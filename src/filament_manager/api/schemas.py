@@ -718,10 +718,23 @@ class MaterialTemplateRevisionCreate(ApiModel):
 
 
 class MaterialTemplateDirectUpdate(ApiModel):
-    """Directly save current template settings with optimistic concurrency."""
+    """Directly save current template identity and settings atomically."""
 
     expected_template_version: int = Field(ge=1)
+    material_type: str | None = Field(default=None, min_length=1, max_length=48)
+    description: str | None = Field(default=None, max_length=4000)
+    printer_id: UUID | None = None
+    nozzle_id: UUID | None = None
+    nozzle_diameter_mm: Decimal | None = Field(default=None, gt=0)
+    filament_diameter_mm: Decimal | None = Field(default=None, gt=0)
     settings: MaterialSettingsInput
+
+
+class MaterialTemplateDelete(ApiModel):
+    """Confirm archival deletion without destroying immutable history."""
+
+    expected_version: int = Field(ge=1)
+    confirmation_name: str = Field(min_length=1, max_length=160)
 
 
 class MaterialTemplatePortableData(ApiModel):

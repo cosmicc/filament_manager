@@ -35,6 +35,7 @@ class RenderedDeployment:
     warnings: list[str]
     managed_material_setting_keys: frozenset[str]
     cleanup_material_setting_keys: frozenset[str]
+    material_id_migrations: dict[str, str]
 
 
 def slug(value: str, *, maximum: int = 72) -> str:
@@ -723,6 +724,7 @@ def render_deployment(installation: CuraInstallation, payload: dict[str, Any]) -
     machines: list[CuraMachine] = []
     warnings: list[str] = []
     managed_material_costs: dict[str, dict[str, float]] = {}
+    material_id_migrations: dict[str, str] = {}
     for entry in materials:
         if not isinstance(entry, dict):
             raise ValueError("Deployment contains an invalid material entry.")
@@ -771,11 +773,35 @@ def render_deployment(installation: CuraInstallation, payload: dict[str, Any]) -
                 "spool_weight": float(spool_weight),
                 "spool_cost": float(spool_cost),
             }
-        profile_slug = slug(
+        # Cura uses the filename stem as the container ID referenced by its
+        # extruder stack. Keep it independent of mutable brand/color metadata.
+        profile_slug = slug(f"{source_kind}-{source_id}")
+        container_id = f"filament_manager_{profile_slug}"
+        files[Path("materials") / f"{container_id}.xml.fdm_material"] = _material_xml(entry)
+        raw_legacy_source_ids = entry.get("legacy_source_ids", [])
+        if not isinstance(raw_legacy_source_ids, list) or len(raw_legacy_source_ids) > 10_000:
+            raise ValueError("Deployment contains an invalid legacy material identity list.")
+        for legacy_source_id in raw_legacy_source_ids:
+            try:
+                validated_legacy_id = str(uuid.UUID(str(legacy_source_id)))
+            except (TypeError, ValueError) as error:
+                raise ValueError("Deployment contains an invalid legacy material identity.") from error
+            legacy_slug = slug(
+                f"{source_kind}-{material['brand']}-{material['material_type']}-"
+                f"{material['color_name']}-{validated_legacy_id}"
+            )
+            legacy_container_id = f"filament_manager_{legacy_slug}"
+            if legacy_container_id != container_id:
+                material_id_migrations[legacy_container_id] = container_id
+            revision_only_container_id = f"filament_manager_{slug(f'{source_kind}-{validated_legacy_id}')}"
+            if revision_only_container_id != container_id:
+                material_id_migrations[revision_only_container_id] = container_id
+        metadata_scoped_container_id = "filament_manager_" + slug(
             f"{source_kind}-{material['brand']}-{material['material_type']}-"
             f"{material['color_name']}-{source_id}"
         )
-        files[Path("materials") / f"filament_manager_{profile_slug}.xml.fdm_material"] = _material_xml(entry)
+        if metadata_scoped_container_id != container_id:
+            material_id_migrations[metadata_scoped_container_id] = container_id
         machines.append(machine)
     if not machines:
         raise MachineMatchError("No desired material matches a machine in this Cura installation.")
@@ -794,4 +820,5 @@ def render_deployment(installation: CuraInstallation, payload: dict[str, Any]) -
         warnings=warnings,
         managed_material_setting_keys=managed_setting_keys,
         cleanup_material_setting_keys=managed_setting_keys | retired_setting_keys,
+        material_id_migrations=material_id_migrations,
     )

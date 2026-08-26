@@ -47,6 +47,7 @@ from ..schemas import (
     CuraMaterialTemplateImportRequest,
     MaterialSettingsInput,
     MaterialTemplateCreate,
+    MaterialTemplateDelete,
     MaterialTemplateDirectUpdate,
     MaterialTemplateImportRequest,
     MaterialTemplatePortableDocument,
@@ -639,6 +640,38 @@ async def save_material_template_settings(
             "version_conflict",
             "This template changed after the editor opened; reopen it to load the current values",
         )
+    target_printer_id = payload.printer_id or template.printer_id
+    target_nozzle_id = payload.nozzle_id or template.nozzle_id
+    target_nozzle_diameter = payload.nozzle_diameter_mm or template.nozzle_diameter_mm
+    if await session.get(Printer, target_printer_id) is None:
+        raise ApiError(status.HTTP_422_UNPROCESSABLE_ENTITY, "unknown_printer", "Printer not found")
+    await _template_nozzle(
+        session,
+        nozzle_id=target_nozzle_id,
+        printer_id=target_printer_id,
+        diameter_mm=target_nozzle_diameter,
+    )
+    target_material_type = (
+        payload.material_type.strip() if payload.material_type is not None else template.material_type
+    )
+    conflict = (
+        await session.scalar(
+            select(MaterialTemplate.id).where(
+                MaterialTemplate.id != template.id,
+                MaterialTemplate.active.is_(True),
+                func.lower(MaterialTemplate.material_type) == target_material_type.casefold(),
+                MaterialTemplate.nozzle_id == target_nozzle_id,
+            )
+        )
+        if template.active
+        else None
+    )
+    if template.active and conflict is not None:
+        raise ApiError(
+            status.HTTP_409_CONFLICT,
+            "material_template_scope_exists",
+            "A template already exists for this material, printer, and nozzle",
+        )
     if (
         payload.settings.preferred_build_plate_surface_id
         and await session.get(
@@ -661,11 +694,94 @@ async def save_material_template_settings(
         .order_by(MaterialTemplateRevision.version.desc())
         .limit(1)
     )
+    revision_ids = list(
+        await session.scalars(
+            select(MaterialTemplateRevision.id).where(
+                MaterialTemplateRevision.material_template_id == template.id
+            )
+        )
+    )
+    scope_profiles = list(
+        await session.scalars(
+            select(MaterialProfile)
+            .where(
+                MaterialProfile.status == ProfileStatus.PUBLISHED,
+                MaterialProfile.printer_id == template.printer_id,
+                MaterialProfile.nozzle_diameter_mm == template.nozzle_diameter_mm,
+            )
+            .order_by(MaterialProfile.filament_product_id, MaterialProfile.version.desc())
+        )
+    )
+    current_by_product: dict[UUID, MaterialProfile] = {}
+    for candidate in scope_profiles:
+        current_by_product.setdefault(candidate.filament_product_id, candidate)
+    linked_profiles = [
+        candidate
+        for candidate in current_by_product.values()
+        if candidate.base_template_revision_id in revision_ids
+    ]
+    moving_profile_scope = (
+        target_printer_id != template.printer_id or target_nozzle_diameter != template.nozzle_diameter_mm
+    )
+    if moving_profile_scope:
+        for linked_profile in linked_profiles:
+            existing_target = await session.scalar(
+                select(MaterialProfile.id).where(
+                    MaterialProfile.status == ProfileStatus.PUBLISHED,
+                    MaterialProfile.filament_product_id == linked_profile.filament_product_id,
+                    MaterialProfile.printer_id == target_printer_id,
+                    MaterialProfile.nozzle_diameter_mm == target_nozzle_diameter,
+                )
+            )
+            if existing_target is not None:
+                raise ApiError(
+                    status.HTTP_409_CONFLICT,
+                    "material_template_profile_scope_conflict",
+                    "A linked filament already has print settings for the selected printer and nozzle",
+                )
+    before: dict[str, object] = {
+        "material_type": template.material_type,
+        "description": template.description,
+        "printer_id": str(template.printer_id),
+        "nozzle_id": str(template.nozzle_id),
+        "nozzle_diameter_mm": format(template.nozzle_diameter_mm, "f"),
+        "filament_diameter_mm": format(template.filament_diameter_mm, "f"),
+        "settings_snapshot_id": str(current.id) if current else None,
+    }
+    template.material_type = target_material_type
+    template.name = _template_name(target_material_type)
+    if "description" in payload.model_fields_set:
+        template.description = payload.description
+    template.printer_id = target_printer_id
+    template.nozzle_id = target_nozzle_id
+    template.nozzle_diameter_mm = target_nozzle_diameter
+    if payload.filament_diameter_mm is not None:
+        template.filament_diameter_mm = payload.filament_diameter_mm
     revision, inherited_profiles = await save_template_settings(
         session,
         template=template,
         settings=payload.settings.model_dump(mode="json"),
     )
+    moved_profiles: list[MaterialProfile] = []
+    if moving_profile_scope:
+        for linked_profile in linked_profiles:
+            for historical_profile in scope_profiles:
+                if historical_profile.filament_product_id == linked_profile.filament_product_id:
+                    historical_profile.status = ProfileStatus.SUPERSEDED
+            moved_profiles.append(
+                await create_published_profile_snapshot(
+                    session,
+                    filament_product_id=linked_profile.filament_product_id,
+                    printer_id=target_printer_id,
+                    nozzle_diameter_mm=target_nozzle_diameter,
+                    base_revision=revision,
+                    settings=resolve_profile_settings(
+                        revision.settings,
+                        dict(linked_profile.setting_overrides or {}),
+                    ),
+                    setting_overrides=dict(linked_profile.setting_overrides or {}),
+                )
+            )
     add_audit_event(
         session,
         actor_id=operator.id,
@@ -673,12 +789,63 @@ async def save_material_template_settings(
         action="material_template.settings.save",
         object_type="material_template",
         object_id=template.id,
-        before={"settings_snapshot_id": str(current.id)} if current else None,
+        before=before,
         after={
+            "material_type": template.material_type,
+            "printer_id": str(template.printer_id),
+            "nozzle_id": str(template.nozzle_id),
+            "nozzle_diameter_mm": format(template.nozzle_diameter_mm, "f"),
             "settings_snapshot_id": str(revision.id),
-            "linked_profiles_updated": len(inherited_profiles),
+            "linked_profiles_updated": len(inherited_profiles) + len(moved_profiles),
+            "linked_profiles_moved": len(moved_profiles),
             "direct_save": True,
         },
+        correlation_id=request.state.correlation_id,
+    )
+    await queue_managed_cura_library(session, requested_by=operator.id)
+    await session.commit()
+    await session.refresh(template)
+    return await _template_response(session, template)
+
+
+@router.delete("/templates/{template_id}", response_model=MaterialTemplateResponse)
+async def delete_material_template(
+    template_id: UUID,
+    payload: MaterialTemplateDelete,
+    request: Request,
+    operator: Operator,
+    session: DatabaseSession,
+) -> MaterialTemplateResponse:
+    """Remove a template from active use while retaining immutable history."""
+
+    template = await session.scalar(
+        select(MaterialTemplate).where(MaterialTemplate.id == template_id).with_for_update()
+    )
+    if template is None or not template.active:
+        raise ApiError(status.HTTP_404_NOT_FOUND, "unknown_template", "Template not found")
+    if template.record_version != payload.expected_version:
+        raise ApiError(
+            status.HTTP_409_CONFLICT,
+            "version_conflict",
+            "This template changed after the confirmation opened; refresh and try again",
+        )
+    if payload.confirmation_name != template.name:
+        raise ApiError(
+            status.HTTP_422_UNPROCESSABLE_ENTITY,
+            "template_confirmation_mismatch",
+            "Type the exact template name to confirm deletion",
+        )
+    template.active = False
+    template.record_version += 1
+    add_audit_event(
+        session,
+        actor_id=operator.id,
+        source="web",
+        action="material_template.delete",
+        object_type="material_template",
+        object_id=template.id,
+        before={"active": True, "name": template.name},
+        after={"active": False, "history_retained": True},
         correlation_id=request.state.correlation_id,
     )
     await queue_managed_cura_library(session, requested_by=operator.id)

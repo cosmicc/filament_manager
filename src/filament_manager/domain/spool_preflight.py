@@ -7,6 +7,7 @@ import json
 import re
 import unicodedata
 from dataclasses import dataclass
+from decimal import Decimal
 from uuid import NAMESPACE_URL, UUID, uuid5
 
 MAX_CATALOG_SPOOLS = 250
@@ -58,6 +59,43 @@ def cura_material_guid(source_kind: str, source_id: UUID | str) -> str:
         raise ValueError("unsupported Cura material source kind")
     parsed_id = UUID(str(source_id))
     return str(uuid5(NAMESPACE_URL, f"filament-manager-{source_kind}:{parsed_id}"))
+
+
+def cura_product_scope_id(
+    filament_product_id: UUID | str,
+    printer_id: UUID | str,
+    nozzle_diameter_mm: Decimal | str,
+) -> UUID:
+    """Return the stable identity for one product, printer, and nozzle scope.
+
+    Material-profile rows are immutable snapshots, so their database IDs change
+    after every edit. Cura container stacks must instead reference an identity
+    that remains stable for the semantic scope represented by those snapshots.
+    """
+
+    product_id = UUID(str(filament_product_id))
+    parsed_printer_id = UUID(str(printer_id))
+    diameter = Decimal(str(nozzle_diameter_mm))
+    if not diameter.is_finite() or diameter <= 0:
+        raise ValueError("Cura material scope requires a positive nozzle diameter")
+    normalized_diameter = format(diameter.normalize(), "f")
+    return uuid5(
+        NAMESPACE_URL,
+        f"filament-manager-product-scope:{product_id}:{parsed_printer_id}:{normalized_diameter}",
+    )
+
+
+def cura_product_material_guid(
+    filament_product_id: UUID | str,
+    printer_id: UUID | str,
+    nozzle_diameter_mm: Decimal | str,
+) -> str:
+    """Return the stable Cura GUID for one managed product profile scope."""
+
+    return cura_material_guid(
+        "product",
+        cura_product_scope_id(filament_product_id, printer_id, nozzle_diameter_mm),
+    )
 
 
 def spool_prompt_label(*parts: object) -> str:

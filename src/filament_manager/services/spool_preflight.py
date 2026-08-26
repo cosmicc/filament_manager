@@ -18,6 +18,7 @@ from filament_manager.domain.spool_preflight import (
     SpoolPreflightError,
     build_catalog_revision,
     cura_material_guid,
+    cura_product_material_guid,
     spool_prompt_label,
 )
 from filament_manager.models.enums import ProfileStatus, SpoolStatus
@@ -35,6 +36,7 @@ ELIGIBLE_SPOOL_STATUSES = (
     SpoolStatus.IN_STOCK,
     SpoolStatus.LOW,
 )
+MAX_LEGACY_GUIDS_PER_PRODUCT = 32
 
 
 @dataclass(frozen=True, slots=True)
@@ -153,7 +155,9 @@ async def build_spool_preflight_catalog(session: AsyncSession, *, printer: Print
         )
     )
     latest_profiles: dict[UUID, MaterialProfile] = {}
+    profiles_by_product: dict[UUID, list[MaterialProfile]] = defaultdict(list)
     for profile in profiles:
+        profiles_by_product[profile.filament_product_id].append(profile)
         latest_profiles.setdefault(profile.filament_product_id, profile)
     spools = list(
         await session.scalars(
@@ -273,7 +277,19 @@ async def build_spool_preflight_catalog(session: AsyncSession, *, printer: Print
             candidates.append([spool.spoolman_id, label])
             print_temperatures[str(spool.spoolman_id)] = format(profile.extruder_temp_c, "f")
         if candidates:
-            materials[cura_material_guid("product", profile.id)] = candidates
+            supported_guids = {
+                cura_product_material_guid(
+                    profile.filament_product_id,
+                    profile.printer_id,
+                    profile.nozzle_diameter_mm,
+                ),
+                *(
+                    cura_material_guid("product", historical.id)
+                    for historical in profiles_by_product[product_id][:MAX_LEGACY_GUIDS_PER_PRODUCT]
+                ),
+            }
+            for material_guid in supported_guids:
+                materials[material_guid] = candidates
 
     return SpoolPreflightCatalog(
         materials=materials,

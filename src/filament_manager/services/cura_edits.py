@@ -18,7 +18,10 @@ from filament_manager.domain.cura_material_settings import (
     CURA_TEMPLATE_ONLY_SETTING_KEYS,
 )
 from filament_manager.domain.profile_inheritance import resolve_profile_settings
-from filament_manager.domain.spool_preflight import cura_material_guid
+from filament_manager.domain.spool_preflight import (
+    cura_material_guid,
+    cura_product_material_guid,
+)
 from filament_manager.models.enums import ProfileStatus
 from filament_manager.models.inventory import (
     FilamentProduct,
@@ -70,7 +73,14 @@ async def _source_by_guid(
         )
     )
     for profile in profiles:
-        if cura_material_guid("product", profile.id) == expected:
+        if expected in {
+            cura_material_guid("product", profile.id),
+            cura_product_material_guid(
+                profile.filament_product_id,
+                profile.printer_id,
+                profile.nozzle_diameter_mm,
+            ),
+        }:
             return "product", profile
     revisions = list(
         await session.scalars(
@@ -82,6 +92,9 @@ async def _source_by_guid(
     )
     for revision in revisions:
         if cura_material_guid("template", revision.id) == expected:
+            return "template", revision
+        template = await session.get(MaterialTemplate, revision.material_template_id)
+        if template is not None and cura_material_guid("template", template.id) == expected:
             return "template", revision
     return None
 

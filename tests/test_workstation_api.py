@@ -103,7 +103,7 @@ def test_named_recovery_capture_completion_does_not_mark_agent_failed() -> None:
         hostname="backup-workstation",
         platform="arch_linux",
         architecture="x86_64",
-        agent_version="0.5.5",
+        agent_version="0.5.6",
         token_hash="a" * 64,
         capabilities={},
         cura_installations=[],
