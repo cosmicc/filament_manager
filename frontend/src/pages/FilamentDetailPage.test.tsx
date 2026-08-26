@@ -3,15 +3,16 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
+import { ApiClientError } from '../api/client'
 import { RouterProvider } from '../context/RouterContext'
 import FilamentDetailPage from './FilamentDetailPage'
 
 const apiFetchMock = vi.hoisted(() => vi.fn())
 const authState = vi.hoisted(() => ({ role: 'operator' }))
 
-vi.mock('../api/client', () => ({
+vi.mock('../api/client', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../api/client')>()),
   apiFetch: apiFetchMock,
-  validationMessagesFor: vi.fn(() => ({})),
 }))
 vi.mock('../context/AuthContext', () => ({
   useAuth: () => ({ user: { role: authState.role } }),
@@ -178,5 +179,73 @@ describe('FilamentDetailPage', () => {
     expect(screen.getByRole('link', { name: 'Export Cura JSON' }).getAttribute('href')).toBe(
       '/api/v1/profiles/profile-04/exports/cura',
     )
+  })
+
+  it('clears an optional display name on Rainbow without resubmitting its fixed palette', async () => {
+    window.history.replaceState(null, '', '/filaments/product-id')
+    const rainbow = {
+      ...filament,
+      color_name: 'Rainbow',
+      color_hex: 'E53935',
+      color_mode: 'rainbow',
+      color_hexes: ['E53935', 'FB8C00', 'FDD835', '43A047', '1E88E5', '8E24AA'],
+    }
+    const updateBodies: Record<string, unknown>[] = []
+    apiFetchMock.mockImplementation((path: string, options?: RequestInit) => {
+      if (path === '/filaments/product-id' && options?.method === 'PATCH') {
+        updateBodies.push(JSON.parse(String(options.body)) as Record<string, unknown>)
+        return Promise.resolve({ ...rainbow, product_name: null, record_version: 2 })
+      }
+      if (path === '/filaments/product-id') return Promise.resolve(rainbow)
+      if (path === '/profiles') return Promise.resolve([profile('profile-04', '0.4', 8)])
+      if (path === '/profiles/templates?include_inactive=false') return Promise.resolve([template('template-04', 'PLA', '0.4')])
+      if (path === '/printers') return Promise.resolve([{ id: 'printer-id', name: 'Printer A' }])
+      if (path === '/filament-colors' || path === '/vendors' || path === '/build-plates' || path === '/profiles/cura-settings/catalog') return Promise.resolve([])
+      return Promise.reject(new Error(`Unexpected API request: ${path}`))
+    })
+    renderPage()
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Edit product' }))
+    fireEvent.change(screen.getByLabelText('Display name'), { target: { value: '' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Save filament' }))
+
+    await waitFor(() => expect(updateBodies).toHaveLength(1))
+    expect(updateBodies[0].product_name).toBeNull()
+    expect(updateBodies[0].color_mode).toBe('rainbow')
+    expect(updateBodies[0].color_hexes).toEqual([])
+    await waitFor(() => expect(screen.queryByRole('dialog', { name: 'Edit filament product' })).toBeNull())
+  })
+
+  it('highlights, explains, and focuses a rejected product field', async () => {
+    window.history.replaceState(null, '', '/filaments/product-id')
+    Element.prototype.scrollIntoView = vi.fn()
+    apiFetchMock.mockImplementation((path: string, options?: RequestInit) => {
+      if (path === '/filaments/product-id' && options?.method === 'PATCH') {
+        return Promise.reject(new ApiClientError(
+          422,
+          'validation_error',
+          'Request validation failed',
+          [{ field: 'density_g_cm3', message: 'Density must be greater than zero.', type: 'greater_than' }],
+          'request-reference',
+        ))
+      }
+      if (path === '/filaments/product-id') return Promise.resolve(filament)
+      if (path === '/profiles') return Promise.resolve([profile('profile-04', '0.4', 8)])
+      if (path === '/profiles/templates?include_inactive=false') return Promise.resolve([template('template-04', 'PLA', '0.4')])
+      if (path === '/printers') return Promise.resolve([{ id: 'printer-id', name: 'Printer A' }])
+      if (path === '/filament-colors' || path === '/vendors' || path === '/build-plates' || path === '/profiles/cura-settings/catalog') return Promise.resolve([])
+      return Promise.reject(new Error(`Unexpected API request: ${path}`))
+    })
+    renderPage()
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Edit product' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Save filament' }))
+
+    const density = await screen.findByLabelText('Density (g/cm³)')
+    await waitFor(() => expect(density.getAttribute('aria-invalid')).toBe('true'))
+    expect(density.getAttribute('aria-describedby')).toBe('filament-product-density_g_cm3-error')
+    expect(screen.getAllByText('Density must be greater than zero.').length).toBeGreaterThanOrEqual(2)
+    await waitFor(() => expect(document.activeElement).toBe(density))
+    expect(screen.getByText('Diagnostic reference: request-reference')).toBeTruthy()
   })
 })

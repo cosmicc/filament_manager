@@ -94,6 +94,44 @@ def test_recovery_capture_failure_is_scoped_to_recovery_health() -> None:
     assert agent.cura_recovery_message == "A supported Cura settings file contains invalid syntax."
 
 
+def test_named_recovery_capture_completion_does_not_mark_agent_failed() -> None:
+    """A failed named backup remains request history, not live agent health."""
+
+    agent = WorkstationAgent(
+        agent_code="WS-BACKUP-HISTORY",
+        display_name="Backup workstation",
+        hostname="backup-workstation",
+        platform="arch_linux",
+        architecture="x86_64",
+        agent_version="0.5.5",
+        token_hash="a" * 64,
+        capabilities={},
+        cura_installations=[],
+        cura_materials=[],
+    )
+    deployment = CuraDeployment(
+        payload={"operation": "recovery_capture"},
+        profile_checksum="b" * 64,
+        idempotency_key="recovery-capture:test",
+        next_attempt_at=datetime.now(UTC),
+        result={},
+        created_at=datetime.now(UTC),
+        updated_at=datetime.now(UTC),
+    )
+
+    workstations._apply_deployment_agent_error(
+        agent,
+        deployment,
+        workstations.CuraDeploymentCompletion(
+            outcome="failed",
+            error_class="RuntimeError",
+            error_message="Cura settings could not be captured safely on the workstation.",
+        ),
+    )
+
+    assert agent.last_error is None
+
+
 @pytest.mark.integration
 @pytest.mark.asyncio
 async def test_pair_queue_claim_and_complete_workstation_deployment(

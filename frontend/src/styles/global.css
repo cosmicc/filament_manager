@@ -274,6 +274,15 @@ svg { flex: 0 0 auto; }
 .collection-card__notes { grid-column: 1 / -1; color: var(--text-muted); }
 .collection-card--detailed > .collection-card__link { grid-column: 1 / -1; }
 .collection-card--detailed.catalog-card { grid-template-columns: 64px minmax(0, 1fr); }
+.collection-card--detailed.catalog-card--template { grid-template-columns: minmax(0, 1fr); }
+.collection-card--detailed.catalog-card--template .template-card__identity h2,
+.collection-card--detailed.catalog-card--template .template-card__identity > p,
+.collection-card--detailed.catalog-card--template .catalog-meta dd {
+  overflow: visible;
+  text-overflow: clip;
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
 .collection-table { width: 100%; }
 .collection-table tbody tr { height: 72px; }
 .collection-table tbody tr[tabindex] { cursor: pointer; }

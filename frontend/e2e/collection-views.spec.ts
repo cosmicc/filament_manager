@@ -61,6 +61,9 @@ test.beforeEach(async ({ page }) => {
   await page.route('**/api/v1/printers', (route) => route.fulfill({ json: [printer] }))
   await page.route('**/api/v1/filaments**', (route) => route.fulfill({ json: [filament] }))
   await page.route('**/api/v1/profiles/templates**', (route) => route.fulfill({ json: [] }))
+  await page.route('**/api/v1/profiles', (route) => route.fulfill({ json: [{
+    id: 'profile-id', filament_product_id: filament.id, extruder_temp_c: '212',
+  }] }))
   await page.route('**/api/v1/vendors', (route) => route.fulfill({ json: [] }))
   await page.route('**/api/v1/filament-colors', (route) => route.fulfill({ json: [] }))
   await page.route('**/api/v1/spools?**', (route) => route.fulfill({ json: { items: [spool], total: 1, limit: 200, offset: 0 } }))
@@ -102,6 +105,12 @@ test('catalog views are independent, remembered, full-width, and action complete
 
   await page.goto('/filaments')
   await expect(page.getByLabel('Filaments view')).toHaveValue('cards')
+  await expect(page.getByRole('heading', { name: 'PLA · Ocean Blue · Silk' })).toBeVisible()
+  await expect(page.getByText('No filler')).toHaveCount(0)
+  await expect(page.getByText('± 0.02 mm')).toBeVisible()
+  await expect(page.getByText('212 °C')).toBeVisible()
+  await expect(page.getByText('1.75 mm')).toHaveCount(0)
+  await expect(page.getByText('1,000 g')).toHaveCount(0)
   await page.getByLabel('Filaments view').selectOption('list')
   await page.reload()
   await expect(page.getByLabel('Filaments view')).toHaveValue('list')
