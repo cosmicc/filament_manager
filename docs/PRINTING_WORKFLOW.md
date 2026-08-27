@@ -2,16 +2,16 @@
 
 ## Recommended policy
 
-Use **Warn and continue** under **Settings → G-code inspection policy** while testing 0.5.7. Filament Manager still records every mismatch in Print History. Change the setting to **Block mismatches** after the Cura material library, printer macros, and first exact-state records have been verified.
+Use **Warn and continue** under **Settings → G-code inspection policy** while testing 0.5.8. Filament Manager still records every mismatch in Print History. Change the setting to **Block mismatches** after the Cura material library, printer macros, and first exact-state records have been verified.
 
 Blocking pauses virtual-SD execution in Fluidd until Filament Manager can resolve the managed material profile, safely inspect the G-code, and confirm that supported values match. Missing inspection data and an unresolved exact profile also block. The setting is synchronized into Klipper automatically.
 
-`Blocked` in Print History means the inspection found a condition that the blocking policy would reject. The printer pauses only when Cura entered the required `FILAMENT_MANAGER_START_PRINT ... MATERIAL_GUID={material_guid}` macro gate. A print started through another machine start sequence can still be inspected and recorded, but Filament Manager cannot retroactively pause it; Print History identifies this case explicitly.
+`Blocked` in Print History means the inspection found a condition that the blocking policy would reject. The printer pauses only when Cura entered the required `FILAMENT_MANAGER_START_PRINT ... MATERIAL_GUID=<managed-guid>` macro gate after resolving Cura's `{material_guid, 0}` token. A print started through another machine start sequence can still be inspected and recorded, but Filament Manager cannot retroactively pause it; Print History identifies this case explicitly.
 
 ## Print sequence
 
 1. Select a managed product material in Cura and send the print. Do not slice with a `Template <material type>` entry.
-2. The Filament Manager Cura plugin supplies `FILAMENT_MANAGER_START_PRINT MATERIAL_GUID={material_guid} BED_TEMP={material_bed_temperature_layer_0} EXTRUDER_TEMP={material_print_temperature_layer_0} CHAMBER_TEMP={build_volume_temperature}` at slice time for the selected managed material.
+2. The Filament Manager Cura plugin supplies `FILAMENT_MANAGER_START_PRINT MATERIAL_GUID={material_guid, 0} BED_TEMP={material_bed_temperature_layer_0, 0} EXTRUDER_TEMP={material_print_temperature_layer_0, 0} CHAMBER_TEMP={build_volume_temperature}` at slice time for the selected managed material on the supported position-zero extruder.
 3. In blocking mode, Fluidd shows the inspection prompt while Filament Manager reads the documented Moonraker file metadata and G-code download endpoints. In warning mode, inspection remains auditable without pausing this step.
 4. If the currently loaded physical spool is an eligible exact match, the macro calls the existing `START_PRINT` with its original temperature values. No unload/load motion runs.
 5. If the spool does not match, Fluidd asks for one exact eligible Spoolman spool. The existing unload routine runs at the loaded filament profile temperature. Only after motion completes does Spoolman become empty.
@@ -40,7 +40,7 @@ After a print ends, an Operator or Administrator can directly save an Excellent,
 
 ## Macro reference
 
-[`integrations/klipper/filament-manager-macros.cfg`](../integrations/klipper/filament-manager-macros.cfg) is the complete required application macro reference. It must be included last. Filament Manager owns `M600`, so the printer must not define another `M600`; no pre-existing command or `rename_existing` target is required. The reference wraps the printer's existing load, unload, and cancel routines and calls—but does not define or replace—the existing `START_PRINT` and `END_PRINT` macros.
+[`integrations/klipper/filament-manager-macros.cfg`](../integrations/klipper/filament-manager-macros.cfg) is the complete required application macro reference. It must be included last. Filament Manager owns public `M600`, `LOAD_FILAMENT`, and `UNLOAD_FILAMENT` without `rename_existing`; no other included file may define those commands. Keep the printer's physical movement bodies under the exact reserved `_FILAMENT_MANAGER_HARDWARE_LOAD` and `_FILAMENT_MANAGER_HARDWARE_UNLOAD` macro names. The reference continues to wrap the existing public `CANCEL_PRINT` and calls—but does not define or replace—the existing `START_PRINT` and `END_PRINT` macros.
 
 The managed Cura plugin supplies the start call above and `END_PRINT` at runtime only while a Filament Manager material is selected. It does not rewrite the saved Cura machine scripts. If the plugin is unavailable during recovery or diagnosis, those two exact lines are the manual fallback; do not duplicate them in a working managed installation.
 

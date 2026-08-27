@@ -120,4 +120,20 @@ describe('PrintHistoryPage', () => {
 
     expect(screen.getByText('Captured segment prices use different currencies and cannot be combined.')).toBeTruthy()
   })
+
+  it('explains that the Cura inspection gate precedes the unchanged Klipper start macro', async () => {
+    apiFetchMock.mockResolvedValue([{
+      ...printJob,
+      inspection_status: 'blocked',
+      inspection_policy: 'block',
+      inspection: { mismatches: [], warnings: [], printer_gate: 'not_active' },
+    }])
+    const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+    render(<QueryClientProvider client={queryClient}><PrintHistoryPage /></QueryClientProvider>)
+
+    fireEvent.click((await screen.findAllByText('cube.gcode'))[0])
+
+    expect(screen.getByText(/before it calls your unchanged Klipper START_PRINT macro/)).toBeTruthy()
+    expect(screen.getByText(/do not add this line inside START_PRINT/)).toBeTruthy()
+  })
 })

@@ -648,8 +648,8 @@ textarea { resize: vertical; }
 }
 
 .login-page { min-height: 100vh; display: grid; grid-template-columns: minmax(430px, .86fr) minmax(520px, 1.14fr); gap: 16px; padding: 16px; background: var(--surface-page); }
-.login-card { width: min(460px, calc(100% - 48px)); align-self: center; justify-self: center; padding: 54px 0; }
-.login-brand { display: flex; align-items: center; gap: 10px; margin-bottom: clamp(48px, 8vh, 86px); }
+.login-card { width: min(460px, calc(100% - 48px)); align-self: start; justify-self: center; padding: 0 0 54px; }
+.login-brand { display: flex; align-items: center; gap: 10px; margin-bottom: 20px; }
 .login-brand img { width: 48px; height: 48px; border-radius: 12px; box-shadow: 0 8px 20px rgb(7 35 58 / 18%); }
 .login-brand > div { display: flex; flex-direction: column; font-size: 20px; line-height: 1.05; }
 .login-brand span { color: var(--blue-600); }
@@ -709,8 +709,8 @@ textarea { resize: vertical; }
   .settings-section--wide { grid-column: auto; }
   .theme-profile-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .login-page { grid-template-columns: 1fr; gap: 0; padding: 0; }
-  .login-card { width: min(460px, calc(100% - 36px)); padding: 42px 0 50px; }
-  .login-brand { margin-bottom: 42px; }
+  .login-card { width: min(460px, calc(100% - 36px)); padding: 18px 0 50px; }
+  .login-brand { margin-bottom: 20px; }
   .login-card__intro h1 { font-size: clamp(2rem, 10vw, 2.7rem); }
   .login-art { min-height: 390px; margin: 0 14px 14px; border-radius: 18px; }
   .login-art img { position: absolute; inset: 0; }

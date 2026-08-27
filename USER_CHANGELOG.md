@@ -1,5 +1,22 @@
 # User Changelog
 
+## 0.5.8 - 08.26.2026
+
+### Added
+
+- Added validation that the Filament Manager load and unload commands use the printer's preserved physical movement routines.
+
+### Changed
+
+- Klipper setup now gives the printer's physical load and unload routines stable internal names while Filament Manager owns the public commands.
+- The login content now starts at the top of the page with compact spacing below the Filament Manager brand.
+- Print History now explains that the Filament Manager inspection call comes from Cura's sliced start sequence before the printer's unchanged `START_PRINT` macro.
+
+### Fixed
+
+- Fixed Klipper refusing to start because `UNLOAD_FILAMENT` or `LOAD_FILAMENT` did not exist for the app macro file to rename.
+- Fixed managed Cura slices retaining the printer's saved start/end scripts instead of receiving the Filament Manager inspection boundary automatically.
+
 ## 0.5.7 - 08.26.2026
 
 ### Added

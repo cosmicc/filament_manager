@@ -202,9 +202,9 @@ MANAGED_MATERIAL_EDITS_SCHEMA_VERSION = 1
 MANAGED_MATERIAL_EDITS_PATH = Path(__file__).with_name("managed-material-edits.json")
 MANAGED_MACHINE_START_GCODE = (
     "FILAMENT_MANAGER_START_PRINT "
-    "MATERIAL_GUID={material_guid} "
-    "BED_TEMP={material_bed_temperature_layer_0} "
-    "EXTRUDER_TEMP={material_print_temperature_layer_0} "
+    "MATERIAL_GUID={material_guid, 0} "
+    "BED_TEMP={material_bed_temperature_layer_0, 0} "
+    "EXTRUDER_TEMP={material_print_temperature_layer_0, 0} "
     "CHAMBER_TEMP={build_volume_temperature}"
 )
 MANAGED_MACHINE_END_GCODE = "END_PRINT"
@@ -454,7 +454,18 @@ def _managed_material_value(stack, key):
 def _managed_machine_gcode(stack, key):
     """Return the app-owned print boundary for a managed material only."""
 
-    if not _is_managed_material(stack):
+    material_stack = stack
+    if not _is_managed_material(material_stack):
+        # Cura resolves machine start/end G-code from the global printer stack,
+        # which intentionally has no material container of its own. This
+        # integration supports the application's single position-zero extruder,
+        # so resolve ownership through that extruder without constructing Cura's
+        # lazy machine manager or changing the saved machine configuration.
+        extruder_list = getattr(stack, "extruderList", None)
+        if not isinstance(extruder_list, (list, tuple)) or not extruder_list:
+            return MISSING_VALUE
+        material_stack = extruder_list[0]
+    if not _is_managed_material(material_stack):
         return MISSING_VALUE
     if key == "machine_start_gcode":
         return MANAGED_MACHINE_START_GCODE

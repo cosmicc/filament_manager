@@ -204,7 +204,7 @@ def test_discovers_and_renders_complete_profile(tmp_path: Path, monkeypatch: obj
     assert b"'speed_print'" in plugin
     assert b"_install_runtime_material_overlay()" in plugin
     assert b"FILAMENT_MANAGER_START_PRINT" in plugin
-    assert b"MATERIAL_GUID={material_guid}" in plugin
+    assert b"MATERIAL_GUID={material_guid, 0}" in plugin
     assert b'MANAGED_MACHINE_END_GCODE = "END_PRINT"' in plugin
     assert b"original_get_property(stack, key, property_name" in plugin
     assert b"user_changes.setProperty" not in plugin
@@ -387,20 +387,26 @@ def test_generated_plugin_defers_machine_manager_until_cura_initialization(
         def __init__(self, brand: str) -> None:
             self.material = FakeMaterial(brand)
 
-    managed_stack = FakeCuraContainerStack()
-    managed_stack.material = FakeMaterial("Polymaker")  # type: ignore[attr-defined]
-    assert managed_stack.getProperty("machine_start_gcode", "value") == (
+    managed_extruder_stack = FakeCuraContainerStack()
+    managed_extruder_stack.material = FakeMaterial("Polymaker")  # type: ignore[attr-defined]
+    managed_global_stack = FakeCuraContainerStack()
+    managed_global_stack.extruderList = [managed_extruder_stack]  # type: ignore[attr-defined]
+    assert managed_global_stack.getProperty("machine_start_gcode", "value") == (
         "FILAMENT_MANAGER_START_PRINT "
-        "MATERIAL_GUID={material_guid} "
-        "BED_TEMP={material_bed_temperature_layer_0} "
-        "EXTRUDER_TEMP={material_print_temperature_layer_0} "
+        "MATERIAL_GUID={material_guid, 0} "
+        "BED_TEMP={material_bed_temperature_layer_0, 0} "
+        "EXTRUDER_TEMP={material_print_temperature_layer_0, 0} "
         "CHAMBER_TEMP={build_volume_temperature}"
     )
-    assert managed_stack.getProperty("machine_end_gcode", "value") == "END_PRINT"
+    assert managed_global_stack.getProperty("machine_end_gcode", "value") == "END_PRINT"
 
-    unmanaged_stack = FakeCuraContainerStack()
-    unmanaged_stack.material = FakeMaterial("Generic", "generic_pla")  # type: ignore[attr-defined]
-    assert unmanaged_stack.getProperty("machine_start_gcode", "value") is None
+    unmanaged_extruder_stack = FakeCuraContainerStack()
+    unmanaged_extruder_stack.material = FakeMaterial(  # type: ignore[attr-defined]
+        "Generic", "generic_pla"
+    )
+    unmanaged_global_stack = FakeCuraContainerStack()
+    unmanaged_global_stack.extruderList = [unmanaged_extruder_stack]  # type: ignore[attr-defined]
+    assert unmanaged_global_stack.getProperty("machine_start_gcode", "value") is None
 
     plugin_module._record_pending_material_edit(  # type: ignore[attr-defined]
         FakeStack("Polymaker"), "material_print_temperature", "228"
@@ -432,7 +438,7 @@ def test_apply_is_idempotent_and_rollback_restores_original(tmp_path: Path, monk
     assert first["status"] == "installed"
     manifest = json.loads((version / ".filament-manager" / "manifest.json").read_text())
     assert manifest["library_checksum"] == "a" * 64
-    assert manifest["renderer_revision"] == 13
+    assert manifest["renderer_revision"] == 14
     waiting_status = material_settings_sync_status(version)
     assert waiting_status["status"] == "waiting_for_cura"
     expected_keys = sorted(_payload()["managed_material_setting_keys"])
@@ -477,7 +483,7 @@ def test_apply_is_idempotent_and_rollback_restores_original(tmp_path: Path, monk
     )
     assert upgraded["status"] == "installed"
     upgraded_manifest = json.loads((version / ".filament-manager" / "manifest.json").read_text())
-    assert upgraded_manifest["renderer_revision"] == 13
+    assert upgraded_manifest["renderer_revision"] == 14
 
     assert rollback(deployment_id) == ["Cura 5.10"]
     assert (version / "definition_changes" / "flsun-v400_settings.inst.cfg").read_bytes() == original
