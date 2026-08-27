@@ -341,7 +341,7 @@ async def test_direct_template_save_updates_linked_product_profile(
                     "settings": {
                         "chamber_temp_c": "40",
                         "extruder_temp_c": "250",
-                        "bed_temp_c": "55",
+                        "bed_temp_c": "45",
                         "flow_percent": "100",
                         "print_speed_mm_s": "120",
                         "outer_wall_speed_mm_s": "60",
@@ -406,6 +406,7 @@ async def test_direct_template_save_updates_linked_product_profile(
             assert inherited_profile["base_template_revision_id"] == next_revision_id
             assert inherited_profile["base_template_version"] == 2
             assert Decimal(inherited_profile["extruder_temp_c"]) == Decimal("250")
+            assert Decimal(inherited_profile["bed_temp_c"]) == Decimal("45")
             assert Decimal(inherited_profile["filament_density_g_cm3"]) == Decimal("1.21")
             assert Decimal(inherited_profile["pressure_advance"]) == Decimal("0.05")
             assert Decimal(inherited_profile["ironing_flow_percent"]) == Decimal("12")

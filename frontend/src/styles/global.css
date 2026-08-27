@@ -571,7 +571,7 @@ textarea { resize: vertical; }
 .setting-copy-control > span { color: var(--blue-700); font-weight: 750; }
 .setting-copy-control select { padding-block: 8px; font-size: 0.82rem; }
 .setting-copy-control select:disabled { cursor: not-allowed; opacity: .72; }
-.setting-field--customized { margin: -9px; border: 2px solid var(--blue-600); border-radius: var(--radius-sm); padding: 8px; background: var(--blue-50); box-shadow: inset 4px 0 0 var(--blue-600), 0 0 0 2px color-mix(in srgb, var(--blue-600) 12%, transparent); }
+.setting-field--customized { margin: -10px; border: 3px solid var(--warning); border-radius: var(--radius-sm); padding: 8px; background: var(--warning-bg); box-shadow: inset 5px 0 0 var(--warning), 0 0 0 3px color-mix(in srgb, var(--warning) 22%, transparent); }
 .setting-field--invalid { margin: -9px; border: 2px solid var(--danger); border-radius: var(--radius-sm); padding: 8px; background: var(--danger-bg); box-shadow: inset 4px 0 0 var(--danger), 0 0 0 3px color-mix(in srgb, var(--danger) 18%, transparent); }
 .setting-field--invalid input,
 .setting-field--invalid select,
@@ -584,7 +584,8 @@ textarea { resize: vertical; }
 .editor-form textarea:user-invalid { border-color: var(--danger); box-shadow: 0 0 0 2px var(--danger); }
 .field-validation { display: grid; gap: 2px; color: var(--danger); font-size: 12px; font-weight: 650; }
 .setting-ownership { display: flex; align-items: center; justify-content: space-between; gap: 8px; color: var(--text-muted); font-size: 0.78rem; }
-.setting-field--customized .setting-ownership > span { border-radius: 999px; padding: 3px 8px; color: var(--blue-900); background: color-mix(in srgb, var(--blue-600) 16%, var(--surface)); font-weight: 700; }
+.setting-field--customized .setting-ownership > span { border-radius: 999px; padding: 3px 8px; color: var(--warning); background: var(--surface); font-weight: 800; }
+.setting-field--customized .setting-ownership .button { border-color: var(--warning); color: var(--warning); background: var(--surface); }
 .setting-ownership .button { flex: 0 0 auto; }
 .check-row { display: flex !important; align-items: flex-start; gap: 10px; border-radius: var(--radius-sm); padding: 10px; background: var(--surface-muted); }
 .check-row input { width: 17px; height: 17px; margin-top: 2px; padding: 0; accent-color: var(--blue-600); }

@@ -138,7 +138,7 @@ describe('MaterialSettingsEditor validation', () => {
     expect(controls.getByLabelText(/^Initial Fan Speed/)).toBeTruthy()
   })
 
-  it('marks explicit filament customizations with the stronger ownership state', () => {
+  it('strongly marks explicit filament customizations and reverts them to the template', () => {
     const rendered = render(
       <MaterialSettingsEditor
         plates={[]}
@@ -154,6 +154,11 @@ describe('MaterialSettingsEditor validation', () => {
       .closest('.setting-field')
     expect(flowField?.className).toContain('setting-field--customized')
     expect(within(flowField as HTMLElement).getByText(/Customized · Template: 100/)).toBeTruthy()
+    fireEvent.click(within(flowField as HTMLElement).getByRole('button', { name: 'Revert to Template' }))
+    expect((within(flowField as HTMLElement).getByLabelText('Flow (%)') as HTMLInputElement).value).toBe('100')
+    expect(flowField?.className).not.toContain('setting-field--customized')
+    expect(within(flowField as HTMLElement).getByText(/Inherited · Template: 100/)).toBeTruthy()
+    expect(within(flowField as HTMLElement).queryByRole('button', { name: 'Revert to Template' })).toBeNull()
   })
 
   it('shows template-only acceleration and Klipper controls only in template editors', () => {

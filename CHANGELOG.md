@@ -11,6 +11,7 @@
 
 - Changed Klipper integration setup to keep the printer's physical load and unload movement under exact reserved internal macro names while Filament Manager directly owns the public commands.
 - Changed the login's left column to begin at the top of the artwork and removed the oversized gap between the brand and `PRINT OPERATIONS`.
+- Changed customized filament settings to use a prominent warning treatment and an explicit **Revert to Template** action.
 - Clarified blocked-inspection guidance that Cura's sliced start sequence calls the Filament Manager gate before the unchanged Klipper `START_PRINT` macro; the gate does not belong inside `START_PRINT`.
 - Incremented the workstation renderer revision to 14 so existing installations replace the corrected Cura runtime plugin while Cura is closed.
 
@@ -18,6 +19,7 @@
 
 - Fixed Klipper startup failing because the app macros attempted to rename nonexistent public `UNLOAD_FILAMENT` and `LOAD_FILAMENT` commands.
 - Fixed the Cura runtime plugin checking the material-less global printer stack directly, which prevented managed slices from receiving the Filament Manager start/end boundary; its generated start call now uses Cura's explicit position-zero extruder tokens.
+- Fixed direct template saves leaving linked filament profile and catalog views cached with old inherited values; every affected view now refreshes immediately while preserving explicit filament overrides.
 
 ## 0.5.7 - 08.26.2026
 
