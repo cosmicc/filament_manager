@@ -792,8 +792,9 @@ async def synchronize_live_print(
             if blocked and printer_gate == "not_active":
                 inspection_warnings.append(
                     "A blocking condition was recorded, but the printer-side inspection gate was not active. "
-                    "Cura must start the print through FILAMENT_MANAGER_START_PRINT with the managed "
-                    "material GUID."
+                    "The sliced Cura start sequence must call FILAMENT_MANAGER_START_PRINT with the managed "
+                    "material GUID before it calls the unchanged Klipper START_PRINT macro; this line does "
+                    "not belong inside START_PRINT."
                 )
             job.inspection = {
                 "extracted": result.extracted,

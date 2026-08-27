@@ -11,7 +11,7 @@
 - Google output escaping
 - idempotency-key generation
 - Spoolman extra-field merge
-- deterministic Cura material GUIDs, merged managed cost preferences, separate bounded strict-print/manual-load catalogs, exact-profile/template load-temperature fallback, Klipper macro syntax, and physical unload/load commit ordering
+- deterministic Cura material GUIDs, merged managed cost preferences, separate bounded strict-print/manual-load catalogs, exact-profile/template load-temperature fallback, Klipper macro syntax, direct ownership of public load/unload commands without nonexistent rename targets, reserved physical-routine calls, and physical unload/load commit ordering
 - Cura Material Settings preference alignment and drift repair, active-definition exposure checks, manifest-bound value-free receipts, required-plugin version/readiness reporting, and sanitized Diagnostics summaries
 - Cura managed edit capture and runtime material-value overlay without writing managed values into the quality-save user layer
 - safe Moonraker thumbnail selection, traversal rejection, bounded metadata-free WebP normalization, immutable segment cost totals, and partial/mixed-currency cost handling

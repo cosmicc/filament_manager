@@ -1,5 +1,24 @@
 # Changelog
 
+## 0.5.8 - 08.26.2026
+
+### Added
+
+- Added regression coverage for the Klipper public load/unload ownership contract and reserved physical-routine calls.
+- Added desktop and mobile rendered-layout coverage for the compact top-aligned login content.
+
+### Changed
+
+- Changed Klipper integration setup to keep the printer's physical load and unload movement under exact reserved internal macro names while Filament Manager directly owns the public commands.
+- Changed the login's left column to begin at the top of the artwork and removed the oversized gap between the brand and `PRINT OPERATIONS`.
+- Clarified blocked-inspection guidance that Cura's sliced start sequence calls the Filament Manager gate before the unchanged Klipper `START_PRINT` macro; the gate does not belong inside `START_PRINT`.
+- Incremented the workstation renderer revision to 14 so existing installations replace the corrected Cura runtime plugin while Cura is closed.
+
+### Fixed
+
+- Fixed Klipper startup failing because the app macros attempted to rename nonexistent public `UNLOAD_FILAMENT` and `LOAD_FILAMENT` commands.
+- Fixed the Cura runtime plugin checking the material-less global printer stack directly, which prevented managed slices from receiving the Filament Manager start/end boundary; its generated start call now uses Cura's explicit position-zero extruder tokens.
+
 ## 0.5.7 - 08.26.2026
 
 ### Added
