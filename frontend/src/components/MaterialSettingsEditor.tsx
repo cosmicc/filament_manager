@@ -349,7 +349,7 @@ export function MaterialSettingsEditor({
   ) => baseSettings ? (
     <div className="setting-ownership">
       <span>{customized(key) ? 'Customized' : 'Inherited'} · Template: {displayedBaseValue(key, baseValue)}</span>
-      {customized(key) ? <button className="button button--small" type="button" onClick={(event) => resetControl(key, baseValue, event.currentTarget)}>Reset to Template</button> : null}
+      {customized(key) ? <button className="button button--small" type="button" onClick={(event) => resetControl(key, baseValue, event.currentTarget)}>Revert to Template</button> : null}
     </div>
   ) : null
   const fieldGroups: Array<{

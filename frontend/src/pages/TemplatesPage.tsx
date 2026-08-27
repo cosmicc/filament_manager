@@ -118,7 +118,12 @@ export default function TemplatesPage() {
       setMessage('Template saved. Linked filament profiles inherited the changes except where values are explicitly customized, and Cura synchronization was queued automatically.')
       setShowEditor(false)
       setEditSource(null)
-      await queryClient.invalidateQueries({ queryKey: ['material-templates'] })
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ['material-templates'] }),
+        queryClient.invalidateQueries({ queryKey: ['profiles'] }),
+        queryClient.invalidateQueries({ queryKey: ['filaments'] }),
+        queryClient.invalidateQueries({ queryKey: ['filament'] }),
+      ])
     },
   })
   const deleteTemplate = useMutation({

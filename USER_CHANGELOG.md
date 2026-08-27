@@ -11,11 +11,13 @@
 - Klipper setup now gives the printer's physical load and unload routines stable internal names while Filament Manager owns the public commands.
 - The login content now starts at the top of the page with compact spacing below the Filament Manager brand.
 - Print History now explains that the Filament Manager inspection call comes from Cura's sliced start sequence before the printer's unchanged `START_PRINT` macro.
+- Customized filament values now have a prominent warning highlight and a **Revert to Template** button that removes the custom value when saved.
 
 ### Fixed
 
 - Fixed Klipper refusing to start because `UNLOAD_FILAMENT` or `LOAD_FILAMENT` did not exist for the app macro file to rename.
 - Fixed managed Cura slices retaining the printer's saved start/end scripts instead of receiving the Filament Manager inspection boundary automatically.
+- Fixed template changes appearing not to reach linked filaments because their inherited settings stayed cached; non-customized values now refresh immediately and customized values remain unchanged.
 
 ## 0.5.7 - 08.26.2026
 
