@@ -1,5 +1,22 @@
 # Changelog
 
+## 0.6.1 - 08.28.2026
+
+### Added
+
+- Added regression coverage proving first-layer-only G-code evidence cannot create a regular build-plate-temperature mismatch while genuine initial-layer mismatches remain enforceable.
+
+### Changed
+
+- Changed managed Cura product labels to append each non-empty filament filler once, clearly distinguishing products that otherwise share a brand, material type, and color.
+- Changed every server, browser, and workstation-agent version surface to 0.6.1 and incremented the workstation renderer revision to 16 so existing managed installations receive filler-qualified product labels.
+- Changed the roadmap to contain only unfinished work, removing completed and duplicated historical planning entries.
+
+### Fixed
+
+- Fixed G-code inspection treating an initial-layer build-plate temperature as the regular build-plate temperature when Cura did not embed the regular value, which could falsely block profiles with intentionally different temperatures.
+- Fixed managed Cura products with the same brand, material type, and color appearing to have duplicate names when one product has a filament filler.
+
 ## 0.6.0 - 08.27.2026
 
 ### Added

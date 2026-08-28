@@ -12,7 +12,7 @@ const apiFetchMock = vi.mocked(apiFetch)
 const archive = {
   id: '11111111-1111-4111-8111-111111111111',
   created_at: '2026-08-28T01:00:00Z',
-  application_version: '0.6.0',
+  application_version: '0.6.1',
   database_revision: 'a9b0c1d2e345',
   trigger: 'automatic',
   storage_kind: 'imported',

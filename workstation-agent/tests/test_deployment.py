@@ -184,6 +184,7 @@ def test_discovers_and_renders_complete_profile(tmp_path: Path, monkeypatch: obj
     assert b'key="print temperature"' not in material_file
     assert b'key="heated bed temperature"' not in material_file
     assert b"<GUID>00000000-0000-4000-8000-000000000001</GUID>" in material_file
+    assert b"<label>PolyLite PETG</label>" in material_file
     assert b"<description>Filament Filler: None\nFilament Finish: Silk</description>" in material_file
     assert not any(path.startswith("quality_changes/") for path in paths)
     assert not any(path.startswith("definition_changes/") for path in paths)
@@ -203,6 +204,7 @@ def test_discovers_and_renders_complete_profile(tmp_path: Path, monkeypatch: obj
     plugin_metadata = rendered.files[
         Path("plugins/FilamentManagerVisibility/FilamentManagerVisibility/plugin.json")
     ]
+
     compile(plugin, str(plugin_path), "exec")
     assert b"FilamentManagerVisibility(app)" in plugin_init
     assert b'"version": "2.2.0"' in plugin_metadata
@@ -219,6 +221,46 @@ def test_discovers_and_renders_complete_profile(tmp_path: Path, monkeypatch: obj
     assert b"original_get_property(stack, key, property_name" in plugin
     assert b"user_changes.setProperty" not in plugin
     assert b"user_changes.removeInstance(key, postpone_emit=True)" in plugin
+
+
+@pytest.mark.parametrize(
+    ("source_kind", "product_name", "filler", "expected_label"),
+    [
+        ("product", None, "Carbon Fiber", b"<label>Black Carbon Fiber</label>"),
+        ("product", None, None, b"<label>Black</label>"),
+        (
+            "product",
+            "Black Carbon Fiber",
+            "Carbon Fiber",
+            b"<label>Black Carbon Fiber</label>",
+        ),
+        ("template", "Template PLA", "Carbon Fiber", b"<label>Template PLA</label>"),
+    ],
+)
+def test_product_material_label_includes_filler_once(
+    tmp_path: Path,
+    monkeypatch: object,
+    source_kind: str,
+    product_name: str | None,
+    filler: str | None,
+    expected_label: bytes,
+) -> None:
+    """A filler distinguishes otherwise identical managed Cura product names."""
+
+    _cura_fixture(tmp_path, monkeypatch)
+    payload = _payload()
+    payload["materials"][0]["source_kind"] = source_kind
+    material = payload["materials"][0]["material"]
+    material["product_name"] = product_name
+    material["filler"] = filler
+
+    rendered = render_deployment(discover_installations()[0], payload)
+    material_file = next(
+        content for path, content in rendered.files.items() if path.as_posix().startswith("materials/")
+    )
+
+    assert expected_label in material_file
+    assert b"Black Carbon Fiber Carbon Fiber" not in material_file
 
 
 def test_generated_plugin_defers_machine_manager_until_cura_initialization(
@@ -447,7 +489,7 @@ def test_apply_is_idempotent_and_rollback_restores_original(tmp_path: Path, monk
     manifest = json.loads((version / ".filament-manager" / "manifest.json").read_text())
     assert manifest["library_checksum"] == "a" * 64
     assert manifest["schema_version"] == 4
-    assert manifest["renderer_revision"] == 15
+    assert manifest["renderer_revision"] == 16
     assert set(manifest["machine_files"]) == {"machine_instances/flsun-v400.global.cfg"}
     managed_machine = machine_path.read_text(encoding="utf-8")
     assert "FILAMENT_MANAGER_START_PRINT" in managed_machine
@@ -511,7 +553,7 @@ def test_apply_is_idempotent_and_rollback_restores_original(tmp_path: Path, monk
     )
     assert upgraded["status"] == "installed"
     upgraded_manifest = json.loads((version / ".filament-manager" / "manifest.json").read_text())
-    assert upgraded_manifest["renderer_revision"] == 15
+    assert upgraded_manifest["renderer_revision"] == 16
 
     assert rollback(deployment_id) == ["Cura 5.10"]
     assert machine_path.read_bytes() == original_machine

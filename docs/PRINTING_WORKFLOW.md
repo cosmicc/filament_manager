@@ -2,9 +2,11 @@
 
 ## Recommended policy
 
-Use **Warn and continue** under **Settings → G-code inspection policy** while testing 0.6.0. Filament Manager still records every mismatch in Print History. Change the setting to **Block mismatches** after the Cura material library, printer macros, and first exact-state records have been verified.
+Use **Warn and continue** under **Settings → G-code inspection policy** while testing 0.6.1. Filament Manager still records every mismatch in Print History. Change the setting to **Block mismatches** after the Cura material library, printer macros, and first exact-state records have been verified.
 
 Blocking pauses virtual-SD execution in Fluidd until Filament Manager can resolve the managed material profile, safely inspect the G-code, and confirm that supported values match. Missing inspection data and an unresolved exact profile also block. The setting is synchronized into Klipper automatically.
+
+Regular and initial-layer build-plate temperatures are inspected independently. Moonraker's `first_layer_bed_temp`, the managed `BED_TEMP` start value, and the first bed-heating command are initial-layer evidence only. Filament Manager compares the regular build-plate temperature only when Cura explicitly embeds `material_bed_temperature`; it never substitutes an initial-layer value for a missing regular value.
 
 `Blocked` in Print History means the inspection found a condition that the blocking policy would reject. The printer pauses only when Cura entered the required `FILAMENT_MANAGER_START_PRINT ... MATERIAL_GUID=<managed-guid>` macro gate after resolving Cura's `{material_guid, 0}` token. A print started through another machine start sequence can still be inspected and recorded, but Filament Manager cannot retroactively pause it; Print History identifies this case explicitly.
 

@@ -1,5 +1,19 @@
 # User Changelog
 
+## 0.6.1 - 08.28.2026
+
+### Added
+
+- Added validation coverage for profiles that intentionally use different regular and initial-layer build-plate temperatures.
+
+### Changed
+
+- Managed Cura product names now include a non-empty filament filler, clearly distinguishing entries such as `SUNLU Black Carbon Fiber` from `SUNLU Black`.
+
+### Fixed
+
+- G-code inspection now keeps initial-layer and regular build-plate temperatures separate, preventing valid prints with different values from being falsely blocked.
+
 ## 0.6.0 - 08.27.2026
 
 ### Added

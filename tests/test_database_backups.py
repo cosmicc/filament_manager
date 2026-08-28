@@ -39,7 +39,7 @@ def _archive_bytes(
         "archive_type": "canonical_postgresql",
         "backup_id": str(archive_id),
         "created_at": timestamp.isoformat(),
-        "application_version": "0.6.0",
+        "application_version": "0.6.1",
         "database_revision": "a9b0c1d2e345",
         "trigger": "automatic",
         "dump_format": "postgresql-custom",
@@ -81,7 +81,7 @@ def test_validates_and_lists_strict_filament_manager_zip(
     archive = database_backups.validate_backup_archive(path, storage_kind="automatic")
 
     assert archive.id == backup_id
-    assert archive.application_version == "0.6.0"
+    assert archive.application_version == "0.6.1"
     assert archive.storage_kind == "automatic"
     assert database_backups.list_backup_archives() == [archive]
 

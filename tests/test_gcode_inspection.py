@@ -95,6 +95,51 @@ def test_profile_mismatches_are_structured_and_decimal_tolerant() -> None:
     assert result.warnings == ()
 
 
+def test_first_layer_bed_temperature_is_not_compared_as_regular_temperature() -> None:
+    """Initial-only evidence must not create a false regular-bed mismatch."""
+
+    metadata = {"slicer": "Cura", "first_layer_bed_temp": "60"}
+    header = "FILAMENT_MANAGER_START_PRINT BED_TEMP=60\nM190 S60\n"
+    tail = cura_tail("material_print_temperature = 220\n")
+
+    matching = inspect_gcode(
+        metadata,
+        header,
+        tail,
+        expected_profile={
+            "bed_temp_c": "55",
+            "initial_bed_temp_c": "60",
+        },
+        expected_material_guid=None,
+        expected_machine_name=None,
+    )
+
+    assert "bed_temp_c" not in matching.extracted
+    assert matching.extracted["initial_bed_temp_c"] == "60"
+    assert matching.mismatches == ()
+
+    initial_mismatch = inspect_gcode(
+        metadata,
+        header,
+        tail,
+        expected_profile={
+            "bed_temp_c": "55",
+            "initial_bed_temp_c": "55",
+        },
+        expected_material_guid=None,
+        expected_machine_name=None,
+    )
+
+    assert initial_mismatch.mismatches == (
+        {
+            "field": "initial_bed_temp_c",
+            "label": "initial layer build plate temperature",
+            "gcode_value": "60",
+            "profile_value": "55",
+        },
+    )
+
+
 def test_unresolved_profile_is_explicitly_unavailable_for_block_policy() -> None:
     """The service can distinguish a missing exact profile from a successful inspection."""
 
