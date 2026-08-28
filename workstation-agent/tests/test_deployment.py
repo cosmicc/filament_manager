@@ -8,6 +8,7 @@ from types import ModuleType
 
 import pytest
 
+from filament_manager_agent import apply as apply_module
 from filament_manager_agent.apply import (
     MATERIAL_SETTINGS_STATUS_PATH,
     apply_rendered,
@@ -46,6 +47,10 @@ nozzle_diameter = 0.4
 [containers]
 3 = fast
 7 = flsun_v400
+
+[values]
+machine_start_gcode = G28
+machine_end_gcode = M84
 """,
         encoding="utf-8",
     )
@@ -167,6 +172,7 @@ def test_discovers_and_renders_complete_profile(tmp_path: Path, monkeypatch: obj
     assert installations[0].machines[0].quality_type == "fast"
     rendered = render_deployment(installations[0], _payload())
     paths = {path.as_posix() for path in rendered.files}
+    machine_paths = {path.as_posix() for path in rendered.machine_files}
     assert len(paths) == 4
     material_path = next(path for path in paths if path.startswith("materials/"))
     material_file = rendered.files[Path(material_path)]
@@ -181,6 +187,11 @@ def test_discovers_and_renders_complete_profile(tmp_path: Path, monkeypatch: obj
     assert b"<description>Filament Filler: None\nFilament Finish: Silk</description>" in material_file
     assert not any(path.startswith("quality_changes/") for path in paths)
     assert not any(path.startswith("definition_changes/") for path in paths)
+    assert machine_paths == {"machine_instances/flsun-v400.global.cfg"}
+    machine_file = rendered.machine_files[Path("machine_instances/flsun-v400.global.cfg")]
+    assert b"FILAMENT_MANAGER_START_PRINT" in machine_file
+    assert b"MATERIAL_GUID={material_guid, 0}" in machine_file
+    assert b"machine_end_gcode = END_PRINT" in machine_file
     assert "plugins/FilamentManagerVisibility/FilamentManagerVisibility/plugin.json" in paths
     plugin_path = Path(
         "plugins/FilamentManagerVisibility/FilamentManagerVisibility/FilamentManagerVisibility.py"
@@ -189,8 +200,12 @@ def test_discovers_and_renders_complete_profile(tmp_path: Path, monkeypatch: obj
     plugin_init = rendered.files[
         Path("plugins/FilamentManagerVisibility/FilamentManagerVisibility/__init__.py")
     ]
+    plugin_metadata = rendered.files[
+        Path("plugins/FilamentManagerVisibility/FilamentManagerVisibility/plugin.json")
+    ]
     compile(plugin, str(plugin_path), "exec")
     assert b"FilamentManagerVisibility(app)" in plugin_init
+    assert b'"version": "2.2.0"' in plugin_metadata
     assert b'preferences.setValue("cura/favorite_materials", updated)' in plugin
     assert b"selected | MANAGED_SETTING_KEYS" in plugin
     assert b'preferences.setValue("cura/material_settings", updated)' in plugin
@@ -198,7 +213,12 @@ def test_discovers_and_renders_complete_profile(tmp_path: Path, monkeypatch: obj
     assert b"'spool_weight': 1000.0" in plugin
     assert b'"speed_print"' not in plugin
     assert b"'speed_print'" in plugin
-    assert b'user_changes.setProperty(key, "value", material_value)' in plugin
+    assert b"_install_runtime_material_overlay()" in plugin
+    assert b"FILAMENT_MANAGER_START_PRINT" not in plugin
+    assert b"_managed_machine_gcode" not in plugin
+    assert b"original_get_property(stack, key, property_name" in plugin
+    assert b"user_changes.setProperty" not in plugin
+    assert b"user_changes.removeInstance(key, postpone_emit=True)" in plugin
 
 
 def test_generated_plugin_defers_machine_manager_until_cura_initialization(
@@ -244,6 +264,10 @@ def test_generated_plugin_defers_machine_manager_until_cura_initialization(
 
     class FakeBaseMaterialsModel:
         def _update(self) -> None:
+            return None
+
+    class FakeCuraContainerStack:
+        def getProperty(self, _key: str, _property_name: str) -> None:
             return None
 
     class FakeMachineManager:
@@ -300,6 +324,8 @@ def test_generated_plugin_defers_machine_manager_until_cura_initialization(
     logger_module.Logger = FakeLogger  # type: ignore[attr-defined]
     model_module = ModuleType("cura.Machines.Models.BaseMaterialsModel")
     model_module.BaseMaterialsModel = FakeBaseMaterialsModel  # type: ignore[attr-defined]
+    container_stack_module = ModuleType("cura.Settings.CuraContainerStack")
+    container_stack_module.CuraContainerStack = FakeCuraContainerStack  # type: ignore[attr-defined]
     for module_name, module in {
         "PyQt6": ModuleType("PyQt6"),
         "PyQt6.QtCore": qt_module,
@@ -310,6 +336,8 @@ def test_generated_plugin_defers_machine_manager_until_cura_initialization(
         "cura.Machines": ModuleType("cura.Machines"),
         "cura.Machines.Models": ModuleType("cura.Machines.Models"),
         "cura.Machines.Models.BaseMaterialsModel": model_module,
+        "cura.Settings": ModuleType("cura.Settings"),
+        "cura.Settings.CuraContainerStack": container_stack_module,
     }.items():
         monkeypatch.setitem(sys.modules, module_name, module)
 
@@ -351,8 +379,9 @@ def test_generated_plugin_defers_machine_manager_until_cura_initialization(
     }
 
     class FakeMaterial:
-        def __init__(self, brand: str) -> None:
+        def __init__(self, brand: str, material_id: str = "filament_manager_test") -> None:
             self.brand = brand
+            self.material_id = material_id
 
         def getMetaDataEntry(self, key: str, default: str = "") -> str:
             if key == "GUID":
@@ -362,11 +391,26 @@ def test_generated_plugin_defers_machine_manager_until_cura_initialization(
             return default
 
         def getId(self) -> str:
-            return "filament_manager_test"
+            return self.material_id
 
     class FakeStack:
         def __init__(self, brand: str) -> None:
             self.material = FakeMaterial(brand)
+
+    # Machine G-code is persisted by the workstation agent, so the runtime
+    # material overlay must leave Cura's machine settings untouched.
+    class CuraLikeGlobalStack(FakeCuraContainerStack):
+        @property
+        def extruderList(self):  # type: ignore[no-untyped-def]
+            # Cura computes this property by calling getProperty again. The
+            # v0.5.8 machine-G-code overlay accessed extruderList from inside
+            # getProperty and therefore recursed until Cura crashed.
+            self.getProperty("machine_extruder_count", "value")
+            return []
+
+    managed_global_stack = CuraLikeGlobalStack()
+    assert managed_global_stack.getProperty("machine_start_gcode", "value") is None
+    assert managed_global_stack.getProperty("machine_extruder_count", "value") is None
 
     plugin_module._record_pending_material_edit(  # type: ignore[attr-defined]
         FakeStack("Polymaker"), "material_print_temperature", "228"
@@ -387,7 +431,11 @@ def test_generated_plugin_defers_machine_manager_until_cura_initialization(
 
 def test_apply_is_idempotent_and_rollback_restores_original(tmp_path: Path, monkeypatch: object) -> None:
     version = _cura_fixture(tmp_path, monkeypatch)
-    original = (version / "definition_changes" / "flsun-v400_settings.inst.cfg").read_bytes()
+    machine_path = version / "machine_instances" / "flsun-v400.global.cfg"
+    original_machine = machine_path.read_bytes()
+    original_definition_change = (
+        version / "definition_changes" / "flsun-v400_settings.inst.cfg"
+    ).read_bytes()
     installation = discover_installations()[0]
     rendered = render_deployment(installation, _payload())
     (version / "materials").mkdir()
@@ -398,7 +446,13 @@ def test_apply_is_idempotent_and_rollback_restores_original(tmp_path: Path, monk
     assert first["status"] == "installed"
     manifest = json.loads((version / ".filament-manager" / "manifest.json").read_text())
     assert manifest["library_checksum"] == "a" * 64
-    assert manifest["renderer_revision"] == 11
+    assert manifest["schema_version"] == 4
+    assert manifest["renderer_revision"] == 15
+    assert set(manifest["machine_files"]) == {"machine_instances/flsun-v400.global.cfg"}
+    managed_machine = machine_path.read_text(encoding="utf-8")
+    assert "FILAMENT_MANAGER_START_PRINT" in managed_machine
+    assert "MATERIAL_GUID={material_guid, 0}" in managed_machine
+    assert "machine_end_gcode = END_PRINT" in managed_machine
     waiting_status = material_settings_sync_status(version)
     assert waiting_status["status"] == "waiting_for_cura"
     expected_keys = sorted(_payload()["managed_material_setting_keys"])
@@ -427,6 +481,20 @@ def test_apply_is_idempotent_and_rollback_restores_original(tmp_path: Path, monk
     second = apply_rendered(installation, deployment_id, "a" * 64, rendered)
     assert second["status"] == "already_current"
 
+    machine_path.write_text(
+        managed_machine.replace("machine_end_gcode = END_PRINT", "machine_end_gcode = M84"),
+        encoding="utf-8",
+    )
+    assert managed_library_checksum(version) is None
+    repaired = apply_rendered(
+        installation,
+        "586cff35-15a3-42ba-bb84-4209763815de",
+        "a" * 64,
+        render_deployment(installation, _payload()),
+    )
+    assert repaired["status"] == "installed"
+    assert "machine_end_gcode = END_PRINT" in machine_path.read_text(encoding="utf-8")
+
     # An upgraded renderer must replace older managed plugin output even when
     # canonical material settings—and therefore the server checksum—did not change.
     manifest.pop("renderer_revision")
@@ -443,11 +511,46 @@ def test_apply_is_idempotent_and_rollback_restores_original(tmp_path: Path, monk
     )
     assert upgraded["status"] == "installed"
     upgraded_manifest = json.loads((version / ".filament-manager" / "manifest.json").read_text())
-    assert upgraded_manifest["renderer_revision"] == 11
+    assert upgraded_manifest["renderer_revision"] == 15
 
     assert rollback(deployment_id) == ["Cura 5.10"]
-    assert (version / "definition_changes" / "flsun-v400_settings.inst.cfg").read_bytes() == original
+    assert machine_path.read_bytes() == original_machine
+    assert (
+        version / "definition_changes" / "flsun-v400_settings.inst.cfg"
+    ).read_bytes() == original_definition_change
     assert unmanaged_material.read_text(encoding="utf-8") == "legacy"
+    assert not (version / ".filament-manager" / "manifest.json").exists()
+
+
+def test_failed_library_install_restores_saved_machine_scripts(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A later transaction failure must not leave the machine boundary changed."""
+
+    version = _cura_fixture(tmp_path, monkeypatch)
+    machine_path = version / "machine_instances" / "flsun-v400.global.cfg"
+    original_machine = machine_path.read_bytes()
+    installation = discover_installations()[0]
+    rendered = render_deployment(installation, _payload())
+    original_atomic_write = apply_module._atomic_write
+
+    def fail_manifest_write(target: Path, content: bytes) -> None:
+        if target.name == "manifest.json":
+            raise OSError("simulated manifest failure")
+        original_atomic_write(target, content)
+
+    monkeypatch.setattr(apply_module, "_atomic_write", fail_manifest_write)
+
+    with pytest.raises(OSError, match="simulated manifest failure"):
+        apply_rendered(
+            installation,
+            "72f03100-c8d3-41ec-8e8c-a88139f330f6",
+            "a" * 64,
+            rendered,
+        )
+
+    assert machine_path.read_bytes() == original_machine
     assert not (version / ".filament-manager" / "manifest.json").exists()
 
 

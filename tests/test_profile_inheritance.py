@@ -134,6 +134,29 @@ def test_template_update_preserves_custom_maximum_fan() -> None:
     assert adjusted == {"cooling_max_percent": "60"}
 
 
+def test_template_update_changes_inherited_bed_temperature_but_preserves_override() -> None:
+    """A template bed change flows only to profiles that still inherit that field."""
+
+    base = {**_settings(), "bed_temp_c": "60"}
+    newer = {**base, "bed_temp_c": "45"}
+
+    inherited, inherited_overrides = resolve_profile_settings_for_template_update(
+        newer,
+        base,
+        {},
+    )
+    customized, customized_overrides = resolve_profile_settings_for_template_update(
+        newer,
+        {**base, "bed_temp_c": "70"},
+        {"bed_temp_c": "70"},
+    )
+
+    assert inherited["bed_temp_c"] == "45"
+    assert inherited_overrides == {}
+    assert customized["bed_temp_c"] == "70"
+    assert customized_overrides == {"bed_temp_c": "70"}
+
+
 def test_profile_can_override_every_cooling_extension() -> None:
     """Cooling calibration values remain filament-owned through inheritance."""
 

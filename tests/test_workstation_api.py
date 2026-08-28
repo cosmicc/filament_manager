@@ -405,8 +405,8 @@ async def test_pair_queue_claim_and_complete_workstation_deployment(
                             "managed_library_checksum": "a" * 64,
                             "material_settings_sync": {
                                 "status": "healthy",
-                                "expected_count": 53,
-                                "exposed_count": 53,
+                                "expected_count": 54,
+                                "exposed_count": 54,
                                 "missing_keys": [],
                                 "unexpected_keys": [],
                                 "material_settings_plugin_ready": True,
@@ -470,8 +470,8 @@ async def test_pair_queue_claim_and_complete_workstation_deployment(
             assert agent.token_hash != agent_token
             assert agent.cura_installations[0]["material_settings_sync"] == {
                 "status": "healthy",
-                "expected_count": 53,
-                "exposed_count": 53,
+                "expected_count": 54,
+                "exposed_count": 54,
                 "missing_keys": [],
                 "unexpected_keys": [],
                 "material_settings_plugin_ready": True,
@@ -740,13 +740,6 @@ async def test_cura_recovery_snapshot_and_restore_lifecycle(
             )
             assert renamed.status_code == 200, renamed.text
             assert renamed.json()["name"] == "Before 0.6 mm nozzle"
-            deleted = await client.request(
-                "DELETE",
-                f"/api/v1/workstation-agents/{agent_id}/cura-recovery-snapshots/{manual_snapshot_id}",
-                json={"expected_version": renamed.json()["record_version"], "confirmed": True},
-            )
-            assert deleted.status_code == 204, deleted.text
-
             reset_payload = {
                 **snapshot_payload,
                 "files": [
@@ -771,7 +764,7 @@ async def test_cura_recovery_snapshot_and_restore_lifecycle(
 
             snapshots = await client.get(f"/api/v1/workstation-agents/{agent_id}/cura-recovery-snapshots")
             assert snapshots.status_code == 200, snapshots.text
-            assert len(snapshots.json()) == 1
+            assert len(snapshots.json()) == 2
             assert snapshots.json()[0]["plugin_count"] == 1
             assert "payload" not in snapshots.json()[0]
 
@@ -811,7 +804,7 @@ async def test_cura_recovery_snapshot_and_restore_lifecycle(
             )
             assert completed.status_code == 204, completed.text
 
-            for index in range(10):
+            for index in range(15):
                 retained_payload = {
                     **snapshot_payload,
                     "files": [
@@ -841,8 +834,18 @@ async def test_cura_recovery_snapshot_and_restore_lifecycle(
                 f"/api/v1/workstation-agents/{agent_id}/cura-recovery-snapshots"
             )
             assert retained_snapshots.status_code == 200, retained_snapshots.text
-            assert len(retained_snapshots.json()) == 10
+            assert len(retained_snapshots.json()) == 16
             assert snapshot_id not in {item["id"] for item in retained_snapshots.json()}
+            assert manual_snapshot_id in {item["id"] for item in retained_snapshots.json()}
+            retained_manual = next(
+                item for item in retained_snapshots.json() if item["id"] == manual_snapshot_id
+            )
+            deleted = await client.request(
+                "DELETE",
+                f"/api/v1/workstation-agents/{agent_id}/cura-recovery-snapshots/{manual_snapshot_id}",
+                json={"expected_version": retained_manual["record_version"], "confirmed": True},
+            )
+            assert deleted.status_code == 204, deleted.text
             deleted_automatic = next(
                 item for item in retained_snapshots.json() if item["snapshot_checksum"] == retained_checksum
             )
@@ -868,7 +871,7 @@ async def test_cura_recovery_snapshot_and_restore_lifecycle(
             assert suppressed.json()["reason"] == "deleted_by_administrator"
 
         async with factory() as session:
-            assert await session.scalar(select(func.count(CuraRecoverySnapshot.id))) == 9
+            assert await session.scalar(select(func.count(CuraRecoverySnapshot.id))) == 14
             restore = await session.get(CuraRecoveryRestore, restore_id)
             assert restore is not None and restore.status == CuraDeploymentStatus.SUCCEEDED
             assert restore.snapshot_id is None

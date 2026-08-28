@@ -10,6 +10,7 @@ from sqlalchemy import (
     ForeignKey,
     Index,
     Integer,
+    LargeBinary,
     Numeric,
     String,
     Text,
@@ -83,6 +84,7 @@ class PrintJob(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     line_width_mm: Mapped[Decimal | None] = mapped_column(PRINT_MEASUREMENT)
     extruder_temp_c: Mapped[Decimal | None] = mapped_column(PRINT_MEASUREMENT)
     bed_temp_c: Mapped[Decimal | None] = mapped_column(PRINT_MEASUREMENT)
+    initial_bed_temp_c: Mapped[Decimal | None] = mapped_column(PRINT_MEASUREMENT)
     chamber_temp_c: Mapped[Decimal | None] = mapped_column(PRINT_MEASUREMENT)
     print_speed_mm_s: Mapped[Decimal | None] = mapped_column(PRINT_MEASUREMENT)
     pressure_advance: Mapped[Decimal | None] = mapped_column(PRINT_MEASUREMENT)
@@ -99,6 +101,12 @@ class PrintJob(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     support_configuration: Mapped[dict[str, object]] = mapped_column(JSONB, nullable=False, default=dict)
     machine_name: Mapped[str | None] = mapped_column(String(255))
     timelapse_url: Mapped[str | None] = mapped_column(String(1024))
+    thumbnail_data: Mapped[bytes | None] = mapped_column(LargeBinary)
+    thumbnail_media_type: Mapped[str | None] = mapped_column(String(32))
+    thumbnail_sha256: Mapped[str | None] = mapped_column(String(64))
+    thumbnail_width: Mapped[int | None] = mapped_column(Integer)
+    thumbnail_height: Mapped[int | None] = mapped_column(Integer)
+    thumbnail_checked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     ended_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     record_version: Mapped[int] = mapped_column(Integer, nullable=False, default=1)

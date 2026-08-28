@@ -36,6 +36,7 @@ Contains only Filament Manager-owned services:
 - API and web UI
 - synchronization workers
 - diagnostics aggregation, persisted recovery validation, and safe projection rebuild scheduling
+- scheduled canonical PostgreSQL ZIP backups plus trusted archive download/import and offline restore preparation
 - Google Sheet publisher
 - Moonraker monitor
 - future scale/NFC ingestion services
@@ -57,9 +58,11 @@ Filament Manager's Docker services receive their complete validated runtime conf
 
 Optional Bugsnag monitoring is disabled by default. When enabled, the API and worker report sanitized terminal failures and the browser dynamically loads React error and performance instrumentation from its non-cacheable runtime configuration. Final delivery filtering removes raw messages, private URLs, request data, identity, hostnames, credentials, and arbitrary metadata. Diagnostics remains the canonical operational surface. Authorized direct-push CI may upload hidden source maps; map files are removed from the runtime image.
 
-The worker publishes a strict bounded Cura-material-to-Spoolman print catalog plus a separate bounded safe manual-load spool catalog through Moonraker and observes the persisted Klipper physical-spool macro every 15 seconds. Current exact profiles gate print preflight; a newest non-archived exact profile or linked in-scope template may supply a manual-load temperature. A direct non-null Spoolman selection becomes a guarded target only in safe selection phases and is restored to the persisted physical ID until confirmation. Klipper owns the unload/load commit boundary; requested future targets never become active canonical state before physical loading completes.
+The worker publishes a strict bounded Cura-material-to-Spoolman print catalog plus a separate bounded safe manual-load spool catalog through Moonraker and observes the persisted Klipper physical-spool macro every 5 seconds. Current exact profiles gate print preflight; a newest non-archived exact profile or linked in-scope template may supply a manual-load temperature. A direct non-null Spoolman selection becomes a guarded target only in safe selection phases and is restored to the persisted physical ID until confirmation. Klipper owns the unload/load commit boundary; requested future targets never become active canonical state before physical loading completes.
 
-Physical nozzles are canonical installable inventory records. Print jobs capture the installed nozzle, exact plate side, and every spool segment so completed-use totals remain historical when hardware is later removed or retired. The Diagnostics API consolidates sanitized external, synchronization, worker-heartbeat, queue, and bounded error state; read-only validation results are persisted and rebuild requests only enqueue derived projections.
+Physical nozzles are canonical installable inventory records. Print jobs capture the installed nozzle, exact plate side, and every spool segment so completed-use totals remain historical when hardware is later removed or retired. The Diagnostics API consolidates sanitized external, synchronization, worker-heartbeat, actionable queue summaries, bounded error, and canonical backup state; read-only validation results are persisted and rebuild requests only enqueue derived projections. It never exposes an individual recent projection-job table.
+
+The Filament Manager image includes version-compatible PostgreSQL client tools. Web and worker share private `/data/database-backups` storage, while a healthcheck-disabled restore service remains at zero replicas. The worker writes scheduled canonical database ZIPs under an advisory lock. Diagnostics may stage but never execute a live restore. Operators stop web and worker before running the restore service once; it safety-backs up, restores transactionally, migrates forward, and revokes restored sessions. Spoolman's database and credentials remain independent.
 
 ## Central PostgreSQL server
 

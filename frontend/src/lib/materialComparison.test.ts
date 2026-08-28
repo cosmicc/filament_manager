@@ -6,6 +6,7 @@ const settings: MaterialSettings = {
   chamber_temp_c: null,
   extruder_temp_c: '210',
   bed_temp_c: '60',
+  initial_bed_temp_c: '65',
   flow_percent: '100',
   print_speed_mm_s: '120',
   outer_wall_speed_mm_s: null,

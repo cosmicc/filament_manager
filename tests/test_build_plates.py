@@ -70,6 +70,13 @@ def dashboard_test_settings() -> Settings:
     )
 
 
+class DashboardSession:
+    """Minimal session for live-state tests without a canonical print record."""
+
+    async def scalar(self, _statement: object) -> None:
+        return None
+
+
 def test_discovery_accepts_exact_plate_side_codes_in_natural_order() -> None:
     """Discovery groups suffixed Side B meshes and sorts each side naturally."""
 
@@ -431,7 +438,7 @@ async def test_dashboard_maps_live_printing_state_without_exposing_connection_de
     monkeypatch.setattr(operations, "get_settings", lambda: settings)
     monkeypatch.setattr(operations, "MoonrakerClient", FakeMoonrakerClient)
 
-    state = await operations._dashboard_printer_state()
+    state = await operations._dashboard_printer_state(DashboardSession())  # type: ignore[arg-type]
 
     assert state.printer_name == "Test Printer"
     assert state.connection_status == "connected"
@@ -482,7 +489,7 @@ async def test_dashboard_maps_bounded_operational_states(
     monkeypatch.setattr(operations, "get_settings", dashboard_test_settings)
     monkeypatch.setattr(operations, "MoonrakerClient", FakeMoonrakerClient)
 
-    state = await operations._dashboard_printer_state()
+    state = await operations._dashboard_printer_state(DashboardSession())  # type: ignore[arg-type]
 
     assert state.connection_status == "connected"
     assert state.operational_status == expected
@@ -504,7 +511,7 @@ async def test_dashboard_degrades_only_live_telemetry_when_moonraker_is_unavaila
     monkeypatch.setattr(operations, "get_settings", dashboard_test_settings)
     monkeypatch.setattr(operations, "MoonrakerClient", UnavailableMoonrakerClient)
 
-    state = await operations._dashboard_printer_state()
+    state = await operations._dashboard_printer_state(DashboardSession())  # type: ignore[arg-type]
 
     assert state.connection_status == "unavailable"
     assert state.operational_status == "unavailable"

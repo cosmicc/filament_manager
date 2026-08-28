@@ -114,6 +114,16 @@ def material_settings_from_cura(
             "default_material_bed_temperature",
             required=True,
         ),
+        "initial_bed_temp_c": _decimal(
+            settings,
+            "material_bed_temperature_layer_0",
+        )
+        or _decimal(
+            settings,
+            "material_bed_temperature",
+            "default_material_bed_temperature",
+            required=True,
+        ),
         "flow_percent": flow_percent,
         "print_speed_mm_s": _decimal(settings, "speed_print"),
         "outer_wall_speed_mm_s": _decimal(settings, "speed_wall_0"),

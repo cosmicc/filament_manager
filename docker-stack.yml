@@ -36,7 +36,7 @@ x-filament-manager-environment: &filament-manager-environment
   FILAMENT_MANAGER_SYNC_MAX_RETRY_ATTEMPTS: ${SYNC_MAX_RETRY_ATTEMPTS:-12}
   FILAMENT_MANAGER_SYNC_OUTBOX_WORKERS: ${SYNC_OUTBOX_WORKERS:-2}
   FILAMENT_MANAGER_SYNC_OUTBOX_LOCK_TIMEOUT_SECONDS: ${SYNC_OUTBOX_LOCK_TIMEOUT_SECONDS:-300}
-  FILAMENT_MANAGER_MOONRAKER_STATE_INTERVAL_SECONDS: ${MOONRAKER_STATE_INTERVAL_SECONDS:-15}
+  FILAMENT_MANAGER_MOONRAKER_STATE_INTERVAL_SECONDS: ${MOONRAKER_STATE_INTERVAL_SECONDS:-5}
   FILAMENT_MANAGER_MOONRAKER_PRINT_INTERVAL_SECONDS: ${MOONRAKER_PRINT_INTERVAL_SECONDS:-5}
   FILAMENT_MANAGER_MOONRAKER_INFO_INTERVAL_SECONDS: ${MOONRAKER_INFO_INTERVAL_SECONDS:-300}
   FILAMENT_MANAGER_LOW_SPOOL_THRESHOLD_PERCENT: ${LOW_SPOOL_THRESHOLD_PERCENT:-25}
@@ -166,6 +166,28 @@ services:
         order: stop-first
         failure_action: rollback
         monitor: 30s
+
+  database-restore:
+    image: ${FILAMENT_MANAGER_IMAGE:?Set FILAMENT_MANAGER_IMAGE to an immutable version tag or digest}
+    command: ["filament-manager-cli", "restore-pending", "--confirm"]
+    healthcheck:
+      disable: true
+    environment: *filament-manager-environment
+    networks:
+      - filament-services
+    volumes:
+      - filament_manager_data:/data
+    read_only: true
+    tmpfs:
+      - /tmp:size=64m,mode=1777
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    deploy:
+      replicas: 0
+      restart_policy:
+        condition: none
 
 networks:
   filament-services:
