@@ -15,6 +15,8 @@ Security fixes are applied to the current development release shown in `VERSION`
 - Use HTTPS so session cookies can be marked Secure.
 - Expose no workstation-agent port. Pair each agent only through the ten-minute single-use code flow over HTTPS, then revoke it from the web interface before decommissioning the workstation.
 - Run the agent as the normal Cura desktop user, never root or Windows Administrator. Preserve its private per-user configuration permissions and automatic Cura backups.
+- Treat every downloaded canonical database backup as sensitive. It contains the complete Filament Manager database, including password/token hashes, audit history, and operational records. Store off-host copies encrypted with access controls; never attach them to public issues or logs.
+- Import database ZIPs only from a trusted Filament Manager instance. Manifest and SHA-256 validation detect damage and malformed structure but do not establish third-party authenticity. Never run a restore while web or worker is live; use only the stopped-service maintenance workflow and confirm all restored browser sessions were revoked.
 - Leave optional Bugsnag reporting disabled unless outbound SaaS monitoring is accepted. When enabled, use only the project SDK API key at runtime, keep the Upload API key and account-access tokens out of the application, and allow outbound HTTPS only to the exact Bugsnag notifier and key-specific performance hosts documented in `INSTALL.md`.
 
 ## Optional external monitoring

@@ -4,6 +4,7 @@ from pathlib import Path
 
 import pytest
 
+from filament_manager_agent import nozzle as nozzle_module
 from filament_manager_agent.models import CuraInstallation, CuraMachine
 from filament_manager_agent.nozzle import apply_nozzle_update
 
@@ -123,6 +124,9 @@ def test_applies_exact_existing_nozzle_variant_with_backup(
         installation.data_path / "definition_changes" / "workshop_extruder_0_settings.inst.cfg"
     ).read_text(encoding="utf-8")
     assert "nozzle_diameter = 0.6" in machine
+    assert "FILAMENT_MANAGER_START_PRINT" in machine
+    assert "MATERIAL_GUID={material_guid, 0}" in machine
+    assert "machine_end_gcode = END_PRINT" in machine
     assert "5 = workshop_0.6" in extruder
     assert "machine_nozzle_size = 0.6" in definition_change
     assert result["variant_id"] == "workshop_0.6"
@@ -187,3 +191,37 @@ machine_nozzle_size = 0.6
     )
 
     assert result["variant_id"] == "workshop_resource_0.6"
+
+
+def test_failed_nozzle_update_restores_machine_scripts(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    installation = _installation(tmp_path)
+    monkeypatch.setenv("FILAMENT_MANAGER_AGENT_DATA", str(tmp_path / "agent-data"))
+    machine_path = installation.machines[0].source_path
+    original_machine = machine_path.read_bytes()
+    original_atomic_write = nozzle_module._atomic_write
+    failed = False
+
+    def fail_once(target: Path, content: bytes) -> None:
+        nonlocal failed
+        if not failed and target.parent.name == "extruders":
+            failed = True
+            raise OSError("simulated nozzle write failure")
+        original_atomic_write(target, content)
+
+    monkeypatch.setattr(nozzle_module, "_atomic_write", fail_once)
+
+    with pytest.raises(OSError, match="simulated nozzle write failure"):
+        apply_nozzle_update(
+            installation,
+            "10000000-0000-0000-0000-000000000004",
+            {
+                "printer_code": "workshop-printer",
+                "printer_name": "Workshop Printer",
+                "nozzle_diameter_mm": "0.6",
+            },
+        )
+
+    assert machine_path.read_bytes() == original_machine

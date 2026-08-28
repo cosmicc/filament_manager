@@ -819,6 +819,49 @@ export interface ProjectionRebuildResult {
   categories: Record<string, number>
 }
 
+export interface DatabaseBackupPolicy {
+  enabled: boolean
+  interval_hours: number
+  retention_count: number
+  record_version: number
+}
+
+export interface DatabaseBackupArchive {
+  id: string
+  created_at: string
+  application_version: string
+  database_revision: string
+  trigger: 'automatic' | 'manual' | 'pre_restore' | string
+  storage_kind: 'automatic' | 'manual' | 'imported' | string
+  filename: string
+  size_bytes: number
+  archive_sha256: string
+  dump_sha256: string
+}
+
+export interface DatabaseBackupOverview {
+  policy: DatabaseBackupPolicy
+  status: {
+    status: string
+    checked_at: string | null
+    last_success_at: string | null
+  }
+  pending_restore: {
+    status: string
+    request_id?: string
+    backup_id?: string
+    requested_at?: string
+  } | null
+  archives: DatabaseBackupArchive[]
+}
+
+export interface DatabaseRestorePreparation {
+  status: 'pending_maintenance' | string
+  request_id: string
+  backup_id: string
+  requested_at: string
+}
+
 export interface OperatorNotification {
   id: string
   category: string

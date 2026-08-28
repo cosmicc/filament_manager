@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { cleanup, render, screen } from '@testing-library/react'
+import { act, cleanup, render, screen } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { RouterProvider } from '../context/RouterContext'
 import DashboardPage from './DashboardPage'
@@ -50,6 +50,7 @@ describe('DashboardPage', () => {
   afterEach(() => {
     cleanup()
     apiFetchMock.mockReset()
+    vi.useRealTimers()
   })
 
   it('shows live printer state, progress, and all available temperatures', async () => {
@@ -95,6 +96,68 @@ describe('DashboardPage', () => {
     )
 
     expect(await screen.findByText('Moonraker is unavailable; printer power and network state cannot be confirmed.')).toBeTruthy()
-    expect(screen.getByText('The dashboard will retry automatically every 15 seconds.')).toBeTruthy()
+    expect(screen.getByText('The dashboard will retry automatically every 5 seconds.')).toBeTruthy()
+  })
+
+  it('refreshes every five seconds and replaces all dashboard data together', async () => {
+    vi.useFakeTimers()
+    apiFetchMock.mockResolvedValue({
+        ...dashboard,
+        total_spools: 9,
+        active_spool: {
+          spool_code: 'S009',
+          status: 'active',
+          vendor_name: 'Polymaker',
+          material_type: 'PLA',
+          color_name: 'Blue',
+          color_mode: 'solid',
+          color_hexes: ['#2457A6'],
+          color_hex: '#2457A6',
+          remaining_mass_effective_g: '750',
+          remaining_percent: '75',
+          weight_confidence: 'high',
+        },
+        active_plate: {
+          plate_code: 'P2',
+          display_name: 'Smooth PEI',
+          image_url: null,
+          condition: 'good',
+        },
+        active_plate_surface: {
+          surface_code: 'P2',
+          side: 'a',
+          surface_material: 'PEI',
+        },
+        printer_state: {
+          ...dashboard.printer_state,
+          operational_status: 'paused',
+          progress_percent: '51',
+          filename: 'updated_part.gcode',
+        },
+      })
+    const queryClient = new QueryClient({
+      defaultOptions: { queries: { retry: false, staleTime: Number.POSITIVE_INFINITY } },
+    })
+    queryClient.setQueryData(['dashboard'], dashboard)
+
+    render(
+      <QueryClientProvider client={queryClient}>
+        <RouterProvider><DashboardPage /></RouterProvider>
+      </QueryClientProvider>,
+    )
+    expect(screen.getByText('calibration_cube.gcode')).toBeTruthy()
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(5_000)
+      await vi.advanceTimersByTimeAsync(0)
+    })
+
+    expect(apiFetchMock).toHaveBeenCalledTimes(1)
+    await vi.waitFor(() => {
+      expect(screen.getByText('updated_part.gcode')).toBeTruthy()
+    })
+    expect(screen.getByText('S009')).toBeTruthy()
+    expect(screen.getByText('Smooth PEI')).toBeTruthy()
+    expect(screen.getByText('9')).toBeTruthy()
   })
 })

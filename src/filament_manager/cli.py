@@ -11,11 +11,52 @@ import typer
 
 from filament_manager.config import get_settings
 from filament_manager.database import get_session_factory
+from filament_manager.services.database_backups import (
+    DatabaseBackupError,
+    create_backup_archive,
+    restore_pending_backup,
+)
 from filament_manager.services.diagnostics import queue_projection_rebuild, run_recovery_validation
 from filament_manager.services.seed import seed_configured_system
 from filament_manager.services.workbook_import import commit_approved_run, save_dry_run
 
 app = typer.Typer(no_args_is_help=True, help="Filament Manager administrative commands")
+
+
+@app.command("backup-now")
+def backup_now() -> None:
+    """Create one manual canonical PostgreSQL backup ZIP."""
+
+    try:
+        archive = create_backup_archive("manual")
+    except DatabaseBackupError as error:
+        typer.echo(str(error), err=True)
+        raise typer.Exit(code=1) from error
+    typer.echo(f"Created database backup {archive.id}")
+
+
+@app.command("restore-pending")
+def restore_pending(
+    confirm: Annotated[
+        bool,
+        typer.Option(
+            "--confirm",
+            help="Confirm web and worker services are stopped and apply the prepared restore",
+        ),
+    ] = False,
+) -> None:
+    """Apply the exact restore prepared in Diagnostics while services are stopped."""
+
+    if not confirm:
+        raise typer.BadParameter(
+            "stop the web and worker services, then pass --confirm to apply the pending restore"
+        )
+    try:
+        archive = restore_pending_backup()
+    except DatabaseBackupError as error:
+        typer.echo(str(error), err=True)
+        raise typer.Exit(code=1) from error
+    typer.echo(f"Restored database backup {archive.id}; all existing browser sessions were revoked")
 
 
 @app.command("seed-system")

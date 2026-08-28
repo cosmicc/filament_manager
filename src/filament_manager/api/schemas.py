@@ -1621,6 +1621,61 @@ class ProjectionRebuildResponse(ApiModel):
     categories: dict[str, int]
 
 
+class DatabaseBackupPolicyResponse(ApiModel):
+    """Automatic canonical-database backup policy."""
+
+    enabled: bool
+    interval_hours: int
+    retention_count: int
+    record_version: int
+
+
+class DatabaseBackupPolicyUpdate(ApiModel):
+    """Optimistic update for scheduled canonical-database backups."""
+
+    enabled: bool
+    interval_hours: int = Field(ge=1, le=24 * 30)
+    retention_count: int = Field(ge=1, le=100)
+    expected_version: int = Field(ge=0)
+
+
+class DatabaseBackupArchiveResponse(ApiModel):
+    """Validated metadata for one private ZIP backup archive."""
+
+    id: UUID
+    created_at: datetime
+    application_version: str
+    database_revision: str
+    trigger: str
+    storage_kind: str
+    filename: str
+    size_bytes: int
+    archive_sha256: str
+    dump_sha256: str
+
+
+class DatabaseBackupOverviewResponse(ApiModel):
+    """Backup policy, health, restore state, and validated archives."""
+
+    policy: DatabaseBackupPolicyResponse
+    status: dict[str, Any]
+    pending_restore: dict[str, Any] | None
+    archives: list[DatabaseBackupArchiveResponse]
+
+
+class DatabaseRestoreRequest(ApiModel):
+    """Exact destructive-restore confirmation entered by an Administrator."""
+
+    confirmation: str = Field(min_length=1, max_length=32)
+
+
+class DatabaseRestoreRequestResponse(ApiModel):
+    status: str
+    request_id: UUID
+    backup_id: UUID
+    requested_at: datetime
+
+
 class NotificationResponse(ApiModel):
     id: UUID
     category: str
