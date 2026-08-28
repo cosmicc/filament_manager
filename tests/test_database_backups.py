@@ -5,6 +5,9 @@ from __future__ import annotations
 import hashlib
 import io
 import json
+import re
+import shutil
+import subprocess
 import zipfile
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
@@ -178,9 +181,27 @@ def test_real_postgresql_backup_and_restore_round_trip(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
-    """Exercise the exact pg_dump, ZIP, and pg_restore recovery path."""
+    """Exercise the exact pg_dump, ZIP, and pg_restore recovery path.
 
-    with PostgresContainer("postgres:17-alpine", driver="psycopg") as postgres:
+    PostgreSQL refuses a dump when the client is older than the server. Match
+    the disposable server to the available test client's major version; the
+    production-image contract separately pins both PostgreSQL and its client to
+    version 17.
+    """
+
+    pg_dump_path = shutil.which("pg_dump")
+    assert pg_dump_path is not None
+    version_output = subprocess.run(  # noqa: S603 - resolved test dependency.
+        [pg_dump_path, "--version"],
+        check=True,
+        capture_output=True,
+        text=True,
+    ).stdout
+    version_match = re.search(r"(\d+)(?:\.\d+)?$", version_output.strip())
+    assert version_match is not None
+    client_major = version_match.group(1)
+
+    with PostgresContainer(f"postgres:{client_major}-alpine", driver="psycopg") as postgres:
         database_url = postgres.get_connection_url().replace(
             "postgresql+psycopg2://", "postgresql+psycopg://"
         )
