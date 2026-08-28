@@ -64,6 +64,10 @@ Back up both databases independently through the central PostgreSQL backup platf
 - treat Google Sheets as a view, not a backup
 - treat Spoolman alone as incomplete because it does not contain profiles, plates, calibration sessions, or Filament Manager audit data
 
+Filament Manager additionally creates logical snapshots of only its canonical database. The default policy runs every 24 hours and retains the newest ten automatic ZIPs. Each ZIP contains exactly `manifest.json` and a custom-format `database.dump`, with bounded metadata, sizes, and SHA-256 evidence. Manual/imported files do not consume automatic retention. Keep downloaded copies on protected storage outside the application host; an archive left only in the application volume does not protect against loss of that volume.
+
+Imported archives require Administrator authorization and exact validation. They are trusted operator input, not a cross-database integration. Diagnostics stages an exact archive UUID after typed confirmation, but a dedicated maintenance process performs restoration only while web and worker are stopped. Restore suppresses ownership/ACL changes, uses one transaction, creates a safety snapshot first, applies forward Alembic migrations, and revokes restored browser sessions.
+
 ## Recovery priority
 
 1. Restore `filament_manager`.

@@ -1,5 +1,6 @@
-"""Deterministic Cura material-profile rendering."""
+"""Deterministic Cura material-profile and machine-setting rendering."""
 
+import configparser
 import re
 import uuid
 import xml.etree.ElementTree as ET
@@ -8,6 +9,7 @@ from decimal import Decimal, InvalidOperation
 from pathlib import Path
 from typing import Any, cast
 
+from .machine_settings import apply_managed_machine_gcode, serialize_cura_config
 from .models import CuraInstallation, CuraMachine
 
 SLUG_PATTERN = re.compile(r"[^a-z0-9]+")
@@ -31,6 +33,7 @@ class RenderedDeployment:
     """Rendered relative files and informational warnings for one installation."""
 
     files: dict[Path, bytes]
+    machine_files: dict[Path, bytes]
     machine: CuraMachine
     warnings: list[str]
     managed_material_setting_keys: frozenset[str]
@@ -204,6 +207,9 @@ GUID_PATTERN = re.compile(
     r"^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
     re.IGNORECASE,
 )
+MISSING_VALUE = object()
+_PENDING_MATERIAL_EDITS_CACHE = {}
+_PENDING_MATERIAL_EDITS_SIGNATURE = None
 
 
 def _catalog_checksum():
@@ -337,20 +343,29 @@ def _material_guid(stack):
 def _load_pending_material_edits():
     """Load the bounded local edit receipt without exposing values in logs."""
 
+    global _PENDING_MATERIAL_EDITS_CACHE, _PENDING_MATERIAL_EDITS_SIGNATURE
     try:
         if MANAGED_MATERIAL_EDITS_PATH.is_symlink():
             return {}
         if not MANAGED_MATERIAL_EDITS_PATH.exists():
+            _PENDING_MATERIAL_EDITS_CACHE = {}
+            _PENDING_MATERIAL_EDITS_SIGNATURE = None
             return {}
-        if MANAGED_MATERIAL_EDITS_PATH.stat().st_size > 128 * 1024:
+        stat = MANAGED_MATERIAL_EDITS_PATH.stat()
+        if stat.st_size > 128 * 1024:
             return {}
+        signature = (stat.st_mtime_ns, stat.st_size)
+        if signature == _PENDING_MATERIAL_EDITS_SIGNATURE:
+            return _PENDING_MATERIAL_EDITS_CACHE
         payload = json.loads(MANAGED_MATERIAL_EDITS_PATH.read_text(encoding="utf-8"))
     except (OSError, TypeError, ValueError):
         return {}
     if not isinstance(payload, dict) or payload.get("schema_version") != 1:
         return {}
     materials = payload.get("materials")
-    return materials if isinstance(materials, dict) else {}
+    _PENDING_MATERIAL_EDITS_CACHE = materials if isinstance(materials, dict) else {}
+    _PENDING_MATERIAL_EDITS_SIGNATURE = signature
+    return _PENDING_MATERIAL_EDITS_CACHE
 
 
 def _write_pending_material_edits(materials):
@@ -404,6 +419,51 @@ def _record_pending_material_edit(stack, key, value):
     material_edits[key] = rendered_value
     if len(materials) <= 100 and len(material_edits) <= len(EDITABLE_SETTING_KEYS):
         _write_pending_material_edits(materials)
+
+
+def _is_managed_material(stack):
+    """Return whether one Cura stack selected a Filament Manager material."""
+
+    material = getattr(stack, "material", None)
+    if material is None:
+        return False
+    material_id = str(material.getMetaDataEntry("base_file", material.getId()) or "")
+    return material_id.startswith(MANAGED_PREFIX)
+
+
+def _managed_material_value(stack, key):
+    """Resolve an explicit canonical material value without dirtying the quality profile."""
+
+    if key not in MANAGED_SETTING_KEYS or not _is_managed_material(stack):
+        return MISSING_VALUE
+    material = stack.material
+    material_guid = _material_guid(stack)
+    pending = _load_pending_material_edits().get(material_guid, {})
+    if isinstance(pending, dict) and key in pending:
+        return pending[key]
+    if key not in material.getAllKeys():
+        return MISSING_VALUE
+    return material.getProperty(key, "value")
+
+
+def _install_runtime_material_overlay():
+    """Make managed values authoritative without placing them in Cura user changes."""
+
+    from cura.Settings.CuraContainerStack import CuraContainerStack
+
+    if getattr(CuraContainerStack, "_filament_manager_overlay_patched", False):
+        return
+    original_get_property = CuraContainerStack.getProperty
+
+    def managed_get_property(stack, key, property_name, *args, **kwargs):
+        if property_name == "value":
+            value = _managed_material_value(stack, key)
+            if value is not MISSING_VALUE:
+                return value
+        return original_get_property(stack, key, property_name, *args, **kwargs)
+
+    CuraContainerStack.getProperty = managed_get_property
+    CuraContainerStack._filament_manager_overlay_patched = True
 
 
 def _configure_material_costs(application):
@@ -461,6 +521,7 @@ class FilamentManagerVisibility(Extension):
         try:
             _configure_material_settings_plugin(self._application)
             _configure_material_costs(self._application)
+            _install_runtime_material_overlay()
             preference_signal = getattr(
                 self._application.getPreferences(), "preferenceChanged", None
             )
@@ -519,14 +580,6 @@ class FilamentManagerVisibility(Extension):
         self._scheduled = True
         QTimer.singleShot(0, self._enforce_material_settings)
 
-    @staticmethod
-    def _is_managed_material(stack):
-        material = getattr(stack, "material", None)
-        if material is None:
-            return False
-        material_id = str(material.getMetaDataEntry("base_file", material.getId()) or "")
-        return material_id.startswith(MANAGED_PREFIX)
-
     def _watch(self, container, stack, *, capture_edits=False):
         identity = id(container)
         if identity in self._connected_containers:
@@ -565,6 +618,8 @@ class FilamentManagerVisibility(Extension):
                 quality_changes = stack.qualityChanges
                 self._watch(stack.userChanges, stack, capture_edits=True)
                 self._watch(quality_changes, stack)
+                if _is_managed_material(stack):
+                    self._watch(stack.material, stack, capture_edits=True)
                 changed = False
                 for key in MANAGED_SETTING_KEYS.intersection(quality_changes.getAllKeys()):
                     quality_changes.removeInstance(key, postpone_emit=True)
@@ -572,11 +627,10 @@ class FilamentManagerVisibility(Extension):
                 if changed:
                     quality_changes.sendPostponedEmits()
 
-            # Remove stale top-layer values from the global stack and any
-            # extruder that is no longer using a managed material.
+            # Managed values are resolved by the runtime material overlay. Keep
+            # Cura's top user layer reserved for genuine quality-profile edits
+            # so Save Profile never includes application-owned material values.
             for stack in stacks:
-                if stack is not global_stack and self._is_managed_material(stack):
-                    continue
                 user_changes = stack.userChanges
                 changed = False
                 for key in MANAGED_SETTING_KEYS.intersection(user_changes.getAllKeys()):
@@ -585,30 +639,6 @@ class FilamentManagerVisibility(Extension):
                 if changed:
                     user_changes.sendPostponedEmits()
 
-            # Cura's built-in and custom quality layers sit above its material
-            # layer. Mirror only values explicitly supplied by the selected
-            # managed material into the supported top user layer so the material
-            # remains authoritative without modifying bundled quality profiles.
-            for stack in extruders:
-                if not self._is_managed_material(stack):
-                    continue
-                material = stack.material
-                user_changes = stack.userChanges
-                material_guid = _material_guid(stack)
-                pending = _load_pending_material_edits().get(material_guid, {})
-                if not isinstance(pending, dict):
-                    pending = {}
-                material_keys = MANAGED_SETTING_KEYS.intersection(material.getAllKeys())
-                stale_keys = MANAGED_SETTING_KEYS.intersection(user_changes.getAllKeys()) - material_keys
-                for key in stale_keys:
-                    user_changes.removeInstance(key, postpone_emit=True)
-                if stale_keys:
-                    user_changes.sendPostponedEmits()
-                for key in material_keys:
-                    material_value = pending.get(key, material.getProperty(key, "value"))
-                    current_value = user_changes.getProperty(key, "value")
-                    if str(current_value) != str(material_value):
-                        user_changes.setProperty(key, "value", material_value)
             Logger.log("d", "Filament Manager material settings enforced")
             _write_material_settings_status(self._application)
         except Exception:
@@ -620,8 +650,8 @@ class FilamentManagerVisibility(Extension):
 PLUGIN_METADATA = b"""{
   "name": "Filament Manager Material Visibility",
   "author": "Filament Manager",
-  "version": "2.0.5",
-  "description": "Shows, favorites, and enforces the authoritative Filament Manager material library.",
+  "version": "2.2.0",
+  "description": "Enforces the Filament Manager material library and print boundary.",
   "api": 5,
   "supported_sdk_versions": ["8.0.0"]
 }
@@ -805,6 +835,29 @@ def render_deployment(installation: CuraInstallation, payload: dict[str, Any]) -
         machines.append(machine)
     if not machines:
         raise MachineMatchError("No desired material matches a machine in this Cura installation.")
+    machine = machines[0]
+    try:
+        machine_relative_path = machine.source_path.relative_to(installation.data_path)
+    except ValueError as error:
+        raise MachineMatchError(
+            "The matching Cura machine configuration is outside its installation."
+        ) from error
+    machine_path = installation.data_path / machine_relative_path
+    if (
+        machine_path.is_symlink()
+        or not machine_path.is_file()
+        or machine_path.stat().st_size > 512 * 1024
+        or not machine_path.resolve().is_relative_to(installation.data_path.resolve())
+    ):
+        raise MachineMatchError("The matching Cura machine configuration is unsafe.")
+    machine_parser = configparser.ConfigParser(interpolation=None, strict=False)
+    try:
+        machine_parser.read(machine_path, encoding="utf-8")
+    except (OSError, UnicodeError, configparser.Error) as error:
+        raise MachineMatchError("The matching Cura machine configuration is invalid.") from error
+    if not machine_parser.has_section("general"):
+        raise MachineMatchError("The matching Cura machine configuration is invalid.")
+    apply_managed_machine_gcode(machine_parser)
     files.update(
         _visibility_plugin_files(
             managed_setting_keys,
@@ -816,7 +869,8 @@ def render_deployment(installation: CuraInstallation, payload: dict[str, Any]) -
     )
     return RenderedDeployment(
         files=files,
-        machine=machines[0],
+        machine_files={machine_relative_path: serialize_cura_config(machine_parser)},
+        machine=machine,
         warnings=warnings,
         managed_material_setting_keys=managed_setting_keys,
         cleanup_material_setting_keys=managed_setting_keys | retired_setting_keys,

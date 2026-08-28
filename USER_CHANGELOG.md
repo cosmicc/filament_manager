@@ -1,5 +1,66 @@
 # User Changelog
 
+## 0.6.0 - 08.27.2026
+
+### Added
+
+- Filament Manager now automatically saves and maintains the required start and end G-code in the matched Cura printer configuration.
+- Diagnostics can now schedule compressed database backups, retain the newest automatic snapshots, download or import trusted backup ZIPs, and prepare a controlled catastrophic restore.
+
+### Changed
+
+- The Dashboard now refreshes printer status, active spool, active build plate, and inventory values every 5 seconds and refreshes immediately after reconnecting or returning to the page.
+- Nozzle changes now also verify that Cura still has the Filament Manager start and end scripts.
+- Diagnostics no longer shows the Projection operations / Recent jobs table.
+
+### Fixed
+
+- Fixed Cura's saved printer scripts not showing the required `FILAMENT_MANAGER_START_PRINT` inspection call.
+- Fixed operational Dashboard values taking up to 15 seconds to reflect a printer, spool, or plate change.
+- Fixed a Cura plugin recursion that could prevent Cura from opening and rapidly repeat crashes until the workstation became unstable.
+
+## 0.5.8 - 08.26.2026
+
+### Added
+
+- Added validation that the Filament Manager load and unload commands use the printer's preserved physical movement routines.
+
+### Changed
+
+- Klipper setup now gives the printer's physical load and unload routines stable internal names while Filament Manager owns the public commands.
+- The login content now starts at the top of the page with compact spacing below the Filament Manager brand.
+- Print History now explains that the Filament Manager inspection call comes from Cura's sliced start sequence before the printer's unchanged `START_PRINT` macro.
+- Customized filament values now have a prominent warning highlight and a **Revert to Template** button that removes the custom value when saved.
+
+### Fixed
+
+- Fixed Klipper refusing to start because `UNLOAD_FILAMENT` or `LOAD_FILAMENT` did not exist for the app macro file to rename.
+- Fixed managed Cura slices retaining the printer's saved start/end scripts instead of receiving the Filament Manager inspection boundary automatically.
+- Fixed template changes appearing not to reach linked filaments because their inherited settings stayed cached; non-customized values now refresh immediately and customized values remain unchanged.
+
+## 0.5.7 - 08.26.2026
+
+### Added
+
+- Material templates and filament settings now have a separate Initial Layer Build Plate Temperature that synchronizes with Cura.
+- The Dashboard and Print History now show stored print thumbnails when Moonraker provides them.
+- Current and past prints now show useful time and filament comparisons plus actual filament cost when purchase pricing is available.
+
+### Changed
+
+- Filament Manager material settings stay authoritative in Cura without being added to the custom quality profile you are editing or saving.
+- Managed material-setting edits made in Cura still save back to Filament Manager and synchronize to the other managed Cura installations.
+- Managed Cura materials now use the required Filament Manager start and end print macros automatically without changing your saved machine scripts.
+- Cura recovery keeps the latest 15 automatic backups, while named backups stay until you delete them.
+- Clicking a template row or card now opens its editor; Export JSON and Delete are available inside that editor.
+
+### Fixed
+
+- Fixed Cura custom quality profiles trying to save Filament Manager's material settings as part of the quality profile.
+- Fixed Klipper refusing to start because the Filament Manager M600 macro tried to rename an M600 command that did not exist.
+- Fixed managed prints missing the Filament Manager inspection gate and exact material-profile match.
+- Fixed initial-layer bed temperature being unable to differ from the regular build-plate temperature.
+
 ## 0.5.6 - 08.26.2026
 
 ### Added

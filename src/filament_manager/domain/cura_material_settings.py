@@ -45,6 +45,11 @@ CURA_MATERIAL_SETTINGS: tuple[CuraMaterialSetting, ...] = (
     _boolean("retraction_enable", "Enable Retraction"),
     _number("material_print_temperature", "Printing Temperature", "°C"),
     _number("material_bed_temperature", "Build Plate Temperature", "°C"),
+    _number(
+        "material_bed_temperature_layer_0",
+        "Initial Layer Build Plate Temperature",
+        "°C",
+    ),
     _number("speed_wall_x", "Inner Wall Speed", "mm/s", template_only=True),
     CuraMaterialSetting("material_type", "Material Type", "string", editable=False),
     _number("xy_offset_layer_0", "Initial Layer Horizontal Expansion", "mm"),
@@ -182,6 +187,7 @@ CURA_TYPED_SETTING_KEYS = frozenset(
         "speed_ironing",
         "klipper_pressure_advance_factor",
         "material_bed_temperature",
+        "material_bed_temperature_layer_0",
         "material_flow",
         "material_print_temperature",
         "retraction_amount",
@@ -211,7 +217,6 @@ CURA_RETIRED_SETTING_KEYS = frozenset(
         "ironing_speed",
         "default_material_bed_temperature",
         "default_material_print_temperature",
-        "material_bed_temperature_layer_0",
         "material_final_print_temperature",
         "material_flow_layer_0",
         "material_initial_print_temperature",
@@ -232,6 +237,13 @@ class MaterialProfileValues(Protocol):
     chamber_temp_c: Decimal | None
     extruder_temp_c: Decimal
     bed_temp_c: Decimal
+
+    @property
+    def initial_bed_temp_c(self) -> Decimal | None:
+        """Return the separate layer-zero bed temperature when present."""
+
+        ...
+
     flow_percent: Decimal
     print_speed_mm_s: Decimal | None
     outer_wall_speed_mm_s: Decimal | None
@@ -269,6 +281,9 @@ def _decimal(value: Decimal | str | int | None) -> str | None:
 def cura_settings_for_profile(profile: MaterialProfileValues) -> dict[str, object]:
     """Return the approved material-scoped Cura settings for one profile version."""
 
+    initial_bed_temp_c = profile.initial_bed_temp_c
+    if initial_bed_temp_c is None:
+        initial_bed_temp_c = profile.bed_temp_c
     settings = {
         key: value
         for key, value in profile.cura_extensions.items()
@@ -286,6 +301,7 @@ def cura_settings_for_profile(profile: MaterialProfileValues) -> dict[str, objec
         "cool_fan_speed_min": _decimal(profile.cooling_min_percent),
         "klipper_pressure_advance_factor": _decimal(profile.pressure_advance),
         "material_bed_temperature": _decimal(profile.bed_temp_c),
+        "material_bed_temperature_layer_0": _decimal(initial_bed_temp_c),
         "material_flow": _decimal(profile.flow_percent),
         "material_print_temperature": _decimal(profile.extruder_temp_c),
         "ironing_flow": _decimal(getattr(profile, "ironing_flow_percent", None)),

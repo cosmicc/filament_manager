@@ -24,6 +24,7 @@ const coreComparisonFields: Array<{
 }> = [
   { key: 'extruder_temp_c', label: 'Printing temperature', unit: '°C', valueType: 'number', precision: 0 },
   { key: 'bed_temp_c', label: 'Build plate temperature', unit: '°C', valueType: 'number', precision: 0 },
+  { key: 'initial_bed_temp_c', label: 'Initial layer build plate temperature', unit: '°C', valueType: 'number', precision: 0 },
   { key: 'chamber_temp_c', label: 'Chamber temperature', unit: '°C', valueType: 'number', precision: 0 },
   { key: 'flow_percent', label: 'Flow', unit: '%', valueType: 'number', precision: 0 },
   { key: 'print_speed_mm_s', label: 'Print speed', unit: 'mm/s', valueType: 'number', precision: 0 },

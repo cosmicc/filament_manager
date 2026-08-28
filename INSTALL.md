@@ -139,7 +139,7 @@ Leave `MOONRAKER_WEBSOCKET_URL` empty to derive `ws://.../websocket` or `wss://.
 
 For initial testing, `ghcr.io/cosmicc/filament-manager:latest` tracks the newest CI-passing `main` build for AMD64 and ARM64. Before production use, replace it with the workflow's immutable `sha-<commit>` tag or resolved digest.
 
-Keep `SPOOLMAN_RECONCILE_INTERVAL_MINUTES=1` so immediate event-driven projections have a frequent complete-rebuild safety net. `MOONRAKER_STATE_INTERVAL_SECONDS=15` aligns the active spool and build-plate side automatically, while `MOONRAKER_INFO_INTERVAL_SECONDS=300` refreshes sanitized printer details. `SYNC_OUTBOX_WORKERS=2` runs two fair dispatchers, and `SYNC_OUTBOX_LOCK_TIMEOUT_SECONDS=300` allows work abandoned by a terminated worker to be reclaimed without racing a normal bounded API request.
+Keep `SPOOLMAN_RECONCILE_INTERVAL_MINUTES=1` so immediate event-driven projections have a frequent complete-rebuild safety net. `MOONRAKER_STATE_INTERVAL_SECONDS=5` aligns the active spool and build-plate side automatically, while `MOONRAKER_INFO_INTERVAL_SECONDS=300` refreshes sanitized printer details. `SYNC_OUTBOX_WORKERS=2` runs two fair dispatchers, and `SYNC_OUTBOX_LOCK_TIMEOUT_SECONDS=300` allows work abandoned by a terminated worker to be reclaimed without racing a normal bounded API request.
 
 When Google publication is enabled, set `GOOGLE_ENABLED=true`, `GOOGLE_SPREADSHEET_ID`, and `GOOGLE_SERVICE_ACCOUNT_JSON`. The JSON must be compact and one line. When sourcing `.env` in a shell, surround the complete JSON value with single quotes.
 
@@ -201,7 +201,32 @@ docker service logs filament-manager-migrate-recovery
 docker service rm filament-manager-migrate-recovery
 ```
 
-The stack creates its `filament-services` overlay plus `filament_manager_data` and `spoolman_data` volumes. On a multi-node Swarm, use shared storage or placement constraints so stateful volume paths cannot move to an empty node.
+The stack creates its `filament-services` overlay plus `filament_manager_data` and `spoolman_data` volumes. Canonical database backup ZIPs and restore-control files live under `/data/database-backups` in `filament_manager_data`. On a multi-node Swarm, use shared storage or placement constraints so web, worker, and the zero-replica `database-restore` service always see that same volume data.
+
+### Controlled database restore
+
+Diagnostics can download existing snapshots or import a trusted Filament Manager backup ZIP. Selecting **Restore**, reviewing the archive, and typing `RESTORE` prepares the exact archive but does not modify a live database. For the root stack named `filament-manager`, complete the maintenance operation from a Swarm manager:
+
+```bash
+docker service scale filament-manager_web=0 filament-manager_worker=0
+docker service scale filament-manager_database-restore=1
+docker service logs --follow filament-manager_database-restore
+docker service ps filament-manager_database-restore --no-trunc
+docker service scale filament-manager_database-restore=0
+docker service scale filament-manager_web=1 filament-manager_worker=1
+```
+
+Do not restart web or worker unless the restore task reports successful completion. The restore service creates a pre-restore safety ZIP, applies the selected dump in one transaction, upgrades older schemas forward, and revokes every restored browser session. If it fails, keep application services stopped and retain the pending request and safety archive for investigation. Use the actual stack name in place of `filament-manager` when different.
+
+For local Compose, prepare the restore in Diagnostics and run:
+
+```bash
+docker compose stop filament-manager worker
+docker compose --profile recovery run --rm database-restore
+docker compose up -d filament-manager worker
+```
+
+The application backup feature intentionally covers only the canonical `filament_manager` database. Continue backing up the independently credentialed `spoolman` database through the PostgreSQL platform.
 
 ### 4. Seed the system and sign in
 
@@ -283,25 +308,27 @@ The separate `docker/spoolman-stack.yml` and `docker/filament-manager-stack.yml`
 ## Moonraker and Klipper
 
 - Add `integrations/moonraker/moonraker-spoolman.conf` to Moonraker after replacing the LAN hostname.
-- Copy `integrations/klipper/filament-manager-macros.cfg` to the Klipper configuration directory and include it **last**, after the files that define the existing `START_PRINT`, `END_PRINT`, `CANCEL_PRINT`, `M600`, `LOAD_FILAMENT`, `UNLOAD_FILAMENT`, and `PURGE_FILAMENT` macros. The integration wraps those existing routines; it does not replace their physical movement or completed-print behavior.
+- Before installing the app file, name the printer's existing physical load routine `[gcode_macro _FILAMENT_MANAGER_HARDWARE_LOAD]` and its existing physical unload routine `[gcode_macro _FILAMENT_MANAGER_HARDWARE_UNLOAD]`. Keep their movement bodies unchanged. Do not also define public `LOAD_FILAMENT` or `UNLOAD_FILAMENT` commands elsewhere.
+- Copy `integrations/klipper/filament-manager-macros.cfg` to the Klipper configuration directory and include it **last**, after the files that define `START_PRINT`, `END_PRINT`, `CANCEL_PRINT`, `PURGE_FILAMENT`, and both reserved hardware routines. Remove or disable any other `M600` definition. Filament Manager directly owns public `M600`, `LOAD_FILAMENT`, and `UNLOAD_FILAMENT`; only `CANCEL_PRINT` is preserved through `rename_existing`.
+- If Klipper reports `Existing command 'LOAD_FILAMENT' not found in gcode_macro rename` or the equivalent `UNLOAD_FILAMENT` error, the installed app macro file is stale. Replace it with the current reference instead of creating a duplicate public command; the current file calls the two reserved hardware routines directly.
 - Confirm `[respond]`, `[save_variables]`, `[pause_resume]`, and `[virtual_sdcard]` are configured. The supplied complete macro reference persists physical spool identity, the bounded material catalog, and the G-code inspection policy through `[save_variables]`.
 - Before restarting, run `grep -Rns --include='*.cfg' 'variable_active_plate' ~/printer_data/config` on the Klipper host and confirm every included definition is exactly `variable_active_plate: "UNSET"`.
 - Ensure Klipper already has P1, P2, P3, P4, and P5 Side A mesh profiles and a configured `[save_variables]` section before using `SELECT_BUILD_PLATE`.
 - Restart Moonraker and Klipper. Wait for the worker to initialize `FILAMENT_MANAGER_SPOOL_STATE`, then run that macro in the Fluidd console and confirm it reports the spool that is physically loaded, or no spool. Correct the existing Spoolman active ID before this first initialization if necessary.
 - Run `LOAD_FILAMENT` with no ID and confirm Fluidd lists every projected, non-empty spool that has a safe temperature from its latest exact profile or linked printer/nozzle template. Publication is required for Cura print preflight, not for this manual-load chooser. If a spool is selected directly in Spoolman, wait for the next state pass and confirm the guarded target prompt opens before physical state changes.
 - In Fluidd **Settings → Spoolman**, turn off **Show spool selection dialog on print start**. That independent selector activates its choice before a physical load and must not run alongside Filament Manager preflight. Do not use Fluidd's global **Change Spool** action to represent a future target; use the Filament Manager inventory **Load spool** action or the guarded macros instead.
-- In Cura's machine start G-code, replace only the existing `START_PRINT` call with the following call. Preserve every other start-G-code line and keep the existing Cura end G-code unchanged:
+- Allow the 0.5.8 workstation agent to install renderer revision 14 while Cura is closed, then start Cura once. For a selected managed product material, its plugin supplies this start boundary at slice time:
 
 ```gcode
-FILAMENT_MANAGER_START_PRINT BED_TEMP={material_bed_temperature_layer_0} EXTRUDER_TEMP={material_print_temperature_layer_0} CHAMBER_TEMP={build_volume_temperature} MATERIAL_GUID={material_guid}
+FILAMENT_MANAGER_START_PRINT MATERIAL_GUID={material_guid, 0} BED_TEMP={material_bed_temperature_layer_0, 0} EXTRUDER_TEMP={material_print_temperature_layer_0, 0} CHAMBER_TEMP={build_volume_temperature}
 ```
 
-  If the current Cura start call uses different temperature placeholders, keep those existing placeholders and add `MATERIAL_GUID={material_guid}`. The workstation agent deliberately does not edit machine start G-code.
+  The workstation agent also saves `END_PRINT` as the matched printer's end G-code. It backs up and atomically overwrites both saved fields while Cura is closed, so no manual Cura script configuration is required.
 - Save a product material profile and allow the workstation agent to synchronize Cura before printing. `Template <material type>` entries have no exact physical inventory mapping and are intentionally blocked by preflight.
 - With the printer idle, verify `SELECT_BUILD_PLATE PLATE=P1`. Then request **Load spool** from Inventory and confirm Fluidd preheats and asks for the exact Spoolman ID. After the existing unload motion completes, Spoolman must show no active spool; only after insertion confirmation and the existing load motion completes may the new ID become active.
 - Send a Cura test file with the already loaded matching product material and confirm it reaches the unchanged `START_PRINT` path without a load prompt. Repeat with another material and confirm Fluidd asks which exact matching spool to insert when more than one is available.
 - Keep **Settings → G-code inspection policy** at the recommended **Warn and continue** default for initial testing. Confirm Print History records matching metadata and any intentional test mismatch. Then, if desired, enable **Block mismatches** and verify Fluidd pauses at **Inspecting G-code**, releases a matching file, and retains a mismatched or unavailable file without running `START_PRINT`.
-- Sign in, open **Build Plates**, and select the printer. Within 15 seconds, exact `P<number>` meshes become Side A, exact `P<number>b` meshes become Side B of the same physical plate, and the loaded matching mesh becomes the active side.
+- Sign in, open **Build Plates**, and select the printer. Within 5 seconds, exact `P<number>` meshes become Side A, exact `P<number>b` meshes become Side B of the same physical plate, and the loaded matching mesh becomes the active side.
 - To add a physical plate later, save Side A as the next name, such as `P6`. If it is double-sided, save its other mesh as `P6b`. The next automatic state pass adds it; existing physical and side details are preserved, and missing meshes are shown as unavailable rather than deleted.
 
 ## Upgrade

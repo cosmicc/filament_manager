@@ -406,6 +406,11 @@ class MaterialProfile(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     chamber_temp_c: Mapped[Decimal | None] = mapped_column(MEASUREMENT)
     extruder_temp_c: Mapped[Decimal] = mapped_column(MEASUREMENT, nullable=False)
     bed_temp_c: Mapped[Decimal] = mapped_column(MEASUREMENT, nullable=False)
+    initial_bed_temp_c: Mapped[Decimal] = mapped_column(
+        MEASUREMENT,
+        nullable=False,
+        default=lambda context: context.get_current_parameters().get("bed_temp_c"),
+    )
     flow_percent: Mapped[Decimal] = mapped_column(MEASUREMENT, nullable=False)
     print_speed_mm_s: Mapped[Decimal | None] = mapped_column(MEASUREMENT)
     outer_wall_speed_mm_s: Mapped[Decimal | None] = mapped_column(MEASUREMENT)

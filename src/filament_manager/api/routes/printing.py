@@ -7,7 +7,7 @@ from urllib.parse import quote
 from uuid import UUID
 
 import httpx
-from fastapi import APIRouter, Query, Request, status
+from fastapi import APIRouter, Query, Request, Response, status
 from fastapi.responses import StreamingResponse
 from sqlalchemy import Select, select
 from sqlalchemy.orm import selectinload
@@ -18,11 +18,17 @@ from filament_manager.models.enums import PrintJobStatus
 from filament_manager.models.inventory import Printer
 from filament_manager.models.printing import PrintAssessment, PrintJob
 from filament_manager.services.events import add_audit_event
+from filament_manager.services.print_costs import print_cost_summary, segment_cost
 from filament_manager.services.print_history import profile_success_statistics
 
 from ..dependencies import DatabaseSession, Operator, Viewer
 from ..errors import ApiError
-from ..schemas import PrintAssessmentCreate, PrintAssessmentResponse, PrintJobResponse
+from ..schemas import (
+    PrintAssessmentCreate,
+    PrintAssessmentResponse,
+    PrintJobResponse,
+    PrintMaterialSegmentResponse,
+)
 
 router = APIRouter(prefix="/prints", tags=["print history"])
 
@@ -32,11 +38,32 @@ def _print_query() -> Select[tuple[PrintJob]]:
 
 
 def _print_response(job: PrintJob) -> PrintJobResponse:
-    """Expose an authenticated application link instead of a private Moonraker path."""
+    """Expose authenticated media links and immutable derived print costs."""
 
     response = PrintJobResponse.model_validate(job)
+    segments: list[PrintMaterialSegmentResponse] = []
+    for segment in job.segments:
+        rendered_segment = PrintMaterialSegmentResponse.model_validate(segment)
+        cost = segment_cost(segment)
+        segments.append(
+            rendered_segment.model_copy(
+                update={
+                    "cost_per_gram": cost[0] if cost else None,
+                    "actual_filament_cost": cost[1] if cost else None,
+                    "cost_currency": cost[2] if cost else None,
+                }
+            )
+        )
+    costs = print_cost_summary(job)
     return response.model_copy(
-        update={"timelapse_url": f"/api/v1/prints/{job.id}/timelapse" if job.timelapse_url else None}
+        update={
+            "timelapse_url": f"/api/v1/prints/{job.id}/timelapse" if job.timelapse_url else None,
+            "thumbnail_url": (
+                f"/api/v1/prints/{job.id}/thumbnail" if job.thumbnail_data is not None else None
+            ),
+            "segments": segments,
+            **costs,
+        }
     )
 
 
@@ -88,6 +115,34 @@ async def get_print(print_id: UUID, _: Viewer, session: DatabaseSession) -> Prin
     if job is None:
         raise ApiError(status.HTTP_404_NOT_FOUND, "unknown_print", "Print not found")
     return _print_response(job)
+
+
+@router.get("/{print_id}/thumbnail")
+async def get_print_thumbnail(
+    print_id: UUID,
+    request: Request,
+    _: Viewer,
+    session: DatabaseSession,
+) -> Response:
+    """Return one sanitized stored thumbnail without exposing Moonraker."""
+
+    job = await session.get(PrintJob, print_id)
+    if (
+        job is None
+        or job.thumbnail_data is None
+        or job.thumbnail_media_type is None
+        or job.thumbnail_sha256 is None
+    ):
+        raise ApiError(status.HTTP_404_NOT_FOUND, "thumbnail_unknown", "Thumbnail not found")
+    etag = f'"{job.thumbnail_sha256}"'
+    headers = {
+        "Cache-Control": "private, max-age=86400",
+        "ETag": etag,
+        "X-Content-Type-Options": "nosniff",
+    }
+    if request.headers.get("if-none-match") == etag:
+        return Response(status_code=status.HTTP_304_NOT_MODIFIED, headers=headers)
+    return Response(content=job.thumbnail_data, media_type=job.thumbnail_media_type, headers=headers)
 
 
 @router.get("/{print_id}/timelapse")

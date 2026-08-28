@@ -26,10 +26,10 @@ def test_operator_material_settings_catalog_is_exact_and_unique() -> None:
 
     keys = [setting.key for setting in CURA_MATERIAL_SETTINGS]
 
-    assert len(keys) == 55
-    assert len(set(keys)) == 55
-    assert len(CURA_EDITABLE_SETTING_KEYS) == 49
-    assert len(CURA_TYPED_SETTING_KEYS) == 25
+    assert len(keys) == 56
+    assert len(set(keys)) == 56
+    assert len(CURA_EDITABLE_SETTING_KEYS) == 50
+    assert len(CURA_TYPED_SETTING_KEYS) == 26
     assert len(CURA_EXTENSION_SETTING_KEYS) == 26
     assert {setting.key for setting in CURA_MATERIAL_SETTINGS if not setting.editable} == {
         "acceleration_enabled",
@@ -87,6 +87,8 @@ def test_operator_material_settings_catalog_is_exact_and_unique() -> None:
         "limit_support_retractions",
     } <= CURA_RETIRED_SETTING_KEYS
     assert "speed_ironing" in keys
+    assert "material_bed_temperature_layer_0" in keys
+    assert "material_bed_temperature_layer_0" not in CURA_RETIRED_SETTING_KEYS
     assert "ironing_speed" not in keys
     assert "ironing_enabled" not in keys
     assert "limit_support_retractions" not in keys
@@ -131,6 +133,7 @@ def test_profile_mapping_places_klipper_values_in_the_material_settings() -> Non
         chamber_temp_c=Decimal("35"),
         extruder_temp_c=Decimal("225"),
         bed_temp_c=Decimal("70"),
+        initial_bed_temp_c=Decimal("75"),
         flow_percent=Decimal("98.5"),
         print_speed_mm_s=Decimal("160"),
         outer_wall_speed_mm_s=None,
@@ -172,6 +175,7 @@ def test_profile_mapping_places_klipper_values_in_the_material_settings() -> Non
     assert settings["acceleration_travel"] == "8000"
     assert settings["material_print_temperature"] == "225"
     assert settings["material_bed_temperature"] == "70"
+    assert settings["material_bed_temperature_layer_0"] == "75"
     assert "default_material_print_temperature" not in settings
     assert "default_material_bed_temperature" not in settings
     assert settings["retraction_speed"] == "35"
@@ -191,6 +195,7 @@ def test_cura_aliases_resolve_to_one_canonical_setting_without_extension_overlap
         {
             "material_print_temperature": "210",
             "material_bed_temperature": "60",
+            "material_bed_temperature_layer_0": "65",
             "retraction_retract_speed": "42",
             "retraction_prime_speed": "38",
             "cool_fan_speed_max": "80",
@@ -201,6 +206,7 @@ def test_cura_aliases_resolve_to_one_canonical_setting_without_extension_overlap
 
     assert settings["retraction_speed_mm_s"] == Decimal("42")
     assert settings["retraction_prime_speed_mm_s"] == Decimal("38")
+    assert settings["initial_bed_temp_c"] == Decimal("65")
     assert settings["cooling_max_percent"] == Decimal("80")
     assert "retraction_retract_speed" not in settings["cura_extensions"]
     assert "retraction_prime_speed" not in settings["cura_extensions"]

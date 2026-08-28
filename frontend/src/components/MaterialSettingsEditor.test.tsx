@@ -9,6 +9,7 @@ const settings: MaterialSettings = {
   chamber_temp_c: null,
   extruder_temp_c: '210',
   bed_temp_c: '60',
+  initial_bed_temp_c: '65',
   flow_percent: '98',
   print_speed_mm_s: '120',
   outer_wall_speed_mm_s: null,
@@ -36,12 +37,13 @@ const settings: MaterialSettings = {
 }
 
 describe('MaterialSettingsEditor validation', () => {
-  it('shows only the three requested temperature controls', () => {
+  it('shows only the four managed temperature controls', () => {
     const rendered = render(<MaterialSettingsEditor settings={settings} catalog={[]} plates={[]} />)
 
     expect(screen.getByLabelText('Printing temperature (°C)')).toBeTruthy()
     expect(screen.getByLabelText('Build volume temperature (°C)')).toBeTruthy()
     expect(screen.getByLabelText('Build plate temperature (°C)')).toBeTruthy()
+    expect(screen.getByLabelText('Initial layer build plate temperature (°C)')).toBeTruthy()
     expect(screen.queryByText(/Default .*temperature/i)).toBeNull()
     expect(screen.queryByLabelText('Chamber temperature (°C)')).toBeNull()
     rendered.unmount()
@@ -136,7 +138,7 @@ describe('MaterialSettingsEditor validation', () => {
     expect(controls.getByLabelText(/^Initial Fan Speed/)).toBeTruthy()
   })
 
-  it('marks explicit filament customizations with the stronger ownership state', () => {
+  it('strongly marks explicit filament customizations and reverts them to the template', () => {
     const rendered = render(
       <MaterialSettingsEditor
         plates={[]}
@@ -152,6 +154,11 @@ describe('MaterialSettingsEditor validation', () => {
       .closest('.setting-field')
     expect(flowField?.className).toContain('setting-field--customized')
     expect(within(flowField as HTMLElement).getByText(/Customized · Template: 100/)).toBeTruthy()
+    fireEvent.click(within(flowField as HTMLElement).getByRole('button', { name: 'Revert to Template' }))
+    expect((within(flowField as HTMLElement).getByLabelText('Flow (%)') as HTMLInputElement).value).toBe('100')
+    expect(flowField?.className).not.toContain('setting-field--customized')
+    expect(within(flowField as HTMLElement).getByText(/Inherited · Template: 100/)).toBeTruthy()
+    expect(within(flowField as HTMLElement).queryByRole('button', { name: 'Revert to Template' })).toBeNull()
   })
 
   it('shows template-only acceleration and Klipper controls only in template editors', () => {

@@ -73,7 +73,7 @@ Immutable internal settings snapshots scoped to:
 - nozzle diameter
 - optional layer-height range
 
-Every current snapshot directly references the current `material_template_revision`, stores only semantically different permitted `setting_overrides`, and caches the complete resolved values in the typed columns plus `cura_extensions`. The resolved snapshot inherits template-owned print-speed, smooth-time, and acceleration values and may reference a preferred plate side. Every cooling control, pressure advance, and ironing flow/speed/line-spacing value may enter product overrides; Cura quality profiles own ironing enablement. Direct saves append the next current immutable snapshot and queue projections without an operator-facing draft or publication state.
+Every current snapshot directly references the current `material_template_revision`, stores only semantically different permitted `setting_overrides`, and caches the complete resolved values in the typed columns plus `cura_extensions`. Typed values include separate regular and initial-layer build-plate temperatures. The resolved snapshot inherits template-owned print-speed, smooth-time, and acceleration values and may reference a preferred plate side. Every cooling control, pressure advance, and ironing flow/speed/line-spacing value may enter product overrides; Cura quality profiles own ironing enablement. Direct saves append the next current immutable snapshot and queue projections without an operator-facing draft or publication state.
 
 ### material_template and material_template_revision
 
@@ -89,7 +89,7 @@ Idempotently records one content checksum reported for a known managed Cura GUID
 
 ### cura_recovery_snapshot
 
-Immutable, sanitized operational Cura configuration captured only while Cura is closed. It is scoped to one workstation agent, discovered installation identity, and exact Cura version. The payload is checksummed and bounded and contains complete non-sensitive allowlisted printer/extruder/definition-change documents—including opaque start/end G-code and printer options—plus user definitions and variants, quality/profile state, setting visibility, safe preferences, and semantic plugin names/versions. It never stores workstation paths, account sessions, credentials, network endpoints, or plugin executable files. Retention keeps the ten newest distinct snapshots for each workstation installation and Cura version; a reset or large deletion is recorded as blocked state without replacing the last known-good snapshot.
+Immutable, sanitized operational Cura configuration captured only while Cura is closed. It is scoped to one workstation agent, discovered installation identity, and exact Cura version. The payload is checksummed and bounded and contains complete non-sensitive allowlisted printer/extruder/definition-change documents—including opaque start/end G-code and printer options—plus user definitions and variants, quality/profile state, setting visibility, safe preferences, and semantic plugin names/versions. It never stores workstation paths, account sessions, credentials, network endpoints, or plugin executable files. Retention keeps the fifteen newest distinct automatic snapshots for each workstation installation and Cura version; named points do not consume that quota and remain until explicit deletion. A reset or large deletion is recorded as blocked state without replacing the last known-good snapshot.
 
 ### cura_recovery_restore
 

@@ -26,7 +26,7 @@ MATERIAL_SETTINGS_STATUS_PATH = (
     / "material-settings-status.json"
 )
 MATERIAL_SETTINGS_STATUS_SCHEMA_VERSION = 1
-DEPLOYMENT_RENDERER_REVISION = 11
+DEPLOYMENT_RENDERER_REVISION = 15
 MAX_EXTRUDER_CONFIG_BYTES = 256 * 1024
 
 
@@ -96,9 +96,10 @@ def _already_current(root: Path, checksum: str) -> bool:
     ):
         return False
     files = manifest.get("files")
-    if not isinstance(files, dict):
+    machine_files = manifest.get("machine_files")
+    if not isinstance(files, dict) or not isinstance(machine_files, dict) or not machine_files:
         return False
-    for relative_name, expected in files.items():
+    for relative_name, expected in {**files, **machine_files}.items():
         if not isinstance(relative_name, str) or not isinstance(expected, str):
             return False
         target = _safe_target(root, Path(relative_name))
@@ -417,6 +418,9 @@ def apply_rendered(
         rendered.cleanup_material_setting_keys,
     )
     desired_targets = set(rendered.files)
+    machine_targets = set(rendered.machine_files)
+    if desired_targets & machine_targets:
+        raise RuntimeError("A Cura machine file conflicts with a generated managed file.")
     cleanup_targets = {
         Path("materials") / path.name for path in (root / "materials").glob("*.xml.fdm_material")
     } - desired_targets
@@ -426,7 +430,11 @@ def apply_rendered(
         cleanup_targets.update(Path(value) for value in previous_files if Path(value) not in desired_targets)
     quality_targets = set(quality_cleanup.replacements) | set(quality_cleanup.quarantines)
     relative_targets = sorted(
-        desired_targets | cleanup_targets | quality_targets | set(material_reference_replacements),
+        desired_targets
+        | machine_targets
+        | cleanup_targets
+        | quality_targets
+        | set(material_reference_replacements),
         key=lambda item: item.as_posix(),
     )
     for relative in relative_targets:
@@ -434,6 +442,8 @@ def apply_rendered(
     backup_path, existed = _backup(root, deployment_id, installation.installation_id, relative_targets)
     try:
         for relative, content in rendered.files.items():
+            _atomic_write(_safe_target(root, relative), content)
+        for relative, content in rendered.machine_files.items():
             _atomic_write(_safe_target(root, relative), content)
         for relative, content in quality_cleanup.replacements.items():
             _atomic_write(_safe_target(root, relative), content)
@@ -446,7 +456,7 @@ def apply_rendered(
         for relative in cleanup_targets:
             _safe_target(root, relative).unlink(missing_ok=True)
         manifest = {
-            "schema_version": 3,
+            "schema_version": 4,
             "renderer_revision": DEPLOYMENT_RENDERER_REVISION,
             "deployment_id": deployment_id,
             "library_checksum": profile_checksum,
@@ -467,6 +477,10 @@ def apply_rendered(
                 PurePosixPath(relative).as_posix(): _sha256(content)
                 for relative, content in rendered.files.items()
             },
+            "machine_files": {
+                PurePosixPath(relative).as_posix(): _sha256(content)
+                for relative, content in rendered.machine_files.items()
+            },
         }
         _atomic_write(
             _safe_target(root, MANIFEST_PATH),
@@ -481,6 +495,7 @@ def apply_rendered(
         "machine": rendered.machine.display_name,
         "status": "installed",
         "managed_files": len(rendered.files),
+        "machine_settings_files": len(rendered.machine_files),
         "backup_id": f"{deployment_id}/{installation.installation_id}",
         "quality_profiles_sanitized": len(quality_cleanup.replacements),
         "quality_profiles_repaired": quality_cleanup.repaired_profile_count,

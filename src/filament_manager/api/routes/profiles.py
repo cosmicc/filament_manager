@@ -1186,6 +1186,7 @@ def _profile_payload(profile: MaterialProfile) -> dict[str, object]:
         "chamber_temp_c": str(profile.chamber_temp_c) if profile.chamber_temp_c is not None else None,
         "extruder_temp_c": str(profile.extruder_temp_c),
         "bed_temp_c": str(profile.bed_temp_c),
+        "initial_bed_temp_c": str(profile.initial_bed_temp_c),
         "flow_percent": str(profile.flow_percent),
         "print_speed_mm_s": str(profile.print_speed_mm_s) if profile.print_speed_mm_s else None,
         "outer_wall_speed_mm_s": (
