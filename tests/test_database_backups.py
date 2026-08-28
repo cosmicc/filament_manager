@@ -197,7 +197,7 @@ def test_real_postgresql_backup_and_restore_round_trip(
         capture_output=True,
         text=True,
     ).stdout
-    version_match = re.search(r"(\d+)(?:\.\d+)?$", version_output.strip())
+    version_match = re.search(r"PostgreSQL\)\s+(\d+)", version_output)
     assert version_match is not None
     client_major = version_match.group(1)
 
