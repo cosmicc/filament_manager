@@ -1,5 +1,24 @@
 # User Changelog
 
+## 0.6.0 - 08.27.2026
+
+### Added
+
+- Filament Manager now automatically saves and maintains the required start and end G-code in the matched Cura printer configuration.
+- Diagnostics can now schedule compressed database backups, retain the newest automatic snapshots, download or import trusted backup ZIPs, and prepare a controlled catastrophic restore.
+
+### Changed
+
+- The Dashboard now refreshes printer status, active spool, active build plate, and inventory values every 5 seconds and refreshes immediately after reconnecting or returning to the page.
+- Nozzle changes now also verify that Cura still has the Filament Manager start and end scripts.
+- Diagnostics no longer shows the Projection operations / Recent jobs table.
+
+### Fixed
+
+- Fixed Cura's saved printer scripts not showing the required `FILAMENT_MANAGER_START_PRINT` inspection call.
+- Fixed operational Dashboard values taking up to 15 seconds to reflect a printer, spool, or plate change.
+- Fixed a Cura plugin recursion that could prevent Cura from opening and rapidly repeat crashes until the workstation became unstable.
+
 ## 0.5.8 - 08.26.2026
 
 ### Added

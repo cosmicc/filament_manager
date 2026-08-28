@@ -2,7 +2,7 @@
 
 ## Recommended policy
 
-Use **Warn and continue** under **Settings → G-code inspection policy** while testing 0.5.8. Filament Manager still records every mismatch in Print History. Change the setting to **Block mismatches** after the Cura material library, printer macros, and first exact-state records have been verified.
+Use **Warn and continue** under **Settings → G-code inspection policy** while testing 0.6.0. Filament Manager still records every mismatch in Print History. Change the setting to **Block mismatches** after the Cura material library, printer macros, and first exact-state records have been verified.
 
 Blocking pauses virtual-SD execution in Fluidd until Filament Manager can resolve the managed material profile, safely inspect the G-code, and confirm that supported values match. Missing inspection data and an unresolved exact profile also block. The setting is synchronized into Klipper automatically.
 
@@ -11,7 +11,7 @@ Blocking pauses virtual-SD execution in Fluidd until Filament Manager can resolv
 ## Print sequence
 
 1. Select a managed product material in Cura and send the print. Do not slice with a `Template <material type>` entry.
-2. The Filament Manager Cura plugin supplies `FILAMENT_MANAGER_START_PRINT MATERIAL_GUID={material_guid, 0} BED_TEMP={material_bed_temperature_layer_0, 0} EXTRUDER_TEMP={material_print_temperature_layer_0, 0} CHAMBER_TEMP={build_volume_temperature}` at slice time for the selected managed material on the supported position-zero extruder.
+2. The Filament Manager workstation agent saves `FILAMENT_MANAGER_START_PRINT MATERIAL_GUID={material_guid, 0} BED_TEMP={material_bed_temperature_layer_0, 0} EXTRUDER_TEMP={material_print_temperature_layer_0, 0} CHAMBER_TEMP={build_volume_temperature}` as the matched Cura printer's start G-code.
 3. In blocking mode, Fluidd shows the inspection prompt while Filament Manager reads the documented Moonraker file metadata and G-code download endpoints. In warning mode, inspection remains auditable without pausing this step.
 4. If the currently loaded physical spool is an eligible exact match, the macro calls the existing `START_PRINT` with its original temperature values. No unload/load motion runs.
 5. If the spool does not match, Fluidd asks for one exact eligible Spoolman spool. The existing unload routine runs at the loaded filament profile temperature. Only after motion completes does Spoolman become empty.
@@ -24,7 +24,7 @@ Filament Manager delays the print's starting spool snapshot until the preflight/
 
 Run `LOAD_FILAMENT` or `FILAMENT_MANAGER_LOAD_TARGET` with no parameters in Fluidd to open the current manual-load list. It contains each projected, non-empty spool that has a safe nozzle temperature from its newest non-archived exact printer/nozzle profile or linked in-scope template. Manual loading does not require a current exact print profile, while Cura preflight does. There is no Target Spool field to configure. During a print, M600 unloads the tracked filament, clears Spoolman after motion completes, and opens the same replacement chooser. Running M600 or `FILAMENT_MANAGER_LOAD_TARGET` again while that selection is pending reopens the chooser.
 
-A non-null spool selected directly in Spoolman is treated as the requested target, not proof of a physical load. Within the next 15-second state pass, Fluidd opens the guarded confirmation and the worker restores Spoolman's active ID to the last completed physical boundary. If no spool is tracked, choose either **It Is Already Physically Loaded** to adopt the selected spool explicitly or **Insert and Load It** to run the load routine. If another spool is tracked, confirm the unload/load workflow. Filament Manager changes its active-spool record only after that confirmation or completed load. A direct Spoolman clear never claims that a physical unload occurred.
+A non-null spool selected directly in Spoolman is treated as the requested target, not proof of a physical load. Within the next 5-second state pass, Fluidd opens the guarded confirmation and the worker restores Spoolman's active ID to the last completed physical boundary. If no spool is tracked, choose either **It Is Already Physically Loaded** to adopt the selected spool explicitly or **Insert and Load It** to run the load routine. If another spool is tracked, confirm the unload/load workflow. Filament Manager changes its active-spool record only after that confirmation or completed load. A direct Spoolman clear never claims that a physical unload occurred.
 
 If a prompt was closed, run `FILAMENT_MANAGER_LOAD_TARGET` to reopen a pending selection. Run `FILAMENT_MANAGER_SPOOL_STATE` to see the current phase, and use `FILAMENT_MANAGER_ABORT` only when the pending workflow should be cancelled. The last completed physical boundary remains authoritative after cancellation.
 
@@ -42,7 +42,7 @@ After a print ends, an Operator or Administrator can directly save an Excellent,
 
 [`integrations/klipper/filament-manager-macros.cfg`](../integrations/klipper/filament-manager-macros.cfg) is the complete required application macro reference. It must be included last. Filament Manager owns public `M600`, `LOAD_FILAMENT`, and `UNLOAD_FILAMENT` without `rename_existing`; no other included file may define those commands. Keep the printer's physical movement bodies under the exact reserved `_FILAMENT_MANAGER_HARDWARE_LOAD` and `_FILAMENT_MANAGER_HARDWARE_UNLOAD` macro names. The reference continues to wrap the existing public `CANCEL_PRINT` and calls—but does not define or replace—the existing `START_PRINT` and `END_PRINT` macros.
 
-The managed Cura plugin supplies the start call above and `END_PRINT` at runtime only while a Filament Manager material is selected. It does not rewrite the saved Cura machine scripts. If the plugin is unavailable during recovery or diagnosis, those two exact lines are the manual fallback; do not duplicate them in a working managed installation.
+The workstation agent overwrites the matched Cura printer's saved start script with the start call above and its saved end script with `END_PRINT` whenever it installs or repairs a managed library. No manual Cura script setup is required. Keep Cura closed while the agent applies the update; any later script drift is backed up and replaced on the next synchronization.
 
 The application additionally uses:
 

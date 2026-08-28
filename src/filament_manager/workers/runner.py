@@ -13,6 +13,15 @@ from filament_manager.config import get_settings
 from filament_manager.database import get_session_factory
 from filament_manager.logging import configure_logging
 from filament_manager.models.enums import JobStatus
+from filament_manager.services.database_backups import (
+    DatabaseBackupError,
+    acquire_backup_lock,
+    backup_is_due,
+    create_backup_archive,
+    prune_automatic_archives,
+    record_backup_failure,
+    release_backup_lock,
+)
 from filament_manager.telemetry import ServerTelemetry
 
 from .dispatcher import claim_jobs, complete_job, dispatch_job, fail_job
@@ -65,12 +74,35 @@ async def scheduler_loop(telemetry: ServerTelemetry) -> None:
     worker_id = f"{hostname}-scheduler-{uuid4()}"
     started_at = datetime.now(UTC)
     last_heartbeat = 0.0
+    last_backup_check = 0.0
     while True:
         try:
             async with session_factory() as session:
                 scheduled = await schedule_periodic_jobs(session)
                 if scheduled:
                     logger.info("periodic_jobs_scheduled", count=scheduled)
+                if time.monotonic() - last_backup_check >= 60:
+                    due, policy = await backup_is_due(session)
+                    if due and await acquire_backup_lock(session):
+                        try:
+                            archive = await asyncio.to_thread(create_backup_archive, "automatic")
+                            await asyncio.to_thread(
+                                prune_automatic_archives,
+                                policy.retention_count,
+                            )
+                            logger.info(
+                                "automatic_database_backup_completed",
+                                backup_id=str(archive.id),
+                            )
+                        except DatabaseBackupError as error:
+                            await asyncio.to_thread(record_backup_failure)
+                            logger.error(
+                                "automatic_database_backup_failed",
+                                error_class=type(error).__name__,
+                            )
+                        finally:
+                            await release_backup_lock(session)
+                    last_backup_check = time.monotonic()
             if time.monotonic() - last_heartbeat >= 10:
                 await _report_heartbeat(
                     session_factory,

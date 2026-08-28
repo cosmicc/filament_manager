@@ -1,5 +1,6 @@
-"""Deterministic Cura material-profile rendering."""
+"""Deterministic Cura material-profile and machine-setting rendering."""
 
+import configparser
 import re
 import uuid
 import xml.etree.ElementTree as ET
@@ -8,6 +9,7 @@ from decimal import Decimal, InvalidOperation
 from pathlib import Path
 from typing import Any, cast
 
+from .machine_settings import apply_managed_machine_gcode, serialize_cura_config
 from .models import CuraInstallation, CuraMachine
 
 SLUG_PATTERN = re.compile(r"[^a-z0-9]+")
@@ -31,6 +33,7 @@ class RenderedDeployment:
     """Rendered relative files and informational warnings for one installation."""
 
     files: dict[Path, bytes]
+    machine_files: dict[Path, bytes]
     machine: CuraMachine
     warnings: list[str]
     managed_material_setting_keys: frozenset[str]
@@ -200,14 +203,6 @@ MATERIAL_SETTINGS_STATUS_SCHEMA_VERSION = 1
 MATERIAL_SETTINGS_STATUS_PATH = Path(__file__).with_name("material-settings-status.json")
 MANAGED_MATERIAL_EDITS_SCHEMA_VERSION = 1
 MANAGED_MATERIAL_EDITS_PATH = Path(__file__).with_name("managed-material-edits.json")
-MANAGED_MACHINE_START_GCODE = (
-    "FILAMENT_MANAGER_START_PRINT "
-    "MATERIAL_GUID={material_guid, 0} "
-    "BED_TEMP={material_bed_temperature_layer_0, 0} "
-    "EXTRUDER_TEMP={material_print_temperature_layer_0, 0} "
-    "CHAMBER_TEMP={build_volume_temperature}"
-)
-MANAGED_MACHINE_END_GCODE = "END_PRINT"
 GUID_PATTERN = re.compile(
     r"^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
     re.IGNORECASE,
@@ -451,29 +446,6 @@ def _managed_material_value(stack, key):
     return material.getProperty(key, "value")
 
 
-def _managed_machine_gcode(stack, key):
-    """Return the app-owned print boundary for a managed material only."""
-
-    material_stack = stack
-    if not _is_managed_material(material_stack):
-        # Cura resolves machine start/end G-code from the global printer stack,
-        # which intentionally has no material container of its own. This
-        # integration supports the application's single position-zero extruder,
-        # so resolve ownership through that extruder without constructing Cura's
-        # lazy machine manager or changing the saved machine configuration.
-        extruder_list = getattr(stack, "extruderList", None)
-        if not isinstance(extruder_list, (list, tuple)) or not extruder_list:
-            return MISSING_VALUE
-        material_stack = extruder_list[0]
-    if not _is_managed_material(material_stack):
-        return MISSING_VALUE
-    if key == "machine_start_gcode":
-        return MANAGED_MACHINE_START_GCODE
-    if key == "machine_end_gcode":
-        return MANAGED_MACHINE_END_GCODE
-    return MISSING_VALUE
-
-
 def _install_runtime_material_overlay():
     """Make managed values authoritative without placing them in Cura user changes."""
 
@@ -485,9 +457,6 @@ def _install_runtime_material_overlay():
 
     def managed_get_property(stack, key, property_name, *args, **kwargs):
         if property_name == "value":
-            machine_gcode = _managed_machine_gcode(stack, key)
-            if machine_gcode is not MISSING_VALUE:
-                return machine_gcode
             value = _managed_material_value(stack, key)
             if value is not MISSING_VALUE:
                 return value
@@ -866,6 +835,29 @@ def render_deployment(installation: CuraInstallation, payload: dict[str, Any]) -
         machines.append(machine)
     if not machines:
         raise MachineMatchError("No desired material matches a machine in this Cura installation.")
+    machine = machines[0]
+    try:
+        machine_relative_path = machine.source_path.relative_to(installation.data_path)
+    except ValueError as error:
+        raise MachineMatchError(
+            "The matching Cura machine configuration is outside its installation."
+        ) from error
+    machine_path = installation.data_path / machine_relative_path
+    if (
+        machine_path.is_symlink()
+        or not machine_path.is_file()
+        or machine_path.stat().st_size > 512 * 1024
+        or not machine_path.resolve().is_relative_to(installation.data_path.resolve())
+    ):
+        raise MachineMatchError("The matching Cura machine configuration is unsafe.")
+    machine_parser = configparser.ConfigParser(interpolation=None, strict=False)
+    try:
+        machine_parser.read(machine_path, encoding="utf-8")
+    except (OSError, UnicodeError, configparser.Error) as error:
+        raise MachineMatchError("The matching Cura machine configuration is invalid.") from error
+    if not machine_parser.has_section("general"):
+        raise MachineMatchError("The matching Cura machine configuration is invalid.")
+    apply_managed_machine_gcode(machine_parser)
     files.update(
         _visibility_plugin_files(
             managed_setting_keys,
@@ -877,7 +869,8 @@ def render_deployment(installation: CuraInstallation, payload: dict[str, Any]) -
     )
     return RenderedDeployment(
         files=files,
-        machine=machines[0],
+        machine_files={machine_relative_path: serialize_cura_config(machine_parser)},
+        machine=machine,
         warnings=warnings,
         managed_material_setting_keys=managed_setting_keys,
         cleanup_material_setting_keys=managed_setting_keys | retired_setting_keys,

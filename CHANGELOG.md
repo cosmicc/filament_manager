@@ -1,5 +1,28 @@
 # Changelog
 
+## 0.6.0 - 08.27.2026
+
+### Added
+
+- Added transactional workstation-agent ownership of the matched Cura machine's saved print start and end G-code, including backup, rollback, manifest drift detection, and automatic reapplication.
+- Added dashboard polling coverage that verifies printer, active-spool, active-plate, and inventory changes replace the displayed snapshot together.
+- Added configurable automatic snapshots of the canonical Filament Manager PostgreSQL database, defaulting to every 24 hours with the newest ten automatic ZIP archives retained.
+- Added validated backup download/import, exact-confirmation restore preparation, pre-restore safety snapshots, and a dedicated stopped-service database restore command that revokes restored browser sessions.
+
+### Changed
+
+- Changed the Dashboard and the server-side Moonraker active-spool/build-plate reconciliation default from 15 seconds to 5 seconds, with immediate refresh after reconnecting or returning to the page.
+- Changed Cura synchronization to save the exact `FILAMENT_MANAGER_START_PRINT` and `END_PRINT` boundaries in the matched machine configuration instead of supplying them only through the runtime material overlay.
+- Changed nozzle synchronization to reassert the managed saved start/end scripts in the same atomic machine-setting update.
+- Changed every server, browser, and workstation-agent version surface to 0.6.0 and incremented the workstation renderer revision to 15 so existing managed installations receive the saved machine scripts.
+- Changed Diagnostics to show database backup scheduling and recovery archives at the bottom while removing the Projection operations / Recent jobs table completely.
+
+### Fixed
+
+- Fixed Dashboard values remaining stale for up to 15 seconds after printer, physical spool, or build-plate changes.
+- Fixed managed Cura start/end integration depending on runtime plugin interception instead of being visibly and persistently configured on the matched Cura printer.
+- Fixed the v0.5.8 Cura plugin entering an infinite `getProperty`/`extruderList` recursion that could generate hundreds of megabytes of errors, repeatedly crash Cura, and destabilize the workstation.
+
 ## 0.5.8 - 08.26.2026
 
 ### Added
