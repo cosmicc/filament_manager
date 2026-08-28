@@ -1,7 +1,6 @@
 """Safely select an existing Cura nozzle variant for an exact local machine."""
 
 import configparser
-import io
 import json
 import os
 import re
@@ -12,6 +11,7 @@ from pathlib import Path
 
 from .apply import _atomic_write, _deployment_key, _safe_target
 from .config import data_path
+from .machine_settings import apply_managed_machine_gcode, serialize_cura_config
 from .models import CuraInstallation, CuraMachine
 
 
@@ -145,14 +145,6 @@ def _matching_definition_change(
     return candidates[0] if len(candidates) == 1 else None
 
 
-def _serialized(parser: configparser.ConfigParser) -> bytes:
-    """Serialize one Cura INI document with its established safe parser."""
-
-    output = io.StringIO()
-    parser.write(output, space_around_delimiters=True)
-    return output.getvalue().encode("utf-8")
-
-
 def _variant_directories(installation: CuraInstallation) -> list[Path]:
     """Return bounded, existing Cura variant roots without searching the workstation broadly."""
 
@@ -241,6 +233,7 @@ def apply_nozzle_update(
     if not machine_parser.has_section("metadata"):
         machine_parser.add_section("metadata")
     machine_parser["metadata"]["nozzle_diameter"] = format(target_diameter, "f")
+    apply_managed_machine_gcode(machine_parser)
     if variant_id is not None:
         extruder_parser["containers"]["5"] = variant_id
     if not definition_change_parser.has_section("values"):
@@ -248,15 +241,15 @@ def apply_nozzle_update(
     definition_change_parser["values"]["machine_nozzle_size"] = format(target_diameter, "f")
 
     targets = {
-        machine_target: _serialized(machine_parser),
+        machine_target: serialize_cura_config(machine_parser),
         _safe_target(
             installation.data_path,
             extruder_path.relative_to(installation.data_path),
-        ): _serialized(extruder_parser),
+        ): serialize_cura_config(extruder_parser),
         _safe_target(
             installation.data_path,
             definition_change_path.relative_to(installation.data_path),
-        ): _serialized(definition_change_parser),
+        ): serialize_cura_config(definition_change_parser),
     }
     originals = {target: target.read_bytes() for target in targets}
     backup_directory = data_path() / "nozzle-backups" / deployment_key

@@ -77,7 +77,7 @@ def test_example_environment_matches_the_database_contract() -> None:
     assert values["FILAMENT_MANAGER_DATABASE_MIGRATION_LOCK_TIMEOUT_SECONDS"] == "300"
     assert values["SPOOLMAN_RECONCILE_INTERVAL_MINUTES"] == "1"
     assert values["SYNC_OUTBOX_LOCK_TIMEOUT_SECONDS"] == "300"
-    assert values["MOONRAKER_STATE_INTERVAL_SECONDS"] == "15"
+    assert values["MOONRAKER_STATE_INTERVAL_SECONDS"] == "5"
     assert values["MOONRAKER_PRINT_INTERVAL_SECONDS"] == "5"
     assert values["MOONRAKER_INFO_INTERVAL_SECONDS"] == "300"
     assert values["BUGSNAG_ENABLED"] == "false"
@@ -93,7 +93,7 @@ def test_example_environment_matches_the_database_contract() -> None:
         content = _read(relative_path)
         assert "${SPOOLMAN_RECONCILE_INTERVAL_MINUTES:-1}" in content
         assert "${SYNC_OUTBOX_LOCK_TIMEOUT_SECONDS:-300}" in content
-        assert "${MOONRAKER_STATE_INTERVAL_SECONDS:-15}" in content
+        assert "${MOONRAKER_STATE_INTERVAL_SECONDS:-5}" in content
         assert "${MOONRAKER_PRINT_INTERVAL_SECONDS:-5}" in content
         assert "${MOONRAKER_INFO_INTERVAL_SECONDS:-300}" in content
         assert "${BUGSNAG_ENABLED:-false}" in content
@@ -141,6 +141,8 @@ def test_image_runs_automatic_migrations_through_its_entrypoint() -> None:
         assert "FILAMENT_MANAGER_DATABASE_AUTO_MIGRATE" in content
         assert "FILAMENT_MANAGER_DATABASE_MIGRATION_LOCK_TIMEOUT_SECONDS" in content
 
+    assert "postgresql-client-17" in dockerfile
+
 
 def test_non_http_services_disable_the_image_healthcheck() -> None:
     """Workers and local one-shot tools must not inherit the web HTTP probe."""
@@ -153,9 +155,21 @@ def test_non_http_services_disable_the_image_healthcheck() -> None:
         deployment = _read_yaml(relative_path)
         services = deployment["services"]
         assert services["worker"]["healthcheck"] == {"disable": True}
+        assert services["database-restore"]["healthcheck"] == {"disable": True}
+        assert services["database-restore"]["command"] == [
+            "filament-manager-cli",
+            "restore-pending",
+            "--confirm",
+        ]
 
     local_services = _read_yaml("docker/docker-compose.yml")["services"]
     assert "bootstrap-admin" not in local_services
+    assert local_services["database-restore"]["profiles"] == ["recovery"]
+
+    for relative_path in ("docker-stack.yml", "docker/filament-manager-stack.yml"):
+        restore_service = _read_yaml(relative_path)["services"]["database-restore"]
+        assert restore_service["deploy"]["replicas"] == 0
+        assert restore_service["deploy"]["restart_policy"] == {"condition": "none"}
 
 
 def test_klipper_macro_variables_are_valid_python_literals() -> None:

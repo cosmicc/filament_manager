@@ -32,7 +32,7 @@ Restore the Spoolman database and stack independently. If the database cannot be
 - completed outbox jobs: retain for troubleshooting, then archive
 - calibration artifacts: retain with profile versions
 - Spoolman logs: retain according to centralized logging policy
-- sanitized Cura recovery snapshots: newest ten distinct points per workstation installation and Cura version
+- sanitized Cura recovery snapshots: newest fifteen distinct automatic points per workstation installation and Cura version, plus named points retained until explicit deletion
 - workstation-local pre-restore archives: retain according to workstation privacy/storage policy and remove deliberately when no longer required
 
 ## Quarterly recovery test

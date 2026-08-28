@@ -147,6 +147,16 @@ export interface DashboardPrinterState {
   bed_target_c: string | null
   chamber_temperature_c: string | null
   chamber_target_c: string | null
+  print_job_id: string | null
+  thumbnail_url: string | null
+  estimated_duration_seconds: string | null
+  print_duration_seconds: string | null
+  predicted_filament_weight_g: string | null
+  actual_filament_weight_g: string | null
+  actual_filament_cost: string | null
+  predicted_filament_cost: string | null
+  cost_currency: string | null
+  cost_complete: boolean
   checked_at: string
 }
 
@@ -196,6 +206,7 @@ export interface MaterialSettings {
   chamber_temp_c: string | null
   extruder_temp_c: string
   bed_temp_c: string
+  initial_bed_temp_c: string
   flow_percent: string
   print_speed_mm_s: string | null
   outer_wall_speed_mm_s: string | null
@@ -649,6 +660,9 @@ export interface PrintMaterialSegment {
   ended_at: string | null
   actual_filament_length_mm: string | null
   actual_filament_weight_g: string | null
+  cost_per_gram: string | null
+  actual_filament_cost: string | null
+  cost_currency: string | null
 }
 
 export interface PrintJob {
@@ -692,6 +706,7 @@ export interface PrintJob {
   line_width_mm: string | null
   extruder_temp_c: string | null
   bed_temp_c: string | null
+  initial_bed_temp_c: string | null
   chamber_temp_c: string | null
   print_speed_mm_s: string | null
   pressure_advance: string | null
@@ -708,6 +723,16 @@ export interface PrintJob {
   support_configuration: Record<string, unknown>
   machine_name: string | null
   timelapse_url: string | null
+  thumbnail_url: string | null
+  thumbnail_width: number | null
+  thumbnail_height: number | null
+  actual_filament_cost: string | null
+  predicted_filament_cost: string | null
+  cost_currency: string | null
+  cost_currency_conflict: boolean
+  cost_complete: boolean
+  priced_filament_weight_g: string
+  unpriced_filament_weight_g: string
   started_at: string | null
   ended_at: string | null
   record_version: number
@@ -792,6 +817,49 @@ export interface ProjectionRebuildResult {
   status: string
   queued_jobs: number
   categories: Record<string, number>
+}
+
+export interface DatabaseBackupPolicy {
+  enabled: boolean
+  interval_hours: number
+  retention_count: number
+  record_version: number
+}
+
+export interface DatabaseBackupArchive {
+  id: string
+  created_at: string
+  application_version: string
+  database_revision: string
+  trigger: 'automatic' | 'manual' | 'pre_restore' | string
+  storage_kind: 'automatic' | 'manual' | 'imported' | string
+  filename: string
+  size_bytes: number
+  archive_sha256: string
+  dump_sha256: string
+}
+
+export interface DatabaseBackupOverview {
+  policy: DatabaseBackupPolicy
+  status: {
+    status: string
+    checked_at: string | null
+    last_success_at: string | null
+  }
+  pending_restore: {
+    status: string
+    request_id?: string
+    backup_id?: string
+    requested_at?: string
+  } | null
+  archives: DatabaseBackupArchive[]
+}
+
+export interface DatabaseRestorePreparation {
+  status: 'pending_maintenance' | string
+  request_id: string
+  backup_id: string
+  requested_at: string
 }
 
 export interface OperatorNotification {

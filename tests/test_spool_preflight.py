@@ -94,7 +94,7 @@ def test_catalog_literals_survive_klipper_extended_parameter_parsing() -> None:
 
 
 def test_macro_reference_compiles_and_preserves_existing_motion_macros() -> None:
-    """The shipped reference wraps, rather than replaces, printer motion routines."""
+    """The reference owns public spool commands and calls reserved motion routines."""
 
     parser = configparser.RawConfigParser(strict=True)
     assert parser.read(MACRO_PATH)
@@ -118,15 +118,22 @@ def test_macro_reference_compiles_and_preserves_existing_motion_macros() -> None
 
     assert not parser.has_section("gcode_macro START_PRINT")
     assert not parser.has_section("gcode_macro END_PRINT")
-    assert parser.get("gcode_macro M600", "rename_existing") == "M600.1"
-    assert parser.get("gcode_macro LOAD_FILAMENT", "rename_existing") == "_FILAMENT_MANAGER_HARDWARE_LOAD"
-    assert parser.get("gcode_macro UNLOAD_FILAMENT", "rename_existing") == "_FILAMENT_MANAGER_HARDWARE_UNLOAD"
+    assert not parser.has_option("gcode_macro M600", "rename_existing")
+    assert "M600.1" not in MACRO_PATH.read_text(encoding="utf-8")
+    assert not parser.has_option("gcode_macro LOAD_FILAMENT", "rename_existing")
+    assert not parser.has_option("gcode_macro UNLOAD_FILAMENT", "rename_existing")
+    assert not parser.has_section("gcode_macro _FILAMENT_MANAGER_HARDWARE_LOAD")
+    assert not parser.has_section("gcode_macro _FILAMENT_MANAGER_HARDWARE_UNLOAD")
 
     load_target = parser.get("gcode_macro FILAMENT_MANAGER_LOAD_TARGET", "gcode")
     assert "_FILAMENT_MANAGER_PROMPT_ALL_SPOOLS" in load_target
     assert "Select a Target Spool for FILAMENT_MANAGER_LOAD_TARGET" not in load_target
     assert not parser.has_section("gcode_macro _FILAMENT_MANAGER_USE_STAGED_TARGET")
     assert "FILAMENT_MANAGER_LOAD_TARGET" in parser.get("gcode_macro LOAD_FILAMENT", "gcode")
+    assert "_FILAMENT_MANAGER_HARDWARE_LOAD" in parser.get(
+        "gcode_macro _FILAMENT_MANAGER_LOAD_SELECTED", "gcode"
+    )
+    assert "_FILAMENT_MANAGER_HARDWARE_UNLOAD" in parser.get("gcode_macro UNLOAD_FILAMENT", "gcode")
     manual_prompt = parser.get("gcode_macro _FILAMENT_MANAGER_PROMPT_ALL_SPOOLS", "gcode")
     assert "state.manual_spools" in manual_prompt
     assert "published profile" not in manual_prompt

@@ -11,8 +11,10 @@
 - Google output escaping
 - idempotency-key generation
 - Spoolman extra-field merge
-- deterministic Cura material GUIDs, merged managed cost preferences, separate bounded strict-print/manual-load catalogs, exact-profile/template load-temperature fallback, Klipper macro syntax, and physical unload/load commit ordering
+- deterministic Cura material GUIDs, merged managed cost preferences, separate bounded strict-print/manual-load catalogs, exact-profile/template load-temperature fallback, Klipper macro syntax, direct ownership of public load/unload commands without nonexistent rename targets, reserved physical-routine calls, and physical unload/load commit ordering
 - Cura Material Settings preference alignment and drift repair, active-definition exposure checks, manifest-bound value-free receipts, required-plugin version/readiness reporting, and sanitized Diagnostics summaries
+- Cura managed edit capture and runtime material-value overlay without writing managed values into the quality-save user layer
+- safe Moonraker thumbnail selection, traversal rejection, bounded metadata-free WebP normalization, immutable segment cost totals, and partial/mixed-currency cost handling
 - derived completed-print counts for one plate side, captured physical nozzle, and each distinct start/M600 spool
 - manual Side B creation, duplicate rejection, and mesh-unavailable initial state
 - Cura recovery path/setting allowlists, credential/endpoint/path removal, deterministic checksums, semantic plugin inventory, automatic and named captures, metadata edits, durable confirmed deletion, exact-version enforcement, reset detection, retention, local rollback, safe Cura2Moonraker behavior merging, and current connection-secret preservation
@@ -61,10 +63,11 @@ Mock or containerize:
 16. Read-only recovery validation persists sanitized results without changing canonical records, and projection rebuild queues complete derived work.
 17. A completed print with repeated M600 segments counts each distinct spool once and its captured nozzle and plate side once.
 18. A closed Cura installation captures a sanitized recovery point; a simulated reset cannot displace it; an Administrator-confirmed exact-version restore rolls back safely on write failure and is followed by canonical material synchronization.
-19. A managed Cura installation reports 53 of 53 exposed settings after initialization; missing or disabled Material Settings/Klipper Settings plugins produce a bounded error with exact missing keys, and a new deployment remains waiting until Cura verifies its matching catalog checksum.
+19. A managed Cura installation reports 54 of 54 exposed settings after initialization; managed values remain effective while a newly saved Cura quality profile contains no managed material keys; missing or disabled Material Settings/Klipper Settings plugins produce a bounded error with exact missing keys, and a new deployment remains waiting until Cura verifies its matching catalog checksum.
 20. Build-plate shape changes show only the applicable rectangular or round dimensions and clear hidden geometry, while a rejected template value is centered, focused, strongly highlighted, and paired with its sanitized inline reason.
 21. Build Plates renders compact intrinsic-width actions and readable side cards on desktop, retains every physical and maintenance detail, and changes only the narrow mobile action groups to full-width 44-pixel controls; shared action rows on Nozzles, Diagnostics, and spool details do not stretch unnecessarily.
 22. Spools, Filaments, Build Plates, and Nozzles default to their specified List/Cards/Detailed presentation, persist each page selection independently, search consistently, and retain complete record actions from every presentation; Spools has no permanent selection panel.
+23. Current and historical prints render sanitized stored thumbnails, useful duration/filament comparisons, and immutable captured-cost totals on desktop and narrow mobile layouts without exposing Moonraker paths.
 
 ## Swarm tests
 

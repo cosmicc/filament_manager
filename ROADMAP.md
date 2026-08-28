@@ -635,8 +635,8 @@ device.offline
 Then Home Assistant, Node-RED, Discord, MQTT bridges, etc. become trivial.
 
 
-- ~~**Backup/restore validation**~~
-PostgreSQL remains canonical. The Diagnostics page and application CLI now run read-only recovery validation for migrations, measurement integrity, device credentials, Spoolman projection consistency, Google publication state, and Cura deployment state. Administrators can safely queue complete projection rebuilds without changing canonical records.
+- ~~**Backup/restore validation and canonical snapshots**~~
+PostgreSQL remains canonical. The Diagnostics page and application CLI run read-only recovery validation for migrations, measurement integrity, device credentials, Spoolman projection consistency, Google publication state, and Cura deployment state. Administrators can safely queue complete projection rebuilds without changing canonical records. Diagnostics also schedules and retains compressed canonical database snapshots, downloads/imports trusted ZIP archives, and prepares a typed-confirmed stopped-service restore that first creates a safety backup.
 
 filament-manager-cli verify
 

@@ -148,7 +148,7 @@ Installing a different diameter queues a closed-Cura update to one exact machine
 
 Recovery endpoints list safe metadata, queue an exact-installation named capture, edit only name/description with optimistic concurrency, delete one confirmed unreferenced point, and queue confirmed exact-version restore. Automatic snapshots are content-deduplicated; deleting one stores only its exact version/content identity so the unchanged backup stays absent, while named capture requests remain idempotent by deployment and may intentionally retain identical settings.
 
-Print responses expose an application-local timelapse link only after a conservative Moonraker file association. The link requires application authentication, supports video range requests, and never reveals the configured Moonraker origin or API key.
+Print responses expose application-local thumbnail and timelapse links only when the corresponding stored/associated media exists. Thumbnail responses return the sanitized stored WebP with private caching, ETag, and `nosniff`; timelapse responses support video range requests. Both require application authentication and never reveal the configured Moonraker origin or API key. Print and segment responses derive actual/predicted filament cost from immutable captured cost bases, report priced and unpriced weight, and return no combined cost when currencies are incompatible.
 
 ### Devices
 

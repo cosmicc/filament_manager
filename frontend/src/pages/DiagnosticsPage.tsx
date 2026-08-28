@@ -1,7 +1,8 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { Activity, Database, Download, ExternalLink, RefreshCw, RotateCcw, ShieldCheck, TriangleAlert } from 'lucide-react'
+import { Activity, Database, Download, ExternalLink, RefreshCw, ShieldCheck, TriangleAlert } from 'lucide-react'
 import { apiFetch } from '../api/client'
-import type { DiagnosticCheck, DiagnosticOverview, DiagnosticRun, OutboxJob, ProjectionRebuildResult, VersionStatus } from '../api/types'
+import type { DiagnosticCheck, DiagnosticOverview, DiagnosticRun, ProjectionRebuildResult, VersionStatus } from '../api/types'
+import { DatabaseBackupPanel } from '../components/DatabaseBackupPanel'
 import { EmptyState } from '../components/EmptyState'
 import { LoadingState } from '../components/LoadingState'
 import { PageHeader } from '../components/PageHeader'
@@ -29,19 +30,15 @@ export default function DiagnosticsPage() {
   const overview = useQuery({ queryKey: ['diagnostics'], queryFn: () => apiFetch<DiagnosticOverview>('/diagnostics'), refetchInterval: 30_000 })
   const version = useQuery({ queryKey: ['diagnostics-version'], queryFn: () => apiFetch<VersionStatus>('/diagnostics/version'), staleTime: 15 * 60_000 })
   const runs = useQuery({ queryKey: ['diagnostic-runs'], queryFn: () => apiFetch<DiagnosticRun[]>('/diagnostics/validation-runs') })
-  const jobs = useQuery({ queryKey: ['jobs'], queryFn: () => apiFetch<OutboxJob[]>('/jobs?limit=100'), refetchInterval: 10_000 })
-  const refresh = async () => { await Promise.all([client.invalidateQueries({ queryKey: ['diagnostics'] }), client.invalidateQueries({ queryKey: ['diagnostics-version'] }), client.invalidateQueries({ queryKey: ['diagnostic-runs'] }), client.invalidateQueries({ queryKey: ['jobs'] })]) }
+  const refresh = async () => { await Promise.all([client.invalidateQueries({ queryKey: ['diagnostics'] }), client.invalidateQueries({ queryKey: ['diagnostics-version'] }), client.invalidateQueries({ queryKey: ['diagnostic-runs'] }), client.invalidateQueries({ queryKey: ['database-backups'] })]) }
   const validation = useMutation({ mutationFn: () => apiFetch<DiagnosticRun>('/diagnostics/validation-runs', { method: 'POST' }), onSuccess: refresh })
   const rebuild = useMutation({
     mutationFn: () => apiFetch<ProjectionRebuildResult>('/diagnostics/projection-rebuild', { method: 'POST' }),
     onSuccess: refresh,
   })
-  const action = useMutation({ mutationFn: (path: string) => apiFetch(path, { method: 'POST' }), onSuccess: refresh })
-  const retry = useMutation({ mutationFn: (id: string) => apiFetch(`/jobs/${id}/retry`, { method: 'POST' }), onSuccess: refresh })
-  const canOperate = user?.role !== 'viewer'
   const isAdministrator = user?.role === 'administrator'
   const latestRun = validation.data ?? runs.data?.[0]
-  const error = validation.error ?? rebuild.error ?? action.error ?? retry.error
+  const error = validation.error ?? rebuild.error
 
   return <div>
     <PageHeader eyebrow="Operations and recovery" title="Diagnostics" description="Connection, synchronization, worker, queue, validation, and bounded error information in one place." actions={<button className="button" onClick={() => void refresh()} disabled={overview.isFetching || version.isFetching}><RefreshCw size={16} /> Check now</button>} />
@@ -73,6 +70,6 @@ export default function DiagnosticsPage() {
       {overview.data?.failure_groups?.length ? <section><div className="section-heading"><div><p className="eyebrow">Actionable projection failures</p><h2><TriangleAlert size={20} /> Latest cause by job type</h2><p>One sanitized representative is always retained for every failing projection type, even when newer errors would otherwise push it out of the recent log.</p></div></div><div className="mobile-card-list mobile-card-list--always">{overview.data.failure_groups.map((failure) => <article className="mobile-data-card" key={failure.job_type}><div><strong>{titleCase(failure.job_type.replaceAll('.', ' '))}</strong><StatusPill status={failure.status} /></div><span>{failure.count} actionable · attempt {failure.attempts} of {failure.max_attempts} · {failure.error_class}</span><small>{failure.detail ?? 'No additional detail retained.'} Last failure {dateTime(failure.occurred_at)}.</small></article>)}</div></section> : null}
       <section><div className="section-heading"><div><p className="eyebrow">Bounded operational log</p><h2><TriangleAlert size={20} /> Recent errors</h2><p>This history remains available after recovery. Entries marked History do not change the live health checks above.</p></div><a className="button" href="/api/v1/diagnostics/log.txt"><Download size={16} /> Download log</a></div>{overview.data?.error_log.length ? <div className="mobile-card-list mobile-card-list--always">{overview.data.error_log.map((entry, index) => <article className="mobile-data-card" key={`${entry.source}-${entry.occurred_at}-${index}`}><div><strong>{entry.summary}</strong><StatusPill status={entry.current ? entry.severity : 'disabled'} label={entry.current ? titleCase(entry.severity) : 'History'} /></div><span>{entry.source} · {dateTime(entry.occurred_at)}</span><small>{entry.detail ?? 'No additional detail retained.'}</small></article>)}</div> : <EmptyState icon={Activity} title="No recent operational errors" description="Failed projections, Cura synchronization, and active error notifications appear here without external response bodies." />}</section>
     </>}
-    <section><div className="section-heading"><div><p className="eyebrow">Projection operations</p><h2>Recent jobs</h2></div>{canOperate ? <div className="detail-actions"><button className="button" disabled={action.isPending} onClick={() => action.mutate('/integrations/spoolman/reconcile')}>Queue Spoolman reconciliation</button><button className="button" disabled={action.isPending} onClick={() => action.mutate('/integrations/google/publish')}>Publish pending Google updates</button></div> : null}</div>{jobs.isLoading ? <LoadingState /> : !jobs.data?.length ? <EmptyState icon={RefreshCw} title="No jobs recorded" description="Projection work appears here after canonical records change." /> : <div className="table-card"><table><thead><tr><th>Job</th><th>Aggregate</th><th>Status</th><th>Attempts</th><th>Latest failure</th><th>Created</th><th>Completed</th><th /></tr></thead><tbody>{jobs.data.map((job) => <tr key={job.id}><td><strong>{titleCase(job.job_type.replaceAll('.', ' '))}</strong></td><td>{titleCase(job.aggregate_type)}</td><td><StatusPill status={job.status} /></td><td>{job.attempts}</td><td>{job.last_error_class ? `${job.last_error_class} · ${dateTime(job.last_error_at)}` : '—'}</td><td>{dateTime(job.created_at)}</td><td>{dateTime(job.completed_at)}</td><td>{isAdministrator && ['failed', 'dead'].includes(job.status) ? <button className="icon-button" onClick={() => retry.mutate(job.id)} title="Retry job"><RotateCcw size={17} /></button> : null}</td></tr>)}</tbody></table></div>}</section>
+    <DatabaseBackupPanel isAdministrator={isAdministrator} />
   </div>
 }

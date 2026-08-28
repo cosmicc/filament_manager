@@ -1,5 +1,6 @@
 """PostgreSQL-backed Alembic upgrade and metadata-drift tests."""
 
+import json
 from decimal import Decimal
 from uuid import uuid4
 
@@ -109,39 +110,63 @@ def test_template_only_settings_migration_appends_corrected_profile_snapshot(
             )
             session.add(product)
             session.flush()
-            source_profile = MaterialProfile(
-                filament_product_id=product.id,
-                printer_id=printer.id,
-                nozzle_diameter_mm=Decimal("0.4"),
-                version=1,
-                status=ProfileStatus.PUBLISHED,
-                extruder_temp_c=Decimal("215"),
-                bed_temp_c=Decimal("60"),
-                flow_percent=Decimal("100"),
-                cooling_enabled=True,
-                cooling_min_percent=Decimal("20"),
-                cooling_max_percent=Decimal("100"),
-                pressure_advance=Decimal("0.09"),
-                filament_density_g_cm3=Decimal("1.24"),
-                base_template_revision_id=revision.id,
-                setting_overrides={
-                    "extruder_temp_c": "215",
-                    "pressure_advance": "0.09",
-                    "cura_extensions": {
-                        "retraction_enable": False,
-                        "acceleration_print": "9000",
-                        "acceleration_travel": "10000",
-                        "klipper_smooth_time_factor": "0.08",
-                    },
-                },
-                cura_extensions={
+            # Seed through the historical schema rather than today's ORM. The
+            # current mapping intentionally contains columns that do not exist
+            # until later revisions, including ``initial_bed_temp_c``.
+            setting_overrides = {
+                "extruder_temp_c": "215",
+                "pressure_advance": "0.09",
+                "cura_extensions": {
                     "retraction_enable": False,
                     "acceleration_print": "9000",
                     "acceleration_travel": "10000",
                     "klipper_smooth_time_factor": "0.08",
                 },
+            }
+            cura_extensions = {
+                "retraction_enable": False,
+                "acceleration_print": "9000",
+                "acceleration_travel": "10000",
+                "klipper_smooth_time_factor": "0.08",
+            }
+            session.execute(
+                text(
+                    """
+                    INSERT INTO material_profiles (
+                        id, filament_product_id, printer_id, nozzle_diameter_mm,
+                        version, status, extruder_temp_c, bed_temp_c, flow_percent,
+                        cooling_enabled, cooling_min_percent, cooling_max_percent,
+                        pressure_advance, filament_density_g_cm3,
+                        source_template_revision_id, setting_overrides,
+                        cura_extensions_schema_version, cura_extensions, record_version
+                    ) VALUES (
+                        :id, :filament_product_id, :printer_id, :nozzle_diameter_mm,
+                        1, CAST('PUBLISHED' AS profile_status), :extruder_temp_c,
+                        :bed_temp_c, :flow_percent, true, :cooling_min_percent,
+                        :cooling_max_percent, :pressure_advance,
+                        :filament_density_g_cm3, :source_template_revision_id,
+                        CAST(:setting_overrides AS jsonb), 1,
+                        CAST(:cura_extensions AS jsonb), 1
+                    )
+                    """
+                ),
+                {
+                    "id": uuid4(),
+                    "filament_product_id": product.id,
+                    "printer_id": printer.id,
+                    "nozzle_diameter_mm": Decimal("0.4"),
+                    "extruder_temp_c": Decimal("215"),
+                    "bed_temp_c": Decimal("60"),
+                    "flow_percent": Decimal("100"),
+                    "cooling_min_percent": Decimal("20"),
+                    "cooling_max_percent": Decimal("100"),
+                    "pressure_advance": Decimal("0.09"),
+                    "filament_density_g_cm3": Decimal("1.24"),
+                    "source_template_revision_id": revision.id,
+                    "setting_overrides": json.dumps(setting_overrides),
+                    "cura_extensions": json.dumps(cura_extensions),
+                },
             )
-            session.add(source_profile)
             session.commit()
             product_id = product.id
 
@@ -315,7 +340,7 @@ def test_previous_schema_automatically_upgrades_to_metadata_head(
 
         upgrade_database(DatabaseConfig(url=database_url))
         with engine.connect() as connection:
-            assert connection.scalar(text("SELECT version_num FROM alembic_version")) == "f8a9b0c1d234"
+            assert connection.scalar(text("SELECT version_num FROM alembic_version")) == "a9b0c1d2e345"
             assert (
                 connection.scalar(
                     text(
@@ -517,6 +542,16 @@ def test_previous_schema_automatically_upgrades_to_metadata_head(
                 text("DELETE FROM outbox_jobs WHERE id = '10000000-0000-0000-0000-000000000011'")
             )
         assert "nozzle_id" in {column["name"] for column in inspector.get_columns("print_jobs")}
+        assert "initial_bed_temp_c" in profile_columns
+        assert {
+            "initial_bed_temp_c",
+            "thumbnail_data",
+            "thumbnail_media_type",
+            "thumbnail_sha256",
+            "thumbnail_width",
+            "thumbnail_height",
+            "thumbnail_checked_at",
+        } <= {column["name"] for column in inspector.get_columns("print_jobs")}
         assert {
             "capture_request_id",
             "capture_kind",

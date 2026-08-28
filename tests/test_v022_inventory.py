@@ -3,6 +3,7 @@
 from collections.abc import AsyncIterator
 from datetime import UTC, datetime
 from decimal import Decimal
+from pathlib import Path
 
 import httpx
 import pytest
@@ -63,6 +64,7 @@ def _settings(database_url: str) -> Settings:
 @pytest.mark.asyncio
 async def test_physical_nozzle_side_b_and_distinct_completed_print_counts(
     monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
 ) -> None:
     """Count only completed jobs and count each M600 spool once per print."""
 
@@ -148,6 +150,7 @@ async def test_physical_nozzle_side_b_and_distinct_completed_print_counts(
         from filament_manager import config as config_module
         from filament_manager import main
         from filament_manager.api.routes import diagnostics as diagnostic_routes
+        from filament_manager.services import database_backups
 
         async def recovery_validation(_: AsyncSession) -> dict[str, object]:
             """Return deterministic validation evidence without external network calls."""
@@ -203,6 +206,12 @@ async def test_physical_nozzle_side_b_and_distinct_completed_print_counts(
         monkeypatch.setattr(config_module, "get_settings", lambda: settings)
         monkeypatch.setattr(main, "get_settings", lambda: settings)
         monkeypatch.setattr(events, "get_settings", lambda: settings)
+        monkeypatch.setattr(database_backups, "get_settings", lambda: settings)
+        monkeypatch.setattr(
+            database_backups,
+            "backup_root",
+            lambda: tmp_path / "database-backups",
+        )
         monkeypatch.setattr(diagnostic_routes, "run_recovery_validation", recovery_validation)
         monkeypatch.setattr(diagnostic_routes, "operational_overview", diagnostic_overview)
         monkeypatch.setattr(diagnostic_routes, "version_status", version_check)
@@ -253,6 +262,15 @@ async def test_physical_nozzle_side_b_and_distinct_completed_print_counts(
             assert version_response.status_code == 200, version_response.text
             assert version_response.json()["running_version"] == "0.2.2"
             assert version_response.json()["status"] == "current"
+            backup_overview = await client.get("/api/v1/diagnostics/database-backups")
+            assert backup_overview.status_code == 200, backup_overview.text
+            assert backup_overview.json()["policy"] == {
+                "enabled": True,
+                "interval_hours": 24,
+                "retention_count": 10,
+                "record_version": 0,
+            }
+            assert backup_overview.json()["archives"] == []
             diagnostic_log = await client.get("/api/v1/diagnostics/log.txt")
             assert diagnostic_log.status_code == 200, diagnostic_log.text
             assert diagnostic_log.headers["content-type"].startswith("text/plain")

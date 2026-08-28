@@ -49,6 +49,7 @@ def settings_from_template(snapshot: dict[str, object]) -> dict[str, object]:
         "chamber_temp_c",
         "extruder_temp_c",
         "bed_temp_c",
+        "initial_bed_temp_c",
         "flow_percent",
         "print_speed_mm_s",
         "outer_wall_speed_mm_s",

@@ -15,7 +15,8 @@ export const typedCuraKeys = new Set([
   'build_volume_temperature', 'cool_fan_enabled', 'cool_fan_speed',
   'cool_fan_speed_min', 'klipper_pressure_advance_factor',
   'ironing_flow', 'ironing_line_spacing', 'speed_ironing',
-  'material_bed_temperature', 'material_flow', 'material_print_temperature',
+  'material_bed_temperature', 'material_bed_temperature_layer_0',
+  'material_flow', 'material_print_temperature',
   'retraction_amount', 'retraction_prime_speed', 'retraction_retract_speed',
   'retraction_speed', 'speed_infill', 'speed_layer_0',
   'speed_print', 'speed_print_layer_0', 'speed_support', 'speed_topbottom',
@@ -34,6 +35,7 @@ const coreFields: Array<{
 }> = [
   { key: 'extruder_temp_c', label: 'Printing temperature', unit: '°C', required: true, precision: 0 },
   { key: 'bed_temp_c', label: 'Build plate temperature', unit: '°C', required: true, precision: 0 },
+  { key: 'initial_bed_temp_c', label: 'Initial layer build plate temperature', unit: '°C', required: true, precision: 0 },
   { key: 'chamber_temp_c', label: 'Build volume temperature', unit: '°C', precision: 0 },
   { key: 'flow_percent', label: 'Flow', unit: '%', required: true, defaultValue: '100', precision: 0 },
   { key: 'print_speed_mm_s', label: 'Print speed', unit: 'mm/s', precision: 0, templateOnly: true },
@@ -188,6 +190,7 @@ export function settingsFromForm(
     chamber_temp_c: nullable(preservedNumericValue(form, 'chamber_temp_c', data.get('chamber_temp_c'))),
     extruder_temp_c: String(preservedNumericValue(form, 'extruder_temp_c', data.get('extruder_temp_c'))),
     bed_temp_c: String(preservedNumericValue(form, 'bed_temp_c', data.get('bed_temp_c'))),
+    initial_bed_temp_c: String(preservedNumericValue(form, 'initial_bed_temp_c', data.get('initial_bed_temp_c'))),
     flow_percent: String(preservedNumericValue(form, 'flow_percent', data.get('flow_percent'))),
     print_speed_mm_s: nullable(preservedNumericValue(form, 'print_speed_mm_s', data.get('print_speed_mm_s'))),
     outer_wall_speed_mm_s: nullable(preservedNumericValue(form, 'outer_wall_speed_mm_s', data.get('outer_wall_speed_mm_s'))),
@@ -346,7 +349,7 @@ export function MaterialSettingsEditor({
   ) => baseSettings ? (
     <div className="setting-ownership">
       <span>{customized(key) ? 'Customized' : 'Inherited'} · Template: {displayedBaseValue(key, baseValue)}</span>
-      {customized(key) ? <button className="button button--small" type="button" onClick={(event) => resetControl(key, baseValue, event.currentTarget)}>Reset to Template</button> : null}
+      {customized(key) ? <button className="button button--small" type="button" onClick={(event) => resetControl(key, baseValue, event.currentTarget)}>Revert to Template</button> : null}
     </div>
   ) : null
   const fieldGroups: Array<{
@@ -358,8 +361,8 @@ export function MaterialSettingsEditor({
     {
       id: 'temperature',
       title: 'Temperatures',
-      description: 'The print, build volume, and build plate temperatures used by Cura.',
-      keys: ['extruder_temp_c', 'bed_temp_c', 'chamber_temp_c'],
+      description: 'The print, build volume, normal build plate, and first-layer build plate temperatures used by Cura.',
+      keys: ['extruder_temp_c', 'bed_temp_c', 'initial_bed_temp_c', 'chamber_temp_c'],
     },
     {
       id: 'flow',
