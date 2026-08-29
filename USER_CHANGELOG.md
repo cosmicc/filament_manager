@@ -1,5 +1,24 @@
 # User Changelog
 
+## 0.6.3 - 08.28.2026
+
+### Added
+
+- Print History now shows a clear retry option when its request fails instead of incorrectly saying there are no print records.
+
+### Changed
+
+- The Dashboard now starts with the printer status card, places the three inventory value cards directly beneath it, and no longer shows the extra description below the page title.
+- Cura material names no longer display a filler when it is empty or set to `None`; meaningful fillers such as Carbon Fiber remain in the name.
+
+### Fixed
+
+- The notification panel now closes when you click outside it.
+- Fixed existing prints disappearing from Print History after the 0.6.2 pagination update.
+- Fixed Dashboard print status and progress overlapping when the current print has no thumbnail.
+- Fixed prints completing the purge line and then remaining paused at 0%; Filament Manager now safely releases its own virtual-SD hold without interfering with a normal Klipper pause.
+- Cancelling during print inspection or spool selection now cancels the held file, and selecting a required build plate correctly finishes the printer start sequence.
+
 ## 0.6.2 - 08.28.2026
 
 ### Added

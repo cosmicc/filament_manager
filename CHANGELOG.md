@@ -1,5 +1,25 @@
 # Changelog
 
+## 0.6.3 - 08.28.2026
+
+### Added
+
+- Added a retryable Print History unavailable state that reports bounded request failures instead of presenting them as an empty canonical history.
+
+### Changed
+
+- Changed the Dashboard hierarchy so the full-width printer status card appears first, followed immediately by the three inventory value cards, and removed the redundant title description.
+- Changed managed Cura product labels to omit filler text when the value is missing, blank, `None`, or `No filler`, while retaining meaningful fillers exactly once.
+- Changed every server, browser, and workstation-agent version surface to 0.6.3 and incremented the workstation renderer revision to 18 so existing managed installations receive corrected filler-free Cura labels.
+
+### Fixed
+
+- Fixed the notification panel remaining open after the user clicked elsewhere on the page while preserving interactions inside the panel.
+- Fixed Print History disappearing after 0.6.2 because the paginated API rejected browser query-string page sizes such as `per_page=10`.
+- Fixed current-print status and progress collapsing into the reserved thumbnail column when no Dashboard thumbnail is available.
+- Fixed managed prints stopping after the purge line with Fluidd showing paused at 0% by retaining the app-owned virtual-SD resume latch until a loaded paused file is safely released with `M24`.
+- Fixed Filament Manager cancellation failing to recognize an `M25`-held file, and completed the deferred printer `START_PRINT` path after selecting a required build plate.
+
 ## 0.6.2 - 08.28.2026
 
 ### Added

@@ -91,7 +91,7 @@ def _contains_label_phrase(label: str, component: str) -> bool:
 
 
 def _material_label(material: dict[str, Any], *, include_filler: bool) -> str:
-    """Build a distinct Cura product label by appending its non-empty filler once."""
+    """Build a distinct Cura product label by appending one meaningful filler."""
 
     product_name = material.get("product_name")
     if product_name is not None and not isinstance(product_name, str):
@@ -104,9 +104,10 @@ def _material_label(material: dict[str, Any], *, include_filler: bool) -> str:
         return base
     if not isinstance(raw_filler, str):
         raise ValueError("Filament filler must be text or null.")
-    if not raw_filler.strip():
+    normalized_filler = raw_filler.strip()
+    if not normalized_filler or normalized_filler.casefold() in {"none", "no filler"}:
         return base
-    filler = _material_label_component(raw_filler, field_name="filler", maximum=96)
+    filler = _material_label_component(normalized_filler, field_name="filler", maximum=96)
     if _contains_label_phrase(base, filler):
         return base
 

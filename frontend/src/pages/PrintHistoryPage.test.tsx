@@ -6,7 +6,10 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import PrintHistoryPage from './PrintHistoryPage'
 
 const apiFetchMock = vi.hoisted(() => vi.fn())
-vi.mock('../api/client', () => ({ apiFetch: apiFetchMock }))
+vi.mock('../api/client', async (importOriginal) => ({
+  ...await importOriginal<typeof import('../api/client')>(),
+  apiFetch: apiFetchMock,
+}))
 vi.mock('../context/AuthContext', () => ({
   useAuth: () => ({ user: { role: 'administrator' } }),
 }))
@@ -169,5 +172,17 @@ describe('PrintHistoryPage', () => {
     await waitFor(() => expect(apiFetchMock).toHaveBeenCalledWith('/prints/page?page=1&per_page=25'))
     expect(await screen.findByText('1–25 of 26 print records')).toBeTruthy()
     expect((screen.getByRole('button', { name: 'Last' }) as HTMLButtonElement).disabled).toBe(false)
+  })
+
+  it('shows a retryable request error instead of a false empty-history state', async () => {
+    apiFetchMock.mockRejectedValueOnce(new Error('History request failed')).mockResolvedValueOnce(printPage())
+    const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+    render(<QueryClientProvider client={queryClient}><PrintHistoryPage /></QueryClientProvider>)
+
+    expect(await screen.findByRole('heading', { name: 'Print history unavailable' })).toBeTruthy()
+    expect(screen.queryByRole('heading', { name: 'No print history yet' })).toBeNull()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Try again' }))
+    expect((await screen.findAllByText('cube.gcode')).length).toBeGreaterThan(0)
   })
 })

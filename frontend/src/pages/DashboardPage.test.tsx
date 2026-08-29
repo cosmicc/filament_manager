@@ -74,6 +74,12 @@ describe('DashboardPage', () => {
     expect(screen.getByText('30 min')).toBeTruthy()
     expect(screen.getByText('8.4 g')).toBeTruthy()
     expect(screen.getByText('$0.48')).toBeTruthy()
+    expect(screen.queryByText(/Inventory confidence/)).toBeNull()
+
+    const printerCard = screen.getByRole('heading', { name: 'IPLT-Max' }).closest('article')
+    const inventorySummary = screen.getByRole('region', { name: 'Inventory summary' })
+    expect(printerCard).not.toBeNull()
+    expect(printerCard!.compareDocumentPosition(inventorySummary) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
   })
 
   it('explains that an unavailable connection cannot confirm printer power', async () => {
@@ -97,6 +103,23 @@ describe('DashboardPage', () => {
 
     expect(await screen.findByText('Moonraker is unavailable; printer power and network state cannot be confirmed.')).toBeTruthy()
     expect(screen.getByText('The dashboard will retry automatically every 5 seconds.')).toBeTruthy()
+  })
+
+  it('uses the full current-print width when no thumbnail is available', async () => {
+    apiFetchMock.mockResolvedValue({
+      ...dashboard,
+      printer_state: { ...dashboard.printer_state, thumbnail_url: null },
+    })
+    const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+
+    render(
+      <QueryClientProvider client={queryClient}>
+        <RouterProvider><DashboardPage /></RouterProvider>
+      </QueryClientProvider>,
+    )
+
+    const currentPrint = await screen.findByRole('region', { name: 'Current print state' })
+    expect(currentPrint.classList.contains('printer-current-print--without-thumbnail')).toBe(true)
   })
 
   it('refreshes every five seconds and replaces all dashboard data together', async () => {

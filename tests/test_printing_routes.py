@@ -1,10 +1,17 @@
 """Read-only Print History route behavior tests."""
 
+from collections.abc import AsyncIterator
+from types import SimpleNamespace
 from typing import Any
 
+import httpx
 import pytest
+from fastapi import FastAPI
 
+from filament_manager.api import dependencies
+from filament_manager.api.errors import ApiError, api_error_handler
 from filament_manager.api.routes import printing
+from filament_manager.models.enums import UserRole
 
 
 class _EmptyScalarResult:
@@ -35,6 +42,23 @@ class _PageSession:
         return _EmptyResult()
 
 
+def _http_test_app(session: _PageSession) -> FastAPI:
+    """Build the smallest authenticated app that exercises real query parsing."""
+
+    async def session_override() -> AsyncIterator[_PageSession]:
+        yield session
+
+    async def user_override() -> SimpleNamespace:
+        return SimpleNamespace(role=UserRole.VIEWER)
+
+    app = FastAPI()
+    app.add_exception_handler(ApiError, api_error_handler)  # type: ignore[arg-type]
+    app.include_router(printing.router, prefix="/api/v1")
+    app.dependency_overrides[dependencies.session_dependency] = session_override
+    app.dependency_overrides[dependencies.current_user] = user_override
+    return app
+
+
 @pytest.mark.asyncio
 @pytest.mark.parametrize(
     ("per_page", "expected_total_pages", "expected_page"),
@@ -62,3 +86,37 @@ async def test_print_page_clamps_to_last_page_and_returns_exact_totals(
     assert response.total_pages == expected_total_pages
     assert response.items == []
     assert session.executed_query is not None
+
+
+@pytest.mark.asyncio
+async def test_print_page_accepts_browser_query_string_page_size() -> None:
+    """The real HTTP route must parse a browser's numeric query string."""
+
+    session = _PageSession(total_items=23)
+    app = _http_test_app(session)
+    transport = httpx.ASGITransport(app=app)
+    async with httpx.AsyncClient(transport=transport, base_url="http://testserver") as client:
+        response = await client.get("/api/v1/prints/page?page=1&per_page=10")
+
+    assert response.status_code == 200
+    assert response.json() == {
+        "items": [],
+        "page": 1,
+        "per_page": 10,
+        "total_items": 23,
+        "total_pages": 3,
+    }
+
+
+@pytest.mark.asyncio
+async def test_print_page_rejects_unsupported_page_size() -> None:
+    """Only the four documented bounded page sizes are accepted."""
+
+    session = _PageSession(total_items=23)
+    app = _http_test_app(session)
+    transport = httpx.ASGITransport(app=app)
+    async with httpx.AsyncClient(transport=transport, base_url="http://testserver") as client:
+        response = await client.get("/api/v1/prints/page?page=1&per_page=20")
+
+    assert response.status_code == 422
+    assert response.json()["code"] == "unsupported_print_page_size"

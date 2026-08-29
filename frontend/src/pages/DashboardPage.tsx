@@ -54,13 +54,7 @@ export default function DashboardPage() {
   const data = query.data
   return (
     <div>
-      <PageHeader eyebrow="Workshop overview" title="Dashboard" description="Inventory confidence and current physical printer context at a glance." actions={<Link to="/spools" className="button button--primary"><Scale size={17} /> Record a weight</Link>} />
-      <section className="metric-grid" aria-label="Inventory summary">
-        <MetricCard icon={Boxes} label="Total spools" value={data.total_spools} detail="Active inventory" />
-        <MetricCard icon={Scale} label="Needs weighing" value={data.needs_weighing} detail="Manual check required" tone={data.needs_weighing ? 'metric-card--warning' : ''} />
-        <MetricCard icon={AlertTriangle} label="Low or empty" value={data.low_spools + data.empty_spools} detail={`${data.empty_spools} empty`} tone={data.low_spools + data.empty_spools ? 'metric-card--warning' : ''} />
-      </section>
-
+      <PageHeader eyebrow="Workshop overview" title="Dashboard" actions={<Link to="/spools" className="button button--primary"><Scale size={17} /> Record a weight</Link>} />
       <section className="dashboard-grid">
         <article className={`card printer-state-card printer-state-card--${data.printer_state.operational_status}`}>
           <header className="printer-state-card__header">
@@ -77,7 +71,7 @@ export default function DashboardPage() {
             <StatusPill status={data.printer_state.operational_status} label={titleCase(data.printer_state.operational_status)} />
           </header>
           {data.printer_state.connection_status === 'connected' ? <div className="printer-state-card__body">
-            <section className="printer-current-print" aria-label="Current print state">
+            <section className={`printer-current-print${data.printer_state.thumbnail_url ? '' : ' printer-current-print--without-thumbnail'}`} aria-label="Current print state">
               {data.printer_state.thumbnail_url ? <img className="printer-current-print__thumbnail" src={data.printer_state.thumbnail_url} alt={`Preview of ${data.printer_state.filename ?? 'current print'}`} /> : null}
               <div className="printer-current-print__content">
                 <div className="printer-job-state">
@@ -102,6 +96,12 @@ export default function DashboardPage() {
           </div> : <div className="printer-state-card__unavailable"><WifiOff size={24} /><span><strong>Live printer telemetry is unavailable</strong><small>The dashboard will retry automatically every 5 seconds.</small></span></div>}
           <footer>Checked {dateTime(data.printer_state.checked_at)}</footer>
         </article>
+
+        <section className="metric-grid dashboard-metric-grid" aria-label="Inventory summary">
+          <MetricCard icon={Boxes} label="Total spools" value={data.total_spools} detail="Active inventory" />
+          <MetricCard icon={Scale} label="Needs weighing" value={data.needs_weighing} detail="Manual check required" tone={data.needs_weighing ? 'metric-card--warning' : ''} />
+          <MetricCard icon={AlertTriangle} label="Low or empty" value={data.low_spools + data.empty_spools} detail={`${data.empty_spools} empty`} tone={data.low_spools + data.empty_spools ? 'metric-card--warning' : ''} />
+        </section>
 
         <article className="card active-spool-card">
           <header className="card__header"><div><p className="eyebrow">Printing context</p><h2>Active spool</h2></div>{data.active_spool && <StatusPill status={data.active_spool.status} />}</header>

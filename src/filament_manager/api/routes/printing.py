@@ -44,6 +44,7 @@ MOONRAKER_HISTORY_STATUSES = frozenset(
         "interrupted",
     }
 )
+PRINT_PAGE_SIZES: tuple[Literal[10, 25, 50, 100], ...] = (10, 25, 50, 100)
 
 
 def _print_query() -> Select[tuple[PrintJob]]:
@@ -115,9 +116,17 @@ async def list_print_page(
     print_status: PrintJobStatus | None = None,
     profile_id: UUID | None = None,
     page: Annotated[int, Query(ge=1, le=100_000)] = 1,
-    per_page: Literal[10, 25, 50, 100] = 10,
+    per_page: Annotated[int, Query(ge=10, le=100)] = 10,
 ) -> PrintJobPageResponse:
     """Return one bounded page plus the exact filtered record count."""
+
+    if per_page not in PRINT_PAGE_SIZES:
+        raise ApiError(
+            status.HTTP_422_UNPROCESSABLE_ENTITY,
+            "unsupported_print_page_size",
+            "Print page size must be 10, 25, 50, or 100",
+        )
+    page_size = per_page
 
     filters = []
     if print_status is not None:
@@ -125,20 +134,20 @@ async def list_print_page(
     if profile_id is not None:
         filters.append(PrintJob.material_profile_id == profile_id)
     total_items = int(await session.scalar(select(func.count(PrintJob.id)).where(*filters)) or 0)
-    total_pages = max(1, (total_items + per_page - 1) // per_page)
+    total_pages = max(1, (total_items + page_size - 1) // page_size)
     effective_page = min(page, total_pages)
     query = (
         _print_query()
         .where(*filters)
         .order_by(PrintJob.started_at.desc().nullslast(), PrintJob.created_at.desc())
-        .offset((effective_page - 1) * per_page)
-        .limit(per_page)
+        .offset((effective_page - 1) * page_size)
+        .limit(page_size)
     )
     result = await session.execute(query)
     return PrintJobPageResponse(
         items=[_print_response(job) for job in result.scalars().unique()],
         page=effective_page,
-        per_page=per_page,
+        per_page=page_size,
         total_items=total_items,
         total_pages=total_pages,
     )

@@ -154,3 +154,50 @@ def test_macro_reference_compiles_and_preserves_existing_motion_macros() -> None
     assert load_selected.index("_FILAMENT_MANAGER_HARDWARE_LOAD") < load_selected.index(
         "_FILAMENT_MANAGER_RECORD_LOADED ID="
     )
+
+
+def test_macro_virtual_sd_resume_contract_handles_every_preflight_exit() -> None:
+    """Only the app-owned M25 latch may resume a safely paused Cura file."""
+
+    parser = configparser.RawConfigParser(strict=True)
+    assert parser.read(MACRO_PATH)
+
+    start_gate = parser.get("gcode_macro FILAMENT_MANAGER_START_PRINT", "gcode")
+    assert start_gate.index("M25") < start_gate.index("VARIABLE=resume_virtual_sd VALUE=1")
+
+    spool_check = parser.get("gcode_macro _FILAMENT_MANAGER_CHECK_PRINT_SPOOL", "gcode")
+    assert spool_check.index("M25") < spool_check.index("VARIABLE=resume_virtual_sd VALUE=1")
+
+    continue_start = parser.get("gcode_macro _FILAMENT_MANAGER_CONTINUE_START", "gcode")
+    assert continue_start.index("START_PRINT BED_TEMP=") < continue_start.index(
+        "UPDATE_DELAYED_GCODE ID=_FILAMENT_MANAGER_RESUME_PRINT_START DURATION=0.25"
+    )
+    assert "VARIABLE=resume_virtual_sd VALUE=0" not in continue_start
+
+    delayed_resume = parser.get("delayed_gcode _FILAMENT_MANAGER_RESUME_PRINT_START", "gcode")
+    assert "state.resume_virtual_sd|int" in delayed_resume
+    assert 'print_state == "paused"' in delayed_resume
+    assert "not printer.pause_resume.is_paused" in delayed_resume
+    assert "printer.virtual_sdcard.is_active and waiting_for_mesh == 0" not in delayed_resume
+    assert delayed_resume.index("M24") < delayed_resume.index("VARIABLE=resume_virtual_sd VALUE=0")
+    assert "UPDATE_DELAYED_GCODE ID=_FILAMENT_MANAGER_RESUME_PRINT_START DURATION=0.25" in (delayed_resume)
+
+    cancel_print = parser.get("gcode_macro CANCEL_PRINT", "gcode")
+    abort = parser.get("gcode_macro FILAMENT_MANAGER_ABORT", "gcode")
+    for cancellation_path in (cancel_print, abort):
+        assert "UPDATE_DELAYED_GCODE ID=_FILAMENT_MANAGER_RESUME_PRINT_START DURATION=0" in (
+            cancellation_path
+        )
+        assert "VARIABLE=resume_virtual_sd VALUE=0" in cancellation_path
+    assert 'print_state in ["printing", "paused"]' in abort
+    assert "file_loaded" in abort
+    assert "CANCEL_PRINT" in abort
+
+    plate_selector = parser.get("gcode_macro SELECT_BUILD_PLATE", "gcode")
+    assert '"gcode_macro _START_PRINT_CONTINUE" not in printer' in plate_selector
+    assert plate_selector.index("MACRO=START_PRINT VARIABLE=waiting_for_mesh VALUE=0") < (
+        plate_selector.index("_START_PRINT_CONTINUE BED_TEMP=")
+    )
+    assert plate_selector.index("_START_PRINT_CONTINUE BED_TEMP=") < plate_selector.index(
+        "UPDATE_DELAYED_GCODE ID=_FILAMENT_MANAGER_RESUME_PRINT_START DURATION=0.25"
+    )
