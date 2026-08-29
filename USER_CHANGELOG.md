@@ -1,5 +1,19 @@
 # User Changelog
 
+## 0.6.4 - 08.29.2026
+
+### Added
+
+- Added automatic recovery coverage for interrupted G-code inspection acknowledgements.
+
+### Changed
+
+- Blocking G-code inspection now safely retries its completed decision while Fluidd is still waiting.
+
+### Fixed
+
+- Fixed prints remaining stuck on Fluidd's **Inspecting G-code** dialog with only **Cancel Print** available.
+
 ## 0.6.3 - 08.28.2026
 
 ### Added

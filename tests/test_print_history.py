@@ -7,11 +7,13 @@ from uuid import UUID, uuid4
 
 import pytest
 
-from filament_manager.models.enums import PrintJobStatus
+from filament_manager.models.enums import GcodeInspectionStatus, PrintJobStatus
+from filament_manager.models.printing import PrintJob
 from filament_manager.services import print_history
 from filament_manager.services.print_costs import print_cost_summary, segment_cost
 from filament_manager.services.print_history import (
     _actual_weight_g,
+    _blocking_gate_passed,
     _history_status,
     _terminal_usage_targets,
 )
@@ -29,6 +31,37 @@ def test_current_and_historical_completion_states_share_one_status() -> None:
     assert _history_status("klippy_disconnect") == PrintJobStatus.FAILED
     assert _history_status("interrupted") == PrintJobStatus.FAILED
     assert _history_status("future-value") == PrintJobStatus.LEGACY_UNKNOWN
+
+
+@pytest.mark.parametrize(
+    ("status", "profile_resolved", "inspection", "expected"),
+    (
+        (GcodeInspectionStatus.PASSED, True, {"mismatches": []}, True),
+        (GcodeInspectionStatus.WARNING, True, {"mismatches": []}, True),
+        (GcodeInspectionStatus.WARNING, True, {"mismatches": ["temperature"]}, False),
+        (GcodeInspectionStatus.UNAVAILABLE, True, {"mismatches": []}, False),
+        (GcodeInspectionStatus.BLOCKED, True, {"mismatches": []}, False),
+        (GcodeInspectionStatus.PENDING, True, {"mismatches": []}, False),
+        (GcodeInspectionStatus.PASSED, False, {"mismatches": []}, False),
+        (GcodeInspectionStatus.PASSED, True, {}, False),
+    ),
+)
+def test_blocking_gate_decision_is_derived_fail_closed_from_persisted_evidence(
+    status: GcodeInspectionStatus,
+    profile_resolved: bool,
+    inspection: dict[str, object],
+    expected: bool,
+) -> None:
+    """Only complete, exact-profile evidence without mismatches may release the gate."""
+
+    job = PrintJob(
+        inspection_status=status,
+        inspected_at=datetime.now(UTC),
+        material_profile_id=uuid4() if profile_resolved else None,
+        inspection=inspection,
+    )
+
+    assert _blocking_gate_passed(job) is expected
 
 
 def test_actual_weight_uses_the_captured_material_not_mutable_current_data() -> None:

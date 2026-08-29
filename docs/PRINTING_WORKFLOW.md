@@ -2,7 +2,7 @@
 
 ## Recommended policy
 
-Use **Warn and continue** under **Settings → G-code inspection policy** while testing 0.6.3. Filament Manager still records every mismatch in Print History. Change the setting to **Block mismatches** after the Cura material library, printer macros, and first exact-state records have been verified.
+Use **Warn and continue** under **Settings → G-code inspection policy** while testing 0.6.4. Filament Manager still records every mismatch in Print History. Change the setting to **Block mismatches** after the Cura material library, printer macros, and first exact-state records have been verified.
 
 Blocking pauses virtual-SD execution in Fluidd until Filament Manager can resolve the managed material profile, safely inspect the G-code, and confirm that supported values match. Missing inspection data and an unresolved exact profile also block. The setting is synchronized into Klipper automatically.
 
@@ -14,7 +14,7 @@ Regular and initial-layer build-plate temperatures are inspected independently. 
 
 1. Select a managed product material in Cura and send the print. Do not slice with a `Template <material type>` entry.
 2. The Filament Manager workstation agent saves `FILAMENT_MANAGER_START_PRINT MATERIAL_GUID={material_guid, 0} BED_TEMP={material_bed_temperature_layer_0, 0} REGULAR_BED_TEMP={material_bed_temperature, 0} EXTRUDER_TEMP={material_print_temperature_layer_0, 0} CHAMBER_TEMP={build_volume_temperature}` as the matched Cura printer's start G-code.
-3. In blocking mode, Fluidd shows the inspection prompt while Filament Manager reads the documented Moonraker file metadata and G-code download endpoints. In warning mode, inspection remains auditable without pausing this step. The blocking hold uses Klipper's virtual-SD `M25` state, not its separate motion-aware `PAUSE` state.
+3. In blocking mode, Fluidd shows the inspection prompt while Filament Manager reads the documented Moonraker file metadata and G-code download endpoints. In warning mode, inspection remains auditable without pausing this step. The blocking hold uses Klipper's virtual-SD `M25` state, not its separate motion-aware `PAUSE` state. The worker commits the exact result before acknowledging the prompt and safely resends that persisted decision on later five-second passes while Klipper still reports the gate, recovering automatically from a split state read or brief Moonraker failure.
 4. If the currently loaded physical spool is an eligible exact match, the macro calls the existing `START_PRINT` with its original temperature values. No unload/load motion runs.
 5. If the spool does not match, Fluidd asks for one exact eligible Spoolman spool. The existing unload routine runs at the loaded filament profile temperature. Only after motion completes does Spoolman become empty.
 6. The nozzle preheats to the selected replacement's profile temperature. Insert that exact spool and choose **Filament Inserted - Load**. The existing load routine runs, then the new ID becomes active in Spoolman.

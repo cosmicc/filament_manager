@@ -1,5 +1,20 @@
 # Changelog
 
+## 0.6.4 - 08.29.2026
+
+### Added
+
+- Added integration coverage for a G-code inspection captured before Klipper's blocking gate becomes visible and for a transient failure while acknowledging the persisted decision.
+
+### Changed
+
+- Changed blocking G-code gate acknowledgements to use the persisted inspection evidence as a fail-closed decision and retry it on every current-print pass while Klipper still reports the inspection phase.
+- Changed every server, browser, and workstation-agent version surface to 0.6.4; Cura renderer revision 18 remains current because no generated workstation files changed.
+
+### Fixed
+
+- Fixed Fluidd remaining indefinitely on **Inspecting G-code** when concurrent Moonraker state reads straddled the start gate or the first post-inspection acknowledgement failed after the canonical print record committed.
+
 ## 0.6.3 - 08.28.2026
 
 ### Added

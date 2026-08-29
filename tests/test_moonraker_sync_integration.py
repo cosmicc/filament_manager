@@ -23,7 +23,12 @@ from filament_manager.domain.spool_preflight import (
     cura_product_material_guid,
 )
 from filament_manager.models import Base
-from filament_manager.models.enums import NozzleStatus, ProfileStatus, SpoolStatus
+from filament_manager.models.enums import (
+    GcodeInspectionStatus,
+    NozzleStatus,
+    ProfileStatus,
+    SpoolStatus,
+)
 from filament_manager.models.inventory import (
     FilamentProduct,
     MaterialProfile,
@@ -385,15 +390,26 @@ async def test_active_spool_selection_and_clear_follow_moonraker(
             assert (await session.get(Spool, second.id)).active_printer_id is None  # type: ignore[union-attr]
             assert await session.scalar(select(func.count(AuditEvent.id))) == baseline_audit_count + 2
 
+            inspection_submissions: list[bool] = []
+            inspection_submission_failures = 1
+
             class InspectionClient:
                 """Provide one bounded file without an external Moonraker dependency."""
 
                 async def gcode_metadata(self, filename: str) -> dict[str, object]:
-                    assert filename in {"repeatable.gcode", "material-change.gcode"}
+                    assert filename in {
+                        "inspection-race.gcode",
+                        "repeatable.gcode",
+                        "material-change.gcode",
+                    }
                     return {"slicer": "Cura", "filament_total": 1000}
 
                 async def gcode_file(self, filename: str) -> MoonrakerGcodeFile:
-                    assert filename in {"repeatable.gcode", "material-change.gcode"}
+                    assert filename in {
+                        "inspection-race.gcode",
+                        "repeatable.gcode",
+                        "material-change.gcode",
+                    }
                     return MoonrakerGcodeFile(
                         sha256="a" * 64,
                         header=f";Generated with Cura_SteamEngine 5.10\nMATERIAL_GUID={material_guid}\n",
@@ -429,6 +445,14 @@ async def test_active_spool_selection_and_clear_follow_moonraker(
                             "size": 1_048_576,
                         },
                     )
+
+                async def submit_gcode_inspection(self, *, passed: bool) -> dict[str, object]:
+                    nonlocal inspection_submission_failures
+                    inspection_submissions.append(passed)
+                    if inspection_submission_failures:
+                        inspection_submission_failures -= 1
+                        raise MoonrakerError("temporary inspection acknowledgement failure")
+                    return {"result": "ok"}
 
             preflight = MoonrakerSpoolPreflightState(
                 restored=True,
@@ -510,6 +534,76 @@ async def test_active_spool_selection_and_clear_follow_moonraker(
             assert repeated_job is not None
             assert repeated_job.timelapse_url == "repeatable_2026-04-24.mp4"
             assert printer.last_print_history_sync_at is not None
+
+            inspection_wait = MoonrakerPrintState(
+                filename="inspection-race.gcode",
+                state="paused",
+                message=None,
+                total_duration=Decimal("1"),
+                print_duration=Decimal("0"),
+                filament_used_mm=Decimal("0"),
+            )
+            pre_gate_read = MoonrakerSpoolPreflightState(
+                restored=True,
+                initialized=True,
+                phase="idle",
+                loaded_spool_id=20,
+                catalog_revision="b" * 64,
+                material_guid=material_guid,
+                start_bed_temp=Decimal("60"),
+                start_extruder_temp=Decimal("215"),
+                start_chamber_temp=Decimal("0"),
+                inspection_policy="block",
+                start_pending=True,
+            )
+            active_gate = MoonrakerSpoolPreflightState(
+                restored=True,
+                initialized=True,
+                phase="inspecting",
+                loaded_spool_id=20,
+                catalog_revision="b" * 64,
+                material_guid=material_guid,
+                start_bed_temp=Decimal("60"),
+                start_extruder_temp=Decimal("215"),
+                start_chamber_temp=Decimal("0"),
+                inspection_policy="block",
+                start_pending=True,
+            )
+            await synchronize_live_print(
+                session,
+                printer=printer,
+                client=client,  # type: ignore[arg-type]
+                print_state=inspection_wait,
+                preflight_state=pre_gate_read,
+                correlation_id="inspection-before-gate",
+            )
+            assert inspection_submissions == []
+            with pytest.raises(MoonrakerError, match="temporary inspection acknowledgement"):
+                await synchronize_live_print(
+                    session,
+                    printer=printer,
+                    client=client,  # type: ignore[arg-type]
+                    print_state=inspection_wait,
+                    preflight_state=active_gate,
+                    correlation_id="inspection-gate-first-acknowledgement",
+                )
+            await synchronize_live_print(
+                session,
+                printer=printer,
+                client=client,  # type: ignore[arg-type]
+                print_state=inspection_wait,
+                preflight_state=active_gate,
+                correlation_id="inspection-gate-retry",
+            )
+            inspection_job = await session.scalar(
+                select(PrintJob).where(PrintJob.filename == "inspection-race.gcode")
+            )
+            assert inspection_job is not None
+            assert inspection_job.inspection_status in {
+                GcodeInspectionStatus.PASSED,
+                GcodeInspectionStatus.WARNING,
+            }
+            assert inspection_submissions == [True, True]
 
             material_change_start = MoonrakerPrintState(
                 filename="material-change.gcode",

@@ -612,6 +612,32 @@ async def _inspection_result(
     return result, gcode.sha256, metadata, profile, material_guid
 
 
+def _blocking_gate_passed(job: PrintJob) -> bool:
+    """Return a fail-closed decision from one persisted inspection result."""
+
+    mismatches = job.inspection.get("mismatches") if isinstance(job.inspection, dict) else None
+    return (
+        job.inspected_at is not None
+        and job.material_profile_id is not None
+        and job.inspection_status in {GcodeInspectionStatus.PASSED, GcodeInspectionStatus.WARNING}
+        and isinstance(mismatches, list)
+        and not mismatches
+    )
+
+
+async def _acknowledge_blocking_gate(
+    client: MoonrakerClient,
+    *,
+    preflight_state: MoonrakerSpoolPreflightState | None,
+    job: PrintJob,
+) -> None:
+    """Retry the printer acknowledgement while its blocking gate remains active."""
+
+    if preflight_state is None or preflight_state.phase != "inspecting":
+        return
+    await client.submit_gcode_inspection(passed=_blocking_gate_passed(job))
+
+
 async def synchronize_live_print(
     session: AsyncSession,
     *,
@@ -826,9 +852,6 @@ async def synchronize_live_print(
             correlation_id=correlation_id,
         )
         await session.commit()
-        if preflight_state and preflight_state.phase == "inspecting":
-            passed = job.inspection_status != GcodeInspectionStatus.BLOCKED
-            await client.submit_gcode_inspection(passed=passed)
     else:
         job.print_duration_seconds = print_state.print_duration
         job.total_duration_seconds = print_state.total_duration
@@ -928,6 +951,16 @@ async def synchronize_live_print(
                     metadata=metadata,
                 )
         await session.commit()
+    # The inspection record commits before the external acknowledgement. If
+    # Moonraker briefly fails, or concurrent state reads observe the print just
+    # before Klipper enters the gate, the next pass must resend the persisted
+    # fail-closed decision instead of leaving Fluidd on an endless inspection
+    # prompt.
+    await _acknowledge_blocking_gate(
+        client,
+        preflight_state=preflight_state,
+        job=job,
+    )
     return job
 
 
