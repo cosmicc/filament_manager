@@ -25,6 +25,9 @@ def test_current_and_historical_completion_states_share_one_status() -> None:
     assert _history_status("completed") == PrintJobStatus.COMPLETED
     assert _history_status("cancelled") == PrintJobStatus.CANCELLED
     assert _history_status("error") == PrintJobStatus.FAILED
+    assert _history_status("klippy_shutdown") == PrintJobStatus.FAILED
+    assert _history_status("klippy_disconnect") == PrintJobStatus.FAILED
+    assert _history_status("interrupted") == PrintJobStatus.FAILED
     assert _history_status("future-value") == PrintJobStatus.LEGACY_UNKNOWN
 
 

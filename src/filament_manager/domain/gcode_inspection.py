@@ -135,15 +135,16 @@ def extract_gcode_metadata(metadata: dict[str, Any], header: str, tail: str) -> 
         or settings.get("material_print_temperature")
         or _first_match(header, r"\bEXTRUDER_TEMP=([0-9.]+)\b")
         or _first_match(header, r"^M10[49]\s+S([0-9.]+)\b"),
-        # Moonraker's first-layer value, the managed BED_TEMP boundary, and
-        # Cura's first M140/M190 command all describe initial-layer behavior.
-        # None is valid evidence for the distinct regular bed temperature.
-        "bed_temp_c": settings.get("material_bed_temperature"),
-        "initial_bed_temp_c": metadata.get("first_layer_bed_temp")
-        or settings.get("material_bed_temperature_layer_0")
-        or settings.get("material_bed_temperature")
-        or _first_match(header, r"\bBED_TEMP=([0-9.]+)\b")
-        or _first_match(header, r"^M1(?:40|90)\s+S([0-9.]+)\b"),
+        # Cura's SETTING_3 document describes saved quality-layer values, not a
+        # trustworthy resolved material value. The managed start boundary is
+        # therefore the only supported regular-temperature evidence. Initial
+        # evidence remains separate and prefers the exact managed boundary or
+        # an actual first-layer heating value.
+        "bed_temp_c": _first_match(header, r"\bREGULAR_BED_TEMP=([0-9.]+)\b"),
+        "initial_bed_temp_c": _first_match(header, r"\bBED_TEMP=([0-9.]+)\b")
+        or metadata.get("first_layer_bed_temp")
+        or _first_match(header, r"^M1(?:40|90)\s+S([0-9.]+)\b")
+        or settings.get("material_bed_temperature_layer_0"),
         "chamber_temp_c": metadata.get("chamber_temp")
         or settings.get("build_volume_temperature")
         or _first_match(header, r"\bCHAMBER_TEMP=([0-9.]+)\b"),

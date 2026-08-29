@@ -94,11 +94,12 @@ The takeover request contains the complete reviewed source-ID set, explicit conf
 ### Print history and inspection
 
 - `GET /prints`
+- `GET /prints/page?page={page}&per_page={10|25|50|100}`
 - `GET /prints/{id}`
 - `GET /prints/profile-statistics`
 - `POST /prints/{id}/assessments`
 
-Print responses preserve exact start-state snapshots, bounded G-code inspection evidence, material-change segments, actual usage, explicit unresolved legacy state, and append-only quality revisions. Profile statistics use the latest assessment for each print.
+Print responses preserve exact start-state snapshots, bounded G-code inspection evidence, material-change segments, actual usage, explicit unresolved legacy state, the supported bounded raw Moonraker history outcome, and append-only quality revisions. The paginated route defaults to 10 newest-first records, accepts only 10, 25, 50, or 100 per page, returns exact filtered totals, and clamps a now-stale requested page to the last available page. Profile statistics use the latest assessment for each print.
 
 ### Notifications and operational policy
 
@@ -144,7 +145,7 @@ Printer responses omit Moonraker addresses and credentials. Synchronization retu
 
 Only one physical nozzle may be installed on a printer. `PATCH` may edit its unique code, including while installed, without rewriting lifecycle or print history. Responses derive completed-print and total-filament-use values from immutable print history; lifecycle events are append-only.
 
-Installing a different diameter queues a closed-Cura update to one exact machine and linked position-zero extruder on each managed workstation. The agent backs up the existing machine, extruder, and definition-change files, writes `machine_nozzle_size` to the selected extruder's existing settings container, and selects one exact existing variant when available; it never manufactures a variant or container. A successful exact-version recovery queues this same alignment again before the current material library.
+Installing a different diameter queues a closed-Cura update to one exact machine and linked position-zero extruder on each managed workstation. The agent backs up the existing machine, extruder, and definition-change files, writes `machine_nozzle_size` to the selected extruder's existing settings container, and selects one exact existing variant when available; it never manufactures a variant or container. Every heartbeat reports that exact linked setting separately from machine metadata, and a mismatch queues coalesced bounded-retry reconciliation even when no nozzle-change event occurred. A successful exact-version recovery queues this same alignment again before the current material library.
 
 Recovery endpoints list safe metadata, queue an exact-installation named capture, edit only name/description with optimistic concurrency, delete one confirmed unreferenced point, and queue confirmed exact-version restore. Automatic snapshots are content-deduplicated; deleting one stores only its exact version/content identity so the unchanged backup stays absent, while named capture requests remain idempotent by deployment and may intentionally retain identical settings.
 

@@ -1037,6 +1037,7 @@ class CuraMachineReport(ApiModel):
     quality_type: str | None = Field(default=None, max_length=96)
     variant: str | None = Field(default=None, max_length=255)
     nozzle_diameter_mm: str | None = Field(default=None, max_length=32)
+    extruder_nozzle_diameter_mm: str | None = Field(default=None, max_length=32)
 
 
 class CuraRequiredMaterialPluginReport(ApiModel):
@@ -1496,6 +1497,18 @@ class PrintJobResponse(ApiModel):
     gcode_sha256: str | None
     source: str
     status: PrintJobStatus
+    moonraker_status: (
+        Literal[
+            "in_progress",
+            "completed",
+            "cancelled",
+            "error",
+            "klippy_shutdown",
+            "klippy_disconnect",
+            "interrupted",
+        ]
+        | None
+    ) = None
     spool_id: UUID | None
     filament_product_id: UUID | None
     material_profile_id: UUID | None
@@ -1552,6 +1565,16 @@ class PrintJobResponse(ApiModel):
     record_version: int
     segments: list[PrintMaterialSegmentResponse]
     assessments: list[PrintAssessmentResponse]
+
+
+class PrintJobPageResponse(ApiModel):
+    """One bounded page of newest-first canonical print records."""
+
+    items: list[PrintJobResponse]
+    page: int = Field(ge=1)
+    per_page: Literal[10, 25, 50, 100]
+    total_items: int = Field(ge=0)
+    total_pages: int = Field(ge=1)
 
 
 class OperationalSettingsResponse(ApiModel):

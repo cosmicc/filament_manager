@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { cleanup, fireEvent, render, screen } from '@testing-library/react'
+import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import PrintHistoryPage from './PrintHistoryPage'
 
@@ -11,11 +11,12 @@ vi.mock('../context/AuthContext', () => ({
   useAuth: () => ({ user: { role: 'administrator' } }),
 }))
 
-const printJob = {
+const printJob: Record<string, unknown> = {
   id: 'print-id',
   filename: 'cube.gcode',
   source: 'live',
   status: 'completed',
+  moonraker_status: 'completed',
   material_name: 'Workshop PLA',
   material_type: 'PLA',
   material_profile_id: 'profile-id',
@@ -82,6 +83,10 @@ const printJob = {
   assessments: [],
 }
 
+function printPage(items = [printJob]) {
+  return { items, page: 1, per_page: 10, total_items: items.length, total_pages: 1 }
+}
+
 describe('PrintHistoryPage', () => {
   afterEach(() => {
     cleanup()
@@ -89,7 +94,7 @@ describe('PrintHistoryPage', () => {
   })
 
   it('shows stored thumbnails, actual filament cost, useful comparisons, and segment cost', async () => {
-    apiFetchMock.mockResolvedValue([printJob])
+    apiFetchMock.mockResolvedValue(printPage())
     const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })
     render(<QueryClientProvider client={queryClient}><PrintHistoryPage /></QueryClientProvider>)
 
@@ -105,14 +110,14 @@ describe('PrintHistoryPage', () => {
   })
 
   it('explains why mixed-currency segment costs are not combined', async () => {
-    apiFetchMock.mockResolvedValue([{
+    apiFetchMock.mockResolvedValue(printPage([{
       ...printJob,
       actual_filament_cost: null,
       predicted_filament_cost: null,
       cost_currency: null,
       cost_currency_conflict: true,
       cost_complete: false,
-    }])
+    }]))
     const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })
     render(<QueryClientProvider client={queryClient}><PrintHistoryPage /></QueryClientProvider>)
 
@@ -122,12 +127,12 @@ describe('PrintHistoryPage', () => {
   })
 
   it('explains that the Cura inspection gate precedes the unchanged Klipper start macro', async () => {
-    apiFetchMock.mockResolvedValue([{
+    apiFetchMock.mockResolvedValue(printPage([{
       ...printJob,
       inspection_status: 'blocked',
       inspection_policy: 'block',
       inspection: { mismatches: [], warnings: [], printer_gate: 'not_active' },
-    }])
+    }]))
     const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })
     render(<QueryClientProvider client={queryClient}><PrintHistoryPage /></QueryClientProvider>)
 
@@ -135,5 +140,34 @@ describe('PrintHistoryPage', () => {
 
     expect(screen.getByText(/before it calls your unchanged Klipper START_PRINT macro/)).toBeTruthy()
     expect(screen.getByText(/do not add this line inside START_PRINT/)).toBeTruthy()
+  })
+
+  it('pages server-side with the supported page sizes and navigation controls', async () => {
+    apiFetchMock.mockImplementation((url: string) => {
+      const requestedPage = Number(new URL(`https://test.invalid${url}`).searchParams.get('page'))
+      const requestedPageSize = Number(new URL(`https://test.invalid${url}`).searchParams.get('per_page'))
+      return Promise.resolve({
+        items: [{ ...printJob, id: `print-${requestedPage}` }],
+        page: requestedPage,
+        per_page: requestedPageSize,
+        total_items: 26,
+        total_pages: requestedPageSize === 10 ? 3 : 2,
+      })
+    })
+    const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+    render(<QueryClientProvider client={queryClient}><PrintHistoryPage /></QueryClientProvider>)
+
+    await screen.findByText('1–10 of 26 print records')
+    expect((screen.getByRole('button', { name: 'First' }) as HTMLButtonElement).disabled).toBe(true)
+    expect((screen.getByRole('button', { name: 'Previous' }) as HTMLButtonElement).disabled).toBe(true)
+
+    fireEvent.click(screen.getByRole('button', { name: 'Next' }))
+    await waitFor(() => expect(apiFetchMock).toHaveBeenCalledWith('/prints/page?page=2&per_page=10'))
+    expect(await screen.findByText('11–20 of 26 print records')).toBeTruthy()
+
+    fireEvent.change(screen.getByLabelText('Prints per page'), { target: { value: '25' } })
+    await waitFor(() => expect(apiFetchMock).toHaveBeenCalledWith('/prints/page?page=1&per_page=25'))
+    expect(await screen.findByText('1–25 of 26 print records')).toBeTruthy()
+    expect((screen.getByRole('button', { name: 'Last' }) as HTMLButtonElement).disabled).toBe(false)
   })
 })

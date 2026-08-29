@@ -33,7 +33,7 @@ def _normalized(value: object) -> str:
 def _decimal(value: object) -> Decimal | None:
     try:
         return Decimal(str(value))
-    except (InvalidOperation, ValueError):
+    except (InvalidOperation, TypeError, ValueError):
         return None
 
 
@@ -143,6 +143,28 @@ def _matching_definition_change(
             continue
         candidates.append((path, parser))
     return candidates[0] if len(candidates) == 1 else None
+
+
+def linked_extruder_nozzle_diameter(
+    installation: CuraInstallation,
+    machine: CuraMachine,
+) -> str | None:
+    """Read the exact linked position-zero extruder's effective saved nozzle size."""
+
+    extruder = _matching_extruder(installation, machine)
+    if extruder is None:
+        return None
+    _, _, settings_id, definition_id = extruder
+    definition_change = _matching_definition_change(installation, settings_id, definition_id)
+    if definition_change is None:
+        return None
+    _, parser = definition_change
+    if not parser.has_section("values"):
+        return None
+    diameter = _decimal(parser["values"].get("machine_nozzle_size"))
+    if diameter is None or not diameter.is_finite() or diameter <= 0:
+        return None
+    return format(diameter, "f")
 
 
 def _variant_directories(installation: CuraInstallation) -> list[Path]:

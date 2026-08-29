@@ -6,7 +6,7 @@ import pytest
 
 from filament_manager_agent import nozzle as nozzle_module
 from filament_manager_agent.models import CuraInstallation, CuraMachine
-from filament_manager_agent.nozzle import apply_nozzle_update
+from filament_manager_agent.nozzle import apply_nozzle_update, linked_extruder_nozzle_diameter
 
 
 def _installation(tmp_path: Path) -> CuraInstallation:
@@ -129,6 +129,7 @@ def test_applies_exact_existing_nozzle_variant_with_backup(
     assert "machine_end_gcode = END_PRINT" in machine
     assert "5 = workshop_0.6" in extruder
     assert "machine_nozzle_size = 0.6" in definition_change
+    assert linked_extruder_nozzle_diameter(installation, installation.machines[0]) == "0.6"
     assert result["variant_id"] == "workshop_0.6"
     assert (
         tmp_path / "agent-data" / "nozzle-backups" / "10000000-0000-0000-0000-000000000001" / "cura-test.zip"

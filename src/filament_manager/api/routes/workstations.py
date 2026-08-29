@@ -5,7 +5,9 @@ import json
 import secrets
 import time
 from collections import defaultdict, deque
+from collections.abc import Sequence
 from datetime import UTC, datetime, timedelta
+from decimal import Decimal, InvalidOperation
 from urllib.parse import urlparse
 from uuid import UUID
 
@@ -89,6 +91,78 @@ SAFE_AGENT_ERROR_MESSAGES = frozenset(
         "Cura settings could not be captured safely on the workstation.",
     }
 )
+
+
+def _normalized_cura_machine_identity(value: object) -> str:
+    """Normalize bounded reported machine labels for conservative identity matching."""
+
+    return "".join(character for character in str(value or "").casefold() if character.isalnum())
+
+
+def _reported_value(item: object, key: str, default: object = None) -> object:
+    """Read one value from a validated report model or its persisted JSON form."""
+
+    return item.get(key, default) if isinstance(item, dict) else getattr(item, key, default)
+
+
+def _reported_nozzle_drift(
+    installations: Sequence[object],
+    printer: Printer,
+) -> tuple[Decimal | None, str] | None:
+    """Return bounded drift evidence when a matching Cura extruder is not canonical."""
+
+    expected_identities = {
+        _normalized_cura_machine_identity(printer.printer_code),
+        _normalized_cura_machine_identity(printer.name),
+    }
+    expected_identities.discard("")
+    observations: list[dict[str, object]] = []
+    first_reported: Decimal | None = None
+    for installation in installations:
+        machines = _reported_value(installation, "machines", [])
+        if not isinstance(machines, list):
+            continue
+        installation_id = str(_reported_value(installation, "installation_id", ""))[:96]
+        for machine in machines:
+            machine_identities = {
+                _normalized_cura_machine_identity(_reported_value(machine, "machine_id", "")),
+                _normalized_cura_machine_identity(_reported_value(machine, "display_name", "")),
+                _normalized_cura_machine_identity(_reported_value(machine, "definition_id", "")),
+            }
+            machine_identities.discard("")
+            if not expected_identities.intersection(machine_identities):
+                continue
+            fields_set = (
+                set(machine) if isinstance(machine, dict) else getattr(machine, "model_fields_set", set())
+            )
+            if "extruder_nozzle_diameter_mm" in fields_set:
+                raw_diameter = _reported_value(machine, "extruder_nozzle_diameter_mm")
+            else:
+                raw_diameter = _reported_value(machine, "nozzle_diameter_mm")
+            try:
+                reported = Decimal(str(raw_diameter)) if raw_diameter is not None else None
+            except (InvalidOperation, ValueError):
+                reported = None
+            if reported is not None and (not reported.is_finite() or reported <= 0):
+                reported = None
+            if reported == printer.nozzle_diameter_mm:
+                continue
+            first_reported = first_reported if first_reported is not None else reported
+            observations.append(
+                {
+                    "installation_id": installation_id,
+                    "machine_id": str(_reported_value(machine, "machine_id", ""))[:255],
+                    "reported_nozzle_diameter_mm": format(reported, "f") if reported else None,
+                }
+            )
+    if not observations:
+        return None
+    evidence_checksum = hashlib.sha256(
+        json.dumps(observations, sort_keys=True, separators=(",", ":")).encode("utf-8")
+    ).hexdigest()[:24]
+    return first_reported, evidence_checksum
+
+
 SAFE_RECOVERY_CAPTURE_MESSAGES = frozenset(
     {
         "No Cura printer configuration was found to back up.",
@@ -382,6 +456,7 @@ async def workstation_heartbeat(
             "cura_managed_materials": payload.cura_managed_materials,
         }
     )
+    previous_cura_installations = list(agent.cura_installations)
     agent.agent_version = payload.agent_version
     agent.capabilities = payload.capabilities
     agent.cura_installations = [item.model_dump(mode="json") for item in payload.cura_installations]
@@ -397,6 +472,27 @@ async def workstation_heartbeat(
         agent.cura_management_enabled = True
     agent.record_version += 1
     if agent.cura_management_enabled and payload.cura_installations:
+        printers = list(await session.scalars(select(Printer).order_by(Printer.id)))
+        for printer in printers:
+            current_drift = _reported_nozzle_drift(payload.cura_installations, printer)
+            if current_drift is None:
+                continue
+            previous_drift = _reported_nozzle_drift(previous_cura_installations, printer)
+            previous_diameter, evidence_checksum = current_drift
+            trigger_key = (
+                f"heartbeat-v{agent.record_version}-{evidence_checksum}"
+                if previous_drift is None
+                else (f"heartbeat-drift-{evidence_checksum}-{int(agent.last_seen_at.timestamp() // 300)}")
+            )
+            await queue_cura_nozzle_update(
+                session,
+                printer=printer,
+                previous_diameter_mm=previous_diameter,
+                requested_by=agent.created_by,
+                agents=[agent],
+                force=True,
+                trigger_key=trigger_key,
+            )
         await import_managed_cura_edits(
             session,
             agent=agent,

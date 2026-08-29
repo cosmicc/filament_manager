@@ -1,5 +1,22 @@
 # User Changelog
 
+## 0.6.2 - 08.28.2026
+
+### Added
+
+- Print History now has 10, 25, 50, and 100 records-per-page choices plus First, Previous, Next, and Last navigation; 10 records is the default.
+
+### Changed
+
+- Print History now shows Moonraker's last known outcome, including printer shutdown, disconnection, interruption, cancellation, and error states.
+- Managed Cura start G-code now carries separate initial-layer and regular build-plate temperatures for exact inspection.
+
+### Fixed
+
+- Fixed blocked or interrupted prints remaining labelled as in progress or unknown after Moonraker recorded a final outcome.
+- Fixed valid prints being blocked because Cura's saved quality-profile bed temperature was incorrectly treated as the resolved managed material value.
+- Fixed Cura keeping a stale extruder nozzle diameter until the physical nozzle changed again; the workstation agent now verifies it during every check-in and queues a repair when needed.
+
 ## 0.6.1 - 08.28.2026
 
 ### Added

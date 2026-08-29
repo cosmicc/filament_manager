@@ -2,14 +2,14 @@
 
 from collections.abc import AsyncIterator
 from datetime import UTC, datetime
-from typing import Annotated
+from typing import Annotated, Literal
 from urllib.parse import quote
 from uuid import UUID
 
 import httpx
 from fastapi import APIRouter, Query, Request, Response, status
 from fastapi.responses import StreamingResponse
-from sqlalchemy import Select, select
+from sqlalchemy import Select, func, select
 from sqlalchemy.orm import selectinload
 
 from filament_manager.clients.moonraker import MoonrakerClient
@@ -26,11 +26,24 @@ from ..errors import ApiError
 from ..schemas import (
     PrintAssessmentCreate,
     PrintAssessmentResponse,
+    PrintJobPageResponse,
     PrintJobResponse,
     PrintMaterialSegmentResponse,
 )
 
 router = APIRouter(prefix="/prints", tags=["print history"])
+
+MOONRAKER_HISTORY_STATUSES = frozenset(
+    {
+        "in_progress",
+        "completed",
+        "cancelled",
+        "error",
+        "klippy_shutdown",
+        "klippy_disconnect",
+        "interrupted",
+    }
+)
 
 
 def _print_query() -> Select[tuple[PrintJob]]:
@@ -55,8 +68,15 @@ def _print_response(job: PrintJob) -> PrintJobResponse:
             )
         )
     costs = print_cost_summary(job)
+    raw_moonraker_status = job.state_snapshot.get("moonraker_history_status")
+    moonraker_status = (
+        raw_moonraker_status
+        if isinstance(raw_moonraker_status, str) and raw_moonraker_status in MOONRAKER_HISTORY_STATUSES
+        else None
+    )
     return response.model_copy(
         update={
+            "moonraker_status": moonraker_status,
             "timelapse_url": f"/api/v1/prints/{job.id}/timelapse" if job.timelapse_url else None,
             "thumbnail_url": (
                 f"/api/v1/prints/{job.id}/thumbnail" if job.thumbnail_data is not None else None
@@ -86,6 +106,42 @@ async def list_prints(
     query = query.offset(min(max(offset, 0), 100_000)).limit(min(max(limit, 1), 250))
     result = await session.execute(query)
     return [_print_response(job) for job in result.scalars().unique()]
+
+
+@router.get("/page", response_model=PrintJobPageResponse)
+async def list_print_page(
+    _: Viewer,
+    session: DatabaseSession,
+    print_status: PrintJobStatus | None = None,
+    profile_id: UUID | None = None,
+    page: Annotated[int, Query(ge=1, le=100_000)] = 1,
+    per_page: Literal[10, 25, 50, 100] = 10,
+) -> PrintJobPageResponse:
+    """Return one bounded page plus the exact filtered record count."""
+
+    filters = []
+    if print_status is not None:
+        filters.append(PrintJob.status == print_status)
+    if profile_id is not None:
+        filters.append(PrintJob.material_profile_id == profile_id)
+    total_items = int(await session.scalar(select(func.count(PrintJob.id)).where(*filters)) or 0)
+    total_pages = max(1, (total_items + per_page - 1) // per_page)
+    effective_page = min(page, total_pages)
+    query = (
+        _print_query()
+        .where(*filters)
+        .order_by(PrintJob.started_at.desc().nullslast(), PrintJob.created_at.desc())
+        .offset((effective_page - 1) * per_page)
+        .limit(per_page)
+    )
+    result = await session.execute(query)
+    return PrintJobPageResponse(
+        items=[_print_response(job) for job in result.scalars().unique()],
+        page=effective_page,
+        per_page=per_page,
+        total_items=total_items,
+        total_pages=total_pages,
+    )
 
 
 @router.get("/profile-statistics")

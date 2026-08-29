@@ -7,6 +7,7 @@ MANAGED_MACHINE_START_GCODE = (
     "FILAMENT_MANAGER_START_PRINT "
     "MATERIAL_GUID={material_guid, 0} "
     "BED_TEMP={material_bed_temperature_layer_0, 0} "
+    "REGULAR_BED_TEMP={material_bed_temperature, 0} "
     "EXTRUDER_TEMP={material_print_temperature_layer_0, 0} "
     "CHAMBER_TEMP={build_volume_temperature}"
 )

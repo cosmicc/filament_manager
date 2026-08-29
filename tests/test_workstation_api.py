@@ -63,6 +63,43 @@ def test_agent_error_detail_is_bounded_to_safe_operator_guidance() -> None:
     )
 
 
+def test_reported_linked_extruder_nozzle_drift_is_detected() -> None:
+    """Heartbeat reconciliation compares the linked extruder, not stale machine metadata."""
+
+    printer = type(
+        "PrinterEvidence",
+        (),
+        {
+            "printer_code": "workshop-printer",
+            "name": "Workshop Printer",
+            "nozzle_diameter_mm": Decimal("0.6"),
+        },
+    )()
+    installation = {
+        "installation_id": "cura-test",
+        "machines": [
+            {
+                "machine_id": "workshop-printer",
+                "display_name": "Workshop Printer",
+                "nozzle_diameter_mm": "0.6",
+                "extruder_nozzle_diameter_mm": "0.4",
+            }
+        ],
+    }
+
+    drift = workstations._reported_nozzle_drift([installation], printer)
+
+    assert drift is not None
+    assert drift[0] == Decimal("0.4")
+    installation["machines"][0]["extruder_nozzle_diameter_mm"] = "0.6"  # type: ignore[index]
+    assert workstations._reported_nozzle_drift([installation], printer) is None
+
+    installation["machines"][0]["machine_id"] = "workshop-printer-copy"  # type: ignore[index]
+    installation["machines"][0]["display_name"] = "Workshop Printer Copy"  # type: ignore[index]
+    installation["machines"][0]["extruder_nozzle_diameter_mm"] = "0.4"  # type: ignore[index]
+    assert workstations._reported_nozzle_drift([installation], printer) is None
+
+
 def test_recovery_capture_failure_is_scoped_to_recovery_health() -> None:
     """A backup parser failure must not make a connected Cura agent unhealthy."""
 

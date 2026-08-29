@@ -21,7 +21,7 @@ from .discovery import (
     managed_material_edit_receipts,
     unmanaged_material_count,
 )
-from .nozzle import apply_nozzle_update
+from .nozzle import apply_nozzle_update, linked_extruder_nozzle_diameter
 from .recovery import (
     capture_recovery_snapshot,
     material_settings_plugin_inventory,
@@ -85,6 +85,15 @@ def heartbeat_payload(
     installation_reports: list[dict[str, object]] = []
     for installation in installations:
         report = installation.report()
+        raw_machines = report.get("machines")
+        reported_machines = raw_machines if isinstance(raw_machines, list) else []
+        discovered_machines = getattr(installation, "machines", [])
+        for machine, reported_machine in zip(discovered_machines, reported_machines, strict=False):
+            if isinstance(reported_machine, dict):
+                reported_machine["extruder_nozzle_diameter_mm"] = linked_extruder_nozzle_diameter(
+                    installation,
+                    machine,
+                )
         report["managed_library_checksum"] = managed_library_checksum(installation.data_path)
         sync_status = material_settings_sync_status(installation.data_path)
         sync_status["plugins"] = material_settings_plugin_inventory(installation)

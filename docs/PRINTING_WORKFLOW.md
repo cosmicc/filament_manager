@@ -2,18 +2,18 @@
 
 ## Recommended policy
 
-Use **Warn and continue** under **Settings → G-code inspection policy** while testing 0.6.1. Filament Manager still records every mismatch in Print History. Change the setting to **Block mismatches** after the Cura material library, printer macros, and first exact-state records have been verified.
+Use **Warn and continue** under **Settings → G-code inspection policy** while testing 0.6.2. Filament Manager still records every mismatch in Print History. Change the setting to **Block mismatches** after the Cura material library, printer macros, and first exact-state records have been verified.
 
 Blocking pauses virtual-SD execution in Fluidd until Filament Manager can resolve the managed material profile, safely inspect the G-code, and confirm that supported values match. Missing inspection data and an unresolved exact profile also block. The setting is synchronized into Klipper automatically.
 
-Regular and initial-layer build-plate temperatures are inspected independently. Moonraker's `first_layer_bed_temp`, the managed `BED_TEMP` start value, and the first bed-heating command are initial-layer evidence only. Filament Manager compares the regular build-plate temperature only when Cura explicitly embeds `material_bed_temperature`; it never substitutes an initial-layer value for a missing regular value.
+Regular and initial-layer build-plate temperatures are inspected independently. Moonraker's `first_layer_bed_temp`, the managed `BED_TEMP` start value, and the first bed-heating command are initial-layer evidence only. Filament Manager compares the regular build-plate temperature only from the managed start boundary's resolved `REGULAR_BED_TEMP`; it never substitutes an initial-layer value or Cura's saved `SETTING_3 material_bed_temperature` quality-layer value for missing resolved material evidence.
 
 `Blocked` in Print History means the inspection found a condition that the blocking policy would reject. The printer pauses only when Cura entered the required `FILAMENT_MANAGER_START_PRINT ... MATERIAL_GUID=<managed-guid>` macro gate after resolving Cura's `{material_guid, 0}` token. A print started through another machine start sequence can still be inspected and recorded, but Filament Manager cannot retroactively pause it; Print History identifies this case explicitly.
 
 ## Print sequence
 
 1. Select a managed product material in Cura and send the print. Do not slice with a `Template <material type>` entry.
-2. The Filament Manager workstation agent saves `FILAMENT_MANAGER_START_PRINT MATERIAL_GUID={material_guid, 0} BED_TEMP={material_bed_temperature_layer_0, 0} EXTRUDER_TEMP={material_print_temperature_layer_0, 0} CHAMBER_TEMP={build_volume_temperature}` as the matched Cura printer's start G-code.
+2. The Filament Manager workstation agent saves `FILAMENT_MANAGER_START_PRINT MATERIAL_GUID={material_guid, 0} BED_TEMP={material_bed_temperature_layer_0, 0} REGULAR_BED_TEMP={material_bed_temperature, 0} EXTRUDER_TEMP={material_print_temperature_layer_0, 0} CHAMBER_TEMP={build_volume_temperature}` as the matched Cura printer's start G-code.
 3. In blocking mode, Fluidd shows the inspection prompt while Filament Manager reads the documented Moonraker file metadata and G-code download endpoints. In warning mode, inspection remains auditable without pausing this step.
 4. If the currently loaded physical spool is an eligible exact match, the macro calls the existing `START_PRINT` with its original temperature values. No unload/load motion runs.
 5. If the spool does not match, Fluidd asks for one exact eligible Spoolman spool. The existing unload routine runs at the loaded filament profile temperature. Only after motion completes does Spoolman become empty.
@@ -34,7 +34,7 @@ Run `SELECT_BUILD_PLATE` without parameters to open a chooser generated live fro
 
 ## Print history and assessment
 
-The worker checks current print state every five seconds and incrementally imports the supported Moonraker history. New records retain the exact printer, physical spool, material/profile snapshot, plate side, nozzle, G-code SHA-256, supported Cura/Moonraker metadata, predicted/actual use, timestamps, and result. An `M600` closes the current immutable material segment and opens a new exact segment after the replacement is loaded.
+The worker checks current print state every five seconds and incrementally imports the supported Moonraker history. New records retain the exact printer, physical spool, material/profile snapshot, plate side, nozzle, G-code SHA-256, supported Cura/Moonraker metadata, predicted/actual use, timestamps, canonical result, and exact bounded Moonraker history outcome such as cancellation, Klippy shutdown, disconnection, or interruption. An `M600` closes the current immutable material segment and opens a new exact segment after the replacement is loaded. Print History loads newest-first in server-side pages of 10 by default, with 25, 50, and 100 choices and complete page navigation.
 
 History from before 0.2.1 is imported but marked legacy/unresolved when its exact canonical material state cannot be reconstructed. The app does not guess missing spool or profile history.
 

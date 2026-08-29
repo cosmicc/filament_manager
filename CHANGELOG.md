@@ -1,5 +1,24 @@
 # Changelog
 
+## 0.6.2 - 08.28.2026
+
+### Added
+
+- Added server-side Print History pagination with 10, 25, 50, and 100 record page sizes, a 10-record default, exact filtered totals, and First, Previous, Next, and Last controls.
+- Added recurring Cura heartbeat evidence for the exact linked position-zero extruder nozzle diameter, with coalesced closed-Cura correction work whenever it drifts from the installed physical nozzle.
+
+### Changed
+
+- Changed Print History outcomes to preserve and display Moonraker's bounded terminal reason, including `klippy_shutdown`, `klippy_disconnect`, and `interrupted`, while retaining the canonical completed, cancelled, or failed status.
+- Changed the managed Cura start boundary to embed separate resolved initial-layer and regular build-plate temperatures.
+- Changed every server, browser, and workstation-agent version surface to 0.6.2 and incremented the workstation renderer revision to 17 so existing managed installations receive the corrected Cura start boundary.
+
+### Fixed
+
+- Fixed blocked or interrupted history records remaining displayed as in progress or legacy unknown after Moonraker reported their terminal outcome.
+- Fixed Cura's saved quality-layer `material_bed_temperature` value being mistaken for the resolved managed regular bed temperature, which could falsely compare G-code 60 against profile 55.
+- Fixed Cura nozzle alignment being checked only after a physical nozzle change; every heartbeat now detects and repairs a stale linked extruder setting.
+
 ## 0.6.1 - 08.28.2026
 
 ### Added

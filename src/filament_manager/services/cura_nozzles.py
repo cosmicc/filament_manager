@@ -20,7 +20,7 @@ async def queue_cura_nozzle_update(
     *,
     printer: Printer,
     previous_diameter_mm: Decimal | None,
-    requested_by: UUID,
+    requested_by: UUID | None,
     agents: Sequence[WorkstationAgent] | None = None,
     force: bool = False,
     trigger_key: str | None = None,
@@ -59,6 +59,21 @@ async def queue_cura_nozzle_update(
         checksum = hashlib.sha256(
             json.dumps(payload, sort_keys=True, separators=(",", ":")).encode("utf-8")
         ).hexdigest()
+        active_deployments = list(
+            await session.scalars(
+                select(CuraDeployment).where(
+                    CuraDeployment.agent_id == agent.id,
+                    CuraDeployment.status.in_((CuraDeploymentStatus.PENDING, CuraDeploymentStatus.CLAIMED)),
+                )
+            )
+        )
+        if any(
+            deployment.payload.get("operation") == "nozzle_update"
+            and deployment.payload.get("printer_id") == str(printer.id)
+            and deployment.payload.get("nozzle_diameter_mm") == format(printer.nozzle_diameter_mm, "f")
+            for deployment in active_deployments
+        ):
+            continue
         idempotency_key = (
             f"cura-nozzle:{agent.id}:{printer.id}:v{printer.record_version}:"
             f"{trigger_key or 'canonical-update'}"

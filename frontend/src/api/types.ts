@@ -673,6 +673,7 @@ export interface PrintJob {
   gcode_sha256: string | null
   source: string
   status: 'in_progress' | 'completed' | 'cancelled' | 'failed' | 'legacy_unknown'
+  moonraker_status: 'in_progress' | 'completed' | 'cancelled' | 'error' | 'klippy_shutdown' | 'klippy_disconnect' | 'interrupted' | null
   spool_id: string | null
   filament_product_id: string | null
   material_profile_id: string | null
@@ -738,6 +739,14 @@ export interface PrintJob {
   record_version: number
   segments: PrintMaterialSegment[]
   assessments: PrintAssessment[]
+}
+
+export interface PrintJobPage {
+  items: PrintJob[]
+  page: number
+  per_page: 10 | 25 | 50 | 100
+  total_items: number
+  total_pages: number
 }
 
 export interface ProfileStatistics {

@@ -191,6 +191,7 @@ def test_discovers_and_renders_complete_profile(tmp_path: Path, monkeypatch: obj
     assert machine_paths == {"machine_instances/flsun-v400.global.cfg"}
     machine_file = rendered.machine_files[Path("machine_instances/flsun-v400.global.cfg")]
     assert b"FILAMENT_MANAGER_START_PRINT" in machine_file
+    assert b"REGULAR_BED_TEMP={material_bed_temperature, 0}" in machine_file
     assert b"MATERIAL_GUID={material_guid, 0}" in machine_file
     assert b"machine_end_gcode = END_PRINT" in machine_file
     assert "plugins/FilamentManagerVisibility/FilamentManagerVisibility/plugin.json" in paths
@@ -489,7 +490,7 @@ def test_apply_is_idempotent_and_rollback_restores_original(tmp_path: Path, monk
     manifest = json.loads((version / ".filament-manager" / "manifest.json").read_text())
     assert manifest["library_checksum"] == "a" * 64
     assert manifest["schema_version"] == 4
-    assert manifest["renderer_revision"] == 16
+    assert manifest["renderer_revision"] == 17
     assert set(manifest["machine_files"]) == {"machine_instances/flsun-v400.global.cfg"}
     managed_machine = machine_path.read_text(encoding="utf-8")
     assert "FILAMENT_MANAGER_START_PRINT" in managed_machine
@@ -553,7 +554,7 @@ def test_apply_is_idempotent_and_rollback_restores_original(tmp_path: Path, monk
     )
     assert upgraded["status"] == "installed"
     upgraded_manifest = json.loads((version / ".filament-manager" / "manifest.json").read_text())
-    assert upgraded_manifest["renderer_revision"] == 16
+    assert upgraded_manifest["renderer_revision"] == 17
 
     assert rollback(deployment_id) == ["Cura 5.10"]
     assert machine_path.read_bytes() == original_machine

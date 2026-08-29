@@ -19,6 +19,7 @@ def test_cura_metadata_is_extracted_without_evaluating_content() -> None:
         {"estimated_time": 125, "filament_total": "1234.5", "nozzle_diameter": "0.4"},
         ";Generated with Cura_SteamEngine 5.10.1\n"
         ";MATERIAL_GUID=12345678-1234-1234-1234-123456789abc\n"
+        "FILAMENT_MANAGER_START_PRINT BED_TEMP=75 REGULAR_BED_TEMP=70\n"
         "SET_PRESSURE_ADVANCE ADVANCE=0.035\n",
         cura_tail(
             "material_print_temperature = 225\nmaterial_bed_temperature = 70\n"
@@ -135,6 +136,41 @@ def test_first_layer_bed_temperature_is_not_compared_as_regular_temperature() ->
             "field": "initial_bed_temp_c",
             "label": "initial layer build plate temperature",
             "gcode_value": "60",
+            "profile_value": "55",
+        },
+    )
+
+
+def test_stale_quality_payload_cannot_override_resolved_bed_temperature_evidence() -> None:
+    """Only explicit managed start tokens may represent the resolved regular bed value."""
+
+    stale_quality_tail = cura_tail("material_bed_temperature = 60\nmaterial_bed_temperature_layer_0 = 60\n")
+    without_regular_evidence = inspect_gcode(
+        {"slicer": "Cura", "first_layer_bed_temp": "60"},
+        "FILAMENT_MANAGER_START_PRINT BED_TEMP=60\nM190 S60\n",
+        stale_quality_tail,
+        expected_profile={"bed_temp_c": "55", "initial_bed_temp_c": "60"},
+        expected_material_guid=None,
+        expected_machine_name=None,
+    )
+
+    assert "bed_temp_c" not in without_regular_evidence.extracted
+    assert without_regular_evidence.mismatches == ()
+
+    explicit_regular_mismatch = inspect_gcode(
+        {"slicer": "Cura", "first_layer_bed_temp": "60"},
+        "FILAMENT_MANAGER_START_PRINT BED_TEMP=60 REGULAR_BED_TEMP=58\nM190 S60\n",
+        stale_quality_tail,
+        expected_profile={"bed_temp_c": "55", "initial_bed_temp_c": "60"},
+        expected_material_guid=None,
+        expected_machine_name=None,
+    )
+
+    assert explicit_regular_mismatch.mismatches == (
+        {
+            "field": "bed_temp_c",
+            "label": "build plate temperature",
+            "gcode_value": "58",
             "profile_value": "55",
         },
     )

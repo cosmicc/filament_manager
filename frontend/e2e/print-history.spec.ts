@@ -21,6 +21,7 @@ const printJob = {
   gcode_sha256: 'a'.repeat(64),
   source: 'live',
   status: 'completed',
+  moonraker_status: 'completed',
   spool_id: '40000000-0000-0000-0000-000000000001',
   filament_product_id: '50000000-0000-0000-0000-000000000001',
   material_profile_id: '60000000-0000-0000-0000-000000000001',
@@ -111,7 +112,9 @@ test.beforeEach(async ({ page }) => {
     created_at: '2026-08-13T20:00:00Z', last_seen_at: '2026-08-13T20:00:00Z',
     resolved_at: null, read: false,
   }] }))
-  await page.route('**/api/v1/prints?**', (route) => route.fulfill({ json: [printJob] }))
+  await page.route('**/api/v1/prints/page?**', (route) => route.fulfill({ json: {
+    items: [printJob], page: 1, per_page: 10, total_items: 1, total_pages: 1,
+  } }))
   await page.route(`**/api/v1/prints/${printJob.id}/thumbnail`, (route) => route.fulfill({
     contentType: 'image/svg+xml',
     body: thumbnailSvg,
@@ -126,7 +129,11 @@ test.beforeEach(async ({ page }) => {
 test('exact print state, inspection, scoring, notifications, and mobile cards render', async ({ page }) => {
   await page.goto('/prints')
   await expect(page.getByRole('heading', { name: 'Print history' })).toBeVisible()
+  await expect(page.getByLabel('Prints per page')).toHaveValue('10')
+  await expect(page.getByRole('button', { name: 'First' })).toBeDisabled()
+  await expect(page.getByRole('button', { name: 'Last' })).toBeDisabled()
   await expect(page.getByText('29.5 g · $0.89', { exact: true })).toBeVisible()
+  await page.screenshot({ path: '../docs/design/validation/print-history-v062.png', fullPage: true })
   await page.getByText('dimensional-cube.gcode', { exact: true }).first().click()
   const dialog = page.getByRole('dialog', { name: 'dimensional-cube.gcode' })
   await expect(dialog.getByText('G-code 240; profile 235')).toBeVisible()
@@ -142,14 +149,16 @@ test('exact print state, inspection, scoring, notifications, and mobile cards re
     `/api/v1/prints/${printJob.id}/timelapse`,
   )
   await expect(dialog.getByRole('button', { name: 'Save assessment' })).toBeVisible()
-  await page.screenshot({ path: '../docs/design/validation/print-history-v057.png', fullPage: true })
+  await page.keyboard.press('Escape')
+
+  await page.setViewportSize({ width: 390, height: 844 })
+  await page.reload()
+  await expect(page.getByRole('heading', { name: 'Print history' })).toBeVisible()
+  await page.screenshot({ path: '../docs/design/validation/print-history-mobile-v062.png', fullPage: true })
+  await page.getByRole('button', { name: /dimensional-cube.gcode/ }).click()
+  await expect(page.getByRole('dialog', { name: 'dimensional-cube.gcode' })).toBeVisible()
   await page.keyboard.press('Escape')
 
   await page.getByRole('button', { name: '1 unread notifications' }).click()
   await expect(page.getByText('Spool PETG-01 is low')).toBeVisible()
-
-  await page.setViewportSize({ width: 390, height: 844 })
-  await page.getByRole('button', { name: /dimensional-cube.gcode/ }).click()
-  await expect(page.getByRole('dialog', { name: 'dimensional-cube.gcode' })).toBeVisible()
-  await page.screenshot({ path: '../docs/design/validation/print-history-mobile-v057.png', fullPage: true })
 })

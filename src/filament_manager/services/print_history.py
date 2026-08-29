@@ -205,9 +205,15 @@ def _history_status(value: object) -> PrintJobStatus:
     normalized = str(value or "").casefold()
     if normalized in {"complete", "completed"}:
         return PrintJobStatus.COMPLETED
-    if normalized in {"cancelled", "canceled", "interrupted"}:
+    if normalized in {"cancelled", "canceled"}:
         return PrintJobStatus.CANCELLED
-    if normalized in {"error", "failed"}:
+    if normalized in {
+        "error",
+        "failed",
+        "klippy_shutdown",
+        "klippy_disconnect",
+        "interrupted",
+    }:
         return PrintJobStatus.FAILED
     if normalized in {"in_progress", "printing", "paused"}:
         return PrintJobStatus.IN_PROGRESS
@@ -941,6 +947,8 @@ async def _upsert_history_job(
         .where(PrintJob.printer_id == printer.id, PrintJob.moonraker_job_id == remote_id)
         .options(selectinload(PrintJob.segments))
     )
+    raw_history_status = _bounded(remote.get("status"), 32)
+    normalized_history_status = raw_history_status.casefold() if raw_history_status else None
     start_time = _timestamp(remote.get("start_time"))
     end_time = _timestamp(remote.get("end_time"))
     if job is None:
@@ -978,6 +986,11 @@ async def _upsert_history_job(
             state_snapshot={
                 "legacy_unresolved": True,
                 "printer": {"id": str(printer.id), "code": printer.printer_code, "name": printer.name},
+                **(
+                    {"moonraker_history_status": normalized_history_status}
+                    if normalized_history_status
+                    else {}
+                ),
             },
             profile_snapshot={},
             inspection_status=GcodeInspectionStatus.UNAVAILABLE,
@@ -998,6 +1011,11 @@ async def _upsert_history_job(
     else:
         job.moonraker_job_id = remote_id
         job.status = _history_status(remote.get("status"))
+        if normalized_history_status:
+            job.state_snapshot = {
+                **job.state_snapshot,
+                "moonraker_history_status": normalized_history_status,
+            }
         job.started_at = start_time or job.started_at
         job.ended_at = end_time or job.ended_at
     job.actual_filament_length_mm = _decimal(remote.get("filament_used"))
