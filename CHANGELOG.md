@@ -1,5 +1,19 @@
 # Changelog
 
+## 0.6.5 - 08.29.2026
+
+### Added
+
+- Added the active Filament Manager Klipper macro version to `FILAMENT_MANAGER_SPOOL_STATE` output and regression coverage for direct virtual-SD hold cancellation.
+
+### Changed
+
+- Changed every server, browser, workstation-agent, and Klipper macro version surface to 0.6.5; Cura renderer revision 18 remains current because no generated workstation files changed.
+
+### Fixed
+
+- Fixed **Cancel Print** failing to unload and reset a Cura file held directly with virtual-SD `M25`, which could leave Klipper reporting an active print and Fluidd disabling printer power controls after cancellation or restart.
+
 ## 0.6.4 - 08.29.2026
 
 ### Added

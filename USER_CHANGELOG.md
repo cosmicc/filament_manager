@@ -1,5 +1,19 @@
 # User Changelog
 
+## 0.6.5 - 08.29.2026
+
+### Added
+
+- `FILAMENT_MANAGER_SPOOL_STATE` now reports the active Klipper macro version so an outdated installed copy is easy to identify.
+
+### Changed
+
+- Updated Filament Manager and its workstation agent to version 0.6.5.
+
+### Fixed
+
+- Fixed **Cancel Print** doing nothing after a print stopped at the purge line, leaving Klipper stuck in printing state and Fluidd's printer power control unavailable.
+
 ## 0.6.4 - 08.29.2026
 
 ### Added

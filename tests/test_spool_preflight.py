@@ -109,6 +109,10 @@ def test_macro_reference_compiles_and_preserves_existing_motion_macros() -> None
                 assert ast.literal_eval(value) != ""
 
     spool_state_section = "gcode_macro FILAMENT_MANAGER_SPOOL_STATE"
+    assert parser.get(spool_state_section, "variable_macro_version") == '"0.6.5"'
+    spool_state_gcode = parser.get(spool_state_section, "gcode")
+    assert "state.macro_version" in spool_state_gcode
+    assert '"; macro=" ~ macro_version' in spool_state_gcode
     assert parser.get(spool_state_section, "variable_catalog_revision") == '"' + ("0" * 64) + '"'
     assert ast.literal_eval(parser.get(spool_state_section, "variable_manual_spools")) == []
     assert ast.literal_eval(parser.get(spool_state_section, "variable_print_temperatures")) == {}
@@ -192,6 +196,11 @@ def test_macro_virtual_sd_resume_contract_handles_every_preflight_exit() -> None
     assert 'print_state in ["printing", "paused"]' in abort
     assert "file_loaded" in abort
     assert "CANCEL_PRINT" in abort
+    assert "file_loaded and not printer.virtual_sdcard.is_active" in cancel_print
+    assert "not printer.pause_resume.is_paused" in cancel_print
+    assert cancel_print.index("SDCARD_RESET_FILE") < cancel_print.index(
+        "_FILAMENT_MANAGER_ORIGINAL_CANCEL_PRINT"
+    )
 
     plate_selector = parser.get("gcode_macro SELECT_BUILD_PLATE", "gcode")
     assert '"gcode_macro _START_PRINT_CONTINUE" not in printer' in plate_selector
