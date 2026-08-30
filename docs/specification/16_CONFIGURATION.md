@@ -14,6 +14,7 @@ Docker builds the complete validated runtime configuration directly from scoped 
 - Google publication
 - optional Bugsnag error reporting, release stage, and browser performance monitoring
 - synchronization policies
+- bounded browser-session absolute and idle lifetimes, defaulting to thirty days and seven days
 - build plates
 - future hardware adapters
 

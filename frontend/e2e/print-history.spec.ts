@@ -115,6 +115,9 @@ test.beforeEach(async ({ page }) => {
   await page.route('**/api/v1/prints/page?**', (route) => route.fulfill({ json: {
     items: [printJob], page: 1, per_page: 10, total_items: 1, total_pages: 1,
   } }))
+  await page.route('**/api/v1/printers', (route) => route.fulfill({ json: [{
+    id: printJob.printer_id, name: 'Workshop Printer', printer_code: 'workshop-printer',
+  }] }))
   await page.route(`**/api/v1/prints/${printJob.id}/thumbnail`, (route) => route.fulfill({
     contentType: 'image/svg+xml',
     body: thumbnailSvg,
@@ -129,10 +132,12 @@ test.beforeEach(async ({ page }) => {
 test('exact print state, inspection, scoring, notifications, and mobile cards render', async ({ page }) => {
   await page.goto('/prints')
   await expect(page.getByRole('heading', { name: 'Print history' })).toBeVisible()
+  await expect(page.getByLabel('Filter print history by printer')).toHaveValue('')
   await expect(page.getByLabel('Prints per page')).toHaveValue('10')
   await expect(page.getByRole('button', { name: 'First' })).toBeDisabled()
   await expect(page.getByRole('button', { name: 'Last' })).toBeDisabled()
   await expect(page.getByText('29.5 g · $0.89', { exact: true })).toBeVisible()
+  await expect(page.locator('tr.print-history-entry--successful')).toHaveCount(1)
   await page.screenshot({ path: '../docs/design/validation/print-history-v062.png', fullPage: true })
   await page.getByText('dimensional-cube.gcode', { exact: true }).first().click()
   const dialog = page.getByRole('dialog', { name: 'dimensional-cube.gcode' })

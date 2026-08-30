@@ -93,6 +93,7 @@ async def list_prints(
     _: Viewer,
     session: DatabaseSession,
     print_status: PrintJobStatus | None = None,
+    printer_id: UUID | None = None,
     profile_id: UUID | None = None,
     limit: int = 100,
     offset: int = 0,
@@ -102,6 +103,8 @@ async def list_prints(
     query = _print_query().order_by(PrintJob.started_at.desc().nullslast(), PrintJob.created_at.desc())
     if print_status is not None:
         query = query.where(PrintJob.status == print_status)
+    if printer_id is not None:
+        query = query.where(PrintJob.printer_id == printer_id)
     if profile_id is not None:
         query = query.where(PrintJob.material_profile_id == profile_id)
     query = query.offset(min(max(offset, 0), 100_000)).limit(min(max(limit, 1), 250))
@@ -114,6 +117,7 @@ async def list_print_page(
     _: Viewer,
     session: DatabaseSession,
     print_status: PrintJobStatus | None = None,
+    printer_id: UUID | None = None,
     profile_id: UUID | None = None,
     page: Annotated[int, Query(ge=1, le=100_000)] = 1,
     per_page: Annotated[int, Query(ge=10, le=100)] = 10,
@@ -131,6 +135,8 @@ async def list_print_page(
     filters = []
     if print_status is not None:
         filters.append(PrintJob.status == print_status)
+    if printer_id is not None:
+        filters.append(PrintJob.printer_id == printer_id)
     if profile_id is not None:
         filters.append(PrintJob.material_profile_id == profile_id)
     total_items = int(await session.scalar(select(func.count(PrintJob.id)).where(*filters)) or 0)

@@ -313,3 +313,50 @@ async def test_history_reconciliation_reloads_printer_after_capture_rollback(
         )
 
     assert synchronized_printers == [replacement]
+
+
+@pytest.mark.asyncio
+async def test_active_print_capture_defers_full_history_poll(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The five-second live pass must not fetch all history during printer motion."""
+
+    printer = SimpleNamespace(id=uuid4(), printer_code="test-printer")
+
+    class FakeClient:
+        def __init__(self, _configured: object) -> None:
+            pass
+
+        async def print_state(self) -> object:
+            return SimpleNamespace(state="printing")
+
+        async def spool_preflight_state(self) -> None:
+            return None
+
+    async def bindings(_session: object) -> list[tuple[object, object]]:
+        return [(printer, SimpleNamespace(id="test-printer"))]
+
+    live_captures = 0
+    history_imports = 0
+
+    async def synchronize_live(*_args: object, **_kwargs: object) -> None:
+        nonlocal live_captures
+        live_captures += 1
+
+    async def synchronize_history(*_args: object, **_kwargs: object) -> int:
+        nonlocal history_imports
+        history_imports += 1
+        return 0
+
+    monkeypatch.setattr(dispatcher, "_configured_printer_bindings", bindings)
+    monkeypatch.setattr(dispatcher, "MoonrakerClient", FakeClient)
+    monkeypatch.setattr(dispatcher, "synchronize_live_print", synchronize_live)
+    monkeypatch.setattr(dispatcher, "synchronize_print_history", synchronize_history)
+
+    await dispatcher._reconcile_moonraker_print_history(  # type: ignore[arg-type]
+        SimpleNamespace(),
+        SimpleNamespace(id=uuid4()),
+    )
+
+    assert live_captures == 1
+    assert history_imports == 0

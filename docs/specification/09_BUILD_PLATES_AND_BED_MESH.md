@@ -34,7 +34,7 @@ Recommended fields:
 - clean/maintenance notes
 - photos later
 
-All current non-photo fields are editable in Filament Manager. An Operator may add the one Side B record under an existing physical plate; the server derives its exact lowercase-b code and initially marks its mesh unavailable. The mesh-derived side identity, physical P-number identity, and exact same-named Klipper mapping remain immutable.
+All current non-photo fields are editable in Filament Manager. An Operator may add the next physical plate; the server serializes the operation with Moonraker discovery, assigns the next P-number, creates `Build Plate P<number>`, and adds one same-named Side A whose mesh starts unavailable. An Operator may also add the one Side B record under an existing physical plate; the server derives its exact lowercase-b code and initially marks its mesh unavailable. The mesh-derived side identity, physical P-number identity, and exact same-named Klipper mapping remain immutable. Every mesh-unavailable side is visually identified with a distinct warning and the exact Klipper heatmap profile name it needs.
 
 ## Mesh integration
 

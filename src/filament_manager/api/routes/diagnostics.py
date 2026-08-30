@@ -2,10 +2,11 @@
 
 import asyncio
 from datetime import UTC, datetime
+from typing import Annotated, Literal
 from uuid import UUID
 
 import structlog
-from fastapi import APIRouter, Request, status
+from fastapi import APIRouter, Query, Request, status
 from fastapi.encoders import jsonable_encoder
 from fastapi.responses import FileResponse, PlainTextResponse, Response
 from sqlalchemy import select
@@ -16,6 +17,7 @@ from filament_manager.services.database_backups import (
     acquire_backup_lock,
     archive_path,
     archive_payload,
+    backup_has_active_print,
     backup_status,
     cancel_pending_restore,
     create_backup_archive,
@@ -67,20 +69,24 @@ def _backup_api_error(error: DatabaseBackupError, *, status_code: int = 400) -> 
 async def diagnostics_overview(
     _: Viewer,
     session: DatabaseSession,
+    error_days: Annotated[Literal[1, 7, 30], Query()] = 1,
 ) -> DiagnosticOverviewResponse:
     """Return current sanitized connections, workers, syncs, queues, and errors."""
 
-    return DiagnosticOverviewResponse.model_validate(await operational_overview(session))
+    return DiagnosticOverviewResponse.model_validate(
+        await operational_overview(session, error_days=error_days)
+    )
 
 
 @router.get("/log.txt", response_class=PlainTextResponse)
 async def download_diagnostics_log(
     _: Viewer,
     session: DatabaseSession,
+    error_days: Annotated[Literal[1, 7, 30], Query()] = 1,
 ) -> PlainTextResponse:
     """Download the current bounded diagnostic overview as sanitized plain text."""
 
-    overview = await operational_overview(session)
+    overview = await operational_overview(session, error_days=error_days)
     checked_at = overview["checked_at"]
     assert isinstance(checked_at, datetime)
     filename = f"filament-manager-diagnostics-{checked_at.strftime('%Y%m%dT%H%M%SZ')}.txt"
@@ -170,6 +176,12 @@ async def create_database_backup(
 ) -> DatabaseBackupArchiveResponse:
     """Create one downloadable canonical PostgreSQL backup immediately."""
 
+    if await backup_has_active_print(session):
+        raise ApiError(
+            status.HTTP_409_CONFLICT,
+            "database_backup_print_active",
+            "Database backups are deferred while a print is in progress to protect printer timing.",
+        )
     if not await acquire_backup_lock(session):
         raise ApiError(
             status.HTTP_409_CONFLICT,

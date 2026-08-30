@@ -1,7 +1,7 @@
 """Authenticated-user, role, CSRF, and request-context dependencies."""
 
 from collections.abc import Awaitable, Callable
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from typing import Annotated
 
 from fastapi import Cookie, Depends, Header, Request, status
@@ -9,6 +9,7 @@ from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import joinedload
 
+from filament_manager.config import get_settings
 from filament_manager.database import session_dependency
 from filament_manager.models.auth import User, UserSession
 from filament_manager.models.enums import UserRole
@@ -19,6 +20,7 @@ from .errors import ApiError
 
 SESSION_COOKIE = "fm_session"
 CSRF_COOKIE = "fm_csrf"
+SESSION_TOUCH_INTERVAL = timedelta(minutes=5)
 
 DatabaseSession = Annotated[AsyncSession, Depends(session_dependency)]
 
@@ -64,6 +66,15 @@ async def current_user(
             raise ApiError(status.HTTP_403_FORBIDDEN, "csrf_failed", "Request verification failed")
         if not secrets_equal(hash_token(csrf_header), browser_session.csrf_hash):
             raise ApiError(status.HTTP_403_FORBIDDEN, "csrf_failed", "Request verification failed")
+
+    # Keep an actively used browser signed in without turning the session into
+    # an unbounded credential. Touch at most once every five minutes and clamp
+    # the rolling idle window to the fixed absolute expiry established at login.
+    if now - browser_session.last_seen_at >= SESSION_TOUCH_INTERVAL:
+        idle_window = timedelta(minutes=get_settings().security.session_idle_minutes)
+        browser_session.last_seen_at = now
+        browser_session.idle_expires_at = min(browser_session.expires_at, now + idle_window)
+        await session.commit()
 
     return browser_session.user
 

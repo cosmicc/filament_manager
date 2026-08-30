@@ -1,9 +1,9 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="820" viewBox="0 0 1200 820" role="img" aria-labelledby="title description">
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="1000" viewBox="0 0 1200 1000" role="img" aria-labelledby="title description">
   <title id="title">Filament Manager GUI color profiles</title>
-  <desc id="description">Three light and five dark application palettes with representative background, surface, primary, accent, and text colors.</desc>
-  <rect width="1200" height="820" fill="#E8EDF3"/>
+  <desc id="description">Three light and nine dark application palettes with representative background, surface, primary, accent, and text colors.</desc>
+  <rect width="1200" height="1000" fill="#E8EDF3"/>
   <text x="60" y="62" fill="#16324F" font-family="Inter, system-ui, sans-serif" font-size="32" font-weight="700">Filament Manager GUI color profiles</text>
-  <text x="60" y="94" fill="#536579" font-family="Inter, system-ui, sans-serif" font-size="16">Three light profiles and five dark profiles</text>
+  <text x="60" y="94" fill="#536579" font-family="Inter, system-ui, sans-serif" font-size="16">Three light profiles and nine dark profiles</text>
 
   <g font-family="Inter, system-ui, sans-serif">
     <g transform="translate(60 130)">
@@ -74,7 +74,7 @@
       <text x="20" y="160" fill="#B6AEA0" font-size="12">#151515 · #2A2927 · #E5A63B · #6FA58B</text>
     </g>
 
-    <g transform="translate(245 550)">
+    <g transform="translate(60 550)">
       <rect width="340" height="180" rx="18" fill="#0C1B18" stroke="#285248"/>
       <text x="20" y="34" fill="#EBF5F0" font-size="20" font-weight="700">Forest Ember</text>
       <text x="20" y="58" fill="#9DB8AD" font-size="13">Dark</text>
@@ -85,7 +85,7 @@
       <rect x="268" y="82" width="52" height="56" rx="10" fill="#EBF5F0"/>
       <text x="20" y="160" fill="#9DB8AD" font-size="12">#0C1B18 · #17352E · #E27A42 · #55AA89</text>
     </g>
-    <g transform="translate(615 550)">
+    <g transform="translate(430 550)">
       <rect width="340" height="180" rx="18" fill="#1C1020" stroke="#56305E"/>
       <text x="20" y="34" fill="#F8ECFA" font-size="20" font-weight="700">Plum Neon</text>
       <text x="20" y="58" fill="#C5A5C9" font-size="13">Dark</text>
@@ -95,6 +95,51 @@
       <rect x="206" y="82" width="56" height="56" rx="10" fill="#5CC8C3"/>
       <rect x="268" y="82" width="52" height="56" rx="10" fill="#F8ECFA"/>
       <text x="20" y="160" fill="#C5A5C9" font-size="12">#1C1020 · #3B2142 · #D56BD8 · #5CC8C3</text>
+    </g>
+    <g transform="translate(800 550)">
+      <rect width="340" height="180" rx="18" fill="#061416" stroke="#285054"/>
+      <text x="20" y="34" fill="#E7FAFA" font-size="20" font-weight="700">Deep Ocean</text>
+      <text x="20" y="58" fill="#AFD0D1" font-size="13">Dark</text>
+      <rect x="20" y="82" width="56" height="56" rx="10" fill="#061416" stroke="#285054"/>
+      <rect x="82" y="82" width="56" height="56" rx="10" fill="#18383C"/>
+      <rect x="144" y="82" width="56" height="56" rx="10" fill="#38C7C9"/>
+      <rect x="206" y="82" width="56" height="56" rx="10" fill="#B8E8C9"/>
+      <rect x="268" y="82" width="52" height="56" rx="10" fill="#E7FAFA"/>
+      <text x="20" y="160" fill="#AFD0D1" font-size="12">#061416 · #18383C · #38C7C9 · #B8E8C9</text>
+    </g>
+
+    <g transform="translate(60 760)">
+      <rect width="340" height="180" rx="18" fill="#10120E" stroke="#343B2B"/>
+      <text x="20" y="34" fill="#F2F7E9" font-size="20" font-weight="700">Carbon Lime</text>
+      <text x="20" y="58" fill="#BDC8AC" font-size="13">Dark</text>
+      <rect x="20" y="82" width="56" height="56" rx="10" fill="#10120E" stroke="#343B2B"/>
+      <rect x="82" y="82" width="56" height="56" rx="10" fill="#22261C"/>
+      <rect x="144" y="82" width="56" height="56" rx="10" fill="#A8D85E"/>
+      <rect x="206" y="82" width="56" height="56" rx="10" fill="#FFE199"/>
+      <rect x="268" y="82" width="52" height="56" rx="10" fill="#F2F7E9"/>
+      <text x="20" y="160" fill="#BDC8AC" font-size="12">#10120E · #22261C · #A8D85E · #FFE199</text>
+    </g>
+    <g transform="translate(430 760)">
+      <rect width="340" height="180" rx="18" fill="#180D0D" stroke="#4D2A27"/>
+      <text x="20" y="34" fill="#FFF1EC" font-size="20" font-weight="700">Ember Red</text>
+      <text x="20" y="58" fill="#D5B7AE" font-size="13">Dark</text>
+      <rect x="20" y="82" width="56" height="56" rx="10" fill="#180D0D" stroke="#4D2A27"/>
+      <rect x="82" y="82" width="56" height="56" rx="10" fill="#2D1817"/>
+      <rect x="144" y="82" width="56" height="56" rx="10" fill="#E76F51"/>
+      <rect x="206" y="82" width="56" height="56" rx="10" fill="#B9E5C3"/>
+      <rect x="268" y="82" width="52" height="56" rx="10" fill="#FFF1EC"/>
+      <text x="20" y="160" fill="#D5B7AE" font-size="12">#180D0D · #2D1817 · #E76F51 · #B9E5C3</text>
+    </g>
+    <g transform="translate(800 760)">
+      <rect width="340" height="180" rx="18" fill="#0D141D" stroke="#304458"/>
+      <text x="20" y="34" fill="#EEF7FF" font-size="20" font-weight="700">Arctic Slate</text>
+      <text x="20" y="58" fill="#B6C8D9" font-size="13">Dark</text>
+      <rect x="20" y="82" width="56" height="56" rx="10" fill="#0D141D" stroke="#304458"/>
+      <rect x="82" y="82" width="56" height="56" rx="10" fill="#1D2A38"/>
+      <rect x="144" y="82" width="56" height="56" rx="10" fill="#74B9E6"/>
+      <rect x="206" y="82" width="56" height="56" rx="10" fill="#BCE7C8"/>
+      <rect x="268" y="82" width="52" height="56" rx="10" fill="#EEF7FF"/>
+      <text x="20" y="160" fill="#B6C8D9" font-size="12">#0D141D · #1D2A38 · #74B9E6 · #BCE7C8</text>
     </g>
   </g>
 </svg>

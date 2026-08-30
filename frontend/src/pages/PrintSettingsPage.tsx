@@ -26,12 +26,11 @@ export default function PrintSettingsPage() {
   const printerName = (id: string) => printers.data?.find((value) => value.id === id)?.name ?? 'Unknown printer'
 
   return <div>
-    <FilamentSectionNav />
     <PageHeader
       eyebrow="Filament profiles"
       title="Print settings"
       description="Current slicer-ready settings for each exact filament, printer, and nozzle combination. Every scope inherits from its linked template and retains only explicit filament customizations."
-      actions={profiles.data?.length ? <button className="button" onClick={() => setComparisonProfileId(profiles.data[0].id)}><GitCompareArrows size={17} /> Compare settings</button> : undefined}
+      actions={<><FilamentSectionNav />{profiles.data?.length ? <button className="button" onClick={() => setComparisonProfileId(profiles.data[0].id)}><GitCompareArrows size={17} /> Compare settings</button> : null}</>}
     />
     {profiles.isLoading ? <LoadingState /> : !profiles.data?.length ? (
       <EmptyState icon={SlidersHorizontal} title="No print settings yet" description="Create a filament from a material template, then add other printer or nozzle scopes from that filament." />

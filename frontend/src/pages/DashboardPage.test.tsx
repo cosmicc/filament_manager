@@ -77,8 +77,10 @@ describe('DashboardPage', () => {
     expect(screen.queryByText(/Inventory confidence/)).toBeNull()
 
     const printerCard = screen.getByRole('heading', { name: 'IPLT-Max' }).closest('article')
+    const printerBody = screen.getByRole('region', { name: 'Current print state' }).parentElement
     const inventorySummary = screen.getByRole('region', { name: 'Inventory summary' })
     expect(printerCard).not.toBeNull()
+    expect(printerBody?.classList.contains('printer-state-card__body--printing')).toBe(true)
     expect(printerCard!.compareDocumentPosition(inventorySummary) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
   })
 

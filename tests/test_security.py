@@ -1,9 +1,12 @@
 """Local authentication primitive tests."""
 
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
+from types import SimpleNamespace
 
 import pytest
+from starlette.requests import Request
 
+from filament_manager.api import dependencies
 from filament_manager.api.schemas import ProfileCreate
 from filament_manager.config import SecurityConfig
 from filament_manager.security import (
@@ -43,6 +46,64 @@ def test_tokens_are_hashed_and_have_bounded_expiry() -> None:
     assert tokens.created_at.tzinfo is UTC
     assert tokens.created_at <= datetime.now(UTC) < tokens.expires_at
     assert tokens.idle_expires_at < tokens.expires_at
+
+
+@pytest.mark.asyncio
+async def test_active_browser_session_renews_idle_expiry_without_extending_absolute_expiry(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Ordinary page activity keeps a session alive only inside its fixed boundary."""
+
+    now = datetime.now(UTC)
+    absolute_expiry = now + timedelta(days=30)
+    browser_session = SimpleNamespace(
+        expires_at=absolute_expiry,
+        idle_expires_at=now + timedelta(minutes=10),
+        last_seen_at=now - timedelta(minutes=6),
+        csrf_hash=hash_token("unused-on-get"),
+        user=SimpleNamespace(is_active=True, must_change_password=False),
+    )
+
+    class Result:
+        def scalar_one_or_none(self) -> object:
+            return browser_session
+
+    class Session:
+        commits = 0
+
+        async def execute(self, _query: object) -> Result:
+            return Result()
+
+        async def commit(self) -> None:
+            self.commits += 1
+
+    fake_session = Session()
+    monkeypatch.setattr(
+        dependencies,
+        "get_settings",
+        lambda: SimpleNamespace(security=SimpleNamespace(session_idle_minutes=7 * 24 * 60)),
+    )
+    request = Request(
+        {
+            "type": "http",
+            "method": "GET",
+            "path": "/api/v1/auth/me",
+            "headers": [],
+            "scheme": "https",
+            "server": ("testserver", 443),
+        }
+    )
+
+    user = await dependencies.current_user(  # type: ignore[arg-type]
+        request,
+        fake_session,
+        session_token="active-session-token",
+    )
+
+    assert user is browser_session.user
+    assert fake_session.commits == 1
+    assert browser_session.idle_expires_at > now + timedelta(days=6)
+    assert browser_session.idle_expires_at <= absolute_expiry
 
 
 def test_cura_extensions_cannot_shadow_typed_or_inject_multiline_settings() -> None:

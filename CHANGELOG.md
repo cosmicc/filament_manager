@@ -1,5 +1,29 @@
 # Changelog
 
+## 0.6.6 - 08.30.2026
+
+### Added
+
+- Added four coordinated dark GUI themes: Deep Ocean, Carbon Lime, Ember Red, and Arctic Slate.
+- Added one-click creation of the next numbered physical build plate with an initial Side A record, plus explicit missing-Klipper-heatmap warnings.
+- Added printer filters to Print History and Nozzles, with **All printers** as the Print History default.
+- Added a one-day, seven-day, or thirty-day Recent errors cutoff on Diagnostics, defaulting to one day and applying to the sanitized log download.
+
+### Changed
+
+- Changed browser sessions to a thirty-day absolute lifetime with a rolling seven-day idle window for active pages.
+- Changed the printing Dashboard layout so the progress/state area receives more space and the three temperature cards become compact while a print is active.
+- Changed Print History rows and mobile cards to use subtle green, yellow, or red outcome backgrounds for completed, cancelled, or failed prints while retaining text status.
+- Changed Filaments and Print settings headers so the Catalog/Print settings selector sits immediately before the primary action.
+- Removed the redundant Integrations browser page and navigation entry; live operational status remains consolidated in Diagnostics and supported backend integration APIs remain available.
+- Changed every server, browser, workstation-agent, and Klipper macro version surface to 0.6.6; Cura renderer revision 18 remains current because no generated workstation files changed.
+
+### Fixed
+
+- Fixed automatic and manual PostgreSQL backups against newer database servers by installing PostgreSQL client 18, returning bounded actionable failure categories, deferring backup work during active prints, and applying a fifteen-minute-to-six-hour exponential retry delay after automatic failures.
+- Fixed an unbounded Klipper delayed-G-code resume retry that could continue every quarter second when a managed virtual-SD hold never reached its expected release state; retries now stop after thirty seconds and show explicit Retry and Cancel actions.
+- Fixed unnecessary full Moonraker history downloads every five seconds during active printing; live exact-state capture remains at five seconds and full history reconciliation resumes immediately after the print reaches a terminal state.
+
 ## 0.6.5 - 08.29.2026
 
 ### Added

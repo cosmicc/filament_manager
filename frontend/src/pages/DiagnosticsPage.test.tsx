@@ -22,7 +22,7 @@ describe('DiagnosticsPage', () => {
   it('shows every stored validation check represented by the summary counts', async () => {
     const checkedAt = '2026-08-25T04:00:00Z'
     apiFetchMock.mockImplementation((path: string) => {
-      if (path === '/diagnostics') return Promise.resolve({
+      if (path === '/diagnostics?error_days=1') return Promise.resolve({
         checked_at: checkedAt,
         checks: [{
           key: 'live.database', label: 'Current database', category: 'connection', status: 'healthy',
@@ -51,7 +51,7 @@ describe('DiagnosticsPage', () => {
       }])
       if (path === '/diagnostics/database-backups') return Promise.resolve({
         policy: { enabled: true, interval_hours: 24, retention_count: 10, record_version: 0 },
-        status: { status: 'never', checked_at: null, last_success_at: null },
+        status: { status: 'never', checked_at: null, last_success_at: null, consecutive_failures: 0, next_retry_at: null },
         pending_restore: null,
         archives: [],
       })
@@ -70,6 +70,7 @@ describe('DiagnosticsPage', () => {
     expect(screen.getByText('Current database')).toBeTruthy()
     expect(await screen.findByRole('heading', { name: 'Database backups' })).toBeTruthy()
     expect(screen.queryByRole('heading', { name: 'Recent jobs' })).toBeNull()
+    expect(apiFetchMock).toHaveBeenCalledWith('/diagnostics?error_days=1')
     expect(apiFetchMock).not.toHaveBeenCalledWith('/jobs?limit=100')
   })
 })

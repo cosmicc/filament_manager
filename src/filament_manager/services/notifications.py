@@ -211,7 +211,7 @@ async def evaluate_operator_notifications(session: AsyncSession) -> int:
                 severity=NotificationSeverity.ERROR,
                 title=f"{printer.name} is unavailable",
                 message="Filament Manager cannot reach the assigned Moonraker service.",
-                action_path="/integrations",
+                action_path="/diagnostics",
                 object_type="printer",
                 object_id=printer.id,
             )
@@ -227,7 +227,7 @@ async def evaluate_operator_notifications(session: AsyncSession) -> int:
             severity=NotificationSeverity.ERROR,
             title="Integration job needs attention",
             message=f"{job.job_type} exhausted its retry limit.",
-            action_path="/integrations",
+            action_path="/diagnostics",
             object_type="outbox_job",
             object_id=job.id,
         )

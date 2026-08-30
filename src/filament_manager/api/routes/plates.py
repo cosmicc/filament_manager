@@ -9,7 +9,7 @@ from uuid import UUID
 
 from fastapi import APIRouter, File, Request, Response, UploadFile, status
 from PIL import Image, ImageOps, UnidentifiedImageError
-from sqlalchemy import select
+from sqlalchemy import select, text
 from sqlalchemy.orm import selectinload
 
 from filament_manager.clients.moonraker import MoonrakerClient, MoonrakerError
@@ -18,7 +18,7 @@ from filament_manager.domain.build_plates import BuildPlateDiscoveryError, build
 from filament_manager.models.enums import PlateCondition, PlateMaintenanceType, PlateStatus
 from filament_manager.models.inventory import BuildPlate, BuildPlateSurface, Printer
 from filament_manager.models.operations import BuildPlateMaintenanceEvent
-from filament_manager.services.build_plate_sync import synchronize_build_plates
+from filament_manager.services.build_plate_sync import BUILD_PLATE_SYNC_LOCK_KEY, synchronize_build_plates
 from filament_manager.services.events import add_audit_event, add_outbox_job
 from filament_manager.services.notifications import build_plate_maintenance_status
 from filament_manager.services.print_statistics import completed_surface_print_counts
@@ -111,6 +111,62 @@ async def list_build_plates(_: Viewer, session: DatabaseSession) -> list[BuildPl
         session, [surface.id for plate in plates for surface in plate.surfaces]
     )
     return [await build_plate_response(session, plate, counts) for plate in plates]
+
+
+@router.post("", response_model=BuildPlateResponse, status_code=status.HTTP_201_CREATED)
+async def create_build_plate(
+    request: Request,
+    operator: Operator,
+    session: DatabaseSession,
+) -> BuildPlateResponse:
+    """Create the next physical P-number plate with an unavailable Side A mesh."""
+
+    await session.execute(
+        text("SELECT pg_advisory_xact_lock(:lock_key)"),
+        {"lock_key": BUILD_PLATE_SYNC_LOCK_KEY},
+    )
+    existing_codes = list(await session.scalars(select(BuildPlate.plate_code).with_for_update()))
+    existing_numbers = [
+        int(code[1:])
+        for code in existing_codes
+        if code.startswith("P") and code[1:].isdigit() and int(code[1:]) > 0
+    ]
+    plate_code = f"P{max(existing_numbers, default=0) + 1}"
+    plate = BuildPlate(
+        plate_code=plate_code,
+        display_name=f"Build Plate {plate_code}",
+        condition=PlateCondition.GOOD,
+        status=PlateStatus.ACTIVE,
+    )
+    session.add(plate)
+    await session.flush()
+    surface = BuildPlateSurface(
+        build_plate_id=plate.id,
+        side="a",
+        surface_code=plate_code,
+        klipper_mesh_profile=plate_code,
+        mesh_available=False,
+    )
+    session.add(surface)
+    await session.flush()
+    add_audit_event(
+        session,
+        actor_id=operator.id,
+        source="web",
+        action="build_plate.create",
+        object_type="build_plate",
+        object_id=plate.id,
+        before=None,
+        after={
+            "plate_code": plate_code,
+            "surface_code": plate_code,
+            "mesh_available": False,
+        },
+        correlation_id=request.state.correlation_id,
+    )
+    _queue_google_plate(session, plate)
+    await session.commit()
+    return await build_plate_response(session, await _get_plate(session, plate.id))
 
 
 @router.get("/maintenance/status", response_model=list[BuildPlateMaintenanceStatus])

@@ -1,5 +1,27 @@
 # User Changelog
 
+## 0.6.6 - 08.30.2026
+
+### Added
+
+- Added four dark themes: Deep Ocean, Carbon Lime, Ember Red, and Arctic Slate.
+- Added an **Add Build Plate** action that creates the next P-number with Side A ready for later mesh discovery.
+- Added printer filters to Print History and Nozzles, and a one-day, seven-day, or thirty-day Recent errors filter to Diagnostics.
+
+### Changed
+
+- Active browser pages now remain signed in for multiple days, up to the thirty-day absolute session limit.
+- While printing, the Dashboard gives more room to printer progress and uses smaller temperature cards.
+- Completed, cancelled, and failed Print History entries now have subtle green, yellow, and red backgrounds.
+- Moved the Filaments Catalog/Print settings selector beside the main page action and removed the redundant Integrations page.
+- Updated Filament Manager and its workstation agent to version 0.6.6.
+
+### Fixed
+
+- Fixed automatic and manual PostgreSQL backup compatibility, improved the displayed failure reason, and stopped failed automatic backups from retrying every minute.
+- Reduced printer-host load during active prints by postponing database backups, avoiding repeated full-history downloads, and stopping a stuck print-resume retry after thirty seconds with clear Retry and Cancel choices.
+- Build plates without a matching Klipper heatmap profile now show an obvious warning instead of appearing ready.
+
 ## 0.6.5 - 08.29.2026
 
 ### Added

@@ -201,8 +201,8 @@ class DeviceConfig(BaseModel):
 class SecurityConfig(BaseModel):
     """Local account and session security controls."""
 
-    session_lifetime_hours: int = Field(default=12, ge=1, le=168)
-    session_idle_minutes: int = Field(default=60, ge=5, le=1440)
+    session_lifetime_hours: int = Field(default=720, ge=1, le=24 * 90)
+    session_idle_minutes: int = Field(default=10_080, ge=5, le=60 * 24 * 30)
     max_failed_logins: int = Field(default=5, ge=3, le=20)
     lockout_minutes: int = Field(default=15, ge=1, le=1440)
 
@@ -437,8 +437,8 @@ def _deployment_environment_config() -> dict[str, Any]:
             "replay_window_seconds": os.environ.get("FILAMENT_MANAGER_REPLAY_WINDOW_SECONDS", "300"),
         },
         "security": {
-            "session_lifetime_hours": os.environ.get("FILAMENT_MANAGER_SESSION_LIFETIME_HOURS", "12"),
-            "session_idle_minutes": os.environ.get("FILAMENT_MANAGER_SESSION_IDLE_MINUTES", "60"),
+            "session_lifetime_hours": os.environ.get("FILAMENT_MANAGER_SESSION_LIFETIME_HOURS", "720"),
+            "session_idle_minutes": os.environ.get("FILAMENT_MANAGER_SESSION_IDLE_MINUTES", "10080"),
             "max_failed_logins": os.environ.get("FILAMENT_MANAGER_MAX_FAILED_LOGINS", "5"),
             "lockout_minutes": os.environ.get("FILAMENT_MANAGER_LOCKOUT_MINUTES", "15"),
         },

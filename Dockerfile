@@ -5,17 +5,31 @@ RUN npm ci
 COPY frontend/ ./
 RUN npm run build && find dist -type f -name '*.map' -delete
 
-FROM python:3.12-slim AS python-build
+FROM python:3.12-slim-trixie AS python-build
 ENV PIP_DISABLE_PIP_VERSION_CHECK=1 PIP_NO_CACHE_DIR=1
 WORKDIR /build
 COPY pyproject.toml README.md ./
 COPY src/ src/
 RUN python -m pip wheel --wheel-dir /wheels .
 
-FROM python:3.12-slim AS runtime
+FROM python:3.12-slim-trixie AS runtime
 ENV PYTHONDONTWRITEBYTECODE=1 PYTHONUNBUFFERED=1
 RUN apt-get update \
-    && apt-get install --yes --no-install-recommends postgresql-client-17 \
+    && apt-get install --yes --no-install-recommends ca-certificates curl \
+    && install -d /usr/share/postgresql-common/pgdg \
+    && curl --fail --show-error --silent \
+        --output /usr/share/postgresql-common/pgdg/apt.postgresql.org.asc \
+        https://www.postgresql.org/media/keys/ACCC4CF8.asc \
+    && printf '%s\n' \
+        'Types: deb' \
+        'URIs: https://apt.postgresql.org/pub/repos/apt' \
+        'Suites: trixie-pgdg' \
+        'Components: main' \
+        'Signed-By: /usr/share/postgresql-common/pgdg/apt.postgresql.org.asc' \
+        > /etc/apt/sources.list.d/pgdg.sources \
+    && apt-get update \
+    && apt-get install --yes --no-install-recommends postgresql-client-18 \
+    && apt-get purge --yes --auto-remove curl \
     && rm -rf /var/lib/apt/lists/*
 RUN groupadd --gid 10001 filament-manager && useradd --uid 10001 --gid 10001 --create-home filament-manager
 WORKDIR /app

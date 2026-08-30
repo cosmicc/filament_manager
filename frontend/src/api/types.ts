@@ -854,6 +854,8 @@ export interface DatabaseBackupOverview {
     status: string
     checked_at: string | null
     last_success_at: string | null
+    consecutive_failures: number
+    next_retry_at: string | null
   }
   pending_restore: {
     status: string

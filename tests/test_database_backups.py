@@ -11,6 +11,7 @@ import subprocess
 import zipfile
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
+from types import SimpleNamespace
 from uuid import UUID, uuid4
 
 import pytest
@@ -176,6 +177,81 @@ def test_prepare_restore_uses_exact_validated_archive_and_can_be_cancelled(
     assert database_backups.pending_restore() is None
 
 
+@pytest.mark.parametrize(
+    ("stderr", "safe_message"),
+    (
+        (
+            b"pg_dump: error: aborting because of server version mismatch\n"
+            b"pg_dump: detail: server version: 18.2; pg_dump version: 17.5",
+            "backup tools are older than the database server",
+        ),
+        (b"password authentication failed for user secret-user", "database rejected the credentials"),
+        (b"could not connect to server: Connection refused", "database could not be reached"),
+    ),
+)
+def test_postgresql_command_reports_only_classified_safe_failures(
+    monkeypatch: pytest.MonkeyPatch,
+    stderr: bytes,
+    safe_message: str,
+) -> None:
+    """Diagnostics must be actionable without returning raw PostgreSQL output."""
+
+    monkeypatch.setattr(database_backups, "_database_environment", lambda: {})
+    monkeypatch.setattr(
+        database_backups.subprocess,
+        "run",
+        lambda *_args, **_kwargs: SimpleNamespace(returncode=1, stderr=stderr),
+    )
+
+    with pytest.raises(DatabaseBackupError, match=safe_message) as caught:
+        database_backups._run_postgresql_command(["pg_dump"])
+
+    assert "secret-user" not in str(caught.value)
+    assert "18.2" not in str(caught.value)
+
+
+def test_automatic_backup_failures_use_bounded_exponential_backoff(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    """A failed dump must not be respawned by every one-minute worker pass."""
+
+    _configure_root(monkeypatch, tmp_path)
+    before = datetime.now(UTC)
+    database_backups.record_backup_failure()
+    first = database_backups.backup_status()
+    database_backups.record_backup_failure()
+    second = database_backups.backup_status()
+
+    assert first["consecutive_failures"] == 1
+    assert second["consecutive_failures"] == 2
+    first_retry = datetime.fromisoformat(str(first["next_retry_at"]))
+    second_retry = datetime.fromisoformat(str(second["next_retry_at"]))
+    assert timedelta(minutes=14) < first_retry - before <= timedelta(minutes=16)
+    assert timedelta(minutes=29) < second_retry - before <= timedelta(minutes=31)
+
+
+@pytest.mark.asyncio
+async def test_automatic_backup_is_deferred_while_a_print_is_active(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Database dumps must not compete with Klipper host timing during motion."""
+
+    class ActivePrintSession:
+        async def scalar(self, _query: object) -> UUID:
+            return uuid4()
+
+    async def policy(_session: object) -> database_backups.BackupPolicy:
+        return database_backups.BackupPolicy()
+
+    monkeypatch.setattr(database_backups, "get_backup_policy", policy)
+
+    due, returned_policy = await database_backups.backup_is_due(ActivePrintSession())  # type: ignore[arg-type]
+
+    assert due is False
+    assert returned_policy.enabled is True
+
+
 @pytest.mark.integration
 def test_real_postgresql_backup_and_restore_round_trip(
     monkeypatch: pytest.MonkeyPatch,
@@ -185,8 +261,8 @@ def test_real_postgresql_backup_and_restore_round_trip(
 
     PostgreSQL refuses a dump when the client is older than the server. Match
     the disposable server to the available test client's major version; the
-    production-image contract separately pins both PostgreSQL and its client to
-    version 17.
+    production-image contract separately installs PostgreSQL client 18 so it
+    can dump supported older PostgreSQL servers as well as version 18.
     """
 
     pg_dump_path = shutil.which("pg_dump")

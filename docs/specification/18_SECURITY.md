@@ -61,6 +61,7 @@ Hidden browser source maps may leave CI only during an authorized direct push wi
 - support exactly one active local Administrator account
 - on an empty database create `admin` / `admin`, store only its Argon2id hash, and restrict it to password replacement/logout until it chooses a normal 10-256 character password
 - preserve an existing single account on upgrade, revoke other sessions after identity/password edits, and fail startup instead of silently choosing among multiple legacy accounts
+- use a fixed thirty-day absolute browser-session expiry and a rolling seven-day idle expiry by default; active-session touches are rate-limited and never extend the absolute boundary
 - use request IDs and audit logs
 - validate all Spoolman payloads
 - preserve unknown Spoolman `extra` fields

@@ -326,10 +326,11 @@ async def _connection_checks(checked_at: datetime) -> list[dict[str, object]]:
     return list(await asyncio.gather(*pending))
 
 
-async def operational_overview(session: AsyncSession) -> dict[str, object]:
+async def operational_overview(session: AsyncSession, *, error_days: int = 1) -> dict[str, object]:
     """Collect connections, synchronization freshness, workers, queues, and bounded errors."""
 
     checked_at = datetime.now(UTC)
+    error_cutoff = checked_at - timedelta(days=error_days)
     checks = await _connection_checks(checked_at)
     schema_result = await session.execute(text("SELECT version_num FROM alembic_version LIMIT 1"))
     schema_version = schema_result.scalar_one_or_none()
@@ -642,6 +643,7 @@ async def operational_overview(session: AsyncSession) -> dict[str, object]:
             .where(
                 Notification.active.is_(True),
                 Notification.severity == NotificationSeverity.ERROR,
+                Notification.last_seen_at >= error_cutoff,
             )
             .order_by(Notification.last_seen_at.desc())
             .limit(10)
@@ -664,6 +666,7 @@ async def operational_overview(session: AsyncSession) -> dict[str, object]:
             .where(
                 OutboxJob.status.in_(failure_statuses),
                 OutboxJob.last_error_class.is_not(None),
+                func.coalesce(OutboxJob.last_error_at, OutboxJob.created_at) >= error_cutoff,
             )
             .order_by(OutboxJob.last_error_at.desc().nullslast(), OutboxJob.created_at.desc())
             .limit(15)
@@ -684,7 +687,10 @@ async def operational_overview(session: AsyncSession) -> dict[str, object]:
     failed_deployments = list(
         await session.scalars(
             select(CuraDeployment)
-            .where(CuraDeployment.last_error_class.is_not(None))
+            .where(
+                CuraDeployment.last_error_class.is_not(None),
+                CuraDeployment.updated_at >= error_cutoff,
+            )
             .order_by(CuraDeployment.updated_at.desc())
             .limit(10)
         )
@@ -715,7 +721,10 @@ async def operational_overview(session: AsyncSession) -> dict[str, object]:
     failed_restores = list(
         await session.scalars(
             select(CuraRecoveryRestore)
-            .where(CuraRecoveryRestore.last_error_class.is_not(None))
+            .where(
+                CuraRecoveryRestore.last_error_class.is_not(None),
+                CuraRecoveryRestore.updated_at >= error_cutoff,
+            )
             .order_by(CuraRecoveryRestore.updated_at.desc())
             .limit(10)
         )

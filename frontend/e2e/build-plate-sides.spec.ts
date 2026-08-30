@@ -71,7 +71,7 @@ const plate = {
       klipper_mesh_profile: 'P4b',
       surface_material: 'PEX',
       texture: 'smooth',
-      mesh_available: true,
+      mesh_available: false,
       last_mesh_checked_at: '2026-08-11T14:00:00Z',
       last_mesh_calibrated_at: null,
       notes: null,
@@ -87,7 +87,14 @@ test.beforeEach(async ({ page }) => {
     body: 'window.__FILAMENT_MANAGER_RUNTIME_CONFIG__={bugsnag:{enabled:false}};',
   }))
   await page.route('**/api/v1/auth/me', (route) => route.fulfill({ json: user }))
-  await page.route('**/api/v1/build-plates', (route) => route.fulfill({ json: [plate] }))
+  await page.route('**/api/v1/build-plates', (route) => route.fulfill({ json: route.request().method() === 'POST' ? {
+    ...plate,
+    id: 'plate-five-id',
+    plate_code: 'P5',
+    display_name: 'Build Plate P5',
+    active_plate_surface_id: null,
+    surfaces: [{ ...plate.surfaces[0], id: 'surface-five-id', build_plate_id: 'plate-five-id', surface_code: 'P5', klipper_mesh_profile: 'P5', mesh_available: false }],
+  } : [plate] }))
   await page.route('**/api/v1/build-plates/maintenance/status', (route) => route.fulfill({ json: [{ build_plate_id: plate.id, cleaning_due: false, cleaning_prints_since: 2, cleaning_due_at: null, surfaces: [] }] }))
   await page.route('**/api/v1/build-plates/maintenance/events**', (route) => route.fulfill({ json: [] }))
   await page.route('**/api/v1/notifications**', (route) => route.fulfill({ json: [] }))
@@ -105,6 +112,11 @@ test('groups both sides under one physical plate on desktop and mobile', async (
   await expect(page.getByText('Automatic Moonraker synchronization is on.')).toHaveCount(0)
   await expect(page.getByRole('button', { name: 'Synchronize with Moonraker' })).toHaveCount(0)
   await expect(page.getByText('Completed prints').first()).toBeVisible()
+  await expect(page.getByText('No matching Klipper heatmap profile')).toBeVisible()
+  await expect(page.getByText(/Create and save the exact.*P4b.*bed-mesh profile/)).toBeVisible()
+  await page.getByRole('button', { name: 'Add build plate' }).click()
+  await expect(page.getByRole('dialog', { name: 'Edit P5' })).toBeVisible()
+  await page.keyboard.press('Escape')
   const plateCard = page.locator('.build-plate-card').first()
   const editPlateButton = page.getByRole('button', { name: 'Edit physical plate' })
   await expect(editPlateButton).toBeVisible()

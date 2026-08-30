@@ -21,7 +21,7 @@ test.beforeEach(async ({ page }) => {
 })
 
 test('diagnostics consolidates operational status and recovery controls', async ({ page }) => {
-  await page.route('**/api/v1/diagnostics/log.txt', (route) => route.fulfill({
+  await page.route(/\/api\/v1\/diagnostics\/log\.txt\?error_days=(?:1|7|30)$/, (route) => route.fulfill({
     status: 200,
     headers: {
       'Content-Type': 'text/plain; charset=utf-8',
@@ -30,11 +30,11 @@ test('diagnostics consolidates operational status and recovery controls', async 
     body: 'Filament Manager diagnostics\nGenerated: 2026-08-14T12:00:00Z\n',
   }))
   await page.route('**/api/v1/diagnostics/version', (route) => route.fulfill({ json: {
-    running_version: '0.5.6', latest_version: '0.5.6', status: 'current',
-    release_url: 'https://github.com/cosmicc/filament_manager/releases/tag/v0.5.6',
+    running_version: '0.6.6', latest_version: '0.6.6', status: 'current',
+    release_url: 'https://github.com/cosmicc/filament_manager/releases/tag/v0.6.6',
     detail: 'This installation matches the newest published GitHub release.',
   } }))
-  await page.route('**/api/v1/diagnostics', (route) => route.fulfill({ json: {
+  await page.route(/\/api\/v1\/diagnostics\?error_days=(?:1|7|30)$/, (route) => route.fulfill({ json: {
     checked_at: checkedAt,
     checks: [
       { key: 'database', label: 'Canonical database', category: 'connection', status: 'healthy', detail: 'Connected at the expected schema revision.', checked_at: checkedAt },
@@ -67,15 +67,19 @@ test('diagnostics consolidates operational status and recovery controls', async 
   await page.goto('/diagnostics')
 
   await expect(page.getByRole('heading', { name: 'Diagnostics' })).toBeVisible()
-  await expect(page.getByRole('heading', { name: 'Filament Manager v0.5.6' })).toBeVisible()
-  await expect(page.getByText('Latest: v0.5.6')).toBeVisible()
-  await expect(page.getByText('v0.5.6', { exact: true }).first()).toBeVisible()
+  await expect(page.getByRole('heading', { name: 'Filament Manager v0.6.6' })).toBeVisible()
+  await expect(page.getByText('Latest: v0.6.6')).toBeVisible()
+  await expect(page.getByText('v0.6.6', { exact: true }).first()).toBeVisible()
   await expect(page.getByRole('button', { name: 'Logout' })).toBeVisible()
   await expect(page.getByRole('button', { name: 'Collapse navigation' })).toBeVisible()
   await expect(page.getByRole('heading', { name: 'Connections' })).toBeVisible()
   await expect(page.getByRole('heading', { name: 'Synchronizations' })).toBeVisible()
   await expect(page.getByRole('heading', { name: 'Workers and queues' })).toBeVisible()
   await expect(page.getByRole('heading', { name: 'Recent errors' })).toBeVisible()
+  await expect(page.getByLabel('Recent error period')).toHaveValue('1')
+  const sevenDayRequest = page.waitForRequest((request) => request.url().endsWith('/api/v1/diagnostics?error_days=7'))
+  await page.getByLabel('Recent error period').selectOption('7')
+  await sevenDayRequest
   await expect(page.getByText('Recorded Cura error')).toBeVisible()
   await expect(page.getByText('Recorded queue warning')).toBeVisible()
   await expect(page.getByText('History', { exact: true })).toBeVisible()
@@ -100,15 +104,20 @@ test('theme control lives in Settings instead of the navigation', async ({ page 
   await page.goto('/settings')
 
   await expect(page.getByRole('heading', { name: 'Color profile' })).toBeVisible()
-  await expect(page.locator('.theme-profile')).toHaveCount(8)
+  await expect(page.locator('.theme-profile')).toHaveCount(12)
   await expect(page.locator('.theme-profile').filter({ hasText: 'Workshop Navy' }).first()).toBeVisible()
   await expect(page.locator('.theme-profile').filter({ hasText: 'Plum Neon' })).toBeVisible()
+  await expect(page.locator('.theme-profile').filter({ hasText: 'Deep Ocean' })).toBeVisible()
+  await expect(page.locator('.theme-profile').filter({ hasText: 'Carbon Lime' })).toBeVisible()
+  await expect(page.locator('.theme-profile').filter({ hasText: 'Ember Red' })).toBeVisible()
+  await expect(page.locator('.theme-profile').filter({ hasText: 'Arctic Slate' })).toBeVisible()
   await expect(page.locator('.sidebar').getByRole('button', { name: /theme/i })).toHaveCount(0)
   await page.setViewportSize({ width: 390, height: 844 })
   await page.getByRole('button', { name: 'Open navigation' }).click()
   await expect(page.locator('.app-shell')).not.toHaveClass(/app-shell--collapsed/)
   await expect.poll(() => page.locator('.sidebar').evaluate((element) => getComputedStyle(element).width)).toBe('310px')
-  await expect(page.locator('.sidebar').getByText('v0.5.6', { exact: true })).toBeVisible()
+  await expect(page.locator('.sidebar').getByText('v0.6.6', { exact: true })).toBeVisible()
+  await expect(page.locator('.sidebar').getByText('Integrations', { exact: true })).toHaveCount(0)
   await expect(page.locator('.sidebar').getByRole('button', { name: 'Logout' })).toBeVisible()
   await expect(page.locator('.sidebar').getByRole('button', { name: /navigation/ })).toHaveCount(1)
   await page.waitForTimeout(250)
@@ -137,6 +146,7 @@ test('physical nozzle page shows exact historical use', async ({ page }) => {
   await page.goto('/nozzles')
 
   await expect(page.getByRole('heading', { name: 'Nozzles' })).toBeVisible()
+  await expect(page.getByLabel('Select nozzle printer')).toHaveValue('printer-id')
   await expect(page.getByRole('heading', { name: '0.6 mm Hardened steel' })).toBeVisible()
   await expect(page.getByText('12', { exact: true })).toBeVisible()
   await expect(page.getByText('4,830.5 g', { exact: true })).toBeVisible()

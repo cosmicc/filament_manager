@@ -2,7 +2,7 @@
 
 ## Recommended policy
 
-Use **Warn and continue** under **Settings → G-code inspection policy** while testing 0.6.5. Filament Manager still records every mismatch in Print History. Change the setting to **Block mismatches** after the Cura material library, printer macros, and first exact-state records have been verified.
+Use **Warn and continue** under **Settings → G-code inspection policy** while testing 0.6.6. Filament Manager still records every mismatch in Print History. Change the setting to **Block mismatches** after the Cura material library, printer macros, and first exact-state records have been verified.
 
 Blocking pauses virtual-SD execution in Fluidd until Filament Manager can resolve the managed material profile, safely inspect the G-code, and confirm that supported values match. Missing inspection data and an unresolved exact profile also block. The setting is synchronized into Klipper automatically.
 
@@ -28,13 +28,13 @@ Run `LOAD_FILAMENT` or `FILAMENT_MANAGER_LOAD_TARGET` with no parameters in Flui
 
 A non-null spool selected directly in Spoolman is treated as the requested target, not proof of a physical load. Within the next 5-second state pass, Fluidd opens the guarded confirmation and the worker restores Spoolman's active ID to the last completed physical boundary. If no spool is tracked, choose either **It Is Already Physically Loaded** to adopt the selected spool explicitly or **Insert and Load It** to run the load routine. If another spool is tracked, confirm the unload/load workflow. Filament Manager changes its active-spool record only after that confirmation or completed load. A direct Spoolman clear never claims that a physical unload occurred.
 
-If a prompt was closed, run `FILAMENT_MANAGER_LOAD_TARGET` to reopen a pending selection. Run `FILAMENT_MANAGER_SPOOL_STATE` to see the current phase and active macro version; version 0.6.5 reports `macro=0.6.5`. Use `FILAMENT_MANAGER_ABORT` only when the pending workflow should be cancelled. The last completed physical boundary remains authoritative after cancellation.
+If a prompt was closed, run `FILAMENT_MANAGER_LOAD_TARGET` to reopen a pending selection. Run `FILAMENT_MANAGER_SPOOL_STATE` to see the current phase and active macro version; version 0.6.6 reports `macro=0.6.6`. Use `FILAMENT_MANAGER_ABORT` only when the pending workflow should be cancelled. The last completed physical boundary remains authoritative after cancellation.
 
 Run `SELECT_BUILD_PLATE` without parameters to open a chooser generated live from Klipper's saved meshes. Only exact `P<number>` Side A and `P<number>b` Side B names are shown; selecting one loads that same-named mesh and persists the plate side.
 
 ## Print history and assessment
 
-The worker checks current print state every five seconds and incrementally imports the supported Moonraker history. New records retain the exact printer, physical spool, material/profile snapshot, plate side, nozzle, G-code SHA-256, supported Cura/Moonraker metadata, predicted/actual use, timestamps, canonical result, and exact bounded Moonraker history outcome such as cancellation, Klippy shutdown, disconnection, or interruption. An `M600` closes the current immutable material segment and opens a new exact segment after the replacement is loaded. Print History loads newest-first in server-side pages of 10 by default, with 25, 50, and 100 choices and complete page navigation.
+The worker checks and captures current print state every five seconds. It postpones the complete Moonraker history listing while the printer is printing or paused, then imports terminal history on the first later pass so full-history downloads do not compete with printer motion. New records retain the exact printer, physical spool, material/profile snapshot, plate side, nozzle, G-code SHA-256, supported Cura/Moonraker metadata, predicted/actual use, timestamps, canonical result, and exact bounded Moonraker history outcome such as cancellation, Klippy shutdown, disconnection, or interruption. An `M600` closes the current immutable material segment and opens a new exact segment after the replacement is loaded. Print History defaults to all printers and loads newest-first in server-side pages of 10, with 25, 50, and 100 choices and complete page navigation.
 
 History from before 0.2.1 is imported but marked legacy/unresolved when its exact canonical material state cannot be reconstructed. The app does not guess missing spool or profile history.
 
@@ -46,7 +46,7 @@ After a print ends, an Operator or Administrator can directly save an Excellent,
 
 The workstation agent overwrites the matched Cura printer's saved start script with the start call above and its saved end script with `END_PRINT` whenever it installs or repairs a managed library. No manual Cura script setup is required. Keep Cura closed while the agent applies the update; any later script drift is backed up and replaced on the next synchronization.
 
-Install the matching current Klipper macro reference as well. During a managed hold, Fluidd may briefly show the file as paused while Klipper's normal `RESUME` reports that no motion-aware pause exists; this is expected because the app uses `M25`. Filament Manager retains an app-owned latch and issues `M24` automatically after `START_PRINT`. It never resumes through a real operator `PAUSE`, and either cancel path removes the delayed release and resets an orphaned direct-`M25` file before running the printer's normal cancellation cleanup.
+Install the matching current Klipper macro reference as well. During a managed hold, Fluidd may briefly show the file as paused while Klipper's normal `RESUME` reports that no motion-aware pause exists; this is expected because the app uses `M25`. Filament Manager retains an app-owned latch and issues `M24` automatically after `START_PRINT`. If the expected release state does not arrive, version 0.6.6 retries every half second for at most thirty seconds, then stops and shows Retry and Cancel instead of continuing indefinitely. It never resumes through a real operator `PAUSE`, and either cancel path removes the delayed release and resets an orphaned direct-`M25` file before running the printer's normal cancellation cleanup.
 
 The application additionally uses:
 

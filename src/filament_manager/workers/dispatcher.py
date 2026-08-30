@@ -1082,6 +1082,16 @@ async def _reconcile_moonraker_print_history(session: AsyncSession, job: OutboxJ
                     )
                     continue
                 printer = reloaded_printer
+        if not isinstance(print_result, BaseException) and print_result.state in {"printing", "paused"}:
+            # Live capture already records the active job. Avoid fetching the
+            # complete Moonraker history every five seconds during motion; the
+            # next terminal-state pass imports the completed history promptly.
+            logger.debug(
+                "moonraker_terminal_history_deferred_while_printing",
+                printer_code=printer_code,
+                print_state=print_result.state,
+            )
+            continue
         try:
             imported = await synchronize_print_history(
                 session,

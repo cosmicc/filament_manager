@@ -11,6 +11,10 @@ export type Theme =
   | 'dark-graphite'
   | 'dark-forest'
   | 'dark-plum'
+  | 'dark-ocean'
+  | 'dark-carbon'
+  | 'dark-ember'
+  | 'dark-arctic'
 
 export interface ThemeOption {
   id: Theme
@@ -29,6 +33,10 @@ export const THEME_OPTIONS: ThemeOption[] = [
   { id: 'dark-graphite', label: 'Graphite Amber', mode: 'dark', description: 'Neutral graphite with warm amber.', swatches: ['#151515', '#E5A63B', '#2A2927'] },
   { id: 'dark-forest', label: 'Forest Ember', mode: 'dark', description: 'Deep evergreen with ember orange.', swatches: ['#0C1B18', '#E27A42', '#17352E'] },
   { id: 'dark-plum', label: 'Plum Neon', mode: 'dark', description: 'Dark plum with lively pink-violet.', swatches: ['#1C1020', '#D56BD8', '#3B2142'] },
+  { id: 'dark-ocean', label: 'Deep Ocean', mode: 'dark', description: 'Blue-green depths with bright aqua.', swatches: ['#061416', '#38C7C9', '#18383C'] },
+  { id: 'dark-carbon', label: 'Carbon Lime', mode: 'dark', description: 'Near-black carbon with crisp lime.', swatches: ['#10120E', '#A8D85E', '#22261C'] },
+  { id: 'dark-ember', label: 'Ember Red', mode: 'dark', description: 'Smoldering brown-red with coral.', swatches: ['#180D0D', '#E76F51', '#2D1817'] },
+  { id: 'dark-arctic', label: 'Arctic Slate', mode: 'dark', description: 'Cool slate with clear ice blue.', swatches: ['#0D141D', '#74B9E6', '#1D2A38'] },
 ]
 
 interface ThemeContextValue {

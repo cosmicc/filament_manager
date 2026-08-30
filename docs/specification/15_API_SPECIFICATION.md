@@ -51,6 +51,7 @@ Spool responses include a derived completed-print count and `cost_per_gram`, cal
 ### Build plates
 
 - `GET /build-plates`
+- `POST /build-plates` (Operator; creates the next P-number and unavailable Side A)
 - `POST /build-plates/synchronize` (Administrator only; imports exact P-number A/B side meshes)
 - `PATCH /build-plates/{id}`
 - `GET /build-plates/{id}/image`
@@ -66,7 +67,7 @@ Spool responses include a derived completed-print count and `cost_per_gram`, cal
 
 Maintenance events are append-only. Image uploads are decoded, dimension-bounded, metadata-stripped, normalized to WebP, and stored in PostgreSQL. Clearing the active plate first clears the loaded Moonraker mesh and then lets state reconciliation clear canonical context.
 
-The Side B route derives `P<number>b` from the parent plate, rejects duplicates, and returns a mesh-unavailable side until Moonraker discovers that exact profile. Side responses include a derived completed-print count.
+The plate-create route acquires the Moonraker build-plate synchronization lock, assigns the next exact P-number, and returns a matching mesh-unavailable Side A. The Side B route derives `P<number>b` from the parent plate, rejects duplicates, and returns a mesh-unavailable side until Moonraker discovers that exact profile. Side responses include a derived completed-print count.
 
 ### Material profiles
 
@@ -94,12 +95,12 @@ The takeover request contains the complete reviewed source-ID set, explicit conf
 ### Print history and inspection
 
 - `GET /prints`
-- `GET /prints/page?page={page}&per_page={10|25|50|100}`
+- `GET /prints/page?page={page}&per_page={10|25|50|100}&printer_id={uuid}`
 - `GET /prints/{id}`
 - `GET /prints/profile-statistics`
 - `POST /prints/{id}/assessments`
 
-Print responses preserve exact start-state snapshots, bounded G-code inspection evidence, material-change segments, actual usage, explicit unresolved legacy state, the supported bounded raw Moonraker history outcome, and append-only quality revisions. The paginated route defaults to 10 newest-first records, accepts only 10, 25, 50, or 100 per page, returns exact filtered totals, and clamps a now-stale requested page to the last available page. Profile statistics use the latest assessment for each print.
+Print responses preserve exact start-state snapshots, bounded G-code inspection evidence, material-change segments, actual usage, explicit unresolved legacy state, the supported bounded raw Moonraker history outcome, and append-only quality revisions. The paginated route defaults to all printers and 10 newest-first records, accepts an optional exact printer UUID and only 10, 25, 50, or 100 per page, returns exact filtered totals, and clamps a now-stale requested page to the last available page. Profile statistics use the latest assessment for each print.
 
 ### Notifications and operational policy
 
@@ -117,7 +118,7 @@ The settings update requires optimistic concurrency and supports `warn` or `bloc
 - `PATCH /auth/users/{id}` (edits the singleton username/display name)
 - `POST /auth/change-password`
 
-An empty database creates `admin` / `admin` and requires password replacement before other application routes are available. Existing single-account credentials survive upgrades. Identity or password changes revoke other sessions. Account creation, role, reset, and deactivation routes do not exist under the singleton contract.
+An empty database creates `admin` / `admin` and requires password replacement before other application routes are available. Existing single-account credentials survive upgrades. Browser sessions default to a thirty-day absolute expiry and a rolling seven-day idle expiry renewed for active use at most once every five minutes. Identity or password changes revoke other sessions. Account creation, role, reset, and deactivation routes do not exist under the singleton contract.
 
 ### Integrations
 

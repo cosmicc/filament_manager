@@ -11,7 +11,6 @@ const DashboardPage = lazy(() => import('./pages/DashboardPage'))
 const DiagnosticsPage = lazy(() => import('./pages/DiagnosticsPage'))
 const FilamentsPage = lazy(() => import('./pages/FilamentsPage'))
 const FilamentDetailPage = lazy(() => import('./pages/FilamentDetailPage'))
-const IntegrationsPage = lazy(() => import('./pages/IntegrationsPage'))
 const LabelsPage = lazy(() => import('./pages/LabelsPage'))
 const LoginPage = lazy(() => import('./pages/LoginPage'))
 const NozzlesPage = lazy(() => import('./pages/NozzlesPage'))
@@ -37,7 +36,6 @@ const pages: Record<string, LazyExoticComponent<ComponentType>> = {
   '/nozzles': NozzlesPage,
   '/printers': PrintersPage,
   '/labels': LabelsPage,
-  '/integrations': IntegrationsPage,
   '/diagnostics': DiagnosticsPage,
   '/activity': ActivityPage,
   '/settings': SettingsPage,

@@ -70,7 +70,7 @@ export default function DashboardPage() {
             </div>
             <StatusPill status={data.printer_state.operational_status} label={titleCase(data.printer_state.operational_status)} />
           </header>
-          {data.printer_state.connection_status === 'connected' ? <div className="printer-state-card__body">
+          {data.printer_state.connection_status === 'connected' ? <div className={`printer-state-card__body${data.printer_state.operational_status === 'printing' ? ' printer-state-card__body--printing' : ''}`}>
             <section className={`printer-current-print${data.printer_state.thumbnail_url ? '' : ' printer-current-print--without-thumbnail'}`} aria-label="Current print state">
               {data.printer_state.thumbnail_url ? <img className="printer-current-print__thumbnail" src={data.printer_state.thumbnail_url} alt={`Preview of ${data.printer_state.filename ?? 'current print'}`} /> : null}
               <div className="printer-current-print__content">

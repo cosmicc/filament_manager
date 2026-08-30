@@ -29,7 +29,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from filament_manager import __version__
 from filament_manager.config import get_settings
+from filament_manager.models.enums import PrintJobStatus
 from filament_manager.models.operations import ApplicationSetting
+from filament_manager.models.printing import PrintJob
 
 BACKUP_POLICY_KEY = "database_backup"
 BACKUP_ARCHIVE_SCHEMA_VERSION = 1
@@ -44,6 +46,9 @@ MAX_ARCHIVE_BYTES = 4 * 1024 * 1024 * 1024
 MAX_DUMP_BYTES = 16 * 1024 * 1024 * 1024
 MAX_MANIFEST_BYTES = 32 * 1024
 READ_CHUNK_BYTES = 1024 * 1024
+MAX_POSTGRESQL_ERROR_BYTES = 16 * 1024
+AUTOMATIC_RETRY_BASE_MINUTES = 15
+AUTOMATIC_RETRY_MAX_MINUTES = 6 * 60
 BACKUP_LOCK_KEY = 7_162_159_241_176_977_409
 ARCHIVE_NAME_PATTERN = re.compile(r"^filament-manager-backup-[0-9]{8}T[0-9]{6}Z-[0-9a-f]{8}\.zip$")
 SEMANTIC_VERSION_PATTERN = re.compile(r"^(\d+)\.(\d+)\.(\d+)(?:[-+].*)?$")
@@ -140,7 +145,7 @@ def _database_environment() -> dict[str, str]:
 
 
 def _run_postgresql_command(arguments: list[str], *, timeout_seconds: int = 3600) -> None:
-    """Run one fixed PostgreSQL client command without retaining sensitive stderr."""
+    """Run one fixed PostgreSQL command and expose only a classified safe error."""
 
     try:
         completed = subprocess.run(  # noqa: S603 - argv is fixed by trusted application code.
@@ -148,7 +153,7 @@ def _run_postgresql_command(arguments: list[str], *, timeout_seconds: int = 3600
             check=False,
             env=_database_environment(),
             stdout=subprocess.DEVNULL,
-            stderr=subprocess.DEVNULL,
+            stderr=subprocess.PIPE,
             timeout=timeout_seconds,
         )
     except FileNotFoundError as error:
@@ -158,7 +163,34 @@ def _run_postgresql_command(arguments: list[str], *, timeout_seconds: int = 3600
     except subprocess.TimeoutExpired as error:
         raise DatabaseBackupError("The PostgreSQL backup operation timed out.") from error
     if completed.returncode != 0:
-        raise DatabaseBackupError("The PostgreSQL backup operation failed.")
+        stderr = completed.stderr if isinstance(completed.stderr, bytes) else b""
+        bounded_stderr = stderr[:MAX_POSTGRESQL_ERROR_BYTES].decode("utf-8", errors="replace").casefold()
+        if "server version" in bounded_stderr and "pg_dump version" in bounded_stderr:
+            message = (
+                "The application PostgreSQL backup tools are older than the database server. "
+                "Upgrade Filament Manager and try again."
+            )
+        elif "password authentication failed" in bounded_stderr or "no password supplied" in bounded_stderr:
+            message = "The database rejected the credentials used by the backup operation."
+        elif "permission denied" in bounded_stderr or "must be superuser" in bounded_stderr:
+            message = "The database account cannot read every object required for a complete backup."
+        elif any(
+            marker in bounded_stderr
+            for marker in (
+                "could not connect",
+                "connection refused",
+                "connection timed out",
+                "could not translate host name",
+                "could not resolve host",
+                "network is unreachable",
+            )
+        ):
+            message = "The database could not be reached by the backup operation."
+        elif "unrecognized option" in bounded_stderr or "unknown option" in bounded_stderr:
+            message = "The PostgreSQL backup tools do not support the required backup options."
+        else:
+            message = "The PostgreSQL backup operation failed."
+        raise DatabaseBackupError(message)
 
 
 def _sha256_file(path: Path) -> str:
@@ -474,22 +506,37 @@ def _write_backup_status(*, status: str, archive: BackupArchive | None = None) -
             {
                 "last_success_at": archive.created_at.isoformat(),
                 "last_backup_id": str(archive.id),
+                "consecutive_failures": 0,
+                "next_retry_at": None,
             }
         )
     _atomic_json(backup_root() / STATUS_NAME, payload)
 
 
 def record_backup_failure() -> None:
-    """Persist only a bounded failure state, never a command or database error body."""
+    """Persist bounded failure backoff without a command or database error body."""
 
     previous = backup_status()
+    previous_failures = previous.get("consecutive_failures")
+    consecutive_failures = (
+        min(int(previous_failures) + 1, 32)
+        if isinstance(previous_failures, int) and not isinstance(previous_failures, bool)
+        else 1
+    )
+    retry_minutes = min(
+        AUTOMATIC_RETRY_BASE_MINUTES * (2 ** (consecutive_failures - 1)),
+        AUTOMATIC_RETRY_MAX_MINUTES,
+    )
+    now = datetime.now(UTC)
     _atomic_json(
         backup_root() / STATUS_NAME,
         {
             "schema_version": BACKUP_STATUS_SCHEMA_VERSION,
             "status": "error",
-            "checked_at": datetime.now(UTC).isoformat(),
+            "checked_at": now.isoformat(),
             "last_success_at": previous.get("last_success_at"),
+            "consecutive_failures": consecutive_failures,
+            "next_retry_at": (now + timedelta(minutes=retry_minutes)).isoformat(),
         },
     )
 
@@ -497,17 +544,40 @@ def record_backup_failure() -> None:
 def backup_status() -> dict[str, object]:
     path = backup_root() / STATUS_NAME
     if not path.is_file() or path.is_symlink():
-        return {"status": "never", "checked_at": None, "last_success_at": None}
+        return {
+            "status": "never",
+            "checked_at": None,
+            "last_success_at": None,
+            "consecutive_failures": 0,
+            "next_retry_at": None,
+        }
     try:
         payload = json.loads(path.read_text(encoding="utf-8"))
     except (OSError, json.JSONDecodeError):
-        return {"status": "invalid", "checked_at": None, "last_success_at": None}
+        return {
+            "status": "invalid",
+            "checked_at": None,
+            "last_success_at": None,
+            "consecutive_failures": 0,
+            "next_retry_at": None,
+        }
     if not isinstance(payload, dict) or payload.get("schema_version") != BACKUP_STATUS_SCHEMA_VERSION:
-        return {"status": "invalid", "checked_at": None, "last_success_at": None}
+        return {
+            "status": "invalid",
+            "checked_at": None,
+            "last_success_at": None,
+            "consecutive_failures": 0,
+            "next_retry_at": None,
+        }
+    failures = payload.get("consecutive_failures")
     return {
         "status": str(payload.get("status") or "invalid")[:32],
         "checked_at": payload.get("checked_at"),
         "last_success_at": payload.get("last_success_at"),
+        "consecutive_failures": (
+            min(max(failures, 0), 32) if isinstance(failures, int) and not isinstance(failures, bool) else 0
+        ),
+        "next_retry_at": payload.get("next_retry_at"),
     }
 
 
@@ -584,11 +654,35 @@ async def backup_is_due(session: AsyncSession) -> tuple[bool, BackupPolicy]:
     policy = await get_backup_policy(session)
     if not policy.enabled:
         return False, policy
+    if await backup_has_active_print(session):
+        return False, policy
+    status = backup_status()
+    next_retry_value = status.get("next_retry_at")
+    if isinstance(next_retry_value, str):
+        try:
+            next_retry_at = datetime.fromisoformat(next_retry_value)
+        except ValueError:
+            next_retry_at = None
+        if (
+            next_retry_at is not None
+            and next_retry_at.tzinfo is not None
+            and datetime.now(UTC) < next_retry_at
+        ):
+            return False, policy
     automatic = [item for item in list_backup_archives() if item.storage_kind == "automatic"]
     if not automatic:
         return True, policy
     due_at = automatic[0].created_at + timedelta(hours=policy.interval_hours)
     return datetime.now(UTC) >= due_at, policy
+
+
+async def backup_has_active_print(session: AsyncSession) -> bool:
+    """Protect printer timing by deferring resource-intensive dumps while printing."""
+
+    active_print = await session.scalar(
+        select(PrintJob.id).where(PrintJob.status == PrintJobStatus.IN_PROGRESS).limit(1)
+    )
+    return active_print is not None
 
 
 async def acquire_backup_lock(session: AsyncSession) -> bool:

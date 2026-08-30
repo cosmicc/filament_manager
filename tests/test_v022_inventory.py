@@ -182,9 +182,14 @@ async def test_physical_nozzle_side_b_and_distinct_completed_print_counts(
                 detail="This installation matches the newest published GitHub release.",
             )
 
-        async def diagnostic_overview(_: AsyncSession) -> dict[str, object]:
+        async def diagnostic_overview(
+            _: AsyncSession,
+            *,
+            error_days: int = 1,
+        ) -> dict[str, object]:
             """Return one safe export fixture without calling external integrations."""
 
+            assert error_days in {1, 7, 30}
             checked_at = datetime(2026, 8, 15, 5, 7, tzinfo=UTC)
             return {
                 "checked_at": checked_at,
@@ -258,6 +263,12 @@ async def test_physical_nozzle_side_b_and_distinct_completed_print_counts(
             assert side_b_payload["mesh_available"] is False
             duplicate_side_b = await client.post(f"/api/v1/build-plates/{plate_id}/surfaces", json={})
             assert duplicate_side_b.status_code == 409
+            created_plate = await client.post("/api/v1/build-plates", json={})
+            assert created_plate.status_code == 201, created_plate.text
+            assert created_plate.json()["plate_code"] == "P2"
+            assert created_plate.json()["display_name"] == "Build Plate P2"
+            assert created_plate.json()["surfaces"][0]["surface_code"] == "P2"
+            assert created_plate.json()["surfaces"][0]["mesh_available"] is False
             version_response = await client.get("/api/v1/diagnostics/version")
             assert version_response.status_code == 200, version_response.text
             assert version_response.json()["running_version"] == "0.2.2"

@@ -141,7 +141,8 @@ def test_image_runs_automatic_migrations_through_its_entrypoint() -> None:
         assert "FILAMENT_MANAGER_DATABASE_AUTO_MIGRATE" in content
         assert "FILAMENT_MANAGER_DATABASE_MIGRATION_LOCK_TIMEOUT_SECONDS" in content
 
-    assert "postgresql-client-17" in dockerfile
+    assert "postgresql-client-18" in dockerfile
+    assert "https://apt.postgresql.org/pub/repos/apt" in dockerfile
 
 
 def test_non_http_services_disable_the_image_healthcheck() -> None:

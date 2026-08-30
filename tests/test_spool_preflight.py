@@ -109,7 +109,8 @@ def test_macro_reference_compiles_and_preserves_existing_motion_macros() -> None
                 assert ast.literal_eval(value) != ""
 
     spool_state_section = "gcode_macro FILAMENT_MANAGER_SPOOL_STATE"
-    assert parser.get(spool_state_section, "variable_macro_version") == '"0.6.5"'
+    assert parser.get(spool_state_section, "variable_macro_version") == '"0.6.6"'
+    assert parser.get(spool_state_section, "variable_resume_attempts") == "0"
     spool_state_gcode = parser.get(spool_state_section, "gcode")
     assert "state.macro_version" in spool_state_gcode
     assert '"; macro=" ~ macro_version' in spool_state_gcode
@@ -174,7 +175,7 @@ def test_macro_virtual_sd_resume_contract_handles_every_preflight_exit() -> None
 
     continue_start = parser.get("gcode_macro _FILAMENT_MANAGER_CONTINUE_START", "gcode")
     assert continue_start.index("START_PRINT BED_TEMP=") < continue_start.index(
-        "UPDATE_DELAYED_GCODE ID=_FILAMENT_MANAGER_RESUME_PRINT_START DURATION=0.25"
+        "UPDATE_DELAYED_GCODE ID=_FILAMENT_MANAGER_RESUME_PRINT_START DURATION=0.5"
     )
     assert "VARIABLE=resume_virtual_sd VALUE=0" not in continue_start
 
@@ -184,7 +185,12 @@ def test_macro_virtual_sd_resume_contract_handles_every_preflight_exit() -> None
     assert "not printer.pause_resume.is_paused" in delayed_resume
     assert "printer.virtual_sdcard.is_active and waiting_for_mesh == 0" not in delayed_resume
     assert delayed_resume.index("M24") < delayed_resume.index("VARIABLE=resume_virtual_sd VALUE=0")
-    assert "UPDATE_DELAYED_GCODE ID=_FILAMENT_MANAGER_RESUME_PRINT_START DURATION=0.25" in (delayed_resume)
+    assert "attempts < 60" in delayed_resume
+    assert "UPDATE_DELAYED_GCODE ID=_FILAMENT_MANAGER_RESUME_PRINT_START DURATION=0.5" in delayed_resume
+    assert "Print Resume Timed Out" in delayed_resume
+    retry_resume = parser.get("gcode_macro _FILAMENT_MANAGER_RETRY_PRINT_START", "gcode")
+    assert "VARIABLE=resume_attempts VALUE=0" in retry_resume
+    assert "UPDATE_DELAYED_GCODE ID=_FILAMENT_MANAGER_RESUME_PRINT_START DURATION=0.5" in retry_resume
 
     cancel_print = parser.get("gcode_macro CANCEL_PRINT", "gcode")
     abort = parser.get("gcode_macro FILAMENT_MANAGER_ABORT", "gcode")
@@ -193,6 +199,7 @@ def test_macro_virtual_sd_resume_contract_handles_every_preflight_exit() -> None
             cancellation_path
         )
         assert "VARIABLE=resume_virtual_sd VALUE=0" in cancellation_path
+        assert "VARIABLE=resume_attempts VALUE=0" in cancellation_path
     assert 'print_state in ["printing", "paused"]' in abort
     assert "file_loaded" in abort
     assert "CANCEL_PRINT" in abort
@@ -208,5 +215,5 @@ def test_macro_virtual_sd_resume_contract_handles_every_preflight_exit() -> None
         plate_selector.index("_START_PRINT_CONTINUE BED_TEMP=")
     )
     assert plate_selector.index("_START_PRINT_CONTINUE BED_TEMP=") < plate_selector.index(
-        "UPDATE_DELAYED_GCODE ID=_FILAMENT_MANAGER_RESUME_PRINT_START DURATION=0.25"
+        "UPDATE_DELAYED_GCODE ID=_FILAMENT_MANAGER_RESUME_PRINT_START DURATION=0.5"
     )

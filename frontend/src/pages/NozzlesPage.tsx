@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { History, Pencil, Plus, Save, Search, Unplug, Wrench } from 'lucide-react'
+import { History, Pencil, Plus, Printer as PrinterIcon, Save, Search, Unplug, Wrench } from 'lucide-react'
 import { useEffect, useMemo, useState } from 'react'
 import { apiFetch } from '../api/client'
 import type { Nozzle, NozzleLifecycleEvent, Printer } from '../api/types'
@@ -18,9 +18,10 @@ function optional(data: FormData, key: string) {
   return String(data.get(key) ?? '').trim() || null
 }
 
-function NozzleEditor({ nozzle, printers, pending, error, onClose, onSave }: {
+function NozzleEditor({ nozzle, printers, defaultPrinterId, pending, error, onClose, onSave }: {
   nozzle: Nozzle | null
   printers: Printer[]
+  defaultPrinterId: string
   pending: boolean
   error: string
   onClose: () => void
@@ -51,7 +52,7 @@ function NozzleEditor({ nozzle, printers, pending, error, onClose, onSave }: {
     }}>
       <EditorSection title="Identity" description="Use a durable label attached to or stored with this nozzle.">
         <div className="form-grid">
-          {nozzle ? <label>Printer<input value={printers.find((printer) => printer.id === nozzle.printer_id)?.name ?? 'Unknown printer'} disabled /></label> : <label>Printer<select name="printer_id" required>{printers.map((printer) => <option key={printer.id} value={printer.id}>{printer.name}</option>)}</select></label>}
+          {nozzle ? <label>Printer<input value={printers.find((printer) => printer.id === nozzle.printer_id)?.name ?? 'Unknown printer'} disabled /></label> : <label>Printer<select name="printer_id" defaultValue={defaultPrinterId} required>{printers.map((printer) => <option key={printer.id} value={printer.id}>{printer.name}</option>)}</select></label>}
           <label>Nozzle code<input name="nozzle_code" defaultValue={nozzle?.nozzle_code ?? ''} required maxLength={64} pattern={'[A-Za-z0-9][A-Za-z0-9._\\-]*'} autoFocus /></label>
           <label>Diameter (mm)<input name="diameter_mm" defaultValue={inputNumber(nozzle?.diameter_mm, 1)} required type="number" min="0.1" max="10" step="0.1" /></label>
           <label>Material<input name="material" defaultValue={nozzle?.material ?? ''} required maxLength={96} placeholder="Brass, hardened steel…" /></label>
@@ -77,11 +78,13 @@ export default function NozzlesPage() {
   const [editing, setEditing] = useState<Nozzle | 'new' | null>(null)
   const [selected, setSelected] = useState<Nozzle | null>(null)
   const [detailsNozzle, setDetailsNozzle] = useState<Nozzle | null>(null)
+  const [printerId, setPrinterId] = useState('')
   const [search, setSearch] = useState('')
   const [view, setView] = useCollectionView('nozzles', 'cards')
   const [message, setMessage] = useState('')
   const nozzles = useQuery({ queryKey: ['nozzles'], queryFn: () => apiFetch<Nozzle[]>('/nozzles?include_retired=true') })
   const printers = useQuery({ queryKey: ['printers'], queryFn: () => apiFetch<Printer[]>('/printers') })
+  const selectedPrinterId = printerId || printers.data?.[0]?.id || ''
   const events = useQuery({ queryKey: ['nozzle-events', selected?.id], queryFn: () => apiFetch<NozzleLifecycleEvent[]>(`/nozzles/${selected?.id}/events`), enabled: Boolean(selected) })
   const refresh = async () => {
     await Promise.all([
@@ -109,9 +112,11 @@ export default function NozzlesPage() {
   const canEdit = user?.role !== 'viewer'
   const visibleNozzles = useMemo(() => {
     const needle = search.trim().toLocaleLowerCase()
-    if (!needle) return nozzles.data ?? []
-    return (nozzles.data ?? []).filter((nozzle) => [nozzle.nozzle_code, nozzle.diameter_mm, nozzle.material, nozzle.manufacturer, nozzle.product_name, nozzle.coating, nozzle.status].filter(Boolean).join(' ').toLocaleLowerCase().includes(needle))
-  }, [nozzles.data, search])
+    return (nozzles.data ?? []).filter((nozzle) => (
+      nozzle.printer_id === selectedPrinterId
+      && (!needle || [nozzle.nozzle_code, nozzle.diameter_mm, nozzle.material, nozzle.manufacturer, nozzle.product_name, nozzle.coating, nozzle.status].filter(Boolean).join(' ').toLocaleLowerCase().includes(needle))
+    ))
+  }, [nozzles.data, search, selectedPrinterId])
   useEffect(() => {
     if (!detailsNozzle) return
     const current = nozzles.data?.find((nozzle) => nozzle.id === detailsNozzle.id)
@@ -144,13 +149,13 @@ export default function NozzlesPage() {
   }
 
   return <div>
-    <PageHeader eyebrow="Physical tooling" title="Nozzles" description="Track each physical nozzle, its installation history, and completed-print use." actions={canEdit ? <button className="button button--primary" onClick={() => { setEditing('new'); setMessage('') }}><Plus size={17} /> Add nozzle</button> : undefined} />
+    <PageHeader eyebrow="Physical tooling" title="Nozzles" description="Track each physical nozzle, its installation history, and completed-print use." actions={<>{printers.data?.length ? <label className="inline-field"><PrinterIcon size={16} /> Printer<select aria-label="Select nozzle printer" value={selectedPrinterId} onChange={(event) => setPrinterId(event.target.value)}>{printers.data.map((printer) => <option key={printer.id} value={printer.id}>{printer.name}</option>)}</select></label> : null}{canEdit ? <button className="button button--primary" onClick={() => { setEditing('new'); setMessage('') }} disabled={!selectedPrinterId}><Plus size={17} /> Add nozzle</button> : null}</>} />
     {message ? <div className="deployment-note" role="status">{message}</div> : null}
     {nozzles.error ? <p className="form-error">{nozzles.error.message}</p> : null}
     <section className="toolbar"><label className="search-field"><Search size={18} /><input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Search code, size, material, or product" aria-label="Search nozzles" /></label><CollectionViewSelector label="Nozzles" value={view} onChange={setView} /><span className="toolbar__summary">{visibleNozzles.length} nozzles</span></section>
     {nozzles.isLoading ? <LoadingState /> : !nozzles.data?.length ? <EmptyState icon={Wrench} title="No physical nozzles recorded" description="Add the nozzle currently installed in the printer, then record its installation to begin exact print-use tracking." action={canEdit ? <button className="button button--primary" onClick={() => setEditing('new')}><Plus size={17} /> Add first nozzle</button> : undefined} /> : !visibleNozzles.length ? <EmptyState icon={Search} title="No nozzles match" description="Adjust the search to see another physical nozzle." /> : view === 'list' ? <div className="table-card collection-table"><table><thead><tr><th>Nozzle</th><th>Printer</th><th>Product</th><th>Status</th><th>Prints</th><th>Filament</th></tr></thead><tbody>{visibleNozzles.map((nozzle) => { const assignedPrinter = printers.data?.find((printer) => printer.id === nozzle.printer_id); return <tr key={nozzle.id} tabIndex={0} onClick={() => setDetailsNozzle(nozzle)} onKeyDown={(event) => (event.key === 'Enter' || event.key === ' ') && setDetailsNozzle(nozzle)}><td><strong>{nozzle.nozzle_code}</strong><small className="table-subtext">{compactNumber(nozzle.diameter_mm, 1)} mm {nozzle.material}</small></td><td><strong>{assignedPrinter?.name ?? 'Unknown printer'}</strong><small className="table-subtext">{nozzle.installed_printer_id ? 'Currently installed' : 'Assigned printer'}</small></td><td>{[nozzle.manufacturer, nozzle.product_name, nozzle.coating].filter(Boolean).join(' · ') || 'Not recorded'}</td><td><StatusPill status={nozzle.status} /></td><td>{nozzle.completed_print_count.toLocaleString()}</td><td>{Number(nozzle.completed_filament_weight_g).toLocaleString(undefined, { maximumFractionDigits: 1 })} g</td></tr> })}</tbody></table></div> : view === 'detailed' ? <section className="collection-grid collection-grid--detailed">{visibleNozzles.map(renderDetailedNozzle)}</section> : <section className="collection-grid collection-grid--cards">{visibleNozzles.map((nozzle) => { const assignedPrinter = printers.data?.find((printer) => printer.id === nozzle.printer_id); return <button className={`collection-card collection-card--button${nozzle.installed_printer_id ? ' nozzle-card--installed' : ''}`} key={nozzle.id} onClick={() => setDetailsNozzle(nozzle)}><header className="collection-card__header"><span className="integration-card__icon"><Wrench size={23} /></span><StatusPill status={nozzle.status} /></header><div className="collection-card__body"><p className="eyebrow">{nozzle.nozzle_code}</p><h2>{compactNumber(nozzle.diameter_mm, 1)} mm {nozzle.material}</h2><p>{assignedPrinter?.name ?? 'Unknown printer'}</p></div><dl className="catalog-meta"><div><dt>Installation</dt><dd>{nozzle.installed_printer_id ? 'Currently installed' : 'Not installed'}</dd></div><div><dt>Completed prints</dt><dd>{nozzle.completed_print_count.toLocaleString()}</dd></div><div><dt>Recorded filament</dt><dd>{Number(nozzle.completed_filament_weight_g).toLocaleString(undefined, { maximumFractionDigits: 1 })} g</dd></div><div><dt>Product</dt><dd>{[nozzle.manufacturer, nozzle.product_name].filter(Boolean).join(' · ') || 'Not recorded'}</dd></div></dl></button>})}</section>}
     {[save.error, install.error, remove.error, retire.error].find(Boolean) ? <p className="form-error" role="alert">{[save.error, install.error, remove.error, retire.error].find(Boolean)?.message}</p> : null}
-    {editing ? <NozzleEditor nozzle={editing === 'new' ? null : editing} printers={printers.data ?? []} pending={save.isPending} error={save.error?.message ?? ''} onClose={() => setEditing(null)} onSave={(values) => save.mutate({ nozzle: editing === 'new' ? null : editing, values })} /> : null}
+    {editing ? <NozzleEditor nozzle={editing === 'new' ? null : editing} printers={printers.data ?? []} defaultPrinterId={selectedPrinterId} pending={save.isPending} error={save.error?.message ?? ''} onClose={() => setEditing(null)} onSave={(values) => save.mutate({ nozzle: editing === 'new' ? null : editing, values })} /> : null}
     {detailsNozzle ? <Modal title={`${detailsNozzle.nozzle_code} details`} description="Inspect this physical nozzle and use all available lifecycle actions." size="wide" onClose={() => setDetailsNozzle(null)} footer={<button className="button button--primary" onClick={() => setDetailsNozzle(null)}>Done</button>}>{renderDetailedNozzle(detailsNozzle)}</Modal> : null}
     {selected ? <Modal title={`${selected.nozzle_code} lifecycle`} description="Append-only installation, removal, retirement, and reactivation history." onClose={() => setSelected(null)} footer={<button className="button button--primary" onClick={() => setSelected(null)}>Done</button>}>{events.isLoading ? <LoadingState /> : events.data?.length ? <div className="mobile-card-list mobile-card-list--always">{events.data.map((event) => <article className="mobile-data-card" key={event.id}><strong>{titleCase(event.event_type)}</strong><span>{printers.data?.find((printer) => printer.id === event.printer_id)?.name ?? 'No printer'}</span><small>{dateTime(event.occurred_at)}{event.notes ? ` · ${event.notes}` : ''}</small></article>)}</div> : <p className="muted">No lifecycle events have been recorded yet.</p>}</Modal> : null}
   </div>

@@ -90,6 +90,14 @@ function printPage(items = [printJob]) {
   return { items, page: 1, per_page: 10, total_items: items.length, total_pages: 1 }
 }
 
+function mockPrintPage(items = [printJob]) {
+  apiFetchMock.mockImplementation((url: string) => {
+    if (url === '/printers') return Promise.resolve([{ id: 'printer-id', name: 'Printer A' }])
+    if (url.startsWith('/prints/page?')) return Promise.resolve(printPage(items))
+    return Promise.reject(new Error(`Unexpected API path: ${url}`))
+  })
+}
+
 describe('PrintHistoryPage', () => {
   afterEach(() => {
     cleanup()
@@ -97,7 +105,7 @@ describe('PrintHistoryPage', () => {
   })
 
   it('shows stored thumbnails, actual filament cost, useful comparisons, and segment cost', async () => {
-    apiFetchMock.mockResolvedValue(printPage())
+    mockPrintPage()
     const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })
     render(<QueryClientProvider client={queryClient}><PrintHistoryPage /></QueryClientProvider>)
 
@@ -112,15 +120,30 @@ describe('PrintHistoryPage', () => {
     expect(screen.getByText('3¢/g captured cost', { exact: false })).toBeTruthy()
   })
 
+  it('applies a distinct semantic row treatment to each terminal outcome', async () => {
+    mockPrintPage([
+      { ...printJob, id: 'completed-print', filename: 'completed.gcode', status: 'completed' },
+      { ...printJob, id: 'cancelled-print', filename: 'cancelled.gcode', status: 'cancelled' },
+      { ...printJob, id: 'failed-print', filename: 'failed.gcode', status: 'failed' },
+    ])
+    const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+    const { container } = render(<QueryClientProvider client={queryClient}><PrintHistoryPage /></QueryClientProvider>)
+
+    await screen.findAllByText('completed.gcode')
+    expect(container.querySelectorAll('.print-history-entry--successful').length).toBe(2)
+    expect(container.querySelectorAll('.print-history-entry--cancelled').length).toBe(2)
+    expect(container.querySelectorAll('.print-history-entry--failed').length).toBe(2)
+  })
+
   it('explains why mixed-currency segment costs are not combined', async () => {
-    apiFetchMock.mockResolvedValue(printPage([{
+    mockPrintPage([{
       ...printJob,
       actual_filament_cost: null,
       predicted_filament_cost: null,
       cost_currency: null,
       cost_currency_conflict: true,
       cost_complete: false,
-    }]))
+    }])
     const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })
     render(<QueryClientProvider client={queryClient}><PrintHistoryPage /></QueryClientProvider>)
 
@@ -130,12 +153,12 @@ describe('PrintHistoryPage', () => {
   })
 
   it('explains that the Cura inspection gate precedes the unchanged Klipper start macro', async () => {
-    apiFetchMock.mockResolvedValue(printPage([{
+    mockPrintPage([{
       ...printJob,
       inspection_status: 'blocked',
       inspection_policy: 'block',
       inspection: { mismatches: [], warnings: [], printer_gate: 'not_active' },
-    }]))
+    }])
     const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })
     render(<QueryClientProvider client={queryClient}><PrintHistoryPage /></QueryClientProvider>)
 
@@ -147,6 +170,7 @@ describe('PrintHistoryPage', () => {
 
   it('pages server-side with the supported page sizes and navigation controls', async () => {
     apiFetchMock.mockImplementation((url: string) => {
+      if (url === '/printers') return Promise.resolve([{ id: 'printer-id', name: 'Printer A' }])
       const requestedPage = Number(new URL(`https://test.invalid${url}`).searchParams.get('page'))
       const requestedPageSize = Number(new URL(`https://test.invalid${url}`).searchParams.get('per_page'))
       return Promise.resolve({
@@ -172,10 +196,23 @@ describe('PrintHistoryPage', () => {
     await waitFor(() => expect(apiFetchMock).toHaveBeenCalledWith('/prints/page?page=1&per_page=25'))
     expect(await screen.findByText('1–25 of 26 print records')).toBeTruthy()
     expect((screen.getByRole('button', { name: 'Last' }) as HTMLButtonElement).disabled).toBe(false)
+
+    fireEvent.change(screen.getByLabelText('Filter print history by printer'), { target: { value: 'printer-id' } })
+    await waitFor(() => expect(apiFetchMock).toHaveBeenCalledWith('/prints/page?page=1&per_page=25&printer_id=printer-id'))
   })
 
   it('shows a retryable request error instead of a false empty-history state', async () => {
-    apiFetchMock.mockRejectedValueOnce(new Error('History request failed')).mockResolvedValueOnce(printPage())
+    let printAttempts = 0
+    apiFetchMock.mockImplementation((url: string) => {
+      if (url === '/printers') return Promise.resolve([])
+      if (url.startsWith('/prints/page?')) {
+        printAttempts += 1
+        return printAttempts === 1
+          ? Promise.reject(new Error('History request failed'))
+          : Promise.resolve(printPage())
+      }
+      return Promise.reject(new Error(`Unexpected API path: ${url}`))
+    })
     const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })
     render(<QueryClientProvider client={queryClient}><PrintHistoryPage /></QueryClientProvider>)
 

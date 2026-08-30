@@ -2,7 +2,7 @@ import {
   Activity, Bell, Boxes, ChevronLeft, ChevronRight, CircleGauge, FlaskConical,
   HeartPulse,
   Layers3, Library, LogOut, Menu, PackageOpen, Printer,
-  MonitorCog, QrCode, Settings, Unplug, Wrench, X, History,
+  MonitorCog, QrCode, Settings, Wrench, X, History,
 } from 'lucide-react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { type ReactNode, useEffect, useRef, useState } from 'react'
@@ -64,7 +64,6 @@ function NotificationCenter() {
 
 const secondaryNavigation = [
   { to: '/diagnostics', label: 'Diagnostics', icon: HeartPulse },
-  { to: '/integrations', label: 'Integrations', icon: Unplug },
   { to: '/workstations', label: 'Cura workstations', icon: MonitorCog },
   { to: '/activity', label: 'Activity', icon: Activity },
   { to: '/settings', label: 'Settings', icon: Settings },

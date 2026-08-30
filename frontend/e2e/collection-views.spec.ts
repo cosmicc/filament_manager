@@ -50,7 +50,7 @@ const plate = {
 const nozzle = {
   id: 'nozzle-id', nozzle_code: 'N4', diameter_mm: '0.4', material: 'Hardened steel',
   manufacturer: 'Workshop', product_name: 'High-flow', coating: 'Nickel', purchase_date: null,
-  status: 'available', installed_printer_id: null, installed_at: null, retired_at: null,
+  status: 'available', printer_id: printer.id, installed_printer_id: null, installed_at: null, retired_at: null,
   notes: null, record_version: 1, completed_print_count: 22, completed_filament_weight_g: '8240.5',
 }
 

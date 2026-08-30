@@ -3,6 +3,7 @@
 from collections.abc import AsyncIterator
 from types import SimpleNamespace
 from typing import Any
+from uuid import uuid4
 
 import httpx
 import pytest
@@ -106,6 +107,22 @@ async def test_print_page_accepts_browser_query_string_page_size() -> None:
         "total_items": 23,
         "total_pages": 3,
     }
+
+
+@pytest.mark.asyncio
+async def test_print_page_accepts_printer_filter() -> None:
+    """Printer selection narrows both the count and the returned page query."""
+
+    session = _PageSession(total_items=0)
+    app = _http_test_app(session)
+    printer_id = uuid4()
+    transport = httpx.ASGITransport(app=app)
+    async with httpx.AsyncClient(transport=transport, base_url="http://testserver") as client:
+        response = await client.get(f"/api/v1/prints/page?printer_id={printer_id}")
+
+    assert response.status_code == 200
+    assert session.executed_query is not None
+    assert "print_jobs.printer_id" in str(session.executed_query)
 
 
 @pytest.mark.asyncio

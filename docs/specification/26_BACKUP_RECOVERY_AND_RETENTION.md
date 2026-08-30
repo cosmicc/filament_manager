@@ -25,6 +25,10 @@ Retained Cura recovery points return with the canonical database. They remain bo
 
 Restore the Spoolman database and stack independently. If the database cannot be restored, initialize a blank database, reproject canonical records through the API, and reconcile printer-originated state.
 
+## Application snapshot scheduling
+
+The runtime image uses PostgreSQL client 18 so `pg_dump` can read PostgreSQL 18 and older supported server versions. Scheduled and Administrator-requested dumps are deferred while a canonical print is in progress so they do not compete with Klipper host timing. A failed automatic dump records a bounded failure state and a persisted exponential retry deadline beginning at fifteen minutes and capped at six hours; the one-minute scheduler must not spawn the failed operation on every pass. PostgreSQL stderr is bounded and classified into safe operator guidance without exposing database identifiers or connection details.
+
 ## Retention
 
 - audit and measurement history: retain indefinitely unless policy changes

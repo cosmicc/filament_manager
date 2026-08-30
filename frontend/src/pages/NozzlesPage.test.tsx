@@ -43,4 +43,29 @@ describe('NozzlesPage', () => {
     expect(screen.getByRole('button', { name: 'Edit' })).toBeTruthy()
     expect(screen.getByRole('button', { name: 'Record removal' })).toBeTruthy()
   })
+
+  it('filters the catalog and new-nozzle scope by the selected printer', async () => {
+    apiFetchMock.mockImplementation((path: string) => {
+      if (path === '/nozzles?include_retired=true') return Promise.resolve([
+        nozzle,
+        { ...nozzle, id: 'nozzle-two', nozzle_code: 'N4', printer_id: 'printer-two', installed_printer_id: null },
+      ])
+      if (path === '/printers') return Promise.resolve([
+        { id: 'printer-id', name: 'Workshop Printer' },
+        { id: 'printer-two', name: 'Backup Printer' },
+      ])
+      return Promise.reject(new Error(`Unexpected API path: ${path}`))
+    })
+    const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false }, mutations: { retry: false } } })
+    render(<QueryClientProvider client={queryClient}><NozzlesPage /></QueryClientProvider>)
+
+    expect(await screen.findByRole('heading', { name: '0.6 mm Hardened steel' })).toBeTruthy()
+    expect(screen.queryByText('N4', { exact: true })).toBeNull()
+    fireEvent.change(screen.getByLabelText('Select nozzle printer'), { target: { value: 'printer-two' } })
+    expect(await screen.findByText('N4', { exact: true })).toBeTruthy()
+    expect(screen.queryByText('N3', { exact: true })).toBeNull()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Add nozzle' }))
+    expect((screen.getByRole('combobox', { name: 'Printer' }) as HTMLSelectElement).value).toBe('printer-two')
+  })
 })

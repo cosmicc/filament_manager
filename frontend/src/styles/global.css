@@ -70,6 +70,7 @@ svg { flex: 0 0 auto; }
 .page-header__description { max-width: 760px; margin-top: 6px; color: var(--text-muted); font-size: 14px; }
 .page-header__actions { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; justify-content: flex-end; }
 .filament-section-nav { width: fit-content; display: inline-flex; gap: 4px; margin-bottom: 18px; border: 1px solid var(--border); border-radius: var(--radius-sm); padding: 4px; background: var(--surface-muted); }
+.page-header__actions .filament-section-nav { margin-bottom: 0; }
 .filament-section-nav__item { min-height: 38px; display: inline-flex; align-items: center; justify-content: center; border-radius: calc(var(--radius-sm) - 3px); padding: 8px 15px; color: var(--text-muted); font-weight: 750; }
 .filament-section-nav__item:hover { color: var(--blue-600); background: var(--surface); }
 .filament-section-nav__item--active { color: white; background: var(--blue-600); box-shadow: var(--shadow-sm); }
@@ -115,6 +116,10 @@ svg { flex: 0 0 auto; }
 .printer-state-card__header > .status-pill { min-width: 164px; min-height: 52px; padding: 13px 30px; font-size: 1.1rem; letter-spacing: .015em; }
 .printer-state-card__icon { width: 58px; height: 58px; display: grid; place-items: center; border-radius: 14px; color: var(--blue-600); background: var(--blue-50); }
 .printer-state-card__body { display: grid; grid-template-columns: minmax(260px, .8fr) minmax(420px, 1.2fr); gap: 14px; border-top: 1px solid var(--border); padding: 14px 20px 14px 24px; background: var(--surface-muted); }
+.printer-state-card__body--printing { grid-template-columns: minmax(520px, 1.7fr) minmax(240px, .55fr); }
+.printer-state-card__body--printing .printer-temperature-grid { grid-template-columns: 1fr; gap: 6px; }
+.printer-state-card__body--printing .printer-temperature-grid > div { min-height: 40px; grid-template-columns: 25px minmax(0, 1fr); padding: 6px 9px; }
+.printer-state-card__body--printing .printer-temperature-grid strong { font-size: 11px; }
 .printer-current-print { min-width: 0; display: grid; grid-template-columns: minmax(0, 150px) minmax(0, 1fr); gap: 10px; }
 .printer-current-print--without-thumbnail { grid-template-columns: minmax(0, 1fr); }
 .printer-current-print__thumbnail { width: 100%; height: 100%; min-height: 134px; display: block; border: 1px solid var(--border); border-radius: var(--radius-sm); background: var(--surface); object-fit: contain; }
@@ -141,7 +146,7 @@ svg { flex: 0 0 auto; }
 .printer-state-card__unavailable span { display: flex; flex-direction: column; }
 .printer-state-card__unavailable small { color: var(--text-muted); }
 .printer-state-card footer { border-top: 1px solid var(--border); padding: 8px 20px 9px 24px; color: var(--text-soft); font-size: 11px; }
-.active-spool-card, .integrations-card { min-height: 0; }
+.active-spool-card { min-height: 0; }
 .profile-scope-section { margin-top: 18px; }
 .profile-scope-section > .section-heading { align-items: flex-end; }
 .profile-scope-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 390px), 1fr)); gap: 14px; }
@@ -352,6 +357,12 @@ svg { flex: 0 0 auto; }
 .plate-surfaces { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 245px), 1fr)); gap: 10px; }
 .plate-surface { min-width: 0; display: grid; gap: 8px; border: 1px solid var(--border); border-radius: var(--radius-sm); padding: 12px; background: var(--surface-muted); }
 .plate-surface--active { border-color: var(--success); background: color-mix(in srgb, var(--success-bg) 70%, var(--surface)); }
+.plate-surface--mesh-missing { border-color: color-mix(in srgb, var(--danger) 70%, var(--border)); background: color-mix(in srgb, var(--danger-bg) 58%, var(--surface)); box-shadow: inset 4px 0 0 var(--danger); }
+.plate-surface__mesh-warning { display: flex; align-items: flex-start; gap: 8px; border-radius: var(--radius-sm); padding: 9px; color: var(--danger); background: color-mix(in srgb, var(--danger-bg) 78%, var(--surface)); font-size: 12px; }
+.plate-surface__mesh-warning > span { min-width: 0; display: flex; flex-direction: column; }
+.plate-surface__mesh-warning code { overflow-wrap: anywhere; color: inherit; font-weight: 800; }
+.build-plate-entry--mesh-missing { border-color: color-mix(in srgb, var(--danger) 65%, var(--border)) !important; background: color-mix(in srgb, var(--danger-bg) 35%, var(--surface)) !important; box-shadow: inset 4px 0 0 var(--danger), var(--shadow-sm) !important; }
+.build-plate-mesh-warning { display: flex !important; align-items: center; gap: 5px; margin-top: 4px; color: var(--danger) !important; font-weight: 750; white-space: normal; }
 .plate-surface h3 { font-size: 1.15rem; }
 .plate-surface header { display: flex; justify-content: space-between; align-items: flex-start; gap: 10px; }
 .plate-surface__actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: auto; }
@@ -617,6 +628,12 @@ textarea { resize: vertical; }
 .print-table-identity--without-thumbnail { grid-template-columns: minmax(0, 1fr); }
 .print-table-thumbnail { width: 58px; height: 46px; display: block; border: 1px solid var(--border); border-radius: 6px; background: var(--surface-muted); object-fit: contain; }
 .print-card-thumbnail { width: 100%; max-height: 190px; display: block; border-radius: 7px; background: var(--surface-muted); object-fit: contain; }
+.desktop-data-table tbody tr.print-history-entry--successful > td, .mobile-data-card.print-history-entry--successful { background: color-mix(in srgb, var(--success-bg) 42%, var(--surface)); }
+.desktop-data-table tbody tr.print-history-entry--cancelled > td, .mobile-data-card.print-history-entry--cancelled { background: color-mix(in srgb, var(--warning-bg) 48%, var(--surface)); }
+.desktop-data-table tbody tr.print-history-entry--failed > td, .mobile-data-card.print-history-entry--failed { background: color-mix(in srgb, var(--danger-bg) 48%, var(--surface)); }
+.desktop-data-table tbody tr.print-history-entry--successful > td:first-child, .mobile-data-card.print-history-entry--successful { box-shadow: inset 4px 0 0 color-mix(in srgb, var(--success) 72%, transparent); }
+.desktop-data-table tbody tr.print-history-entry--cancelled > td:first-child, .mobile-data-card.print-history-entry--cancelled { box-shadow: inset 4px 0 0 color-mix(in srgb, var(--warning) 72%, transparent); }
+.desktop-data-table tbody tr.print-history-entry--failed > td:first-child, .mobile-data-card.print-history-entry--failed { box-shadow: inset 4px 0 0 color-mix(in srgb, var(--danger) 72%, transparent); }
 .print-result-emphasis { font-weight: 750; }
 .inspection-panel { margin-block: 22px; border-block: 1px solid var(--border); padding-block: 18px; }
 .inspection-panel .section-heading { margin: 0 0 12px; }
@@ -678,6 +695,8 @@ textarea { resize: vertical; }
 @media (max-width: 1180px) {
   .dashboard-grid { grid-template-columns: 1fr 1fr; }
   .printer-state-card__body { grid-template-columns: 1fr; }
+  .printer-state-card__body--printing { grid-template-columns: 1fr; }
+  .printer-state-card__body--printing .printer-temperature-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
   .quick-actions { grid-template-columns: repeat(3, minmax(0, 1fr)); }
   .quick-actions a:nth-child(4) { border-left: 0; }
   .plate-facts { grid-template-columns: repeat(2, minmax(0, 1fr)); }
