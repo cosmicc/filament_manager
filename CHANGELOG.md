@@ -20,6 +20,7 @@
 
 ### Fixed
 
+- Fixed AMD64/ARM64 image publication timing out while running the architecture-neutral frontend package installation through ARM64 emulation; the frontend now builds once on the native BuildKit platform and is copied into both target images.
 - Fixed automatic and manual PostgreSQL backups against newer database servers by installing PostgreSQL client 18, returning bounded actionable failure categories, deferring backup work during active prints, and applying a fifteen-minute-to-six-hour exponential retry delay after automatic failures.
 - Fixed an unbounded Klipper delayed-G-code resume retry that could continue every quarter second when a managed virtual-SD hold never reached its expected release state; retries now stop after thirty seconds and show explicit Retry and Cancel actions.
 - Fixed unnecessary full Moonraker history downloads every five seconds during active printing; live exact-state capture remains at five seconds and full history reconciliation resumes immediately after the print reaches a terminal state.

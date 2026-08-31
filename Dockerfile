@@ -1,4 +1,4 @@
-FROM node:22-alpine AS frontend-build
+FROM --platform=$BUILDPLATFORM node:22-alpine AS frontend-build
 WORKDIR /build/frontend
 COPY frontend/package*.json ./
 RUN npm ci

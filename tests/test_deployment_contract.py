@@ -118,6 +118,13 @@ def test_source_maps_are_uploaded_only_by_authorized_ci_and_not_shipped() -> Non
     assert "find dist -type f -name '*.map' -delete" in dockerfile
 
 
+def test_multiarch_image_builds_frontend_on_native_builder_platform() -> None:
+    """Static frontend assets must not run npm through target-platform emulation."""
+
+    dockerfile = _read("Dockerfile")
+    assert "FROM --platform=$BUILDPLATFORM node:22-alpine AS frontend-build" in dockerfile
+
+
 def test_image_healthcheck_uses_the_trusted_host_aware_probe() -> None:
     """The image must probe readiness with the configured public hostname."""
 
