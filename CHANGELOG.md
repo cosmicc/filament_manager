@@ -1,5 +1,24 @@
 # Changelog
 
+## 0.6.7 - 08.31.2026
+
+### Added
+
+- Added regression coverage for stale interrupted-print backup deferral, storage-permission failure handling, combined Moonraker live capture, active-print synchronization deferral, navigation order, and sidebar Logout removal.
+
+### Changed
+
+- Moved Print History directly below Printers in the application navigation, renamed **Create pairing code** to **Add Cura workstation**, and removed Logout from the persistent sidebar.
+- Restyled the database-backup schedule into a clearly grouped enable, interval, retention, and save surface, and now retain the newest bounded failure guidance in Diagnostics.
+- Changed the Dashboard, Moonraker state, and live print intervals from five to ten seconds. Live print and preflight state now use one combined Moonraker object query, while active-spool, bed-mesh, catalog, printer-information, and complete-history reads defer during active prints.
+- Changed every server, browser, workstation-agent, and Klipper macro version surface to 0.6.7; Cura renderer revision 18 remains current because no generated workstation files changed.
+
+### Fixed
+
+- Fixed manual and automatic backups remaining blocked indefinitely when an MCU shutdown left a stale canonical print marked in progress; stale state now requires a minimal terminal-state confirmation from Moonraker and fails closed when the printer cannot be checked.
+- Fixed application-data-volume permission and storage failures replacing the useful backup error or causing an overly frequent scheduler retry; failures remain bounded, path-free, and visible in Diagnostics.
+- Reduced avoidable printer-host work during motion to lower Filament Manager's contribution to host scheduling pressure behind Klipper `Timer too close` shutdowns.
+
 ## 0.6.6 - 08.30.2026
 
 ### Added

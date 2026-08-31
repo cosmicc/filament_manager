@@ -115,7 +115,10 @@ async def database_backup_overview(
     """Return policy and validated canonical-database archives without file contents."""
 
     policy = await get_backup_policy(session)
-    archives = await asyncio.to_thread(list_backup_archives)
+    try:
+        archives = await asyncio.to_thread(list_backup_archives)
+    except DatabaseBackupError as error:
+        raise _backup_api_error(error) from error
     return DatabaseBackupOverviewResponse.model_validate(
         {
             "policy": policy,
@@ -193,7 +196,7 @@ async def create_database_backup(
         policy = await get_backup_policy(session)
         await asyncio.to_thread(prune_automatic_archives, policy.retention_count)
     except DatabaseBackupError as error:
-        await asyncio.to_thread(record_backup_failure)
+        await asyncio.to_thread(record_backup_failure, error)
         raise _backup_api_error(error) from error
     finally:
         await release_backup_lock(session)

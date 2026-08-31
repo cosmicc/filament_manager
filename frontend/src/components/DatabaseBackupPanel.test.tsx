@@ -32,7 +32,7 @@ describe('DatabaseBackupPanel', () => {
     apiFetchMock.mockImplementation((path: string, init?: RequestInit) => {
       if (path === '/diagnostics/database-backups' && !init) return Promise.resolve({
         policy: { enabled: true, interval_hours: 24, retention_count: 10, record_version: 2 },
-        status: { status: 'healthy', checked_at: archive.created_at, last_success_at: archive.created_at, consecutive_failures: 0, next_retry_at: null },
+        status: { status: 'healthy', checked_at: archive.created_at, last_success_at: archive.created_at, consecutive_failures: 0, next_retry_at: null, last_error_message: null },
         pending_restore: null,
         archives: [],
       })

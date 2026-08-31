@@ -658,6 +658,7 @@ test('an empty Cura library can complete the one-time atomic takeover', async ({
   })
 
   await page.goto('/workstations')
+  await expect(page.getByRole('button', { name: 'Add Cura workstation' })).toBeVisible()
   await expect(page.getByText('Awaiting one-time takeover')).toBeVisible()
   await page.getByRole('button', { name: 'Review empty takeover' }).click()
   let dialog = page.getByRole('dialog', { name: 'Map Cura profiles to templates' })

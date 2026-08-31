@@ -1,5 +1,24 @@
 # User Changelog
 
+## 0.6.7 - 08.31.2026
+
+### Added
+
+- Added clearer backup failure guidance so a failed attempt explains the safe next action in Diagnostics.
+
+### Changed
+
+- Moved Print History directly below Printers, renamed the Cura workstation action to **Add Cura workstation**, and removed Logout from the bottom of the sidebar.
+- Cleaned up the automatic-backup schedule controls into a compact enable, frequency, retention, and save group.
+- Changed live printer refreshes from five to ten seconds and reduced Moonraker work during an active print.
+- Updated Filament Manager and its workstation agent to version 0.6.7.
+
+### Fixed
+
+- Fixed automatic and manual backups remaining unavailable after an interrupted print left stale in-progress history.
+- Fixed backup storage failures hiding the original useful error or retrying too aggressively.
+- Reduced avoidable Moonraker, Klipper, and Fluidd activity during printing by combining the essential live query and postponing nonessential synchronization until the print ends.
+
 ## 0.6.6 - 08.30.2026
 
 ### Added

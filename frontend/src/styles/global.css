@@ -32,7 +32,6 @@ svg { flex: 0 0 auto; }
 .sidebar__footer { padding: 8px 10px 14px; border-top: 1px solid rgb(255 255 255 / 9%); }
 .sidebar__version { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 6px 12px 5px; color: #9fb8c8; font-size: 11px; }
 .sidebar__version strong { color: #c9dce8; font-size: 11px; }
-.sidebar__logout { margin-top: 2px; }
 .account__avatar { width: 34px; height: 34px; display: grid; place-items: center; border-radius: 50%; color: var(--navy-950); background: #d9eaf7; font-weight: 800; }
 .icon-button { width: 36px; height: 36px; display: inline-grid; place-items: center; flex: 0 0 auto; border: 1px solid transparent; border-radius: var(--radius-sm); color: inherit; background: transparent; }
 .icon-button:hover { border-color: var(--border); background: var(--surface-muted); }
@@ -405,6 +404,15 @@ svg { flex: 0 0 auto; }
 .diagnostic-check { min-width: 0; display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: start; gap: 12px; border: 1px solid var(--border); border-radius: var(--radius-sm); padding: 13px; background: var(--surface); }
 .diagnostic-check p { margin-top: 4px; color: var(--text-muted); overflow-wrap: anywhere; }
 .diagnostic-check small { display: block; margin-top: 7px; color: var(--text-soft); }
+.backup-schedule { display: grid; gap: 13px; border: 1px solid var(--border); border-radius: var(--radius-sm); padding: 13px; background: var(--surface-muted); }
+.backup-schedule__header { display: flex; align-items: center; justify-content: space-between; gap: 16px; }
+.backup-schedule__header > div { display: grid; gap: 3px; }
+.backup-schedule__header small { color: var(--text-muted); font-weight: 400; }
+.backup-schedule__header .checkbox-row { flex: 0 0 auto; margin: 0; background: var(--surface); }
+.backup-schedule__controls { display: grid; grid-template-columns: repeat(2, minmax(180px, 1fr)) auto; align-items: end; gap: 12px; }
+.backup-schedule__controls > label { display: grid; gap: 6px; }
+.backup-schedule__controls > .button { min-height: 42px; }
+.backup-schedule .input-suffix input { padding-right: 78px; }
 .validation-result { border-top: 1px solid var(--border); padding-top: 2px; }
 .validation-result .section-heading { margin-top: 14px; }
 .metric-grid--compact { grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); margin-bottom: 14px; }
@@ -728,6 +736,9 @@ textarea { resize: vertical; }
   .cura-recovery-item { grid-template-columns: 1fr; }
   .cura-recovery-item__counts { align-items: flex-start; }
   .diagnostic-check-grid { grid-template-columns: 1fr; }
+  .backup-schedule__header { align-items: stretch; flex-direction: column; }
+  .backup-schedule__header .checkbox-row { align-self: flex-start; }
+  .backup-schedule__controls { grid-template-columns: 1fr; }
   .cura-material-item { align-items: stretch; flex-direction: column; }
   .cura-material-item__status { justify-content: space-between; }
   .pairing-card { grid-template-columns: 1fr; }

@@ -23,11 +23,12 @@ from pathlib import Path, PurePosixPath
 from typing import BinaryIO, Literal
 from uuid import UUID, uuid4
 
-from sqlalchemy import select, text
+from sqlalchemy import func, select, text
 from sqlalchemy.engine import make_url
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from filament_manager import __version__
+from filament_manager.clients.moonraker import MoonrakerClient
 from filament_manager.config import get_settings
 from filament_manager.models.enums import PrintJobStatus
 from filament_manager.models.operations import ApplicationSetting
@@ -49,6 +50,7 @@ READ_CHUNK_BYTES = 1024 * 1024
 MAX_POSTGRESQL_ERROR_BYTES = 16 * 1024
 AUTOMATIC_RETRY_BASE_MINUTES = 15
 AUTOMATIC_RETRY_MAX_MINUTES = 6 * 60
+ACTIVE_PRINT_FRESHNESS_FLOOR_SECONDS = 30
 BACKUP_LOCK_KEY = 7_162_159_241_176_977_409
 ARCHIVE_NAME_PATTERN = re.compile(r"^filament-manager-backup-[0-9]{8}T[0-9]{6}Z-[0-9a-f]{8}\.zip$")
 SEMANTIC_VERSION_PATTERN = re.compile(r"^(\d+)\.(\d+)\.(\d+)(?:[-+].*)?$")
@@ -251,7 +253,7 @@ def _archive_filename(created_at: datetime, archive_id: UUID) -> str:
     return f"filament-manager-backup-{created_at.strftime('%Y%m%dT%H%M%SZ')}-{archive_id.hex[:8]}.zip"
 
 
-def create_backup_archive(trigger: Literal["automatic", "manual", "pre_restore"]) -> BackupArchive:
+def _create_backup_archive(trigger: Literal["automatic", "manual", "pre_restore"]) -> BackupArchive:
     """Create one atomic ZIP containing a PostgreSQL custom-format dump and manifest."""
 
     root = backup_root()
@@ -321,6 +323,23 @@ def create_backup_archive(trigger: Literal["automatic", "manual", "pre_restore"]
     validated = validate_backup_archive(destination, storage_kind=category)
     _write_backup_status(status="healthy", archive=validated)
     return validated
+
+
+def create_backup_archive(trigger: Literal["automatic", "manual", "pre_restore"]) -> BackupArchive:
+    """Create one backup while translating storage failures into bounded guidance."""
+
+    try:
+        return _create_backup_archive(trigger)
+    except DatabaseBackupError:
+        raise
+    except PermissionError as error:
+        raise DatabaseBackupError(
+            "The private application data volume is not writable by Filament Manager."
+        ) from error
+    except (OSError, RuntimeError, zipfile.LargeZipFile) as error:
+        raise DatabaseBackupError(
+            "The private application data volume could not store a complete database backup."
+        ) from error
 
 
 def _safe_zip_members(archive: zipfile.ZipFile) -> tuple[zipfile.ZipInfo, zipfile.ZipInfo]:
@@ -453,16 +472,21 @@ def list_backup_archives() -> list[BackupArchive]:
     """List only fully validated local archives and silently isolate malformed files."""
 
     archives: list[BackupArchive] = []
-    for storage_kind, directory in _archive_directories():
-        if not directory.exists() or directory.is_symlink() or not directory.is_dir():
-            continue
-        for path in directory.iterdir():
-            if path.is_symlink() or not path.is_file() or not ARCHIVE_NAME_PATTERN.fullmatch(path.name):
+    try:
+        for storage_kind, directory in _archive_directories():
+            if not directory.exists() or directory.is_symlink() or not directory.is_dir():
                 continue
-            try:
-                archives.append(validate_backup_archive(path, storage_kind=storage_kind, use_cache=True))
-            except DatabaseBackupError:
-                continue
+            for path in directory.iterdir():
+                if path.is_symlink() or not path.is_file() or not ARCHIVE_NAME_PATTERN.fullmatch(path.name):
+                    continue
+                try:
+                    archives.append(validate_backup_archive(path, storage_kind=storage_kind, use_cache=True))
+                except DatabaseBackupError:
+                    continue
+    except OSError as error:
+        raise DatabaseBackupError(
+            "The private application data volume could not be read by Filament Manager."
+        ) from error
     return sorted(archives, key=lambda item: item.created_at, reverse=True)
 
 
@@ -508,15 +532,22 @@ def _write_backup_status(*, status: str, archive: BackupArchive | None = None) -
                 "last_backup_id": str(archive.id),
                 "consecutive_failures": 0,
                 "next_retry_at": None,
+                "last_error_message": None,
             }
         )
     _atomic_json(backup_root() / STATUS_NAME, payload)
 
 
-def record_backup_failure() -> None:
+def record_backup_failure(error: DatabaseBackupError | None = None) -> None:
     """Persist bounded failure backoff without a command or database error body."""
 
-    previous = backup_status()
+    try:
+        previous = backup_status()
+    except OSError:
+        previous = {
+            "last_success_at": None,
+            "consecutive_failures": 0,
+        }
     previous_failures = previous.get("consecutive_failures")
     consecutive_failures = (
         min(int(previous_failures) + 1, 32)
@@ -528,28 +559,39 @@ def record_backup_failure() -> None:
         AUTOMATIC_RETRY_MAX_MINUTES,
     )
     now = datetime.now(UTC)
-    _atomic_json(
-        backup_root() / STATUS_NAME,
-        {
-            "schema_version": BACKUP_STATUS_SCHEMA_VERSION,
-            "status": "error",
-            "checked_at": now.isoformat(),
-            "last_success_at": previous.get("last_success_at"),
-            "consecutive_failures": consecutive_failures,
-            "next_retry_at": (now + timedelta(minutes=retry_minutes)).isoformat(),
-        },
-    )
+    try:
+        _atomic_json(
+            backup_root() / STATUS_NAME,
+            {
+                "schema_version": BACKUP_STATUS_SCHEMA_VERSION,
+                "status": "error",
+                "checked_at": now.isoformat(),
+                "last_success_at": previous.get("last_success_at"),
+                "consecutive_failures": consecutive_failures,
+                "next_retry_at": (now + timedelta(minutes=retry_minutes)).isoformat(),
+                "last_error_message": str(error)[:500] if error is not None else None,
+            },
+        )
+    except (DatabaseBackupError, OSError):
+        # A read-only or unavailable data volume is already represented by the
+        # original bounded backup error; failure bookkeeping must not replace it.
+        return
 
 
 def backup_status() -> dict[str, object]:
     path = backup_root() / STATUS_NAME
-    if not path.is_file() or path.is_symlink():
+    try:
+        status_file_is_available = path.is_file() and not path.is_symlink()
+    except OSError:
+        status_file_is_available = False
+    if not status_file_is_available:
         return {
             "status": "never",
             "checked_at": None,
             "last_success_at": None,
             "consecutive_failures": 0,
             "next_retry_at": None,
+            "last_error_message": None,
         }
     try:
         payload = json.loads(path.read_text(encoding="utf-8"))
@@ -560,6 +602,7 @@ def backup_status() -> dict[str, object]:
             "last_success_at": None,
             "consecutive_failures": 0,
             "next_retry_at": None,
+            "last_error_message": None,
         }
     if not isinstance(payload, dict) or payload.get("schema_version") != BACKUP_STATUS_SCHEMA_VERSION:
         return {
@@ -568,6 +611,7 @@ def backup_status() -> dict[str, object]:
             "last_success_at": None,
             "consecutive_failures": 0,
             "next_retry_at": None,
+            "last_error_message": None,
         }
     failures = payload.get("consecutive_failures")
     return {
@@ -578,6 +622,11 @@ def backup_status() -> dict[str, object]:
             min(max(failures, 0), 32) if isinstance(failures, int) and not isinstance(failures, bool) else 0
         ),
         "next_retry_at": payload.get("next_retry_at"),
+        "last_error_message": (
+            str(payload["last_error_message"])[:500]
+            if isinstance(payload.get("last_error_message"), str)
+            else None
+        ),
     }
 
 
@@ -654,8 +703,6 @@ async def backup_is_due(session: AsyncSession) -> tuple[bool, BackupPolicy]:
     policy = await get_backup_policy(session)
     if not policy.enabled:
         return False, policy
-    if await backup_has_active_print(session):
-        return False, policy
     status = backup_status()
     next_retry_value = status.get("next_retry_at")
     if isinstance(next_retry_value, str):
@@ -670,19 +717,46 @@ async def backup_is_due(session: AsyncSession) -> tuple[bool, BackupPolicy]:
         ):
             return False, policy
     automatic = [item for item in list_backup_archives() if item.storage_kind == "automatic"]
-    if not automatic:
-        return True, policy
-    due_at = automatic[0].created_at + timedelta(hours=policy.interval_hours)
-    return datetime.now(UTC) >= due_at, policy
+    if automatic:
+        due_at = automatic[0].created_at + timedelta(hours=policy.interval_hours)
+        if datetime.now(UTC) < due_at:
+            return False, policy
+    return not await backup_has_active_print(session), policy
 
 
 async def backup_has_active_print(session: AsyncSession) -> bool:
-    """Protect printer timing by deferring resource-intensive dumps while printing."""
+    """Defer dumps for a fresh live print without letting stale rows block forever."""
 
-    active_print = await session.scalar(
-        select(PrintJob.id).where(PrintJob.status == PrintJobStatus.IN_PROGRESS).limit(1)
+    latest_update = await session.scalar(
+        select(func.max(PrintJob.updated_at)).where(PrintJob.status == PrintJobStatus.IN_PROGRESS)
     )
-    return active_print is not None
+    if latest_update is None:
+        return False
+
+    now = datetime.now(UTC)
+    if latest_update.tzinfo is None:
+        latest_update = latest_update.replace(tzinfo=UTC)
+    freshness_seconds = max(
+        ACTIVE_PRINT_FRESHNESS_FLOOR_SECONDS,
+        get_settings().sync.moonraker_print_interval_seconds * 3,
+    )
+    if now - latest_update.astimezone(UTC) <= timedelta(seconds=freshness_seconds):
+        return True
+
+    # An interrupted printer or unavailable Moonraker can leave the last
+    # canonical live row marked in progress. Confirm stale state through the
+    # smallest supported Moonraker query before allowing a dump. Fail closed
+    # if confirmation is unavailable, because motion may still be occurring.
+    results = await asyncio.gather(
+        *(MoonrakerClient(printer).print_state() for printer in get_settings().moonraker.printers),
+        return_exceptions=True,
+    )
+    for result in results:
+        if isinstance(result, BaseException):
+            return True
+        if result.state in {"printing", "paused"}:
+            return True
+    return False
 
 
 async def acquire_backup_lock(session: AsyncSession) -> bool:

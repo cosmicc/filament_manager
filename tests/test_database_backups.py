@@ -234,22 +234,127 @@ def test_automatic_backup_failures_use_bounded_exponential_backoff(
 @pytest.mark.asyncio
 async def test_automatic_backup_is_deferred_while_a_print_is_active(
     monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
 ) -> None:
     """Database dumps must not compete with Klipper host timing during motion."""
 
     class ActivePrintSession:
-        async def scalar(self, _query: object) -> UUID:
-            return uuid4()
+        async def scalar(self, _query: object) -> datetime:
+            return datetime.now(UTC)
 
     async def policy(_session: object) -> database_backups.BackupPolicy:
         return database_backups.BackupPolicy()
 
+    _configure_root(monkeypatch, tmp_path)
     monkeypatch.setattr(database_backups, "get_backup_policy", policy)
+    monkeypatch.setattr(
+        database_backups,
+        "get_settings",
+        lambda: SimpleNamespace(
+            sync=SimpleNamespace(moonraker_print_interval_seconds=10),
+            moonraker=SimpleNamespace(printers=[]),
+        ),
+    )
 
     due, returned_policy = await database_backups.backup_is_due(ActivePrintSession())  # type: ignore[arg-type]
 
     assert due is False
     assert returned_policy.enabled is True
+
+
+@pytest.mark.asyncio
+async def test_stale_interrupted_print_does_not_block_backups_forever(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A terminal live state releases backup deferral after capture was interrupted."""
+
+    class StalePrintSession:
+        async def scalar(self, _query: object) -> datetime:
+            return datetime.now(UTC) - timedelta(minutes=5)
+
+    class TerminalMoonrakerClient:
+        def __init__(self, _printer: object) -> None:
+            pass
+
+        async def print_state(self) -> object:
+            return SimpleNamespace(state="error")
+
+    monkeypatch.setattr(database_backups, "MoonrakerClient", TerminalMoonrakerClient)
+    monkeypatch.setattr(
+        database_backups,
+        "get_settings",
+        lambda: SimpleNamespace(
+            sync=SimpleNamespace(moonraker_print_interval_seconds=10),
+            moonraker=SimpleNamespace(printers=[object()]),
+        ),
+    )
+
+    assert await database_backups.backup_has_active_print(StalePrintSession()) is False  # type: ignore[arg-type]
+
+
+@pytest.mark.asyncio
+async def test_stale_print_deferral_fails_closed_when_moonraker_is_unavailable(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """An unconfirmed stale row must not allow a dump during possible motion."""
+
+    class StalePrintSession:
+        async def scalar(self, _query: object) -> datetime:
+            return datetime.now(UTC) - timedelta(minutes=5)
+
+    class UnavailableMoonrakerClient:
+        def __init__(self, _printer: object) -> None:
+            pass
+
+        async def print_state(self) -> object:
+            raise RuntimeError("unavailable")
+
+    monkeypatch.setattr(database_backups, "MoonrakerClient", UnavailableMoonrakerClient)
+    monkeypatch.setattr(
+        database_backups,
+        "get_settings",
+        lambda: SimpleNamespace(
+            sync=SimpleNamespace(moonraker_print_interval_seconds=10),
+            moonraker=SimpleNamespace(printers=[object()]),
+        ),
+    )
+
+    assert await database_backups.backup_has_active_print(StalePrintSession()) is True  # type: ignore[arg-type]
+
+
+def test_backup_storage_permission_failure_is_bounded(monkeypatch: pytest.MonkeyPatch) -> None:
+    """A read-only or wrongly owned data volume returns actionable safe guidance."""
+
+    def fail(_trigger: str) -> None:
+        raise PermissionError("/private/path")
+
+    monkeypatch.setattr(database_backups, "_create_backup_archive", fail)
+
+    with pytest.raises(DatabaseBackupError, match="data volume is not writable") as caught:
+        database_backups.create_backup_archive("manual")
+
+    assert "/private/path" not in str(caught.value)
+
+
+def test_unwritable_status_file_does_not_replace_original_backup_error(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Failure bookkeeping is best effort when the data volume itself is broken."""
+
+    monkeypatch.setattr(
+        database_backups,
+        "backup_status",
+        lambda: (_ for _ in ()).throw(PermissionError("/private/status")),
+    )
+    monkeypatch.setattr(
+        database_backups,
+        "_atomic_json",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(PermissionError("/private/status")),
+    )
+
+    database_backups.record_backup_failure(
+        DatabaseBackupError("The private application data volume is not writable.")
+    )
 
 
 @pytest.mark.integration

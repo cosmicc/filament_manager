@@ -1,7 +1,7 @@
 import {
   Activity, Bell, Boxes, ChevronLeft, ChevronRight, CircleGauge, FlaskConical,
   HeartPulse,
-  Layers3, Library, LogOut, Menu, PackageOpen, Printer,
+  Layers3, Library, Menu, PackageOpen, Printer,
   MonitorCog, QrCode, Settings, Wrench, X, History,
 } from 'lucide-react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
@@ -9,19 +9,18 @@ import { type ReactNode, useEffect, useRef, useState } from 'react'
 import { apiFetch } from '../api/client'
 import type { OperatorNotification } from '../api/types'
 import { NavLink, useRouter } from '../context/RouterContext'
-import { useAuth } from '../context/AuthContext'
 import { APP_VERSION } from '../lib/version'
 
 const primaryNavigation = [
   { to: '/', label: 'Dashboard', icon: CircleGauge },
   { to: '/spools', label: 'Spools', icon: Boxes },
   { to: '/filaments', label: 'Filaments', icon: PackageOpen },
-  { to: '/prints', label: 'Print history', icon: History },
   { to: '/templates', label: 'Templates', icon: Library },
   { to: '/calibration', label: 'Calibration', icon: FlaskConical },
   { to: '/plates', label: 'Build plates', icon: Layers3 },
   { to: '/nozzles', label: 'Nozzles', icon: Wrench },
   { to: '/printers', label: 'Printers', icon: Printer },
+  { to: '/prints', label: 'Print history', icon: History },
   { to: '/labels', label: 'Labels', icon: QrCode },
 ]
 
@@ -70,7 +69,6 @@ const secondaryNavigation = [
 ]
 
 export function AppShell({ children }: { children: ReactNode }) {
-  const { logout } = useAuth()
   const [collapsed, setCollapsed] = useState(false)
   const [mobileOpen, setMobileOpen] = useState(false)
 
@@ -92,9 +90,6 @@ export function AppShell({ children }: { children: ReactNode }) {
           <div className="sidebar__version" title={`Filament Manager ${APP_VERSION}`}>
             <span>Version</span><strong>v{APP_VERSION}</strong>
           </div>
-          <button className="nav-item sidebar__logout" onClick={() => void logout()} title={collapsed ? 'Logout' : undefined}>
-            <LogOut size={19} /><span>Logout</span>
-          </button>
           <button className="sidebar__collapse" onClick={() => setCollapsed((value) => !value)} aria-label={collapsed ? 'Expand navigation' : 'Collapse navigation'}>
             {collapsed ? <ChevronRight size={18} /> : <ChevronLeft size={18} />}
           </button>

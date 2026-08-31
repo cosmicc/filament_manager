@@ -45,7 +45,7 @@ export default function DashboardPage() {
   const query = useQuery({
     queryKey: ['dashboard'],
     queryFn: () => apiFetch<DashboardData>('/dashboard'),
-    refetchInterval: 5_000,
+    refetchInterval: 10_000,
     refetchOnReconnect: 'always',
     refetchOnWindowFocus: 'always',
   })
@@ -93,7 +93,7 @@ export default function DashboardPage() {
               <div><span><Thermometer size={18} /></span><small>Bed</small><strong>{temperatureSummary(data.printer_state.bed_temperature_c, data.printer_state.bed_target_c)}</strong></div>
               <div><span><Thermometer size={18} /></span><small>Chamber</small><strong>{temperatureSummary(data.printer_state.chamber_temperature_c, data.printer_state.chamber_target_c)}</strong></div>
             </section>
-          </div> : <div className="printer-state-card__unavailable"><WifiOff size={24} /><span><strong>Live printer telemetry is unavailable</strong><small>The dashboard will retry automatically every 5 seconds.</small></span></div>}
+          </div> : <div className="printer-state-card__unavailable"><WifiOff size={24} /><span><strong>Live printer telemetry is unavailable</strong><small>The dashboard will retry automatically every 10 seconds.</small></span></div>}
           <footer>Checked {dateTime(data.printer_state.checked_at)}</footer>
         </article>
 

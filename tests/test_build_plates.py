@@ -235,6 +235,51 @@ async def test_moonraker_reads_persistent_physical_spool_state() -> None:
 
 @respx.mock
 @pytest.mark.asyncio
+async def test_live_print_context_combines_print_and_macro_state_in_one_query() -> None:
+    """The frequent live pass uses one Moonraker object query during motion."""
+
+    route = respx.post("http://moonraker.test:7125/printer/objects/query").mock(
+        return_value=httpx.Response(
+            200,
+            json={
+                "result": {
+                    "status": {
+                        "print_stats": {
+                            "filename": "cube.gcode",
+                            "state": "printing",
+                            "message": None,
+                            "total_duration": 120,
+                            "print_duration": 100,
+                            "filament_used": 42,
+                        },
+                        "gcode_macro FILAMENT_MANAGER_SPOOL_STATE": {
+                            "restored": 1,
+                            "initialized": 1,
+                            "phase": "ready",
+                            "loaded_spool_id": 17,
+                            "catalog_revision": "a" * 64,
+                        },
+                    }
+                }
+            },
+        )
+    )
+
+    print_state, preflight_state = await MoonrakerClient(printer_config()).live_print_context()
+
+    assert route.call_count == 1
+    assert print_state.state == "printing"
+    assert print_state.filament_used_mm == Decimal("42")
+    assert preflight_state is not None and preflight_state.loaded_spool_id == 17
+    requested_objects = json.loads(route.calls.last.request.content)["objects"]
+    assert set(requested_objects) == {
+        "print_stats",
+        "gcode_macro FILAMENT_MANAGER_SPOOL_STATE",
+    }
+
+
+@respx.mock
+@pytest.mark.asyncio
 async def test_moonraker_sends_bounded_catalog_and_physical_change_macro() -> None:
     """Catalog and change requests use one supported G-code script endpoint."""
 

@@ -15,11 +15,15 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import joinedload
 
 from filament_manager.clients.google_sheets import GoogleSheetsClient
-from filament_manager.clients.moonraker import MoonrakerClient
+from filament_manager.clients.moonraker import (
+    MoonrakerClient,
+    MoonrakerPrintState,
+    MoonrakerSpoolPreflightState,
+)
 from filament_manager.clients.spoolman import SpoolmanClient, SpoolmanNotFoundError
 from filament_manager.config import PrinterConfig, get_settings
 from filament_manager.domain.spoolman import decode_text_extra_field
-from filament_manager.models.enums import JobStatus, SpoolStatus
+from filament_manager.models.enums import JobStatus, PrintJobStatus, SpoolStatus
 from filament_manager.models.inventory import (
     FilamentProduct,
     Printer,
@@ -28,6 +32,7 @@ from filament_manager.models.inventory import (
     Vendor,
 )
 from filament_manager.models.operations import OutboxJob, ProjectionState
+from filament_manager.models.printing import PrintJob
 from filament_manager.services.build_plate_sync import synchronize_build_plates
 from filament_manager.services.events import add_audit_event, add_outbox_job
 from filament_manager.services.moonraker_sync import (
@@ -761,11 +766,31 @@ async def _configured_printer_bindings(
     return bindings
 
 
+async def _canonical_print_is_active(session: AsyncSession, printer_id: UUID) -> bool:
+    """Return whether exact live capture still considers this printer in motion."""
+
+    active = await session.scalar(
+        select(PrintJob.id)
+        .where(
+            PrintJob.printer_id == printer_id,
+            PrintJob.status == PrintJobStatus.IN_PROGRESS,
+        )
+        .limit(1)
+    )
+    return active is not None
+
+
 async def _reconcile_moonraker_state(session: AsyncSession, job: OutboxJob) -> None:
     """Poll active spool and build-plate state without one surface blocking the other."""
 
     failures: list[tuple[str, Exception]] = []
     for printer, configured in await _configured_printer_bindings(session):
+        if await _canonical_print_is_active(session, printer.id):
+            logger.debug(
+                "moonraker_nonessential_state_deferred_while_printing",
+                printer_code=printer.printer_code,
+            )
+            continue
         client = MoonrakerClient(configured)
         active_result, mesh_result, preflight_result = await asyncio.gather(
             client.active_spool_id(),
@@ -995,6 +1020,12 @@ async def _reconcile_moonraker_printer_information(session: AsyncSession, job: O
     failures: list[Exception] = []
     for printer, configured in await _configured_printer_bindings(session):
         printer_code = printer.printer_code
+        if await _canonical_print_is_active(session, printer.id):
+            logger.debug(
+                "moonraker_printer_information_deferred_while_printing",
+                printer_code=printer_code,
+            )
+            continue
         try:
             information = await MoonrakerClient(configured).printer_information()
             synchronized = await synchronize_printer_information(
@@ -1035,9 +1066,13 @@ async def _reconcile_moonraker_print_history(session: AsyncSession, job: OutboxJ
         printer_id = printer.id
         printer_code = printer.printer_code
         client = MoonrakerClient(configured)
-        print_result, preflight_result = await asyncio.gather(
-            client.print_state(), client.spool_preflight_state(), return_exceptions=True
-        )
+        print_result: MoonrakerPrintState | Exception
+        preflight_result: MoonrakerSpoolPreflightState | None
+        try:
+            print_result, preflight_result = await client.live_print_context()
+        except Exception as exc:
+            print_result = exc
+            preflight_result = None
         correlation_id = f"auto:{job.id}:prints"
         if isinstance(print_result, BaseException):
             if not isinstance(print_result, Exception):
@@ -1084,7 +1119,7 @@ async def _reconcile_moonraker_print_history(session: AsyncSession, job: OutboxJ
                 printer = reloaded_printer
         if not isinstance(print_result, BaseException) and print_result.state in {"printing", "paused"}:
             # Live capture already records the active job. Avoid fetching the
-            # complete Moonraker history every five seconds during motion; the
+            # complete Moonraker history every ten seconds during motion; the
             # next terminal-state pass imports the completed history promptly.
             logger.debug(
                 "moonraker_terminal_history_deferred_while_printing",

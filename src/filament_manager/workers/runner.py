@@ -82,6 +82,9 @@ async def scheduler_loop(telemetry: ServerTelemetry) -> None:
                 if scheduled:
                     logger.info("periodic_jobs_scheduled", count=scheduled)
                 if time.monotonic() - last_backup_check >= 60:
+                    # Bound an unreadable backup volume to this normal check
+                    # cadence instead of retrying on every scheduler loop.
+                    last_backup_check = time.monotonic()
                     due, policy = await backup_is_due(session)
                     if due and await acquire_backup_lock(session):
                         try:
@@ -95,14 +98,13 @@ async def scheduler_loop(telemetry: ServerTelemetry) -> None:
                                 backup_id=str(archive.id),
                             )
                         except DatabaseBackupError as error:
-                            await asyncio.to_thread(record_backup_failure)
+                            await asyncio.to_thread(record_backup_failure, error)
                             logger.error(
                                 "automatic_database_backup_failed",
                                 error_class=type(error).__name__,
                             )
                         finally:
                             await release_backup_lock(session)
-                    last_backup_check = time.monotonic()
             if time.monotonic() - last_heartbeat >= 10:
                 await _report_heartbeat(
                     session_factory,

@@ -27,9 +27,9 @@ async def test_scheduler_does_not_queue_overlapping_reconciliation(
         lambda: SimpleNamespace(
             spoolman=SimpleNamespace(full_reconcile_interval_minutes=1),
             sync=SimpleNamespace(
-                moonraker_state_interval_seconds=5,
+                moonraker_state_interval_seconds=10,
                 moonraker_info_interval_seconds=300,
-                moonraker_print_interval_seconds=5,
+                moonraker_print_interval_seconds=10,
             ),
             google=SimpleNamespace(enabled=False),
         ),
@@ -68,9 +68,9 @@ async def test_scheduler_keeps_failure_actionable_until_replacement_succeeds(
             spoolman=SimpleNamespace(full_reconcile_interval_minutes=1),
             sync=SimpleNamespace(
                 max_retry_attempts=12,
-                moonraker_state_interval_seconds=5,
+                moonraker_state_interval_seconds=10,
                 moonraker_info_interval_seconds=300,
-                moonraker_print_interval_seconds=5,
+                moonraker_print_interval_seconds=10,
             ),
             google=SimpleNamespace(enabled=False),
         ),
@@ -107,9 +107,9 @@ async def test_realtime_state_retry_never_waits_longer_than_its_poll_interval(
         lambda: SimpleNamespace(
             spoolman=SimpleNamespace(full_reconcile_interval_minutes=1),
             sync=SimpleNamespace(
-                moonraker_state_interval_seconds=5,
+                moonraker_state_interval_seconds=10,
                 moonraker_info_interval_seconds=300,
-                moonraker_print_interval_seconds=5,
+                moonraker_print_interval_seconds=10,
             ),
             google=SimpleNamespace(enabled=False),
         ),
@@ -124,7 +124,7 @@ async def test_realtime_state_retry_never_waits_longer_than_its_poll_interval(
 
     assert status == JobStatus.PENDING
     assert persisted.status == JobStatus.PENDING
-    assert persisted.next_attempt_at <= before.replace(microsecond=0) + dispatcher.timedelta(seconds=6)
+    assert persisted.next_attempt_at <= before.replace(microsecond=0) + dispatcher.timedelta(seconds=11)
     session.commit.assert_awaited_once()
 
 

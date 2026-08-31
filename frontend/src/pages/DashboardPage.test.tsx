@@ -104,7 +104,7 @@ describe('DashboardPage', () => {
     )
 
     expect(await screen.findByText('Moonraker is unavailable; printer power and network state cannot be confirmed.')).toBeTruthy()
-    expect(screen.getByText('The dashboard will retry automatically every 5 seconds.')).toBeTruthy()
+    expect(screen.getByText('The dashboard will retry automatically every 10 seconds.')).toBeTruthy()
   })
 
   it('uses the full current-print width when no thumbnail is available', async () => {
@@ -124,7 +124,7 @@ describe('DashboardPage', () => {
     expect(currentPrint.classList.contains('printer-current-print--without-thumbnail')).toBe(true)
   })
 
-  it('refreshes every five seconds and replaces all dashboard data together', async () => {
+  it('refreshes every ten seconds and replaces all dashboard data together', async () => {
     vi.useFakeTimers()
     apiFetchMock.mockResolvedValue({
         ...dashboard,
@@ -173,7 +173,7 @@ describe('DashboardPage', () => {
     expect(screen.getByText('calibration_cube.gcode')).toBeTruthy()
 
     await act(async () => {
-      await vi.advanceTimersByTimeAsync(5_000)
+      await vi.advanceTimersByTimeAsync(10_000)
       await vi.advanceTimersByTimeAsync(0)
     })
 

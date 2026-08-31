@@ -283,11 +283,8 @@ async def test_history_reconciliation_reloads_printer_after_capture_rollback(
         def __init__(self, _configured: object) -> None:
             pass
 
-        async def print_state(self) -> object:
-            return SimpleNamespace(state="standby")
-
-        async def spool_preflight_state(self) -> None:
-            return None
+        async def live_print_context(self) -> tuple[object, None]:
+            return SimpleNamespace(state="standby"), None
 
     async def bindings(_session: object) -> list[tuple[object, object]]:
         return [(original, SimpleNamespace(id="test-printer"))]
@@ -319,7 +316,7 @@ async def test_history_reconciliation_reloads_printer_after_capture_rollback(
 async def test_active_print_capture_defers_full_history_poll(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """The five-second live pass must not fetch all history during printer motion."""
+    """The ten-second live pass must not fetch all history during printer motion."""
 
     printer = SimpleNamespace(id=uuid4(), printer_code="test-printer")
 
@@ -327,11 +324,8 @@ async def test_active_print_capture_defers_full_history_poll(
         def __init__(self, _configured: object) -> None:
             pass
 
-        async def print_state(self) -> object:
-            return SimpleNamespace(state="printing")
-
-        async def spool_preflight_state(self) -> None:
-            return None
+        async def live_print_context(self) -> tuple[object, None]:
+            return SimpleNamespace(state="printing"), None
 
     async def bindings(_session: object) -> list[tuple[object, object]]:
         return [(printer, SimpleNamespace(id="test-printer"))]
@@ -360,3 +354,33 @@ async def test_active_print_capture_defers_full_history_poll(
 
     assert live_captures == 1
     assert history_imports == 0
+
+
+@pytest.mark.asyncio
+async def test_nonessential_moonraker_passes_are_deferred_during_active_print(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """State, plate, catalog, and printer-information reads pause during motion."""
+
+    printer = SimpleNamespace(id=uuid4(), printer_code="test-printer")
+
+    async def bindings(_session: object) -> list[tuple[object, object]]:
+        return [(printer, SimpleNamespace(id="test-printer"))]
+
+    async def active(_session: object, _printer_id: object) -> bool:
+        return True
+
+    class UnexpectedClient:
+        def __init__(self, _configured: object) -> None:
+            raise AssertionError("Moonraker must not be contacted by a nonessential pass")
+
+    monkeypatch.setattr(dispatcher, "_configured_printer_bindings", bindings)
+    monkeypatch.setattr(dispatcher, "_canonical_print_is_active", active)
+    monkeypatch.setattr(dispatcher, "MoonrakerClient", UnexpectedClient)
+
+    await dispatcher._reconcile_moonraker_state(  # type: ignore[arg-type]
+        SimpleNamespace(), SimpleNamespace(id=uuid4())
+    )
+    await dispatcher._reconcile_moonraker_printer_information(  # type: ignore[arg-type]
+        SimpleNamespace(), SimpleNamespace(id=uuid4())
+    )

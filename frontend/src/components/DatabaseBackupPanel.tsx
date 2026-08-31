@@ -57,7 +57,8 @@ export function DatabaseBackupPanel({ isAdministrator }: { isAdministrator: bool
   })
   const createBackup = useMutation({
     mutationFn: () => apiFetch<DatabaseBackupArchive>('/diagnostics/database-backups', { method: 'POST' }),
-    onSuccess: async () => { setNotice('A new downloadable database backup was created.'); await refresh() },
+    onSuccess: () => { setNotice('A new downloadable database backup was created.') },
+    onSettled: refresh,
   })
   const importBackup = useMutation({
     mutationFn: (file: File) => apiFetch<DatabaseBackupArchive>('/diagnostics/database-backups/import', {
@@ -108,14 +109,19 @@ export function DatabaseBackupPanel({ isAdministrator }: { isAdministrator: bool
 
     {overview.isLoading ? <LoadingState label="Loading database backups" /> : overview.data ? <>
       <div className="diagnostic-check-grid">
-        <article className="diagnostic-check"><div><strong>Automatic backups</strong><p>{overview.data.policy.enabled ? `Every ${overview.data.policy.interval_hours} hour${overview.data.policy.interval_hours === 1 ? '' : 's'}; keep the newest ${overview.data.policy.retention_count}. Backups wait until no print is active.` : 'Scheduled backups are disabled.'}</p><small>{overview.data.status.last_success_at ? `Last successful backup ${dateTime(overview.data.status.last_success_at)}.` : 'No successful backup has been recorded.'}{overview.data.status.next_retry_at ? ` Next automatic retry ${dateTime(overview.data.status.next_retry_at)}.` : ''}</small></div><StatusPill status={overview.data.status.status === 'healthy' ? 'healthy' : overview.data.status.status === 'never' ? 'warning' : overview.data.status.status} /></article>
+        <article className="diagnostic-check"><div><strong>Automatic backups</strong><p>{overview.data.policy.enabled ? `Every ${overview.data.policy.interval_hours} hour${overview.data.policy.interval_hours === 1 ? '' : 's'}; keep the newest ${overview.data.policy.retention_count}. Backups wait until no print is active.` : 'Scheduled backups are disabled.'}</p><small>{overview.data.status.last_error_message ? `Last attempt: ${overview.data.status.last_error_message}` : overview.data.status.last_success_at ? `Last successful backup ${dateTime(overview.data.status.last_success_at)}.` : 'No successful backup has been recorded.'}{overview.data.status.next_retry_at ? ` Next automatic retry ${dateTime(overview.data.status.next_retry_at)}.` : ''}</small></div><StatusPill status={overview.data.status.status === 'healthy' ? 'healthy' : overview.data.status.status === 'never' ? 'warning' : overview.data.status.status} /></article>
         <article className="diagnostic-check"><div><strong>Offline restore</strong><p>{overview.data.pending_restore ? 'A restore is prepared and waiting for controlled maintenance.' : 'No database restore is pending.'}</p><small>Restore automatically creates a pre-restore safety backup and revokes all browser sessions.</small></div><StatusPill status={overview.data.pending_restore ? 'warning' : 'healthy'} /></article>
       </div>
-      {isAdministrator ? <form className="form-grid" onSubmit={submitPolicy}>
-        <label className="checkbox-row"><input type="checkbox" checked={enabled} onChange={(event) => setEnabled(event.target.checked)} /> Enable scheduled backups</label>
-        <label>Interval (hours)<input type="number" min="1" max={24 * 30} value={intervalHours} onChange={(event) => setIntervalHours(Number(event.target.value))} required /></label>
-        <label>Automatic backups retained<input type="number" min="1" max="100" value={retentionCount} onChange={(event) => setRetentionCount(Number(event.target.value))} required /></label>
-        <div className="detail-actions"><button className="button" disabled={savePolicy.isPending}><Save size={16} /> {savePolicy.isPending ? 'Saving…' : 'Save schedule'}</button></div>
+      {isAdministrator ? <form className="backup-schedule" onSubmit={submitPolicy}>
+        <div className="backup-schedule__header">
+          <div><strong>Automatic backup schedule</strong><small>Choose how often Filament Manager creates a validated archive and how many automatic archives it retains.</small></div>
+          <label className="checkbox-row"><input type="checkbox" checked={enabled} onChange={(event) => setEnabled(event.target.checked)} /> Enable schedule</label>
+        </div>
+        <div className="backup-schedule__controls">
+          <label>Run every<div className="input-suffix"><input aria-label="Automatic backup interval in hours" type="number" min="1" max={24 * 30} value={intervalHours} onChange={(event) => setIntervalHours(Number(event.target.value))} disabled={!enabled} required /><span>hours</span></div></label>
+          <label>Keep newest<div className="input-suffix"><input aria-label="Automatic backups retained" type="number" min="1" max="100" value={retentionCount} onChange={(event) => setRetentionCount(Number(event.target.value))} disabled={!enabled} required /><span>archives</span></div></label>
+          <button className="button" disabled={savePolicy.isPending}><Save size={16} /> {savePolicy.isPending ? 'Saving…' : 'Save schedule'}</button>
+        </div>
       </form> : null}
       {overview.data.pending_restore ? <div className="warning-note"><strong>Maintenance restore is pending.</strong> Stop both application services, run the zero-replica <code>database-restore</code> service once, verify it completed, then restart web and worker. The application must not be serving requests during restoration.{isAdministrator ? <div className="detail-actions"><button className="button" disabled={cancelRestore.isPending} onClick={() => cancelRestore.mutate()}>Cancel pending restore</button></div> : null}</div> : null}
       <div className="section-heading"><div><p className="eyebrow">Validated ZIP archives</p><h3>Available backups</h3><p>Downloaded archives can be imported into this or another Filament Manager installation. Import only files from a trusted Filament Manager instance.</p></div></div>

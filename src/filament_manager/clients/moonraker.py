@@ -104,6 +104,28 @@ class MoonrakerThumbnail:
 
 
 SPOOL_PROMPT_LABEL_PATTERN = re.compile(r"[A-Za-z0-9._#-]{1,96}")
+SPOOL_PREFLIGHT_OBJECT = "gcode_macro FILAMENT_MANAGER_SPOOL_STATE"
+SPOOL_PREFLIGHT_FIELDS = [
+    "restored",
+    "initialized",
+    "phase",
+    "loaded_spool_id",
+    "catalog_revision",
+    "material_guid",
+    "start_bed_temp",
+    "start_extruder_temp",
+    "start_chamber_temp",
+    "inspection_policy",
+    "start_pending",
+]
+PRINT_STATE_FIELDS = [
+    "filename",
+    "state",
+    "message",
+    "total_duration",
+    "print_duration",
+    "filament_used",
+]
 SPOOL_PREFLIGHT_PHASES = {
     "idle",
     "selecting",
@@ -370,29 +392,21 @@ class MoonrakerClient:
 
         payload = await self._post(
             "/printer/objects/query",
-            {
-                "objects": {
-                    "gcode_macro FILAMENT_MANAGER_SPOOL_STATE": [
-                        "restored",
-                        "initialized",
-                        "phase",
-                        "loaded_spool_id",
-                        "catalog_revision",
-                        "material_guid",
-                        "start_bed_temp",
-                        "start_extruder_temp",
-                        "start_chamber_temp",
-                        "inspection_policy",
-                        "start_pending",
-                    ]
-                }
-            },
+            {"objects": {SPOOL_PREFLIGHT_OBJECT: SPOOL_PREFLIGHT_FIELDS}},
         )
         result = payload.get("result")
         status = result.get("status") if isinstance(result, dict) else None
-        macro_state = (
-            status.get("gcode_macro FILAMENT_MANAGER_SPOOL_STATE") if isinstance(status, dict) else None
-        )
+        if not isinstance(status, dict):
+            raise MoonrakerError("Moonraker did not return printer object state")
+        return self._parse_spool_preflight_state(status)
+
+    @staticmethod
+    def _parse_spool_preflight_state(
+        status: dict[str, Any],
+    ) -> MoonrakerSpoolPreflightState | None:
+        """Validate the macro subset returned by a standalone or combined query."""
+
+        macro_state = status.get(SPOOL_PREFLIGHT_OBJECT)
         if macro_state is None:
             return None
         if not isinstance(macro_state, dict):
@@ -458,22 +472,19 @@ class MoonrakerClient:
 
         payload = await self._post(
             "/printer/objects/query",
-            {
-                "objects": {
-                    "print_stats": [
-                        "filename",
-                        "state",
-                        "message",
-                        "total_duration",
-                        "print_duration",
-                        "filament_used",
-                    ]
-                }
-            },
+            {"objects": {"print_stats": PRINT_STATE_FIELDS}},
         )
         result = payload.get("result")
         status = result.get("status") if isinstance(result, dict) else None
-        stats = status.get("print_stats") if isinstance(status, dict) else None
+        if not isinstance(status, dict):
+            raise MoonrakerError("Moonraker did not return printer object state")
+        return self._parse_print_state(status)
+
+    @staticmethod
+    def _parse_print_state(status: dict[str, Any]) -> MoonrakerPrintState:
+        """Validate print counters returned by a standalone or combined query."""
+
+        stats = status.get("print_stats")
         if not isinstance(stats, dict):
             raise MoonrakerError("Moonraker did not return print_stats")
         filename = stats.get("filename")
@@ -502,6 +513,34 @@ class MoonrakerClient:
             print_duration=durations[1],
             filament_used_mm=durations[2],
         )
+
+    async def live_print_context(
+        self,
+    ) -> tuple[MoonrakerPrintState, MoonrakerSpoolPreflightState | None]:
+        """Read live print counters and app macro state in one Moonraker query."""
+
+        payload = await self._post(
+            "/printer/objects/query",
+            {
+                "objects": {
+                    "print_stats": PRINT_STATE_FIELDS,
+                    SPOOL_PREFLIGHT_OBJECT: SPOOL_PREFLIGHT_FIELDS,
+                }
+            },
+        )
+        result = payload.get("result")
+        status = result.get("status") if isinstance(result, dict) else None
+        if not isinstance(status, dict):
+            raise MoonrakerError("Moonraker did not return printer object state")
+        print_state = self._parse_print_state(status)
+        try:
+            preflight_state = self._parse_spool_preflight_state(status)
+        except MoonrakerError:
+            # Print capture remains useful when an old or malformed optional
+            # app macro cannot be parsed. The state reconciler reports that
+            # integration problem separately while the printer is idle.
+            preflight_state = None
+        return print_state, preflight_state
 
     async def history_jobs(
         self, *, start: int = 0, limit: int = 100, since: float | None = None

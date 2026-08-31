@@ -7,7 +7,6 @@ import { RouterProvider } from '../context/RouterContext'
 import { AppShell } from './AppShell'
 
 vi.mock('../api/client', () => ({ apiFetch: vi.fn(() => Promise.resolve([])) }))
-vi.mock('../context/AuthContext', () => ({ useAuth: () => ({ logout: vi.fn() }) }))
 
 describe('AppShell navigation', () => {
   afterEach(cleanup)
@@ -19,6 +18,16 @@ describe('AppShell navigation', () => {
     const navigation = screen.getByRole('navigation', { name: 'Main navigation' })
     expect(screen.getByRole('link', { name: 'Filaments' }).getAttribute('href')).toBe('/filaments')
     expect(navigation.querySelector('a[href="/profiles"]')).toBeNull()
+  })
+
+  it('places Print history immediately after Printers and omits the sidebar logout action', () => {
+    const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+    render(<QueryClientProvider client={queryClient}><RouterProvider><AppShell><p>Content</p></AppShell></RouterProvider></QueryClientProvider>)
+
+    const links = Array.from(screen.getByRole('navigation', { name: 'Main navigation' }).querySelectorAll('a'))
+    const printerIndex = links.findIndex((link) => link.getAttribute('href') === '/printers')
+    expect(links[printerIndex + 1]?.getAttribute('href')).toBe('/prints')
+    expect(screen.queryByRole('button', { name: 'Logout' })).toBeNull()
   })
 
   it('closes the notification panel only when the user clicks outside it', () => {

@@ -27,7 +27,7 @@ const printerState = {
   checked_at: '2026-08-27T20:00:00Z',
 }
 
-test('dashboard replaces its rendered operational snapshot within five seconds', async ({ page }) => {
+test('dashboard replaces its rendered operational snapshot within ten seconds', async ({ page }) => {
   let dashboardRequests = 0
   await page.route('**/api/v1/**', async (route) => {
     const path = new URL(route.request().url()).pathname
@@ -92,7 +92,7 @@ test('dashboard replaces its rendered operational snapshot within five seconds',
   await expect(page.getByRole('heading', { name: 'Workshop Printer' })).toBeVisible()
   await expect(page.getByText('No active spool')).toBeVisible()
 
-  await expect(page.getByText('updated-part.gcode')).toBeVisible({ timeout: 7_000 })
+  await expect(page.getByText('updated-part.gcode')).toBeVisible({ timeout: 12_000 })
   await expect(page.getByText('S009')).toBeVisible()
   await expect(page.getByText('Smooth PEI')).toBeVisible()
   await expect(page.getByText('9', { exact: true })).toBeVisible()

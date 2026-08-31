@@ -139,7 +139,7 @@ export default function WorkstationsPage() {
   }
 
   return <div>
-    <PageHeader eyebrow="Cura automation" title="Cura workstations" description="Keep managed materials synchronized and retain safe, versioned Cura printer and settings recovery points. Changes to known managed materials save directly; new materials are added in Filament Manager." actions={user?.role === 'administrator' ? <button className="button button--primary" onClick={() => createPairing.mutate()} disabled={createPairing.isPending}><ShieldCheck size={17} /> Create pairing code</button> : undefined} />
+    <PageHeader eyebrow="Cura automation" title="Cura workstations" description="Keep managed materials synchronized and retain safe, versioned Cura printer and settings recovery points. Changes to known managed materials save directly; new materials are added in Filament Manager." actions={user?.role === 'administrator' ? <button className="button button--primary" onClick={() => createPairing.mutate()} disabled={createPairing.isPending}><ShieldCheck size={17} /> Add Cura workstation</button> : undefined} />
     {message && <div className="deployment-note" role="status">{message}</div>}
     {pairing && <section className="pairing-card card" aria-live="polite">
       <div><h2>Pairing code</h2><p>Valid until {dateTime(pairing.expires_at)}. It can enroll one workstation and is never shown again.</p></div>

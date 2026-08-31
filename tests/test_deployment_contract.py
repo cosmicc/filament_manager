@@ -77,8 +77,8 @@ def test_example_environment_matches_the_database_contract() -> None:
     assert values["FILAMENT_MANAGER_DATABASE_MIGRATION_LOCK_TIMEOUT_SECONDS"] == "300"
     assert values["SPOOLMAN_RECONCILE_INTERVAL_MINUTES"] == "1"
     assert values["SYNC_OUTBOX_LOCK_TIMEOUT_SECONDS"] == "300"
-    assert values["MOONRAKER_STATE_INTERVAL_SECONDS"] == "5"
-    assert values["MOONRAKER_PRINT_INTERVAL_SECONDS"] == "5"
+    assert values["MOONRAKER_STATE_INTERVAL_SECONDS"] == "10"
+    assert values["MOONRAKER_PRINT_INTERVAL_SECONDS"] == "10"
     assert values["MOONRAKER_INFO_INTERVAL_SECONDS"] == "300"
     assert values["BUGSNAG_ENABLED"] == "false"
     assert values["BUGSNAG_API_KEY"] == ""
@@ -93,8 +93,8 @@ def test_example_environment_matches_the_database_contract() -> None:
         content = _read(relative_path)
         assert "${SPOOLMAN_RECONCILE_INTERVAL_MINUTES:-1}" in content
         assert "${SYNC_OUTBOX_LOCK_TIMEOUT_SECONDS:-300}" in content
-        assert "${MOONRAKER_STATE_INTERVAL_SECONDS:-5}" in content
-        assert "${MOONRAKER_PRINT_INTERVAL_SECONDS:-5}" in content
+        assert "${MOONRAKER_STATE_INTERVAL_SECONDS:-10}" in content
+        assert "${MOONRAKER_PRINT_INTERVAL_SECONDS:-10}" in content
         assert "${MOONRAKER_INFO_INTERVAL_SECONDS:-300}" in content
         assert "${BUGSNAG_ENABLED:-false}" in content
         assert "${BUGSNAG_API_KEY:-}" in content

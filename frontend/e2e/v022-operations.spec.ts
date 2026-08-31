@@ -1,4 +1,9 @@
-import { expect, test } from '@playwright/test'
+import { expect, test, type Page } from '@playwright/test'
+
+async function captureEvidence(page: Page, name: string, fullPage = false): Promise<void> {
+  const directory = process.env.FILAMENT_MANAGER_E2E_EVIDENCE_DIR
+  if (directory) await page.screenshot({ path: `${directory}/${name}.png`, fullPage })
+}
 
 const user = {
   id: 'administrator-id',
@@ -30,8 +35,8 @@ test('diagnostics consolidates operational status and recovery controls', async 
     body: 'Filament Manager diagnostics\nGenerated: 2026-08-14T12:00:00Z\n',
   }))
   await page.route('**/api/v1/diagnostics/version', (route) => route.fulfill({ json: {
-    running_version: '0.6.6', latest_version: '0.6.6', status: 'current',
-    release_url: 'https://github.com/cosmicc/filament_manager/releases/tag/v0.6.6',
+    running_version: '0.6.7', latest_version: '0.6.7', status: 'current',
+    release_url: 'https://github.com/cosmicc/filament_manager/releases/tag/v0.6.7',
     detail: 'This installation matches the newest published GitHub release.',
   } }))
   await page.route(/\/api\/v1\/diagnostics\?error_days=(?:1|7|30)$/, (route) => route.fulfill({ json: {
@@ -63,14 +68,23 @@ test('diagnostics consolidates operational status and recovery controls', async 
     },
   }] }))
   await page.route('**/api/v1/jobs?limit=100', (route) => route.fulfill({ json: [] }))
+  await page.route('**/api/v1/diagnostics/database-backups', (route) => route.fulfill({ json: {
+    policy: { enabled: true, interval_hours: 24, retention_count: 10, record_version: 2 },
+    status: { status: 'error', checked_at: checkedAt, last_success_at: null, consecutive_failures: 1, next_retry_at: '2026-08-14T12:15:00Z', last_error_message: 'The private application data volume is not writable by Filament Manager.' },
+    pending_restore: null,
+    archives: [],
+  } }))
 
   await page.goto('/diagnostics')
 
   await expect(page.getByRole('heading', { name: 'Diagnostics' })).toBeVisible()
-  await expect(page.getByRole('heading', { name: 'Filament Manager v0.6.6' })).toBeVisible()
-  await expect(page.getByText('Latest: v0.6.6')).toBeVisible()
-  await expect(page.getByText('v0.6.6', { exact: true }).first()).toBeVisible()
-  await expect(page.getByRole('button', { name: 'Logout' })).toBeVisible()
+  await expect(page.getByRole('heading', { name: 'Filament Manager v0.6.7' })).toBeVisible()
+  await expect(page.getByText('Latest: v0.6.7')).toBeVisible()
+  await expect(page.getByText('v0.6.7', { exact: true }).first()).toBeVisible()
+  await expect(page.locator('.sidebar').getByRole('button', { name: 'Logout' })).toHaveCount(0)
+  const navigationLinks = page.getByRole('navigation', { name: 'Main navigation' }).locator('a')
+  const navigationPaths = await navigationLinks.evaluateAll((links) => links.map((link) => link.getAttribute('href')))
+  expect(navigationPaths.indexOf('/prints')).toBe(navigationPaths.indexOf('/printers') + 1)
   await expect(page.getByRole('button', { name: 'Collapse navigation' })).toBeVisible()
   await expect(page.getByRole('heading', { name: 'Connections' })).toBeVisible()
   await expect(page.getByRole('heading', { name: 'Synchronizations' })).toBeVisible()
@@ -88,9 +102,18 @@ test('diagnostics consolidates operational status and recovery controls', async 
   await expect((await downloadPromise).suggestedFilename()).toBe('filament-manager-diagnostics-20260814T120000Z.txt')
   await expect(page.getByRole('button', { name: 'Run validation' })).toBeVisible()
   await expect(page.getByRole('button', { name: /Rebuild projections/ })).toBeVisible()
-  await page.screenshot({ path: '../docs/design/validation/diagnostics-v022.png', fullPage: true })
+  await expect(page.getByText('Automatic backup schedule')).toBeVisible()
+  await expect(page.getByLabel('Automatic backup interval in hours')).toHaveValue('24')
+  await expect(page.getByLabel('Automatic backups retained')).toHaveValue('10')
+  await expect(page.getByText(/data volume is not writable/)).toBeVisible()
+  await captureEvidence(page, 'diagnostics-v067', true)
   await page.getByRole('button', { name: 'Collapse navigation' }).click()
   await expect(page.getByRole('button', { name: 'Expand navigation' }).locator('.lucide-chevron-right')).toBeVisible()
+  await page.setViewportSize({ width: 390, height: 844 })
+  await page.getByRole('heading', { name: 'Database backups', exact: true }).scrollIntoViewIfNeeded()
+  await expect(page.getByLabel('Automatic backup interval in hours')).toBeVisible()
+  await expect(page.getByLabel('Automatic backups retained')).toBeVisible()
+  await captureEvidence(page, 'diagnostics-backups-mobile-v067', true)
 })
 
 test('theme control lives in Settings instead of the navigation', async ({ page }) => {
@@ -116,12 +139,12 @@ test('theme control lives in Settings instead of the navigation', async ({ page 
   await page.getByRole('button', { name: 'Open navigation' }).click()
   await expect(page.locator('.app-shell')).not.toHaveClass(/app-shell--collapsed/)
   await expect.poll(() => page.locator('.sidebar').evaluate((element) => getComputedStyle(element).width)).toBe('310px')
-  await expect(page.locator('.sidebar').getByText('v0.6.6', { exact: true })).toBeVisible()
+  await expect(page.locator('.sidebar').getByText('v0.6.7', { exact: true })).toBeVisible()
   await expect(page.locator('.sidebar').getByText('Integrations', { exact: true })).toHaveCount(0)
-  await expect(page.locator('.sidebar').getByRole('button', { name: 'Logout' })).toBeVisible()
+  await expect(page.locator('.sidebar').getByRole('button', { name: 'Logout' })).toHaveCount(0)
   await expect(page.locator('.sidebar').getByRole('button', { name: /navigation/ })).toHaveCount(1)
   await page.waitForTimeout(250)
-  await page.screenshot({ path: '../docs/design/validation/mobile-navigation-v022.png' })
+  await captureEvidence(page, 'mobile-navigation-v067')
 })
 
 test('physical nozzle page shows exact historical use', async ({ page }) => {
