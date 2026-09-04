@@ -340,7 +340,7 @@ def test_previous_schema_automatically_upgrades_to_metadata_head(
 
         upgrade_database(DatabaseConfig(url=database_url))
         with engine.connect() as connection:
-            assert connection.scalar(text("SELECT version_num FROM alembic_version")) == "a9b0c1d2e345"
+            assert connection.scalar(text("SELECT version_num FROM alembic_version")) == "b0c1d2e3f456"
             assert (
                 connection.scalar(
                     text(
@@ -551,6 +551,7 @@ def test_previous_schema_automatically_upgrades_to_metadata_head(
             "thumbnail_width",
             "thumbnail_height",
             "thumbnail_checked_at",
+            "print_settings_snapshot",
         } <= {column["name"] for column in inspector.get_columns("print_jobs")}
         assert {
             "capture_request_id",

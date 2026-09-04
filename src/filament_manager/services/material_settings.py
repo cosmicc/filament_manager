@@ -36,6 +36,7 @@ from filament_manager.models.inventory import (
 from filament_manager.models.workstations import WorkstationAgent
 from filament_manager.services.cura_library import queue_cura_library
 from filament_manager.services.events import add_outbox_job
+from filament_manager.services.filament_defaults import queue_filament_default_projection
 
 
 def _checksum(payload: dict[str, object]) -> str:
@@ -94,14 +95,15 @@ async def create_published_profile_snapshot(
     """Append and finalize one current material-profile snapshot."""
 
     desired = MaterialSettingsInput.model_validate(settings).model_dump(mode="json")
-    overrides = profile_overrides_without_template_only(
+    requested_overrides = profile_overrides_without_template_only(
         dict(setting_overrides)
         if setting_overrides is not None
         else sparse_profile_overrides(base_revision.settings, desired)
     )
     validated = MaterialSettingsInput.model_validate(
-        resolve_profile_settings(base_revision.settings, overrides)
+        resolve_profile_settings(base_revision.settings, requested_overrides)
     ).model_dump(mode="json")
+    overrides = sparse_profile_overrides(base_revision.settings, validated)
     latest_version = await session.scalar(
         select(func.max(MaterialProfile.version)).where(
             MaterialProfile.filament_product_id == filament_product_id,
@@ -123,6 +125,11 @@ async def create_published_profile_snapshot(
     session.add(profile)
     await session.flush()
     profile.checksum = profile_snapshot_checksum(profile)
+    await queue_filament_default_projection(
+        session,
+        product_id=filament_product_id,
+        source_key=f"profile:{profile.id}",
+    )
     add_outbox_job(
         session,
         job_type="google.profile.publish",
@@ -144,9 +151,8 @@ async def save_template_settings(
 ) -> tuple[MaterialTemplateRevision, list[MaterialProfile]]:
     """Save a template and immediately update every linked current profile.
 
-    Existing sparse overrides are copied exactly.  This preserves explicit
-    ownership even when a customized value happens to equal the new template
-    value, so a later template edit cannot silently take control of it.
+    Existing sparse overrides are reapplied, then semantically equal values are
+    returned to inheritance so the UI and stored ownership remain truthful.
     """
 
     await session.execute(

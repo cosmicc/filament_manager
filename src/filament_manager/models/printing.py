@@ -67,6 +67,7 @@ class PrintJob(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     material_type: Mapped[str | None] = mapped_column(String(96))
     state_snapshot: Mapped[dict[str, object]] = mapped_column(JSONB, nullable=False, default=dict)
     profile_snapshot: Mapped[dict[str, object]] = mapped_column(JSONB, nullable=False, default=dict)
+    print_settings_snapshot: Mapped[dict[str, object]] = mapped_column(JSONB, nullable=False, default=dict)
 
     inspection_status: Mapped[GcodeInspectionStatus] = mapped_column(
         Enum(GcodeInspectionStatus, name="gcode_inspection_status"),

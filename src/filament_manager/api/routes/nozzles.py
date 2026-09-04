@@ -12,6 +12,7 @@ from filament_manager.models.inventory import Nozzle, Printer
 from filament_manager.models.operations import NozzleLifecycleEvent
 from filament_manager.services.cura_nozzles import queue_cura_nozzle_update
 from filament_manager.services.events import add_audit_event
+from filament_manager.services.filament_defaults import queue_nozzle_default_projection
 from filament_manager.services.print_statistics import completed_nozzle_usage
 
 from ..dependencies import DatabaseSession, Operator, Viewer
@@ -325,6 +326,7 @@ async def install_nozzle(
     printer.nozzle_diameter_mm = nozzle.diameter_mm
     printer.nozzle_material = nozzle.material
     printer.record_version += 1
+    queue_nozzle_default_projection(session, printer=printer)
     nozzle.status = NozzleStatus.INSTALLED
     nozzle.installed_at = now
     nozzle.record_version += 1
@@ -386,6 +388,7 @@ async def remove_nozzle(
     now = datetime.now(UTC)
     printer.active_nozzle_id = None
     printer.record_version += 1
+    queue_nozzle_default_projection(session, printer=printer)
     nozzle.status = NozzleStatus.AVAILABLE
     nozzle.installed_at = None
     nozzle.record_version += 1

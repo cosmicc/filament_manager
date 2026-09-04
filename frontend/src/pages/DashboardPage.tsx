@@ -9,6 +9,7 @@ import { StatusPill } from '../components/StatusPill'
 import { Link } from '../context/RouterContext'
 import { filamentSwatchStyle } from '../lib/colors'
 import { compactNumber, currencyAmount, dateTime, grams, percent, titleCase } from '../lib/format'
+import { materialIdentitySummary } from '../lib/materialIdentity'
 
 function temperatureSummary(current: string | null, target: string | null) {
   if (current == null) return 'Not reported'
@@ -108,7 +109,7 @@ export default function DashboardPage() {
           {data.active_spool ? (
             <div className="active-spool">
               <span className="filament-swatch filament-swatch--large" style={filamentSwatchStyle(data.active_spool.color_mode, data.active_spool.color_hexes, data.active_spool.color_hex ?? '2F80A5')} />
-              <div className="active-spool__identity"><strong>{data.active_spool.spool_code}</strong><span>{[data.active_spool.vendor_name, data.active_spool.material_type, data.active_spool.color_name].filter(Boolean).join(' · ')}</span></div>
+              <div className="active-spool__identity"><strong>{data.active_spool.spool_code}</strong><span>{[data.active_spool.vendor_name, materialIdentitySummary(data.active_spool)].filter(Boolean).join(' · ')}</span></div>
               <div className="remaining-visual"><div className="remaining-visual__labels"><span>{grams(data.active_spool.remaining_mass_effective_g)}</span><strong>{percent(data.active_spool.remaining_percent)}</strong></div><div className="progress"><span style={{ width: `${Math.min(100, Number(data.active_spool.remaining_percent))}%` }} /></div><small>{data.active_spool.weight_confidence} confidence</small></div>
               <Link className="text-link" to="/spools">View inventory <ArrowRight size={15} /></Link>
             </div>

@@ -103,7 +103,12 @@ def spool_prompt_label(*parts: object) -> str:
 
     normalized_parts: list[str] = []
     for part in parts:
-        value = unicodedata.normalize("NFKD", str(part)).encode("ascii", "ignore").decode("ascii")
+        if part is None:
+            continue
+        raw_value = str(part).strip()
+        if raw_value.casefold() in {"none", "standard", "no filler", "no finish", "not specified"}:
+            continue
+        value = unicodedata.normalize("NFKD", raw_value).encode("ascii", "ignore").decode("ascii")
         value = PROMPT_LABEL_SEPARATOR_PATTERN.sub("-", value).strip("-._")
         if value:
             normalized_parts.append(value)

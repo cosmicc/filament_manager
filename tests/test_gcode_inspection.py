@@ -48,6 +48,72 @@ def test_cura_metadata_is_extracted_without_evaluating_content() -> None:
     }
 
 
+def test_all_bounded_cura_settings_are_retained_by_scope_as_inert_text() -> None:
+    """History keeps global and extruder values, including unevaluated formulas."""
+
+    payload = json.dumps(
+        {
+            "global_quality": (
+                "[general]\nname = Fine\ndefinition = printer_a\n[values]\n"
+                "layer_height = 0.16\nwall_line_count = =max(2, machine_nozzle_size)\n"
+            ),
+            "extruder_quality": [
+                "[general]\nname = Extruder 1\n[metadata]\nposition = 0\n[values]\n"
+                "material_print_temperature = 225\nretraction_amount = 0.8\n"
+            ],
+        }
+    )
+    result = inspect_gcode(
+        {"slicer": "Cura", "layer_height": "0.16", "filament_total": "1000"},
+        "",
+        f";SETTING_3 {payload}",
+        expected_profile={"extruder_temp_c": "225"},
+        expected_material_guid=None,
+        expected_machine_name=None,
+    )
+
+    assert result.cura_settings["available"] is True
+    assert result.cura_settings["setting_count"] == 4
+    global_scope = result.cura_settings["global"]
+    assert isinstance(global_scope, dict)
+    assert global_scope["settings"] == {
+        "layer_height": "0.16",
+        "wall_line_count": "=max(2, machine_nozzle_size)",
+    }
+    extruders = result.cura_settings["extruders"]
+    assert isinstance(extruders, list)
+    assert extruders[0]["position"] == "0"
+    assert extruders[0]["settings"] == {
+        "material_print_temperature": "225",
+        "retraction_amount": "0.8",
+    }
+
+
+def test_cura_setting_capture_omits_connection_and_credential_values() -> None:
+    """Potential secrets and external locations never enter immutable history."""
+
+    payload = json.dumps(
+        {
+            "global_quality": (
+                "[values]\nlayer_height = 0.2\napi_key = private\nservice_url = https://printer.invalid\n"
+            )
+        }
+    )
+    result = inspect_gcode(
+        {"slicer": "Cura", "layer_height": "0.2", "filament_total": "1000"},
+        "",
+        f";SETTING_3 {payload}",
+        expected_profile={},
+        expected_material_guid=None,
+        expected_machine_name=None,
+    )
+
+    global_scope = result.cura_settings["global"]
+    assert isinstance(global_scope, dict)
+    assert global_scope["settings"] == {"layer_height": "0.2"}
+    assert result.cura_settings["filtered_count"] == 2
+
+
 def test_profile_mismatches_are_structured_and_decimal_tolerant() -> None:
     """Only semantically different values become actionable mismatch records."""
 

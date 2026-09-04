@@ -60,6 +60,16 @@ def test_prompt_label_removes_command_characters_and_bounds_length() -> None:
     assert "\n" not in label
 
 
+def test_prompt_label_includes_specified_modifiers_and_omits_none_values() -> None:
+    """Fluidd spool identities keep meaningful filler and finish values."""
+
+    assert spool_prompt_label("FM-001", "PLA", "Blue", None, "None") == "FM-001-PLA-Blue"
+    assert (
+        spool_prompt_label("FM-001", "PLA", "Blue", "Carbon Fiber", "Standard")
+        == "FM-001-PLA-Blue-Carbon-Fiber"
+    )
+
+
 def test_catalog_literals_survive_klipper_extended_parameter_parsing() -> None:
     """Compact catalog JSON remains an AST literal after Klipper's shlex pass."""
 
@@ -109,7 +119,7 @@ def test_macro_reference_compiles_and_preserves_existing_motion_macros() -> None
                 assert ast.literal_eval(value) != ""
 
     spool_state_section = "gcode_macro FILAMENT_MANAGER_SPOOL_STATE"
-    assert parser.get(spool_state_section, "variable_macro_version") == '"0.6.7"'
+    assert parser.get(spool_state_section, "variable_macro_version") == '"0.7.0"'
     assert parser.get(spool_state_section, "variable_resume_attempts") == "0"
     spool_state_gcode = parser.get(spool_state_section, "gcode")
     assert "state.macro_version" in spool_state_gcode

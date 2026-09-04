@@ -1,14 +1,14 @@
 /** Return a meaningful filler while suppressing the implied unfilled state. */
 export function explicitFiller(value: string | null): string | null {
   const normalized = value?.trim()
-  if (!normalized || ['none', 'no filler'].includes(normalized.toLocaleLowerCase())) return null
+  if (!normalized || ['none', 'standard', 'no filler', 'not specified'].includes(normalized.toLowerCase())) return null
   return normalized
 }
 
-/** Return a meaningful finish while suppressing the implied standard finish. */
+/** Return a meaningful finish while suppressing only an explicit absent state. */
 export function explicitFinish(value: string | null): string | null {
   const normalized = value?.trim()
-  if (!normalized || ['standard', 'standard finish'].includes(normalized.toLocaleLowerCase())) return null
+  if (!normalized || ['none', 'standard', 'no finish', 'not specified'].includes(normalized.toLowerCase())) return null
   return normalized
 }
 

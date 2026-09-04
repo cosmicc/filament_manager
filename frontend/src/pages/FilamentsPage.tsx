@@ -19,7 +19,7 @@ import { compactNumber, grams } from '../lib/format'
 import { materialIdentitySummary, materialModifierSummary } from '../lib/materialIdentity'
 
 function FilamentIdentity({ filament, hero = false }: { filament: Filament; hero?: boolean }) {
-  return <div className="table-identity"><span className={`filament-swatch${hero ? ' filament-swatch--hero' : ''}`} style={filamentSwatchStyle(filament.color_mode, filament.color_hexes, filament.color_hex ?? '2F80A5')} /><span><strong>{filament.vendor_name ?? 'Unspecified vendor'}</strong><small>{materialIdentitySummary(filament)}{filament.product_name ? ` · ${filament.product_name}` : ''}</small></span></div>
+  return <div className="table-identity"><span className={`filament-swatch${hero ? ' filament-swatch--hero' : ''}`} style={filamentSwatchStyle(filament.color_mode, filament.color_hexes, filament.color_hex ?? '2F80A5')} /><span><strong>{filament.vendor_name ?? 'Unspecified vendor'}</strong><small>{materialIdentitySummary(filament)}</small></span></div>
 }
 
 function FilamentCard({
@@ -35,7 +35,7 @@ function FilamentCard({
 }) {
   return <Link className={`catalog-card catalog-card--link${detailed ? ' collection-card--detailed' : ''}`} to={`/filaments/${filament.id}`}>
     <span className="filament-swatch filament-swatch--hero" style={filamentSwatchStyle(filament.color_mode, filament.color_hexes, filament.color_hex ?? '2F80A5')} />
-    <div><p className="eyebrow">{filament.vendor_name ?? 'Unspecified vendor'}</p><h2>{materialIdentitySummary(filament)}</h2>{filament.product_name ? <p>{filament.product_name}</p> : null}</div>
+    <div><p className="eyebrow">{filament.vendor_name ?? 'Unspecified vendor'}</p><h2>{materialIdentitySummary(filament)}</h2></div>
     <dl className="catalog-meta">
       <div><dt>Color</dt><dd>{filament.color_name}</dd></div>
       <div><dt>Tolerance</dt><dd>{filament.tolerance_mm ? `± ${compactNumber(filament.tolerance_mm, 2)} mm` : 'Not specified'}</dd></div>
@@ -57,6 +57,7 @@ export default function FilamentsPage() {
   const [search, setSearch] = useState('')
   const [view, setView] = useCollectionView('filaments', 'cards')
   const [showCreate, setShowCreate] = useState(path === '/filaments/new' || Boolean(duplicateSourceId))
+  const [createdFilament, setCreatedFilament] = useState<Filament | null>(null)
   const [message, setMessage] = useState('')
   const [colorName, setColorName] = useState('')
   const [colorMode, setColorMode] = useState<FilamentColorMode>('solid')
@@ -127,7 +128,6 @@ export default function FilamentsPage() {
           // Rainbow owns a fixed six-sample display palette on the server.
           // User requests retain the separate one-to-three multicolor limit.
           color_hexes: colorMode === 'rainbow' ? [] : colorHexes,
-          product_name: String(data.get('product_name') ?? '').trim() || null,
           diameter_mm: String(data.get('diameter_mm')),
           tolerance_mm: String(data.get('tolerance_mm') ?? '').trim() || null,
           density_g_cm3: String(data.get('density_g_cm3')),
@@ -139,7 +139,7 @@ export default function FilamentsPage() {
       })
     },
     onSuccess: async (created) => {
-      setMessage('Filament created with its first printer/nozzle print-settings scope. Matching template changes inherit automatically except for explicit customizations.')
+      setMessage('Filament created with its first printer/nozzle print-settings scope.')
       setColorName('')
       setColorMode('solid')
       setColorHexes(['808080'])
@@ -147,11 +147,18 @@ export default function FilamentsPage() {
         queryClient.invalidateQueries({ queryKey: ['filaments'] }),
         queryClient.invalidateQueries({ queryKey: ['profiles'] }),
       ])
-      if (duplicateSourceId) navigate(`/filaments/${created.id}`, true)
-      else closeCreate()
+      setShowCreate(false)
+      setCreatedFilament(created)
     },
     onError: (error: Error) => setMessage(error.message),
   })
+
+  function dismissCreatedFilament() {
+    const createdId = createdFilament?.id
+    setCreatedFilament(null)
+    if (duplicateSourceId && createdId) navigate(`/filaments/${createdId}`, true)
+    else if (path === '/filaments/new') navigate('/filaments', true)
+  }
   const submit = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
     setMessage('')
@@ -166,7 +173,6 @@ export default function FilamentsPage() {
           <div className="form-grid">
             <label>Starting template<select name="material_template_revision_id" defaultValue={duplicateSource.data?.material_template_revision_id ?? ''} required autoFocus>{selectableTemplates.map(({ template, settingsSnapshot }) => <option key={settingsSnapshot.id} value={settingsSnapshot.id}>{template.name} · {compactNumber(template.nozzle_diameter_mm, 1)} mm</option>)}</select></label>
             <label>Vendor<select name="vendor_id" defaultValue={duplicateSource.data?.vendor_id ?? ''}><option value="">Unspecified vendor</option>{vendors.data?.map((vendor) => <option key={vendor.id} value={vendor.id}>{vendor.name}</option>)}</select></label>
-            <label>Display name<input name="product_name" defaultValue={duplicateSource.data ? `${duplicateSource.data.product_name ?? `${duplicateSource.data.material_type} ${duplicateSource.data.color_name}`} Copy` : ''} maxLength={160} placeholder="PolyLite PLA" /></label>
             <FilamentColorEditor name={colorName} mode={colorMode} colorHexes={colorHexes} rememberedColors={colors.data ?? []} onNameChange={setColorName} onModeChange={setColorMode} onColorsChange={setColorHexes} />
           </div>
         </EditorSection>
@@ -184,5 +190,6 @@ export default function FilamentsPage() {
         {create.error ? <p className="form-error" role="alert">{create.error.message}</p> : null}
       </form> : <p className="form-error">Add at least one material template before adding filament products.</p>}
     </Modal> : null}
+    {createdFilament ? <Modal title="Create a spool?" description={`${materialIdentitySummary(createdFilament)} is ready. Would you like to add its first physical spool now?`} onClose={dismissCreatedFilament} footer={<><button className="button" type="button" onClick={dismissCreatedFilament}>Not now</button><button className="button button--primary" type="button" onClick={() => navigate(`/spools?create=1&filament_id=${encodeURIComponent(createdFilament.id)}`)}><Plus size={17} /> Add spool</button></>}><p className="muted">The new spool form will open with this filament selected.</p></Modal> : null}
   </div>
 }

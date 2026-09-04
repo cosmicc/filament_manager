@@ -24,6 +24,7 @@ class RecordingSpoolmanClient:
     def __init__(self) -> None:
         self.created: list[str] = []
         self.updated: list[str] = []
+        self.filament_payloads: list[dict[str, object]] = []
         self.spool_updates: list[dict[str, object]] = []
 
     async def list_vendors(self) -> list[dict[str, object]]:
@@ -54,10 +55,12 @@ class RecordingSpoolmanClient:
 
     async def create_filament(self, payload: dict[str, object]) -> dict[str, object]:
         self.created.append("filament")
+        self.filament_payloads.append(payload)
         return {"id": 22, **payload}
 
     async def update_filament(self, filament_id: int, payload: dict[str, object]) -> dict[str, object]:
         self.updated.append("filament")
+        self.filament_payloads.append(payload)
         return {"id": filament_id, **payload}
 
     async def find_managed_spool(self, spool_uuid: str) -> None:
@@ -80,6 +83,12 @@ async def test_full_convergence_seeds_existing_inventory_and_then_updates_it(
 ) -> None:
     """A sweep projects pre-existing rows and remains duplicate-safe on later runs."""
 
+    monkeypatch.setattr(
+        dispatcher,
+        "get_settings",
+        lambda: SimpleNamespace(moonraker=SimpleNamespace(printers=[SimpleNamespace(id="test")])),
+    )
+
     with PostgresContainer("postgres:17-alpine", driver="psycopg") as postgres:
         database_url = postgres.get_connection_url().replace(
             "postgresql+psycopg2://", "postgresql+psycopg://"
@@ -95,6 +104,8 @@ async def test_full_convergence_seeds_existing_inventory_and_then_updates_it(
                 vendor=vendor,
                 material_type="PLA",
                 color_name="Red",
+                filler="Carbon Fiber",
+                finish="Matte",
                 color_hex="FF0000",
                 diameter_mm=Decimal("1.75"),
                 density_g_cm3=Decimal("1.24"),
@@ -122,6 +133,7 @@ async def test_full_convergence_seeds_existing_inventory_and_then_updates_it(
             await session.commit()
 
         assert client.created == ["vendor", "filament", "spool"]
+        assert client.filament_payloads[-1]["name"] == "PLA · Red · Carbon Fiber · Matte"
         async with factory() as session:
             projected = await session.get(Spool, spool_id)
             assert projected is not None

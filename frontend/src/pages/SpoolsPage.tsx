@@ -29,10 +29,11 @@ import { Modal } from "../components/Modal";
 import { PageHeader } from "../components/PageHeader";
 import { StatusPill } from "../components/StatusPill";
 import { useAuth } from "../context/AuthContext";
+import { useRouter } from "../context/RouterContext";
 import { useCollectionView } from "../hooks/useCollectionView";
 import { filamentSwatchStyle } from "../lib/colors";
 import { costPerGram, currencyAmount, dateTime, grams, inputNumber, percent } from "../lib/format";
-import { materialIdentitySummary, materialModifierSummary } from "../lib/materialIdentity";
+import { materialIdentitySummary } from "../lib/materialIdentity";
 
 function WeighModal({ spool, onClose }: { spool: Spool; onClose: () => void }) {
   const queryClient = useQueryClient();
@@ -253,15 +254,18 @@ function WeighModal({ spool, onClose }: { spool: Spool; onClose: () => void }) {
 
 function CreateSpoolModal({
   filaments,
+  initialFilamentId,
   onClose,
 }: {
   filaments: Filament[];
+  initialFilamentId?: string;
   onClose: () => void;
 }) {
   const queryClient = useQueryClient();
-  const [filamentId, setFilamentId] = useState(filaments[0]?.id ?? "");
+  const initialFilament = filaments.find((item) => item.id === initialFilamentId) ?? filaments[0];
+  const [filamentId, setFilamentId] = useState(initialFilament?.id ?? "");
   const [filamentMass, setFilamentMass] = useState(
-    inputNumber(filaments[0]?.nominal_net_mass_g ?? "1000", 0),
+    inputNumber(initialFilament?.nominal_net_mass_g ?? "1000", 0),
   );
   const [fullSpoolMass, setFullSpoolMass] = useState("");
   const [purchaseCost, setPurchaseCost] = useState("");
@@ -613,7 +617,10 @@ function EditSpoolModal({
 
 export default function SpoolsPage() {
   const { user } = useAuth();
+  const { navigate } = useRouter();
   const queryClient = useQueryClient();
+  const creationRequest = new URLSearchParams(window.location.search);
+  const requestedFilamentId = creationRequest.get("filament_id") ?? undefined;
   const canEdit = user?.role !== "viewer";
   const [search, setSearch] = useState("");
   const [status, setStatus] = useState("");
@@ -621,7 +628,7 @@ export default function SpoolsPage() {
   const [selected, setSelected] = useState<Spool | null>(null);
   const [weighing, setWeighing] = useState<Spool | null>(null);
   const [editingSpool, setEditingSpool] = useState<Spool | null>(null);
-  const [creating, setCreating] = useState(false);
+  const [creating, setCreating] = useState(creationRequest.get("create") === "1");
   const [actionError, setActionError] = useState("");
   const [actionMessage, setActionMessage] = useState("");
   const query = useQuery({
@@ -734,7 +741,7 @@ export default function SpoolsPage() {
           <input
             value={search}
             onChange={(event) => setSearch(event.target.value)}
-            placeholder="Search code, material, color, or location"
+            placeholder="Search code, material, color, filler, finish, or location"
             aria-label="Search spools"
           />
         </label>
@@ -804,10 +811,7 @@ export default function SpoolsPage() {
                       </div>
                     </td>
                     <td>
-                      <strong>{spool.material_type} · {spool.color_name}</strong>
-                      {materialModifierSummary(spool) ? (
-                        <small className="table-subtext">{materialModifierSummary(spool)}</small>
-                      ) : null}
+                      <strong>{materialIdentitySummary(spool)}</strong>
                     </td>
                     <td>
                       <div className="table-progress">
@@ -1050,7 +1054,11 @@ export default function SpoolsPage() {
       {creating && filaments.data && (
         <CreateSpoolModal
           filaments={filaments.data}
-          onClose={() => setCreating(false)}
+          initialFilamentId={requestedFilamentId}
+          onClose={() => {
+            setCreating(false);
+            if (creationRequest.get("create") === "1") navigate("/spools", true);
+          }}
         />
       )}
     </div>

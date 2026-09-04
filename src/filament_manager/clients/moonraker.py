@@ -104,6 +104,7 @@ class MoonrakerThumbnail:
 
 
 SPOOL_PROMPT_LABEL_PATTERN = re.compile(r"[A-Za-z0-9._#-]{1,96}")
+MAX_GCODE_SAMPLE_BYTES = 1_100_000
 SPOOL_PREFLIGHT_OBJECT = "gcode_macro FILAMENT_MANAGER_SPOOL_STATE"
 SPOOL_PREFLIGHT_FIELDS = [
     "restored",
@@ -700,13 +701,13 @@ class MoonrakerClient:
         self,
         filename: str,
         *,
-        sample_bytes: int = 524_288,
+        sample_bytes: int = MAX_GCODE_SAMPLE_BYTES,
         max_bytes: int = 1_000_000_000,
     ) -> MoonrakerGcodeFile:
         """Stream one G-code file once while hashing and retaining bounded samples."""
 
         validated = self._validated_gcode_filename(filename)
-        if sample_bytes < 1 or sample_bytes > 1_100_000 or max_bytes < sample_bytes:
+        if sample_bytes < 1 or sample_bytes > MAX_GCODE_SAMPLE_BYTES or max_bytes < sample_bytes:
             raise ValueError("invalid G-code download bounds")
         encoded = quote(validated, safe="/")
         digest = hashlib.sha256()

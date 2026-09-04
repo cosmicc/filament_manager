@@ -379,17 +379,20 @@ test('comparison shows only differences and warns across profile scopes', async 
 
 test('filament creation requires and submits a current template', async ({ page }) => {
   let submitted: Record<string, unknown> | null = null
+  let created = false
   await page.route('**/api/v1/profiles/templates', (route) => route.fulfill({ json: [template] }))
   await page.route('**/api/v1/vendors', (route) => route.fulfill({ json: [] }))
   await page.route('**/api/v1/filaments', async (route) => {
     if (route.request().method() === 'POST') {
       submitted = route.request().postDataJSON() as Record<string, unknown>
+      created = true
       await route.fulfill({ status: 201, json: filament })
-    } else await route.fulfill({ json: [] })
+    } else await route.fulfill({ json: created ? [filament] : [] })
   })
+  await page.route('**/api/v1/spools?**', (route) => route.fulfill({ json: { items: [], total: 0, limit: 200, offset: 0 } }))
   await page.goto('/filaments')
   await page.getByRole('button', { name: 'Add filament' }).click()
-  await page.getByLabel('Display name').fill('Workshop PLA')
+  await expect(page.getByLabel('Display name')).toHaveCount(0)
   await page.getByRole('combobox', { name: /^Color name/ }).fill('Workshop Sunset')
   await page.getByLabel('Display type').selectOption('multicolor')
   await page.getByLabel('Number of colors').selectOption('3')
@@ -402,6 +405,39 @@ test('filament creation requires and submits a current template', async ({ page 
   await expect.poll(() => submitted?.color_mode).toBe('multicolor')
   await expect.poll(() => submitted?.color_hexes).toEqual(['FF0000', '00FF00', '0000FF'])
   await expect(page.getByText(/first printer\/nozzle print-settings scope/)).toBeVisible()
+  const prompt = page.getByRole('dialog', { name: 'Create a spool?' })
+  await expect(prompt).toBeVisible()
+  await captureEvidence(page, 'filament-create-spool-prompt-v070')
+  await prompt.getByRole('button', { name: 'Add spool' }).click()
+  await expect(page).toHaveURL(new RegExp(`/spools\\?create=1&filament_id=${filament.id}`))
+  const spoolDialog = page.getByRole('dialog', { name: 'Add a physical spool' })
+  await expect(spoolDialog).toBeVisible()
+  await expect(spoolDialog.getByLabel('Filament product')).toHaveValue(filament.id)
+  await captureEvidence(page, 'filament-create-spool-form-v070')
+})
+
+test('filament details create a preselected spool with automatic names at desktop and mobile sizes', async ({ page }) => {
+  const namedFilament = { ...filament, filler: ' Standard ', finish: 'Matte' }
+  await page.route(`**/api/v1/filaments/${filament.id}`, (route) => route.fulfill({ json: namedFilament }))
+  await page.route('**/api/v1/filaments', (route) => route.fulfill({ json: [namedFilament] }))
+  await page.route('**/api/v1/vendors', (route) => route.fulfill({ json: [] }))
+  await page.route('**/api/v1/profiles/templates?include_inactive=false', (route) => route.fulfill({ json: [] }))
+  await page.route('**/api/v1/profiles', (route) => route.fulfill({ json: [] }))
+  await page.route('**/api/v1/profiles/cura-settings/catalog', (route) => route.fulfill({ json: [] }))
+  await page.route('**/api/v1/spools?**', (route) => route.fulfill({ json: { items: [], total: 0, limit: 200, offset: 0 } }))
+  for (const width of [1440, 390]) {
+    await page.setViewportSize({ width, height: 900 })
+    await page.goto(`/filaments/${filament.id}`)
+    await expect(page.getByRole('heading', { level: 1 })).toHaveText('PLA · Blue · Matte')
+    await expect(page.getByText('Workshop PLA')).toHaveCount(0)
+    await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true)
+    await captureEvidence(page, `filament-detail-spool-action-${width}-v070`)
+    await page.getByRole('link', { name: 'Create spool from filament' }).click()
+    const dialog = page.getByRole('dialog', { name: 'Add a physical spool' })
+    await expect(dialog).toBeVisible()
+    await expect(dialog.getByLabel('Filament product')).toHaveValue(filament.id)
+    await expect(dialog.getByLabel('Filament product').locator('option:checked')).toHaveText(/PLA · Blue · Matte/)
+  }
 })
 
 test('filament details remember colors and save Cura settings directly', async ({ page }) => {
@@ -468,7 +504,7 @@ test('filament details remember colors and save Cura settings directly', async (
   })
 
   await page.goto(`/filaments/${filament.id}`)
-  await expect(page.getByRole('heading', { name: 'Workshop PLA' })).toBeVisible()
+  await expect(page.getByRole('heading', { level: 1, name: 'PLA · Blue · Carbon Fiber · Silk' })).toBeVisible()
   await expect(page.getByText('Template PLA', { exact: true })).toBeVisible()
   await expect(page.getByRole('heading', { name: '0.4 mm nozzle' })).toBeVisible()
   await expect(page.getByRole('heading', { name: '0.6 mm nozzle' })).toBeVisible()
@@ -518,7 +554,7 @@ test('filament details remember colors and save Cura settings directly', async (
   await expect(secondaryProfileCard.getByRole('link', { name: 'Export Cura JSON' })).toBeVisible()
 })
 
-test('Rainbow display-name edits succeed and rejected product fields are explicit', async ({ page }) => {
+test('Rainbow edits omit display names and rejected product fields are explicit', async ({ page }) => {
   const rainbow = {
     ...filament,
     color_name: 'Rainbow',
@@ -559,10 +595,10 @@ test('Rainbow display-name edits succeed and rejected product fields are explici
 
   await page.goto(`/filaments/${filament.id}`)
   await page.getByRole('button', { name: 'Edit product' }).click()
-  await page.getByLabel('Display name').fill('')
+  await expect(page.getByLabel('Display name')).toHaveCount(0)
   await page.getByRole('button', { name: 'Save filament' }).click()
   await expect.poll(() => submissions.length).toBe(1)
-  expect(submissions[0].product_name).toBeNull()
+  expect(submissions[0]).not.toHaveProperty('product_name')
   expect(submissions[0].color_mode).toBe('rainbow')
   expect(submissions[0].color_hexes).toEqual([])
   await expect(page.getByRole('dialog', { name: 'Edit filament product' })).toHaveCount(0)
@@ -624,8 +660,7 @@ test('free-text bucket location is editable from Filament Manager', async ({ pag
   })
 
   await page.goto('/spools')
-  await expect(page.getByText('PLA · Blue', { exact: true })).toBeVisible()
-  await expect(page.getByText('Carbon Fiber · Silk', { exact: true })).toBeVisible()
+  await expect(page.getByText('PLA · Blue · Carbon Fiber · Silk', { exact: true })).toBeVisible()
   await captureEvidence(page, 'spool-material-identity')
   await expect(page.getByText('1.5¢/g', { exact: true }).first()).toBeVisible()
   await page.getByText('PLA-BLUE-01', { exact: true }).click()

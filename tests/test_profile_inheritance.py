@@ -67,6 +67,41 @@ def test_sparse_overrides_ignore_equivalent_decimals_and_resolve_removals() -> N
     }
 
 
+def test_sparse_overrides_treat_numeric_json_and_decimal_text_as_equal() -> None:
+    """Database numeric strings do not create phantom custom settings."""
+
+    base = {
+        **_settings(),
+        "initial_bed_temp_c": 60,
+        "bed_temp_c": 60.0,
+        "cura_extensions": {"material_flow_layer_0": 100},
+    }
+    desired = {
+        **base,
+        "initial_bed_temp_c": "60.00000",
+        "bed_temp_c": "60.0",
+        "cura_extensions": {"material_flow_layer_0": "100.000"},
+    }
+
+    assert sparse_profile_overrides(base, desired) == {}
+
+
+def test_template_update_drops_override_that_now_matches_template() -> None:
+    """A value equal to the new template becomes inherited after save."""
+
+    current = {**_settings(), "initial_bed_temp_c": "70"}
+    newer = {**_settings(), "initial_bed_temp_c": 70}
+
+    resolved, overrides = resolve_profile_settings_for_template_update(
+        newer,
+        current,
+        {"initial_bed_temp_c": "70.000"},
+    )
+
+    assert resolved["initial_bed_temp_c"] == "70.000"
+    assert overrides == {}
+
+
 def test_template_update_preserves_profile_overrides_but_owns_template_only_settings() -> None:
     """Moving a base retains profile controls and replaces template-only values."""
 

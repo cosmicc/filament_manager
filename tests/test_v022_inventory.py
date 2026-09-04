@@ -7,6 +7,7 @@ from pathlib import Path
 
 import httpx
 import pytest
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 from testcontainers.community.postgres import PostgresContainer
 
@@ -22,6 +23,7 @@ from filament_manager.models.inventory import (
     Printer,
     Spool,
 )
+from filament_manager.models.operations import OutboxJob
 from filament_manager.models.printing import PrintJob, PrintMaterialSegment
 from filament_manager.security import hash_password
 from filament_manager.services import events
@@ -95,6 +97,8 @@ async def test_physical_nozzle_side_b_and_distinct_completed_print_counts(
             product = FilamentProduct(
                 material_type="PLA",
                 color_name="Blue",
+                filler="Carbon Fiber",
+                finish="Matte",
                 diameter_mm=Decimal("1.75"),
                 density_g_cm3=Decimal("1.24"),
                 nominal_net_mass_g=Decimal("1000"),
@@ -357,11 +361,32 @@ async def test_physical_nozzle_side_b_and_distinct_completed_print_counts(
 
         async with httpx.AsyncClient(transport=transport, base_url="http://testserver") as client:
             spools = await client.get("/api/v1/spools?limit=200")
+            spools_by_filler = await client.get("/api/v1/spools?limit=200&search=carbon")
+            spools_by_finish = await client.get("/api/v1/spools?limit=200&search=matte")
+            filaments_by_filler = await client.get("/api/v1/filaments?search=carbon")
+            filaments_by_finish = await client.get("/api/v1/filaments?search=matte")
             nozzles = await client.get("/api/v1/nozzles")
             plates = await client.get("/api/v1/build-plates")
         assert spools.status_code == 200, spools.text
         spool_counts = {item["spool_code"]: item["completed_print_count"] for item in spools.json()["items"]}
         assert spool_counts == {"V022-ONE": 1, "V022-TWO": 1}
+        assert spools_by_filler.status_code == 200, spools_by_filler.text
+        assert spools_by_finish.status_code == 200, spools_by_finish.text
+        assert {item["spool_code"] for item in spools_by_filler.json()["items"]} == {
+            "V022-ONE",
+            "V022-TWO",
+        }
+        assert {item["spool_code"] for item in spools_by_finish.json()["items"]} == {
+            "V022-ONE",
+            "V022-TWO",
+        }
+        assert len(filaments_by_filler.json()) == 1
+        assert len(filaments_by_finish.json()) == 1
+        assert filaments_by_finish.json()[0]["product_name"] == "PLA · Blue · Carbon Fiber · Matte"
+        assert all(
+            item["product_name"] == "PLA · Blue · Carbon Fiber · Matte"
+            for item in spools_by_finish.json()["items"]
+        )
         assert nozzles.status_code == 200, nozzles.text
         assert nozzles.json()[0]["completed_print_count"] == 1
         assert Decimal(nozzles.json()[0]["completed_filament_weight_g"]) == Decimal("12.5")
@@ -369,5 +394,16 @@ async def test_physical_nozzle_side_b_and_distinct_completed_print_counts(
         plate_surfaces = {item["surface_code"]: item for item in plates.json()[0]["surfaces"]}
         assert plate_surfaces["P1"]["completed_print_count"] == 1
         assert plate_surfaces["P1b"]["completed_print_count"] == 0
+
+        async with factory() as session:
+            assert (
+                await session.scalar(
+                    select(OutboxJob.id).where(
+                        OutboxJob.job_type == "spoolman.reconcile.full",
+                        OutboxJob.idempotency_key.like(f"printer:{printer_id}:nozzle-defaults:%"),
+                    )
+                )
+                is not None
+            )
 
         await engine.dispose()

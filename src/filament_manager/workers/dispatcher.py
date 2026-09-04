@@ -35,6 +35,7 @@ from filament_manager.models.operations import OutboxJob, ProjectionState
 from filament_manager.models.printing import PrintJob
 from filament_manager.services.build_plate_sync import synchronize_build_plates
 from filament_manager.services.events import add_audit_event, add_outbox_job
+from filament_manager.services.filament_defaults import spoolman_filament_defaults
 from filament_manager.services.moonraker_sync import (
     synchronize_active_spool,
     synchronize_printer_information,
@@ -327,6 +328,7 @@ async def _project_filament(
     vendor_remote_ids: dict[UUID, int] | None = None,
     *,
     allow_discovery: bool = True,
+    defaults: dict[str, float | int | None] | None = None,
 ) -> int:
     vendor_id = None
     if product.vendor:
@@ -343,15 +345,25 @@ async def _project_filament(
                 vendor_remote_ids[product.vendor.id] = vendor_id
     await _lock_projection(session, "spoolman", "filament_product", product.id)
     state = await _projection(session, "spoolman", "filament_product", product.id)
+    if defaults is None:
+        configured = get_settings().moonraker.printers
+        defaults = (
+            await spoolman_filament_defaults(
+                session,
+                [product],
+                printer_code=configured[0].id if len(configured) == 1 else None,
+            )
+        )[product.id]
     payload = {
-        "name": " ".join(filter(None, [product.product_name, product.color_name]))[:64],
+        **defaults,
+        "name": product.display_name[:64],
         "vendor_id": vendor_id,
         "material": product.material_type[:64],
         "density": float(product.density_g_cm3),
         "diameter": float(product.diameter_mm),
         "weight": float(product.nominal_net_mass_g),
         "color_hex": product.color_hex,
-        "comment": (product.notes or "")[:1024],
+        "comment": "\n".join(filter(None, [product.display_name, product.notes]))[:1024],
         "extra": {
             "filament_manager_product_uuid": str(product.id),
             "filler": product.filler or "",
@@ -420,7 +432,11 @@ async def _project_spool(
         "spool_weight": float(spool.tare_mass_g),
         "remaining_weight": float(spool.remaining_mass_effective_g),
         "location": _projected_spool_location(spool.location),
-        "comment": (spool.notes or "")[:1024],
+        # Spoolman has no spool-name field. Its linked filament supplies the name;
+        # the comment retains our physical spool code, full identity, and notes.
+        "comment": "\n".join(
+            filter(None, [f"{spool.spool_code} · {spool.filament_product.display_name}", spool.notes])
+        )[:1024],
         "archived": spool.archived,
         "extra": {
             "filament_manager_spool_uuid": str(spool.id),
@@ -575,7 +591,14 @@ async def _converge_spoolman(
     product_result = await session.execute(
         select(FilamentProduct).options(joinedload(FilamentProduct.vendor)).order_by(FilamentProduct.id)
     )
-    for product in product_result.unique().scalars():
+    products = list(product_result.unique().scalars())
+    configured = get_settings().moonraker.printers
+    defaults = await spoolman_filament_defaults(
+        session,
+        products,
+        printer_code=configured[0].id if len(configured) == 1 else None,
+    )
+    for product in products:
         if known_id := known_filament_ids.get(product.id):
             await _seed_projection_remote_id(
                 session,
@@ -589,6 +612,7 @@ async def _converge_spoolman(
             product,
             vendor_remote_ids,
             allow_discovery=False,
+            defaults=defaults[product.id],
         )
 
     spool_result = await session.execute(

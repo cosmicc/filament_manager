@@ -35,7 +35,6 @@ function centerAndFocus(control: HTMLElement) {
 
 const productFieldLabels: Record<string, string> = {
   vendor_id: 'Vendor',
-  product_name: 'Display name',
   material_type: 'Material type',
   color_name: 'Color name',
   color_mode: 'Display type',
@@ -108,7 +107,6 @@ export default function FilamentDetailPage() {
         body: JSON.stringify({
           expected_version: filament.data.record_version,
           vendor_id: optional(data, 'vendor_id'),
-          product_name: optional(data, 'product_name'),
           material_type: materialType.trim(),
           color_name: colorName.trim(),
           color_hex: colorHexes[0],
@@ -226,11 +224,11 @@ export default function FilamentDetailPage() {
   }
 
   return <div>
-    <PageHeader eyebrow={item.vendor_name ?? 'Unspecified vendor'} title={item.product_name ?? `${item.material_type} ${item.color_name}`} description={`${materialIdentitySummary(item)}. Manage the physical filament identity separately from its printer/nozzle-specific print settings.`} actions={<><Link className="button" to="/filaments"><ArrowLeft size={16} /> All filaments</Link>{canEdit ? <Link className="button button--primary" to={`/filaments/duplicate/${item.id}`}><Copy size={16} /> Duplicate</Link> : null}</>} />
+    <PageHeader eyebrow={item.vendor_name ?? 'Unspecified vendor'} title={materialIdentitySummary(item)} description="Manage the physical filament identity separately from its printer/nozzle-specific print settings." actions={<><Link className="button" to="/filaments"><ArrowLeft size={16} /> All filaments</Link>{canEdit ? <><Link className="button" to={`/filaments/duplicate/${item.id}`}><Copy size={16} /> Duplicate</Link>{!item.archived ? <Link className="button button--primary" to={`/spools?create=1&filament_id=${encodeURIComponent(item.id)}`}><Plus size={16} /> Create spool from filament</Link> : null}</> : null}</>} />
     {message && <div className="deployment-note" role="status">{message}</div>}
     <section className="card product-editor">
       <header className="card__header"><div><p className="eyebrow">Canonical filament</p><h2>Product details</h2></div><div className="card-header-actions"><span className="filament-swatch" style={filamentSwatchStyle(item.color_mode, item.color_hexes, item.color_hex ?? '808080')} />{canEdit ? <><button className="button" onClick={() => { update.reset(); setEditingProduct(true) }}><Pencil size={16} /> Edit product</button><button className="button button--danger" disabled={remove.isPending} onClick={() => { if (window.confirm('Delete this filament? It will be archived instead if retained history prevents safe deletion.')) remove.mutate() }}><Trash2 size={16} /> {remove.isPending ? 'Removing…' : 'Delete or archive'}</button></> : null}</div></header>
-      <dl className="definition-list"><div><dt>Vendor and product</dt><dd>{item.vendor_name ?? 'Unspecified vendor'} · {item.product_name ?? 'No product name'}</dd></div><div><dt>Material</dt><dd>{item.material_type}{itemModifiers ? ` · ${itemModifiers}` : ''}</dd></div><div><dt>Color</dt><dd>{item.color_name} · {item.color_mode === 'rainbow' ? 'Rainbow' : item.color_hexes.map((color) => `#${color}`).join(' / ')}</dd></div><div><dt>Diameter</dt><dd>{compactNumber(item.diameter_mm, 2)} mm{item.tolerance_mm ? ` ± ${compactNumber(item.tolerance_mm, 2)} mm` : ''}</dd></div><div><dt>Density</dt><dd>{compactNumber(item.density_g_cm3, 2)} g/cm³</dd></div><div><dt>Nominal net mass</dt><dd>{compactNumber(item.nominal_net_mass_g, 0)} g</dd></div><div><dt>Notes</dt><dd>{item.notes ?? 'No notes'}</dd></div></dl>
+      <dl className="definition-list"><div><dt>Vendor</dt><dd>{item.vendor_name ?? 'Unspecified vendor'}</dd></div><div><dt>Material</dt><dd>{item.material_type}{itemModifiers ? ` · ${itemModifiers}` : ''}</dd></div><div><dt>Color</dt><dd>{item.color_name} · {item.color_mode === 'rainbow' ? 'Rainbow' : item.color_hexes.map((color) => `#${color}`).join(' / ')}</dd></div><div><dt>Diameter</dt><dd>{compactNumber(item.diameter_mm, 2)} mm{item.tolerance_mm ? ` ± ${compactNumber(item.tolerance_mm, 2)} mm` : ''}</dd></div><div><dt>Density</dt><dd>{compactNumber(item.density_g_cm3, 2)} g/cm³</dd></div><div><dt>Nominal net mass</dt><dd>{compactNumber(item.nominal_net_mass_g, 0)} g</dd></div><div><dt>Notes</dt><dd>{item.notes ?? 'No notes'}</dd></div></dl>
     </section>
 
     <section className="profile-scope-section" aria-labelledby="filament-print-settings-heading">
@@ -247,7 +245,6 @@ export default function FilamentDetailPage() {
         <EditorSection title="Product identity" description="Names and the shared screen color sample used throughout the application.">
           <div className="form-grid">
             <label>Vendor<select name="vendor_id" defaultValue={item.vendor_id ?? ''} autoFocus aria-invalid={productErrorsFor('vendor_id').length ? true : undefined} aria-describedby={productErrorsFor('vendor_id').length ? productErrorId('vendor_id') : undefined}><option value="">Unspecified vendor</option>{vendors.data?.map((vendor) => <option key={vendor.id} value={vendor.id}>{vendor.name}</option>)}</select>{productFieldError('vendor_id')}</label>
-            <label>Display name<input name="product_name" defaultValue={item.product_name ?? ''} maxLength={160} aria-invalid={productErrorsFor('product_name').length ? true : undefined} aria-describedby={productErrorsFor('product_name').length ? productErrorId('product_name') : undefined} />{productFieldError('product_name')}</label>
             <label>Material type<input name="material_type" value={materialType} onChange={(event) => setMaterialType(event.target.value)} maxLength={48} required aria-invalid={productErrorsFor('material_type').length ? true : undefined} aria-describedby={productErrorsFor('material_type').length ? productErrorId('material_type') : undefined} />{productFieldError('material_type')}</label>
             <FilamentColorEditor name={colorName} mode={colorMode} colorHexes={colorHexes} rememberedColors={colors.data ?? []} onNameChange={setColorName} onModeChange={setColorMode} onColorsChange={setColorHexes} validationErrors={productValidationErrors} errorIdPrefix="filament-product-color" disabled={!item.color_editable} />
             {!item.color_editable ? <p className="security-note form-grid__wide">Color is locked because this filament already has recorded spool use or print history.</p> : null}

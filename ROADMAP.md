@@ -85,7 +85,7 @@
 
 - **Automatic profile recommendations**
 
-  Calculate reviewable candidate settings from sufficiently large sets of successful prints, beginning with transparent statistics such as medians and ranges. Never change a profile silently; require explicit approval before saving a recommendation.
+  Use the immutable managed, template-difference, and Cura setting snapshots now retained with print history to calculate reviewable candidate settings from sufficiently large sets of successful prints and calibration evidence, beginning with transparent statistics such as medians and ranges. Never change a profile silently; require explicit approval before saving a recommendation.
 
 - **Configurable QR label templates**
 

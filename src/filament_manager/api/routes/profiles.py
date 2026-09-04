@@ -255,7 +255,7 @@ async def _profile_response(
         .limit(1)
     )
     current = settings_snapshot_from_profile(profile)
-    overrides = dict(profile.setting_overrides or {})
+    overrides = sparse_profile_overrides(base_revision.settings, current)
     customized_keys = override_setting_keys(overrides)
     changes: list[dict[str, object]] = []
     if latest_revision is not None and latest_revision.id != base_revision.id:

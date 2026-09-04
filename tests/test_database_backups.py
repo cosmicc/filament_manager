@@ -41,7 +41,7 @@ def _archive_bytes(
         "backup_id": str(archive_id),
         "created_at": timestamp.isoformat(),
         "application_version": "0.6.1",
-        "database_revision": "a9b0c1d2e345",
+        "database_revision": "b0c1d2e3f456",
         "trigger": "automatic",
         "dump_format": "postgresql-custom",
         "dump_member": "database.dump",

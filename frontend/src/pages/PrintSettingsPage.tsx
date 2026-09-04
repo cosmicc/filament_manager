@@ -10,6 +10,7 @@ import { MaterialComparisonModal } from '../components/MaterialComparisonModal'
 import { PageHeader } from '../components/PageHeader'
 import { Link } from '../context/RouterContext'
 import { compactNumber } from '../lib/format'
+import { materialIdentitySummary } from '../lib/materialIdentity'
 
 export default function PrintSettingsPage() {
   const profiles = useQuery({ queryKey: ['profiles'], queryFn: () => apiFetch<MaterialProfile[]>('/profiles') })
@@ -21,7 +22,7 @@ export default function PrintSettingsPage() {
   const [comparisonProfileId, setComparisonProfileId] = useState<string | null>(null)
   const filamentName = (id: string) => {
     const item = filaments.data?.find((value) => value.id === id)
-    return item ? `${item.vendor_name ?? ''} ${item.material_type} · ${item.color_name}`.trim() : 'Unknown filament'
+    return item ? `${item.vendor_name ?? 'Unspecified vendor'} · ${materialIdentitySummary(item)}` : 'Unknown filament'
   }
   const printerName = (id: string) => printers.data?.find((value) => value.id === id)?.name ?? 'Unknown printer'
 

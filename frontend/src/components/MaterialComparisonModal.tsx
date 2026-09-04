@@ -5,6 +5,7 @@ import { apiFetch } from '../api/client'
 import type { BuildPlate, CuraSettingCatalogItem, Filament, MaterialProfile, MaterialSettings, MaterialTemplate, Printer, ProfileStatistics } from '../api/types'
 import { compactNumber } from '../lib/format'
 import { getMaterialSettingDifferences, getScopeMismatchFields } from '../lib/materialComparison'
+import { materialIdentitySummary } from '../lib/materialIdentity'
 import { EditorSection } from './EditorSection'
 import { Modal } from './Modal'
 
@@ -22,7 +23,7 @@ interface ComparisonTarget {
 function filamentLabel(profile: MaterialProfile, filaments: Filament[]): string {
   const filament = filaments.find((item) => item.id === profile.filament_product_id)
   if (!filament) return 'Unknown filament profile'
-  return `${[filament.vendor_name, filament.product_name ?? filament.material_type].filter(Boolean).join(' ')} · ${filament.color_name}`
+  return [filament.vendor_name, materialIdentitySummary(filament)].filter(Boolean).join(' · ')
 }
 
 function scopeLabel(target: { printerId: string; nozzleDiameterMm: string }, printers: Printer[]): string {

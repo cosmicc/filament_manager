@@ -1,5 +1,30 @@
 # Changelog
 
+## 0.7.0 - 09.04.2026
+
+### Added
+
+- Added an immutable, versioned print-settings snapshot containing the complete resolved Filament Manager profile, its linked template at print time, semantic template differences, and every safely bounded Cura `SETTING_3` global and per-extruder value embedded in the G-code.
+- Added an **Advanced print settings** Print History overlay that exposes captured managed, template, difference, global Cura, and per-extruder Cura values while preserving formulas as unevaluated text.
+- Added a post-creation prompt that can open the new-spool form with the newly created filament already selected.
+- Added **Create spool from filament** to active filament details with automatic filament preselection.
+
+### Changed
+
+- Changed Print History polling responses to omit large settings archives and retrieve one only through the authenticated detail request when its print is opened.
+- Filament and spool searches now match filler and finish, and every app, Fluidd, Spoolman, and managed Cura product identity includes each specified filler and finish while omitting blank and `None`-style values.
+- Changed profile customization ownership to semantic comparison, so numerically equal representations are inherited and stale equal-to-template values no longer inflate custom counts.
+- Removed the editable filament **Display name** field. Live names derive from Type · Color · Filler · Finish, omit `Standard` as well as absent modifiers, and leave legacy stored identities and historical snapshots intact.
+- Aligned Spoolman filament names and spool descriptions with the derived application identity; Spoolman's 64-character filament-name limit is respected and the full name and spool code are retained in comments alongside existing notes.
+- Changed every server, browser, workstation-agent, and Klipper macro version surface to 0.7.0 and incremented the workstation renderer revision to 20 for automatically derived managed Cura labels.
+
+### Fixed
+
+- Fixed missing Spoolman filament price, empty-spool weight, extruder temperature, and bed temperature. Defaults use currency-safe weighted purchase cost scaled to nominal filament weight, the newest non-archived spool's tare, and the configured printer's current installed-nozzle profile; physical spools retain their own price and tare. Missing or ambiguous defaults clear stale remote values.
+- Profile saves, spool measurements/deletion, and physical nozzle changes now queue refreshed Spoolman defaults. Full reconciliation batch-loads the defaults from PostgreSQL without extra Moonraker reads or overwriting printer-recorded use.
+- Fixed initial build-plate temperatures that matched their template still appearing custom after revert and save.
+- Fixed profiles reporting a custom-setting count when every visible setting was inherited.
+
 ## 0.6.7 - 08.31.2026
 
 ### Added

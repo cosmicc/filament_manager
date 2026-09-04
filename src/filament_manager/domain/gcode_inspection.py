@@ -11,8 +11,15 @@ from typing import Any
 
 MAX_GCODE_TEXT_LENGTH = 1_100_000
 MAX_SETTING_VALUE_LENGTH = 500
+MAX_CAPTURED_CURA_SETTINGS = 4_096
+MAX_CURA_EXTRUDERS = 8
 SETTING_LINE_PREFIX = ";SETTING_3 "
 DECIMAL_PATTERN = re.compile(r"^-?\d+(?:\.\d+)?$")
+SETTING_KEY_PATTERN = re.compile(r"[a-z][a-z0-9_]{0,95}")
+SENSITIVE_SETTING_KEY_PATTERN = re.compile(
+    r"(^|_)(?:api_?key|credential|directory|endpoint|file|host|hostname|password|passwd|path|secret|token|url|uri)(?:_|$)"
+)
+UNSAFE_SETTING_VALUE_PATTERN = re.compile(r"(?:https?://|\x00)", re.IGNORECASE)
 
 
 @dataclass(frozen=True, slots=True)
@@ -22,6 +29,7 @@ class InspectionResult:
     extracted: dict[str, object]
     mismatches: tuple[dict[str, object], ...]
     warnings: tuple[str, ...]
+    cura_settings: dict[str, object]
 
 
 def _bounded_text(value: object, maximum: int = 255) -> str | None:
@@ -46,59 +54,148 @@ def _first_match(text: str, pattern: str) -> str | None:
     return match.group(1).strip() if match else None
 
 
-def _parse_cura_setting_payload(tail: str) -> dict[str, str]:
+def _unavailable_cura_settings(reason: str) -> dict[str, object]:
+    """Return a stable, non-sensitive reason for unavailable Cura settings."""
+
+    return {
+        "available": False,
+        "reason": reason,
+        "global": None,
+        "extruders": [],
+        "setting_count": 0,
+        "filtered_count": 0,
+        "truncated": False,
+    }
+
+
+def _safe_cura_scope(
+    payload: str,
+    *,
+    remaining: int,
+    fallback_position: int | None,
+) -> tuple[dict[str, object] | None, dict[str, str], int, int, bool]:
+    """Parse one bounded Cura INI scope while retaining inert setting text."""
+
+    if len(payload) > MAX_GCODE_TEXT_LENGTH:
+        return None, {}, 0, 0, True
+    parser = configparser.ConfigParser(interpolation=None, strict=False)
+    try:
+        parser.read_string(payload)
+    except configparser.Error:
+        return None, {}, 0, 0, False
+
+    settings: dict[str, str] = {}
+    filtered_count = 0
+    truncated = False
+    if parser.has_section("values"):
+        for key, raw_value in parser.items("values"):
+            value = raw_value.strip()
+            if (
+                SETTING_KEY_PATTERN.fullmatch(key) is None
+                or len(value) > MAX_SETTING_VALUE_LENGTH
+                or SENSITIVE_SETTING_KEY_PATTERN.search(key) is not None
+                or UNSAFE_SETTING_VALUE_PATTERN.search(value) is not None
+            ):
+                filtered_count += 1
+                continue
+            if len(settings) >= remaining:
+                truncated = True
+                break
+            settings[key] = value
+
+    scope: dict[str, object] = {"settings": settings}
+    if parser.has_section("general"):
+        for key in ("name", "definition"):
+            if parser.has_option("general", key):
+                bounded_value = _bounded_text(parser.get("general", key), MAX_SETTING_VALUE_LENGTH)
+                if bounded_value is not None:
+                    scope[key] = bounded_value
+    if fallback_position is not None:
+        position: object = fallback_position
+        if parser.has_section("metadata") and parser.has_option("metadata", "position"):
+            parsed_position = _bounded_text(parser.get("metadata", "position"), 16)
+            if parsed_position is not None:
+                position = parsed_position
+        scope["position"] = position
+    return scope, settings, len(settings), filtered_count, truncated
+
+
+def _parse_cura_setting_payload(tail: str) -> tuple[dict[str, str], dict[str, object]]:
     """Decode Cura's bounded SETTING_3 JSON/INI payload without evaluation."""
 
     fragments = [
         line[len(SETTING_LINE_PREFIX) :] for line in tail.splitlines() if line.startswith(SETTING_LINE_PREFIX)
     ]
     if not fragments:
-        return {}
+        return {}, _unavailable_cura_settings("not_embedded")
     serialized = "".join(fragments)
     if len(serialized) > MAX_GCODE_TEXT_LENGTH:
-        return {}
+        return {}, _unavailable_cura_settings("payload_too_large")
     try:
         document = json.loads(serialized)
     except json.JSONDecodeError:
-        return {}
+        return {}, _unavailable_cura_settings("invalid_payload")
     if not isinstance(document, dict):
-        return {}
+        return {}, _unavailable_cura_settings("invalid_payload")
 
-    settings: dict[str, str] = {}
-    payloads: list[str] = []
+    merged_settings: dict[str, str] = {}
+    global_scope: dict[str, object] | None = None
+    extruder_scopes: list[dict[str, object]] = []
+    setting_count = 0
+    filtered_count = 0
+    truncated = False
     global_quality = document.get("global_quality")
     if isinstance(global_quality, str):
-        payloads.append(global_quality)
+        scope, settings, count, filtered, scope_truncated = _safe_cura_scope(
+            global_quality,
+            remaining=MAX_CAPTURED_CURA_SETTINGS - setting_count,
+            fallback_position=None,
+        )
+        global_scope = scope
+        merged_settings.update(settings)
+        setting_count += count
+        filtered_count += filtered
+        truncated = truncated or scope_truncated
     extruder_quality = document.get("extruder_quality")
     if isinstance(extruder_quality, list):
-        payloads.extend(item for item in extruder_quality if isinstance(item, str))
-    for payload in payloads[:8]:
-        if len(payload) > MAX_GCODE_TEXT_LENGTH:
-            continue
-        parser = configparser.ConfigParser(interpolation=None, strict=False)
-        try:
-            parser.read_string(payload)
-        except configparser.Error:
-            continue
-        if parser.has_section("values"):
-            for key, value in parser.items("values"):
-                if re.fullmatch(r"[a-z][a-z0-9_]{0,95}", key) and len(value) <= MAX_SETTING_VALUE_LENGTH:
-                    settings[key] = value.strip()
-        if parser.has_section("general"):
-            for key in ("name", "definition"):
-                if parser.has_option("general", key):
-                    value = parser.get("general", key).strip()
-                    if len(value) <= MAX_SETTING_VALUE_LENGTH:
-                        settings[f"quality_{key}"] = value
-    return settings
+        string_payloads = [item for item in extruder_quality if isinstance(item, str)]
+        if len(string_payloads) > MAX_CURA_EXTRUDERS:
+            truncated = True
+        for index, payload in enumerate(string_payloads[:MAX_CURA_EXTRUDERS]):
+            scope, settings, count, filtered, scope_truncated = _safe_cura_scope(
+                payload,
+                remaining=max(0, MAX_CAPTURED_CURA_SETTINGS - setting_count),
+                fallback_position=index,
+            )
+            if scope is not None:
+                extruder_scopes.append(scope)
+            merged_settings.update(settings)
+            setting_count += count
+            filtered_count += filtered
+            truncated = truncated or scope_truncated
+    if global_scope is not None:
+        for key in ("name", "definition"):
+            value = global_scope.get(key)
+            if isinstance(value, str):
+                merged_settings[f"quality_{key}"] = value
+    return merged_settings, {
+        "available": global_scope is not None or bool(extruder_scopes),
+        "reason": None if global_scope is not None or extruder_scopes else "invalid_payload",
+        "global": global_scope,
+        "extruders": extruder_scopes,
+        "setting_count": setting_count,
+        "filtered_count": filtered_count,
+        "truncated": truncated,
+    }
 
 
-def extract_gcode_metadata(metadata: dict[str, Any], header: str, tail: str) -> dict[str, object]:
-    """Extract supported Moonraker and Cura fields from bounded untrusted input."""
+def _extract_gcode_metadata(
+    metadata: dict[str, Any],
+    header: str,
+    settings: dict[str, str],
+) -> dict[str, object]:
+    """Extract supported fields from pre-bounded and pre-parsed evidence."""
 
-    header = header[:MAX_GCODE_TEXT_LENGTH]
-    tail = tail[-MAX_GCODE_TEXT_LENGTH:]
-    settings = _parse_cura_setting_payload(tail)
     extracted: dict[str, object] = {}
 
     text_fields = {
@@ -178,6 +275,14 @@ def extract_gcode_metadata(metadata: dict[str, Any], header: str, tail: str) -> 
     return extracted
 
 
+def extract_gcode_metadata(metadata: dict[str, Any], header: str, tail: str) -> dict[str, object]:
+    """Extract supported Moonraker and Cura fields from bounded untrusted input."""
+
+    bounded_header = header[:MAX_GCODE_TEXT_LENGTH]
+    settings, _ = _parse_cura_setting_payload(tail[-MAX_GCODE_TEXT_LENGTH:])
+    return _extract_gcode_metadata(metadata, bounded_header, settings)
+
+
 def inspect_gcode(
     metadata: dict[str, Any],
     header: str,
@@ -189,12 +294,14 @@ def inspect_gcode(
 ) -> InspectionResult:
     """Compare extracted G-code settings with one immutable profile snapshot."""
 
-    extracted = extract_gcode_metadata(metadata, header, tail)
+    bounded_header = header[:MAX_GCODE_TEXT_LENGTH]
+    settings, cura_settings = _parse_cura_setting_payload(tail[-MAX_GCODE_TEXT_LENGTH:])
+    extracted = _extract_gcode_metadata(metadata, bounded_header, settings)
     mismatches: list[dict[str, object]] = []
     warnings: list[str] = []
     if expected_profile is None:
         warnings.append("No exact managed material profile could be resolved for this G-code file.")
-        return InspectionResult(extracted, tuple(mismatches), tuple(warnings))
+        return InspectionResult(extracted, tuple(mismatches), tuple(warnings), cura_settings)
 
     comparisons = (
         ("nozzle_diameter_mm", "nozzle diameter", Decimal("0.001")),
@@ -253,4 +360,4 @@ def inspect_gcode(
     for key in ("slicer", "layer_height_mm", "predicted_filament_length_mm"):
         if key not in extracted:
             warnings.append(f"G-code metadata did not provide {key.replace('_', ' ')}.")
-    return InspectionResult(extracted, tuple(mismatches), tuple(warnings))
+    return InspectionResult(extracted, tuple(mismatches), tuple(warnings), cura_settings)

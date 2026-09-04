@@ -686,6 +686,7 @@ export interface PrintJob {
   material_type: string | null
   state_snapshot: Record<string, unknown>
   profile_snapshot: Record<string, unknown>
+  print_settings_snapshot: Record<string, unknown>
   inspection_status: 'pending' | 'passed' | 'warning' | 'blocked' | 'unavailable'
   inspection_policy: 'warn' | 'block'
   inspection: {
@@ -741,8 +742,10 @@ export interface PrintJob {
   assessments: PrintAssessment[]
 }
 
+export type PrintJobSummary = Omit<PrintJob, 'print_settings_snapshot'>
+
 export interface PrintJobPage {
-  items: PrintJob[]
+  items: PrintJobSummary[]
   page: number
   per_page: 10 | 25 | 50 | 100
   total_items: number

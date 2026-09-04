@@ -1,5 +1,25 @@
 # User Changelog
 
+## 0.7.0 - 09.04.2026
+
+### Added
+
+- Print History now remembers complete managed and safely embedded Cura settings for new prints, including which values differed from the filament template, and shows them in **Advanced print settings**.
+- After creating a filament, Filament Manager now asks whether to create its first spool and preselects that filament when accepted.
+- Added **Create spool from filament** while viewing an active filament.
+
+### Changed
+
+- Filament and spool searches now include filler and finish.
+- Filament names are now automatic from type, color, filler, and finish, with no editable Display name. Blank, `None`, and `Standard` modifiers stay out of filament and spool names, including Spoolman and Cura.
+- Updated Filament Manager and its workstation agent to version 0.7.0.
+
+### Fixed
+
+- Spoolman now receives filament price, empty-spool weight, and the installed-nozzle profile's extruder and bed temperatures. Each spool keeps its own purchase price and empty weight; shared pricing stays blank when spool currencies differ.
+- Fixed template-matching values, including initial build-plate temperature, remaining marked as custom after save.
+- Fixed a false custom-setting count when every displayed print setting was inherited.
+
 ## 0.6.7 - 08.31.2026
 
 ### Added

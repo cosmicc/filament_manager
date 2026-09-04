@@ -130,8 +130,10 @@ async def spool_change_target(session: AsyncSession, *, spool: Spool, printer: P
         prompt_label=spool_prompt_label(
             spool.spool_code,
             product.vendor.name if product.vendor else "Filament-Manager",
-            product.product_name or product.material_type,
+            product.material_type,
             product.color_name,
+            product.filler,
+            product.finish,
         ),
     )
 
@@ -250,8 +252,10 @@ async def build_spool_preflight_catalog(session: AsyncSession, *, printer: Print
                 spool_prompt_label(
                     spool.spool_code,
                     product.vendor.name if product.vendor else "Filament-Manager",
-                    product.product_name or product.material_type,
+                    product.material_type,
                     product.color_name,
+                    product.filler,
+                    product.finish,
                 ),
             ]
         )
@@ -271,8 +275,10 @@ async def build_spool_preflight_catalog(session: AsyncSession, *, printer: Print
             label = spool_prompt_label(
                 spool.spool_code,
                 product.vendor.name if product.vendor else "Filament-Manager",
-                product.product_name or product.material_type,
+                product.material_type,
                 product.color_name,
+                product.filler,
+                product.finish,
             )
             candidates.append([spool.spoolman_id, label])
             print_temperatures[str(spool.spoolman_id)] = format(profile.extruder_temp_c, "f")

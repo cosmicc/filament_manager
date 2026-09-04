@@ -181,7 +181,7 @@ describe('FilamentDetailPage', () => {
     )
   })
 
-  it('clears an optional display name on Rainbow without resubmitting its fixed palette', async () => {
+  it('uses a derived Rainbow name without an editable display name or resubmitted palette', async () => {
     window.history.replaceState(null, '', '/filaments/product-id')
     const rainbow = {
       ...filament,
@@ -206,11 +206,15 @@ describe('FilamentDetailPage', () => {
     renderPage()
 
     fireEvent.click(await screen.findByRole('button', { name: 'Edit product' }))
-    fireEvent.change(screen.getByLabelText('Display name'), { target: { value: '' } })
+    expect(screen.queryByLabelText('Display name')).toBeNull()
+    expect(screen.getByRole('heading', { level: 1, name: 'PLA · Rainbow' })).toBeTruthy()
+    expect(screen.getByRole('link', { name: 'Create spool from filament' }).getAttribute('href')).toBe(
+      '/spools?create=1&filament_id=product-id',
+    )
     fireEvent.click(screen.getByRole('button', { name: 'Save filament' }))
 
     await waitFor(() => expect(updateBodies).toHaveLength(1))
-    expect(updateBodies[0].product_name).toBeNull()
+    expect(updateBodies[0]).not.toHaveProperty('product_name')
     expect(updateBodies[0].color_mode).toBe('rainbow')
     expect(updateBodies[0].color_hexes).toEqual([])
     await waitFor(() => expect(screen.queryByRole('dialog', { name: 'Edit filament product' })).toBeNull())

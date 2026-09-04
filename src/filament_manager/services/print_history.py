@@ -23,7 +23,11 @@ from filament_manager.clients.moonraker import (
 )
 from filament_manager.config import get_settings
 from filament_manager.domain.gcode_inspection import InspectionResult, inspect_gcode
-from filament_manager.domain.profile_inheritance import settings_snapshot_from_profile
+from filament_manager.domain.profile_inheritance import (
+    override_setting_keys,
+    settings_snapshot_from_profile,
+    sparse_profile_overrides,
+)
 from filament_manager.domain.spool_preflight import (
     cura_material_guid,
     cura_product_material_guid,
@@ -39,6 +43,8 @@ from filament_manager.models.inventory import (
     BuildPlateSurface,
     FilamentProduct,
     MaterialProfile,
+    MaterialTemplate,
+    MaterialTemplateRevision,
     Nozzle,
     Printer,
     Spool,
@@ -354,8 +360,10 @@ async def _state_snapshot(
             {
                 "id": str(product.id),
                 "material_type": product.material_type,
-                "product_name": product.product_name,
+                "product_name": product.display_name,
                 "color_name": product.color_name,
+                "filler": product.filler,
+                "finish": product.finish,
                 "density_g_cm3": format(product.density_g_cm3, "f"),
                 "diameter_mm": format(product.diameter_mm, "f"),
             }
@@ -375,6 +383,67 @@ async def _state_snapshot(
         ),
         "captured_at": datetime.now(UTC).isoformat(),
     }
+
+
+async def _print_settings_snapshot(
+    session: AsyncSession,
+    *,
+    profile: MaterialProfile | None,
+    inspection_result: InspectionResult | None,
+) -> dict[str, object]:
+    """Build one immutable, versioned settings document for a print."""
+
+    managed: dict[str, object] | None = None
+    if profile is not None:
+        resolved = _json_safe(settings_snapshot_from_profile(profile))
+        revision = await session.get(MaterialTemplateRevision, profile.base_template_revision_id)
+        template = (
+            await session.get(MaterialTemplate, revision.material_template_id)
+            if revision is not None
+            else None
+        )
+        template_settings = _json_safe(revision.settings) if revision is not None else {}
+        differences = (
+            _json_safe(sparse_profile_overrides(template_settings, resolved)) if revision is not None else {}
+        )
+        managed = {
+            "profile_id": str(profile.id),
+            "profile_version": profile.version,
+            "resolved": resolved,
+            "differences": differences,
+            "difference_keys": sorted(override_setting_keys(differences)),
+            "template": (
+                {
+                    "id": str(template.id) if template is not None else None,
+                    "name": template.name if template is not None else None,
+                    "revision_id": str(revision.id),
+                    "version": revision.version,
+                    "settings": template_settings,
+                }
+                if revision is not None
+                else None
+            ),
+        }
+    cura = (
+        inspection_result.cura_settings
+        if inspection_result is not None
+        else {
+            "available": False,
+            "reason": "inspection_unavailable",
+            "global": None,
+            "extruders": [],
+            "setting_count": 0,
+            "filtered_count": 0,
+            "truncated": False,
+        }
+    )
+    return _json_safe(
+        {
+            "schema_version": 1,
+            "managed": managed,
+            "cura": cura,
+        }
+    )
 
 
 def _actual_weight_g(length_mm: Decimal | None, snapshot: dict[str, object]) -> Decimal | None:
@@ -719,10 +788,11 @@ async def synchronize_live_print(
             nozzle_id=printer.active_nozzle_id,
             nozzle_diameter_mm=printer.nozzle_diameter_mm,
             material_guid=material_guid or None,
-            material_name=requested_product.product_name if requested_product else None,
+            material_name=requested_product.display_name[:255] if requested_product else None,
             material_type=requested_product.material_type if requested_product else None,
             state_snapshot=snapshot,
             profile_snapshot=profile_snapshot,
+            print_settings_snapshot={},
             inspection_status=GcodeInspectionStatus.PENDING,
             inspection_policy=policy,
             inspection={},
@@ -772,7 +842,7 @@ async def synchronize_live_print(
             job.material_profile_version = profile.version
             job.filament_product_id = profile.filament_product_id
             job.material_guid = inspected_guid
-            job.material_name = requested_product.product_name if requested_product else None
+            job.material_name = requested_product.display_name[:255] if requested_product else None
             job.material_type = requested_product.material_type if requested_product else None
             job.profile_snapshot = _json_safe(settings_snapshot_from_profile(profile))
             if isinstance(job.state_snapshot, dict):
@@ -788,6 +858,11 @@ async def synchronize_live_print(
                 if segment.filament_product_id == profile.filament_product_id:
                     segment.material_profile_id = profile.id
                     segment.material_profile_version = profile.version
+        job.print_settings_snapshot = await _print_settings_snapshot(
+            session,
+            profile=profile,
+            inspection_result=result,
+        )
         job.gcode_sha256 = sha256
         job.moonraker_file_uuid = _bounded(metadata.get("uuid"), 96)
         await _capture_print_thumbnail(
@@ -876,6 +951,20 @@ async def synchronize_live_print(
             job.material_profile_version = (
                 segment_profile.version if segment_profile else job.material_profile_version
             )
+            if segment_profile is not None:
+                job.profile_snapshot = _json_safe(settings_snapshot_from_profile(segment_profile))
+                settings_snapshot = await _print_settings_snapshot(
+                    session,
+                    profile=segment_profile,
+                    inspection_result=None,
+                )
+                prior_settings_snapshot = (
+                    job.print_settings_snapshot if isinstance(job.print_settings_snapshot, dict) else {}
+                )
+                prior_cura_settings = prior_settings_snapshot.get("cura")
+                if isinstance(prior_cura_settings, dict):
+                    settings_snapshot["cura"] = prior_cura_settings
+                job.print_settings_snapshot = settings_snapshot
             job.build_plate_id = printer.active_plate_id
             job.build_plate_surface_id = printer.active_plate_surface_id
             job.nozzle_id = printer.active_nozzle_id
@@ -1026,6 +1115,7 @@ async def _upsert_history_job(
                 ),
             },
             profile_snapshot={},
+            print_settings_snapshot={},
             inspection_status=GcodeInspectionStatus.UNAVAILABLE,
             inspection_policy="warn",
             inspection={

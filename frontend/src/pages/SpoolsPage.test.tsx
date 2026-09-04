@@ -1,9 +1,10 @@
 // @vitest-environment jsdom
 
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import SpoolsPage from './SpoolsPage'
+import { RouterProvider } from '../context/RouterContext'
 
 const apiFetchMock = vi.hoisted(() => vi.fn())
 
@@ -62,9 +63,13 @@ const spool = {
 
 describe('SpoolsPage', () => {
   afterEach(() => {
+    cleanup()
     apiFetchMock.mockReset()
     window.localStorage.clear()
+    window.history.replaceState(null, '', '/spools')
   })
+
+  window.scrollTo = vi.fn()
 
   it('requests a physical load without presenting the target as active early', async () => {
     apiFetchMock.mockImplementation((path: string, options?: { method?: string }) => {
@@ -81,7 +86,7 @@ describe('SpoolsPage', () => {
 
     render(
       <QueryClientProvider client={queryClient}>
-        <SpoolsPage />
+        <RouterProvider><SpoolsPage /></RouterProvider>
       </QueryClientProvider>,
     )
 
@@ -99,5 +104,24 @@ describe('SpoolsPage', () => {
     expect(screen.getByText('Not active')).toBeTruthy()
     expect(screen.getAllByText('1.5¢/g').length).toBeGreaterThan(0)
     expect(screen.queryByRole('button', { name: 'Set active' })).toBeNull()
+  })
+
+  it('opens a new spool with the just-created filament selected', async () => {
+    window.history.replaceState(null, '', '/spools?create=1&filament_id=product-id')
+    apiFetchMock.mockImplementation((path: string) => {
+      if (path.startsWith('/spools?')) return Promise.resolve({ items: [], total: 0, limit: 200, offset: 0 })
+      if (path === '/filaments') return Promise.resolve([{ ...spool, id: 'product-id', nominal_net_mass_g: '750' }])
+      if (path === '/printers') return Promise.resolve([])
+      return Promise.reject(new Error(`Unexpected API request: ${path}`))
+    })
+    const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+
+    render(<QueryClientProvider client={queryClient}><RouterProvider><SpoolsPage /></RouterProvider></QueryClientProvider>)
+
+    expect(await screen.findByRole('dialog', { name: 'Add a physical spool' })).toBeTruthy()
+    expect((screen.getByLabelText('Filament product') as HTMLSelectElement).value).toBe('product-id')
+    expect((screen.getAllByRole('spinbutton')[0] as HTMLInputElement).value).toBe('750')
+    fireEvent.click(screen.getByRole('button', { name: 'Cancel' }))
+    expect(window.location.search).toBe('')
   })
 })

@@ -113,6 +113,9 @@ class FilamentCreate(ApiModel):
 
 
 class FilamentResponse(FilamentCreate):
+    # Live names are derived from four bounded identity fields, not the legacy
+    # optional input retained for compatibility with older API clients.
+    product_name: str = Field(max_length=345)
     # Rainbow is a fixed six-color application palette. Create/update requests
     # remain capped at three operator-selected samples for multicolor products,
     # while responses must faithfully represent the complete Rainbow palette.
@@ -1488,7 +1491,9 @@ class PrintMaterialSegmentResponse(ApiModel):
     cost_currency: str | None = None
 
 
-class PrintJobResponse(ApiModel):
+class PrintJobSummaryResponse(ApiModel):
+    """Print history fields needed to render lists and ordinary job details."""
+
     id: UUID
     printer_id: UUID
     moonraker_job_id: str | None
@@ -1567,10 +1572,16 @@ class PrintJobResponse(ApiModel):
     assessments: list[PrintAssessmentResponse]
 
 
+class PrintJobResponse(PrintJobSummaryResponse):
+    """One print with its potentially large immutable settings archive."""
+
+    print_settings_snapshot: dict[str, Any]
+
+
 class PrintJobPageResponse(ApiModel):
     """One bounded page of newest-first canonical print records."""
 
-    items: list[PrintJobResponse]
+    items: list[PrintJobSummaryResponse]
     page: int = Field(ge=1)
     per_page: Literal[10, 25, 50, 100]
     total_items: int = Field(ge=0)

@@ -60,7 +60,12 @@ def _description_value(value: object) -> str:
     if not isinstance(value, str):
         raise ValueError("Filament description metadata must be text or null.")
     normalized = value.strip()
-    if not normalized:
+    if not normalized or normalized.casefold() in {
+        "none",
+        "no filler",
+        "no finish",
+        "not specified",
+    }:
         return "None"
     if len(normalized) > 96 or "\n" in normalized or "\r" in normalized:
         raise ValueError("Filament description metadata contains invalid text.")
@@ -90,29 +95,37 @@ def _contains_label_phrase(label: str, component: str) -> bool:
     return f" {normalized_component} " in f" {normalized_label} "
 
 
-def _material_label(material: dict[str, Any], *, include_filler: bool) -> str:
-    """Build a distinct Cura product label by appending one meaningful filler."""
+def _material_label(material: dict[str, Any], *, include_modifiers: bool) -> str:
+    """Build a distinct Cura label with every meaningful product modifier."""
 
     product_name = material.get("product_name")
     if product_name is not None and not isinstance(product_name, str):
         raise ValueError("Filament product name must be text or null.")
     raw_base = product_name if product_name and product_name.strip() else material["color_name"]
-    base = _material_label_component(raw_base, field_name="material label", maximum=192)
+    base = _material_label_component(raw_base, field_name="material label", maximum=345)
 
-    raw_filler = material.get("filler") if include_filler else None
-    if raw_filler is None:
-        return base
-    if not isinstance(raw_filler, str):
-        raise ValueError("Filament filler must be text or null.")
-    normalized_filler = raw_filler.strip()
-    if not normalized_filler or normalized_filler.casefold() in {"none", "no filler"}:
-        return base
-    filler = _material_label_component(normalized_filler, field_name="filler", maximum=96)
-    if _contains_label_phrase(base, filler):
-        return base
-
-    label = f"{base} {filler}"
-    if len(label) > 256:
+    label = base
+    if include_modifiers:
+        for field_name, none_values in (
+            ("filler", {"none", "standard", "no filler", "not specified"}),
+            ("finish", {"none", "standard", "no finish", "not specified"}),
+        ):
+            raw_modifier = material.get(field_name)
+            if raw_modifier is None:
+                continue
+            if not isinstance(raw_modifier, str):
+                raise ValueError(f"Filament {field_name} must be text or null.")
+            normalized_modifier = raw_modifier.strip()
+            if not normalized_modifier or normalized_modifier.casefold() in none_values:
+                continue
+            modifier = _material_label_component(
+                normalized_modifier,
+                field_name=field_name,
+                maximum=96,
+            )
+            if not _contains_label_phrase(label, modifier):
+                label = f"{label} {modifier}"
+    if len(label) > 345:
         raise ValueError("Filament material label is too long.")
     return label
 
@@ -171,7 +184,7 @@ def _material_xml(payload: dict[str, Any]) -> bytes:
         ("brand", material["brand"]),
         ("material", material["material_type"]),
         ("color", material["color_name"]),
-        ("label", _material_label(material, include_filler=payload["source_kind"] == "product")),
+        ("label", _material_label(material, include_modifiers=payload["source_kind"] == "product")),
     ):
         ET.SubElement(name, f"{{{namespace}}}{key}").text = str(value)
     ET.SubElement(metadata, f"{{{namespace}}}version").text = str(profile["version"])

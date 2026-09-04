@@ -87,6 +87,7 @@ async def test_print_page_clamps_to_last_page_and_returns_exact_totals(
     assert response.total_pages == expected_total_pages
     assert response.items == []
     assert session.executed_query is not None
+    assert "print_settings_snapshot" not in str(session.executed_query)
 
 
 @pytest.mark.asyncio

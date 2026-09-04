@@ -645,6 +645,21 @@ textarea { resize: vertical; }
 .print-result-emphasis { font-weight: 750; }
 .inspection-panel { margin-block: 22px; border-block: 1px solid var(--border); padding-block: 18px; }
 .inspection-panel .section-heading { margin: 0 0 12px; }
+.print-settings-summary { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; margin-bottom: 18px; }
+.print-settings-summary > div { display: flex; flex-direction: column; gap: 3px; border: 1px solid var(--border); border-radius: var(--radius-sm); padding: 12px; background: var(--surface-muted); }
+.print-settings-summary span { color: var(--text-muted); font-size: 12px; font-weight: 700; }
+.print-settings-summary strong { font-size: 1.25rem; }
+.print-settings-group { margin-top: 10px; border: 1px solid var(--border); border-radius: var(--radius-sm); background: var(--surface); }
+.print-settings-group > summary { display: flex; align-items: center; justify-content: space-between; gap: 12px; cursor: pointer; padding: 12px 14px; font-weight: 750; }
+.print-settings-group > summary small { color: var(--text-muted); font-weight: 550; text-align: right; }
+.print-settings-group[open] > summary { border-bottom: 1px solid var(--border); background: var(--surface-muted); }
+.print-settings-group > .muted { margin: 14px; }
+.print-settings-table { max-height: 430px; overflow: auto; }
+.print-settings-table table { min-width: 540px; }
+.print-settings-table td:first-child { width: 45%; color: var(--text-muted); font-weight: 650; }
+.print-settings-table code { color: var(--text); white-space: pre-wrap; overflow-wrap: anywhere; }
+.print-settings-source { margin-top: 22px; border-top: 1px solid var(--border); padding-top: 18px; }
+.print-settings-source > .section-heading { margin-bottom: 12px; }
 .hash-value { max-width: 330px; overflow-wrap: anywhere; font-family: ui-monospace, monospace; font-size: 11px; }
 .assessment-form { margin-top: 10px; }
 .defect-picker { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 7px; border: 0; padding: 0; }
@@ -755,6 +770,7 @@ textarea { resize: vertical; }
   .desktop-data-table { display: none; }
   .mobile-card-list { display: grid; }
   .print-detail-grid, .comparison-target-grid { grid-template-columns: 1fr; }
+  .print-settings-summary { grid-template-columns: 1fr; }
   .table-card:not(.desktop-data-table) { overflow: visible; border: 0; background: transparent; box-shadow: none; }
   .table-card:not(.desktop-data-table) table, .table-card:not(.desktop-data-table) tbody { min-width: 0; display: block; }
   .table-card:not(.desktop-data-table) thead { display: none; }

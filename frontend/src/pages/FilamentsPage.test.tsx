@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { cleanup, fireEvent, render, screen } from '@testing-library/react'
+import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { RouterProvider } from '../context/RouterContext'
 import FilamentsPage from './FilamentsPage'
@@ -55,7 +55,9 @@ describe('FilamentsPage', () => {
   })
 
   it('prominently shows the four-part material identity and retains manual-entry focus', async () => {
-    apiFetchMock.mockImplementation((path: string) => {
+    window.scrollTo = vi.fn()
+    apiFetchMock.mockImplementation((path: string, options?: { method?: string }) => {
+      if (path === '/filaments' && options?.method === 'POST') return Promise.resolve(filament)
       if (path === '/filaments') return Promise.resolve([filament])
       if (path === '/profiles') return Promise.resolve([{
         id: 'profile-id', filament_product_id: filament.id, extruder_temp_c: '215',
@@ -77,7 +79,7 @@ describe('FilamentsPage', () => {
 
     expect(await screen.findByRole('heading', { name: 'PLA · Midnight · Carbon fiber · Matte' })).toBeTruthy()
     expect(screen.getByText('Workshop Vendor')).toBeTruthy()
-    expect(screen.getByText('Workshop Blue')).toBeTruthy()
+    expect(screen.queryByText('Workshop Blue')).toBeNull()
     expect(screen.getByText('± 0.02 mm')).toBeTruthy()
     expect(screen.getByText('215 °C')).toBeTruthy()
     expect(screen.queryByText('1.75 mm')).toBeNull()
@@ -96,5 +98,11 @@ describe('FilamentsPage', () => {
       expect(document.activeElement).toBe(colorName)
     }
     expect(colorName.value).toBe('Custom')
+
+    fireEvent.click(screen.getByRole('button', { name: 'Create filament' }))
+    expect(await screen.findByRole('dialog', { name: 'Create a spool?' })).toBeTruthy()
+    fireEvent.click(screen.getByRole('button', { name: 'Add spool' }))
+    await waitFor(() => expect(window.location.pathname).toBe('/spools'))
+    expect(window.location.search).toBe('?create=1&filament_id=product-id')
   })
 })

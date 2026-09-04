@@ -77,18 +77,25 @@ def _plain_value(value: object) -> object:
 
 
 def _equivalent(left: object, right: object) -> bool:
-    """Compare decimal text semantically while retaining exact non-numeric text."""
+    """Compare numeric JSON scalars semantically across database representations."""
 
     left = _plain_value(left)
     right = _plain_value(right)
     if left == right:
         return True
-    if isinstance(left, str) and isinstance(right, str):
-        if NUMERIC_TEXT.fullmatch(left) and NUMERIC_TEXT.fullmatch(right):
+    if isinstance(left, bool) or isinstance(right, bool):
+        return False
+    numeric_types = (int, float, str)
+    if isinstance(left, numeric_types) and isinstance(right, numeric_types):
+        left_text = str(left)
+        right_text = str(right)
+        if NUMERIC_TEXT.fullmatch(left_text) and NUMERIC_TEXT.fullmatch(right_text):
             try:
-                return Decimal(left) == Decimal(right)
+                left_decimal = Decimal(left_text)
+                right_decimal = Decimal(right_text)
             except InvalidOperation:
                 return False
+            return left_decimal.is_finite() and right_decimal.is_finite() and left_decimal == right_decimal
     return False
 
 
@@ -159,7 +166,8 @@ def resolve_profile_settings_for_template_update(
     """Resolve a template update after removing template-owned overrides."""
 
     adjusted_overrides = profile_overrides_without_template_only(overrides)
-    return resolve_profile_settings(new_base_settings, adjusted_overrides), adjusted_overrides
+    resolved = resolve_profile_settings(new_base_settings, adjusted_overrides)
+    return resolved, sparse_profile_overrides(new_base_settings, resolved)
 
 
 def sparse_profile_overrides(

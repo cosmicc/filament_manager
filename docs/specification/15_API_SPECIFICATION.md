@@ -10,6 +10,8 @@
 - idempotency key on measurement and device-event creation
 - authenticated administrative writes
 
+Filament and spool inventory responses expose the automatic material name through `product_name`. Filament create/update requests still accept the legacy optional `product_name` for older clients, but it never controls live names. Browser forms no longer submit it. The derived response allows up to 345 characters across the four bounded identity fields.
+
 ## Core resources
 
 ### Inventory
@@ -46,7 +48,7 @@ Spool responses include a derived completed-print count and `cost_per_gram`, cal
 - `PUT /profiles/templates/{id}/settings`
 - `PATCH /profiles/templates/{id}`
 
-`POST /filaments` selects a current template snapshot and atomically creates the product plus its current inherited profile. Supplying a validated duplicate source copies its sparse explicit profile customizations into the compatible selected template scope but never copies spools, history, calibrations, or bindings. `PATCH /filaments/{id}` corrects product setup and can relink a compatible current template while preserving sparse overrides. `DELETE /filaments/{id}` deletes only dependency-free setup mistakes and otherwise archives. Direct profile/template saves append hidden immutable snapshots, immediately become current, and queue projections. A template save also writes the next current profile snapshot for every linked filament while retaining each sparse explicit customization. Filament create/update resolves a shared case-insensitive solid palette, fixed Rainbow color, or one-to-three-sample product-specific multicolor palette. Only solid palette changes propagate to matching products. Color changes are rejected after retained spool use or print history. Configured-system seeding reports counts for printers, plates, and newly created recommended ASA templates.
+`POST /filaments` selects a current template snapshot and atomically creates the product plus its current inherited profile. Supplying a validated duplicate source copies its sparse explicit profile customizations into the compatible selected template scope but never copies spools, history, calibrations, or bindings. The browser may then open `/spools?create=1&filament_id=<new UUID>` to start a spool with that product selected. `GET /filaments` and `GET /spools` text searches include filler and finish. `PATCH /filaments/{id}` corrects product setup and can relink a compatible current template while preserving sparse overrides. `DELETE /filaments/{id}` deletes only dependency-free setup mistakes and otherwise archives. Direct profile/template saves append hidden immutable snapshots, immediately become current, and queue projections. A template save also writes the next current profile snapshot for every linked filament while retaining each semantic sparse customization. Filament create/update resolves a shared case-insensitive solid palette, fixed Rainbow color, or one-to-three-sample product-specific multicolor palette. Only solid palette changes propagate to matching products. Color changes are rejected after retained spool use or print history. Configured-system seeding reports counts for printers, plates, and newly created recommended ASA templates.
 
 ### Build plates
 
@@ -100,7 +102,7 @@ The takeover request contains the complete reviewed source-ID set, explicit conf
 - `GET /prints/profile-statistics`
 - `POST /prints/{id}/assessments`
 
-Print responses preserve exact start-state snapshots, bounded G-code inspection evidence, material-change segments, actual usage, explicit unresolved legacy state, the supported bounded raw Moonraker history outcome, and append-only quality revisions. The paginated route defaults to all printers and 10 newest-first records, accepts an optional exact printer UUID and only 10, 25, 50, or 100 per page, returns exact filtered totals, and clamps a now-stale requested page to the last available page. Profile statistics use the latest assessment for each print.
+Print responses preserve exact start-state snapshots, bounded G-code inspection evidence, material-change segments, actual usage, explicit unresolved legacy state, the supported bounded raw Moonraker history outcome, and append-only quality revisions. The single-print response also includes its versioned managed/template/difference and bounded Cura settings archive; collection and paginated responses omit that potentially large document. The paginated route defaults to all printers and 10 newest-first records, accepts an optional exact printer UUID and only 10, 25, 50, or 100 per page, returns exact filtered totals, and clamps a now-stale requested page to the last available page. Profile statistics use the latest assessment for each print.
 
 ### Notifications and operational policy
 

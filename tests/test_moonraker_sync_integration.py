@@ -1,5 +1,6 @@
 """PostgreSQL-backed automatic Moonraker state synchronization tests."""
 
+import json
 from datetime import UTC, datetime
 from decimal import Decimal
 from types import SimpleNamespace
@@ -141,6 +142,7 @@ async def test_active_spool_selection_and_clear_follow_moonraker(
                 settings={
                     "extruder_temp_c": "215",
                     "bed_temp_c": "60",
+                    "initial_bed_temp_c": "60",
                     "flow_percent": "100",
                     "cooling_enabled": True,
                     "cooling_min_percent": "20",
@@ -260,7 +262,7 @@ async def test_active_spool_selection_and_clear_follow_moonraker(
             assert catalog.manual_spools == [
                 [10, "FIRST-Filament-Manager-PLA-Blue"],
                 [20, "SECOND-Filament-Manager-PLA-Blue"],
-                [30, "THIRD-Filament-Manager-Draft-profile-filament-Orange"],
+                [30, "THIRD-Filament-Manager-PLA-Orange"],
             ]
             assert catalog.print_temperatures == {"10": "215", "20": "215"}
             assert catalog.temperatures == {"10": "218", "20": "218", "30": "220"}
@@ -413,7 +415,18 @@ async def test_active_spool_selection_and_clear_follow_moonraker(
                     return MoonrakerGcodeFile(
                         sha256="a" * 64,
                         header=f";Generated with Cura_SteamEngine 5.10\nMATERIAL_GUID={material_guid}\n",
-                        tail="",
+                        tail=";SETTING_3 "
+                        + json.dumps(
+                            {
+                                "global_quality": (
+                                    "[general]\nname = Normal\n[values]\n"
+                                    "layer_height = 0.2\nwall_line_count = =max(2, 3)\n"
+                                ),
+                                "extruder_quality": [
+                                    "[metadata]\nposition = 0\n[values]\nmaterial_print_temperature = 215\n"
+                                ],
+                            }
+                        ),
                         size=96,
                     )
 
@@ -517,6 +530,18 @@ async def test_active_spool_selection_and_clear_follow_moonraker(
             )
             assert repeat_segment is not None
             assert repeat_segment.actual_filament_weight_g is not None
+            repeated_job = await session.get(PrintJob, repeat_job_id)
+            assert repeated_job is not None
+            assert repeated_job.print_settings_snapshot["schema_version"] == 1
+            managed_settings = repeated_job.print_settings_snapshot["managed"]
+            assert isinstance(managed_settings, dict)
+            assert managed_settings["difference_keys"] == []
+            assert managed_settings["template"]["name"] == "Template PLA"
+            cura_settings = repeated_job.print_settings_snapshot["cura"]
+            assert isinstance(cura_settings, dict)
+            assert cura_settings["setting_count"] == 3
+            assert cura_settings["global"]["settings"]["wall_line_count"] == "=max(2, 3)"
+            assert cura_settings["extruders"][0]["settings"] == {"material_print_temperature": "215"}
             assert await session.scalar(select(func.count(SpoolUsageEvent.id))) == 1
             refreshed_second = await session.get(Spool, second.id)
             assert refreshed_second is not None

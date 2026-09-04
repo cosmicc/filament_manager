@@ -49,6 +49,7 @@ from filament_manager.models.operations import NfcTag, ProjectionState
 from filament_manager.models.printing import PrintJob, PrintMaterialSegment
 from filament_manager.models.workstations import CuraDeployment
 from filament_manager.services.events import add_audit_event, add_outbox_job
+from filament_manager.services.filament_defaults import queue_filament_default_projection
 from filament_manager.services.material_settings import (
     create_published_profile_snapshot,
     queue_managed_cura_library,
@@ -347,7 +348,7 @@ def spool_response(spool: Spool, *, completed_print_count: int = 0) -> SpoolResp
         color_mode=product.color_mode,
         color_hexes=product.color_hexes,
         vendor_name=product.vendor.name if product.vendor else None,
-        product_name=product.product_name,
+        product_name=product.display_name,
         nominal_net_mass_g=spool.nominal_net_mass_g,
         tare_mass_g=spool.tare_mass_g,
         remaining_mass_expected_g=spool.remaining_mass_expected_g,
@@ -393,7 +394,7 @@ def filament_response(product: FilamentProduct, *, color_editable: bool = True) 
         color_hex=product.color_hex,
         color_mode=product.color_mode,
         color_hexes=product.color_hexes,
-        product_name=product.product_name,
+        product_name=product.display_name,
         diameter_mm=product.diameter_mm,
         tolerance_mm=product.tolerance_mm,
         density_g_cm3=product.density_g_cm3,
@@ -560,6 +561,8 @@ async def list_filaments(
                 FilamentProduct.product_name.ilike(term),
                 FilamentProduct.color_name.ilike(term),
                 FilamentProduct.material_type.ilike(term),
+                FilamentProduct.filler.ilike(term),
+                FilamentProduct.finish.ilike(term),
             )
         )
     result = await session.execute(query.order_by(FilamentProduct.material_type, FilamentProduct.color_name))
@@ -1163,6 +1166,8 @@ async def list_spools(
                 FilamentProduct.material_type.ilike(term),
                 FilamentProduct.color_name.ilike(term),
                 FilamentProduct.product_name.ilike(term),
+                FilamentProduct.filler.ilike(term),
+                FilamentProduct.finish.ilike(term),
                 Spool.location.ilike(term),
             )
         )
@@ -1586,6 +1591,11 @@ async def delete_or_archive_spool(
         )
     )
     await session.delete(spool)
+    await queue_filament_default_projection(
+        session,
+        product_id=spool.filament_product_id,
+        source_key=f"spool:{spool.id}:delete",
+    )
     await queue_managed_cura_library(session, requested_by=operator.id)
     await session.commit()
     return {"disposition": "deleted"}
@@ -1718,6 +1728,17 @@ async def record_measurement(
         aggregate_id=spool.id,
         aggregate_version=spool.record_version,
         payload={"spool_id": str(spool.id), "remaining_mass_g": str(calculation.net_mass_g)},
+    )
+    # A weighing can establish an unknown tare or empty the spool. Refresh its
+    # metadata and shared product defaults as well as the explicit net correction.
+    add_outbox_job(
+        session,
+        job_type="spoolman.spool.upsert",
+        idempotency_key=f"measurement:{measurement.id}:metadata",
+        aggregate_type="spool",
+        aggregate_id=spool.id,
+        aggregate_version=spool.record_version,
+        payload={"spool_id": str(spool.id)},
     )
     add_outbox_job(
         session,

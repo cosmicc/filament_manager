@@ -26,6 +26,7 @@ describe('PrintSettingsPage', () => {
       }])
       if (path === '/filaments') return Promise.resolve([{
         id: 'filament-id', vendor_name: 'Workshop', material_type: 'PLA', color_name: 'Blue',
+        filler: 'Carbon Fiber', finish: 'Matte',
       }])
       if (path === '/printers') return Promise.resolve([{ id: 'printer-id', name: 'Printer A' }])
       if (path === '/build-plates' || path === '/profiles/templates?include_inactive=true' || path === '/profiles/cura-settings/catalog') return Promise.resolve([])
@@ -38,8 +39,8 @@ describe('PrintSettingsPage', () => {
     expect(screen.getByRole('link', { name: 'Catalog' }).getAttribute('href')).toBe('/filaments')
     expect(await screen.findByText('Printer A · 0.6 mm')).toBeTruthy()
     expect(screen.getByText('2 customized')).toBeTruthy()
-    expect(screen.getByRole('button', { name: /Compare Workshop PLA/ })).toBeTruthy()
-    expect(screen.getByRole('link', { name: /Open Workshop PLA/ }).getAttribute('href')).toBe('/filaments/filament-id')
-    expect(screen.getByRole('link', { name: /Download Workshop PLA/ }).getAttribute('href')).toBe('/api/v1/profiles/profile-id/exports/cura')
+    expect(screen.getByRole('button', { name: /Compare Workshop · PLA · Blue · Carbon Fiber · Matte/ })).toBeTruthy()
+    expect(screen.getByRole('link', { name: /Open Workshop · PLA · Blue · Carbon Fiber · Matte/ }).getAttribute('href')).toBe('/filaments/filament-id')
+    expect(screen.getByRole('link', { name: /Download Workshop · PLA · Blue · Carbon Fiber · Matte/ }).getAttribute('href')).toBe('/api/v1/profiles/profile-id/exports/cura')
   })
 })

@@ -1,4 +1,9 @@
-import { expect, test } from '@playwright/test'
+import { expect, test, type Page } from '@playwright/test'
+
+async function captureEvidence(page: Page, name: string): Promise<void> {
+  const directory = process.env.FILAMENT_MANAGER_E2E_EVIDENCE_DIR
+  if (directory) await page.screenshot({ path: `${directory}/${name}.png`, fullPage: true })
+}
 
 const thumbnailSvg = `<svg xmlns="http://www.w3.org/2000/svg" width="400" height="300" viewBox="0 0 400 300"><defs><linearGradient id="background" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#0c2238"/><stop offset="1" stop-color="#17607b"/></linearGradient></defs><rect width="400" height="300" rx="18" fill="url(#background)"/><path d="M200 62 294 114v92l-94 52-94-52v-92z" fill="#d8edf5" stroke="#77c8e4" stroke-width="8"/><path d="m106 114 94 54 94-54M200 168v90" fill="none" stroke="#17607b" stroke-width="8"/><text x="200" y="38" fill="#fff" font-family="sans-serif" font-size="18" text-anchor="middle">G-code preview</text></svg>`
 
@@ -36,9 +41,23 @@ const printJob = {
   state_snapshot: {
     printer: { name: 'Workshop Printer' }, spool: { code: 'PETG-01' },
     nozzle: { code: 'N4', diameter_mm: '0.4', material: 'Hardened steel' },
-    filament: { product_name: 'Workshop PETG' }, build_plate_surface: { code: 'P4b' },
+    filament: { product_name: 'Workshop PETG', material_type: 'PETG', color_name: 'Galaxy Blue', filler: 'Carbon Fiber', finish: 'Matte' }, build_plate_surface: { code: 'P4b' },
   },
   profile_snapshot: { extruder_temp_c: '235', flow_percent: '96' },
+  print_settings_snapshot: {
+    schema_version: 1,
+    managed: {
+      profile_id: '60000000-0000-0000-0000-000000000001', profile_version: 12,
+      resolved: { extruder_temp_c: '235', initial_bed_temp_c: '85', flow_percent: '96' },
+      differences: { flow_percent: '96' }, difference_keys: ['flow_percent'],
+      template: { id: '61000000-0000-0000-0000-000000000001', name: 'Template PETG', revision_id: '62000000-0000-0000-0000-000000000001', version: 4, settings: { extruder_temp_c: '235', initial_bed_temp_c: '85', flow_percent: '100' } },
+    },
+    cura: {
+      available: true, reason: null, setting_count: 3, filtered_count: 0, truncated: false,
+      global: { name: 'Dimensional', settings: { wall_line_count: '=max(2, 3)', layer_height: '0.2' } },
+      extruders: [{ position: 0, name: 'PETG extruder', settings: { material_print_temperature: '240' } }],
+    },
+  },
   inspection_status: 'warning',
   inspection_policy: 'warn',
   inspection: {
@@ -100,6 +119,9 @@ const printJob = {
 }
 
 test.beforeEach(async ({ page }) => {
+  const printSummary = Object.fromEntries(
+    Object.entries(printJob).filter(([key]) => key !== 'print_settings_snapshot'),
+  )
   await page.route('**/runtime-config.js', (route) => route.fulfill({
     contentType: 'application/javascript',
     body: 'window.__FILAMENT_MANAGER_RUNTIME_CONFIG__={bugsnag:{enabled:false}};',
@@ -113,8 +135,9 @@ test.beforeEach(async ({ page }) => {
     resolved_at: null, read: false,
   }] }))
   await page.route('**/api/v1/prints/page?**', (route) => route.fulfill({ json: {
-    items: [printJob], page: 1, per_page: 10, total_items: 1, total_pages: 1,
+    items: [printSummary], page: 1, per_page: 10, total_items: 1, total_pages: 1,
   } }))
+  await page.route(`**/api/v1/prints/${printJob.id}`, (route) => route.fulfill({ json: printJob }))
   await page.route('**/api/v1/printers', (route) => route.fulfill({ json: [{
     id: printJob.printer_id, name: 'Workshop Printer', printer_code: 'workshop-printer',
   }] }))
@@ -138,7 +161,7 @@ test('exact print state, inspection, scoring, notifications, and mobile cards re
   await expect(page.getByRole('button', { name: 'Last' })).toBeDisabled()
   await expect(page.getByText('29.5 g · $0.89', { exact: true })).toBeVisible()
   await expect(page.locator('tr.print-history-entry--successful')).toHaveCount(1)
-  await page.screenshot({ path: '../docs/design/validation/print-history-v062.png', fullPage: true })
+  await captureEvidence(page, 'print-history-v070')
   await page.getByText('dimensional-cube.gcode', { exact: true }).first().click()
   const dialog = page.getByRole('dialog', { name: 'dimensional-cube.gcode' })
   await expect(dialog.getByText('G-code 240; profile 235')).toBeVisible()
@@ -154,15 +177,30 @@ test('exact print state, inspection, scoring, notifications, and mobile cards re
     `/api/v1/prints/${printJob.id}/timelapse`,
   )
   await expect(dialog.getByRole('button', { name: 'Save assessment' })).toBeVisible()
+  await dialog.getByRole('button', { name: 'Advanced print settings' }).click()
+  const settingsDialog = page.getByRole('dialog', { name: 'Advanced print settings' })
+  await settingsDialog.getByText('Global quality', { exact: true }).click()
+  const preservedFormula = settingsDialog.getByText('=max(2, 3)')
+  await expect(preservedFormula).toBeVisible()
+  await expect(settingsDialog.getByText('Template PETG · version 4')).toBeVisible()
+  await preservedFormula.scrollIntoViewIfNeeded()
+  await captureEvidence(page, 'print-history-advanced-settings-v070')
+  await settingsDialog.getByRole('button', { name: 'Back to print' }).click()
   await page.keyboard.press('Escape')
 
   await page.setViewportSize({ width: 390, height: 844 })
   await page.reload()
   await expect(page.getByRole('heading', { name: 'Print history' })).toBeVisible()
-  await page.screenshot({ path: '../docs/design/validation/print-history-mobile-v062.png', fullPage: true })
+  await captureEvidence(page, 'print-history-mobile-v070')
   await page.getByRole('button', { name: /dimensional-cube.gcode/ }).click()
-  await expect(page.getByRole('dialog', { name: 'dimensional-cube.gcode' })).toBeVisible()
-  await page.keyboard.press('Escape')
+  const mobilePrintDialog = page.getByRole('dialog', { name: 'dimensional-cube.gcode' })
+  await expect(mobilePrintDialog).toBeVisible()
+  await mobilePrintDialog.getByRole('button', { name: 'Advanced print settings' }).click()
+  const mobileSettingsDialog = page.getByRole('dialog', { name: 'Advanced print settings' })
+  await mobileSettingsDialog.getByText('Global quality', { exact: true }).click()
+  await expect(mobileSettingsDialog.getByText('=max(2, 3)')).toBeVisible()
+  await captureEvidence(page, 'print-history-advanced-settings-mobile-v070')
+  await mobileSettingsDialog.getByRole('button', { name: 'Close', exact: true }).click()
 
   await page.getByRole('button', { name: '1 unread notifications' }).click()
   await expect(page.getByText('Spool PETG-01 is low')).toBeVisible()

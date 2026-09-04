@@ -10,7 +10,7 @@ import httpx
 from fastapi import APIRouter, Query, Request, Response, status
 from fastapi.responses import StreamingResponse
 from sqlalchemy import Select, func, select
-from sqlalchemy.orm import selectinload
+from sqlalchemy.orm import defer, selectinload
 
 from filament_manager.clients.moonraker import MoonrakerClient
 from filament_manager.config import get_settings
@@ -28,6 +28,7 @@ from ..schemas import (
     PrintAssessmentResponse,
     PrintJobPageResponse,
     PrintJobResponse,
+    PrintJobSummaryResponse,
     PrintMaterialSegmentResponse,
 )
 
@@ -47,14 +48,25 @@ MOONRAKER_HISTORY_STATUSES = frozenset(
 PRINT_PAGE_SIZES: tuple[Literal[10, 25, 50, 100], ...] = (10, 25, 50, 100)
 
 
-def _print_query() -> Select[tuple[PrintJob]]:
-    return select(PrintJob).options(selectinload(PrintJob.segments), selectinload(PrintJob.assessments))
+def _print_query(*, include_settings: bool = True) -> Select[tuple[PrintJob]]:
+    """Build a print query, deferring large settings archives for list views."""
+
+    query = select(PrintJob).options(
+        selectinload(PrintJob.segments),
+        selectinload(PrintJob.assessments),
+    )
+    if not include_settings:
+        query = query.options(defer(PrintJob.print_settings_snapshot))
+    return query
 
 
-def _print_response(job: PrintJob) -> PrintJobResponse:
+def _print_response[PrintResponse: PrintJobSummaryResponse](
+    job: PrintJob,
+    response_type: type[PrintResponse],
+) -> PrintResponse:
     """Expose authenticated media links and immutable derived print costs."""
 
-    response = PrintJobResponse.model_validate(job)
+    response = response_type.model_validate(job)
     segments: list[PrintMaterialSegmentResponse] = []
     for segment in job.segments:
         rendered_segment = PrintMaterialSegmentResponse.model_validate(segment)
@@ -88,7 +100,7 @@ def _print_response(job: PrintJob) -> PrintJobResponse:
     )
 
 
-@router.get("", response_model=list[PrintJobResponse])
+@router.get("", response_model=list[PrintJobSummaryResponse])
 async def list_prints(
     _: Viewer,
     session: DatabaseSession,
@@ -97,10 +109,12 @@ async def list_prints(
     profile_id: UUID | None = None,
     limit: int = 100,
     offset: int = 0,
-) -> list[PrintJobResponse]:
-    """Return bounded newest-first canonical print records and exact snapshots."""
+) -> list[PrintJobSummaryResponse]:
+    """Return bounded newest-first canonical print summaries."""
 
-    query = _print_query().order_by(PrintJob.started_at.desc().nullslast(), PrintJob.created_at.desc())
+    query = _print_query(include_settings=False).order_by(
+        PrintJob.started_at.desc().nullslast(), PrintJob.created_at.desc()
+    )
     if print_status is not None:
         query = query.where(PrintJob.status == print_status)
     if printer_id is not None:
@@ -109,7 +123,7 @@ async def list_prints(
         query = query.where(PrintJob.material_profile_id == profile_id)
     query = query.offset(min(max(offset, 0), 100_000)).limit(min(max(limit, 1), 250))
     result = await session.execute(query)
-    return [_print_response(job) for job in result.scalars().unique()]
+    return [_print_response(job, PrintJobSummaryResponse) for job in result.scalars().unique()]
 
 
 @router.get("/page", response_model=PrintJobPageResponse)
@@ -143,7 +157,7 @@ async def list_print_page(
     total_pages = max(1, (total_items + page_size - 1) // page_size)
     effective_page = min(page, total_pages)
     query = (
-        _print_query()
+        _print_query(include_settings=False)
         .where(*filters)
         .order_by(PrintJob.started_at.desc().nullslast(), PrintJob.created_at.desc())
         .offset((effective_page - 1) * page_size)
@@ -151,7 +165,7 @@ async def list_print_page(
     )
     result = await session.execute(query)
     return PrintJobPageResponse(
-        items=[_print_response(job) for job in result.scalars().unique()],
+        items=[_print_response(job, PrintJobSummaryResponse) for job in result.scalars().unique()],
         page=effective_page,
         per_page=page_size,
         total_items=total_items,
@@ -185,7 +199,7 @@ async def get_print(print_id: UUID, _: Viewer, session: DatabaseSession) -> Prin
     job = await session.scalar(_print_query().where(PrintJob.id == print_id))
     if job is None:
         raise ApiError(status.HTTP_404_NOT_FOUND, "unknown_print", "Print not found")
-    return _print_response(job)
+    return _print_response(job, PrintJobResponse)
 
 
 @router.get("/{print_id}/thumbnail")

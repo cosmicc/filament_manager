@@ -23,7 +23,7 @@ from filament_manager.domain.spool_preflight import (
     cura_product_material_guid,
     cura_product_scope_id,
 )
-from filament_manager.models.enums import CuraDeploymentStatus, ProfileStatus, SpoolStatus
+from filament_manager.models.enums import CuraDeploymentStatus, ProfileStatus
 from filament_manager.models.inventory import (
     BuildPlate,
     BuildPlateSurface,
@@ -32,10 +32,10 @@ from filament_manager.models.inventory import (
     MaterialTemplate,
     MaterialTemplateRevision,
     Printer,
-    Spool,
     Vendor,
 )
 from filament_manager.models.workstations import CuraDeployment, WorkstationAgent
+from filament_manager.services.filament_defaults import product_cost_bases
 
 
 def _decimal(value: Decimal | None) -> str | None:
@@ -119,46 +119,16 @@ async def _product_cura_costs(session: AsyncSession) -> dict[UUID, dict[str, str
     specific physical spool is selected during slicing.
     """
 
-    spools = list(
-        await session.scalars(
-            select(Spool)
-            .where(
-                Spool.archived.is_(False),
-                Spool.status != SpoolStatus.EMPTY,
-                Spool.purchase_cost.is_not(None),
-            )
-            .order_by(Spool.filament_product_id, Spool.id)
-        )
-    )
-    grouped: dict[UUID, list[Spool]] = {}
-    for spool in spools:
-        grouped.setdefault(spool.filament_product_id, []).append(spool)
-
-    result: dict[UUID, dict[str, str]] = {}
-    for product_id, priced_spools in grouped.items():
-        currencies = {spool.currency for spool in priced_spools}
-        if len(currencies) != 1:
-            # Cura's material-cost preference has no currency field. Mixing
-            # currencies would create a plausible-looking but invalid estimate.
-            continue
-        total_weight = sum((spool.nominal_net_mass_g for spool in priced_spools), Decimal("0"))
-        total_cost = sum(
-            (spool.purchase_cost or Decimal("0") for spool in priced_spools),
-            Decimal("0"),
-        )
-        if total_weight <= 0:
-            continue
-        cost_per_gram = total_cost / total_weight
-        result[product_id] = {
+    costs = await product_cost_bases(session)
+    return {
+        product_id: {
             "spool_weight_g": "1000",
-            "spool_cost": format(
-                (cost_per_gram * Decimal("1000")).quantize(Decimal("0.01")),
-                "f",
-            ),
-            "currency": next(iter(currencies)),
-            "source_spool_count": str(len(priced_spools)),
+            "spool_cost": format(basis.price_for_weight(Decimal("1000")), "f"),
+            "currency": basis.currency,
+            "source_spool_count": str(basis.source_spool_count),
         }
-    return result
+        for product_id, basis in costs.items()
+    }
 
 
 async def build_cura_library(session: AsyncSession) -> dict[str, object]:
@@ -283,7 +253,7 @@ async def build_cura_library(session: AsyncSession) -> dict[str, object]:
                     "product_id": str(product.id),
                     "brand": vendor.name if vendor else "Unknown",
                     "material_type": product.material_type,
-                    "product_name": product.product_name or product.color_name,
+                    "product_name": product.display_name,
                     "color_name": product.color_name,
                     "filler": product.filler,
                     "finish": product.finish,

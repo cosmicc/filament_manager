@@ -11,6 +11,7 @@ import { PageHeader } from '../components/PageHeader'
 import { StatusPill } from '../components/StatusPill'
 import { useAuth } from '../context/AuthContext'
 import { compactNumber, inputNumber, titleCase } from '../lib/format'
+import { materialIdentitySummary } from '../lib/materialIdentity'
 
 const templateOnlyCalibrationSettings = new Set([
   'cura_extensions.klipper_smooth_time_enable',
@@ -108,7 +109,7 @@ function CreateCalibrationModal({ filaments, printers, plates, onClose }: { fila
       <form id="create-calibration" className="form-stack" onSubmit={(event) => { event.preventDefault(); mutation.mutate() }}>
         <EditorSection title="Material and printer" description="The exact combination this calibration will tune.">
           <div className="form-grid">
-            <label className="form-grid__wide">Filament product<select value={filamentId} onChange={(event) => setFilamentId(event.target.value)} required autoFocus>{filaments.map((item) => <option key={item.id} value={item.id}>{item.vendor_name} {item.material_type} · {item.color_name}</option>)}</select></label>
+            <label className="form-grid__wide">Filament product<select value={filamentId} onChange={(event) => setFilamentId(event.target.value)} required autoFocus>{filaments.map((item) => <option key={item.id} value={item.id}>{item.vendor_name ?? 'Unspecified vendor'} · {materialIdentitySummary(item)}</option>)}</select></label>
             <label>Printer<select value={printerId} onChange={(event) => { const id = event.target.value; setPrinterId(id); setNozzle(printers.find((item) => item.id === id)?.nozzle_diameter_mm ?? '0.4') }} required>{printers.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}</select></label>
             <label>Nozzle diameter<div className="input-suffix"><input type="number" min="0.1" step="0.1" value={nozzle} onChange={(event) => setNozzle(event.target.value)} required /><span>mm</span></div></label>
           </div>
@@ -190,7 +191,7 @@ export default function CalibrationPage() {
   const deleteSession = useMutation({ mutationFn: () => apiFetch(`/calibrations/${selected?.id}?expected_version=${selected?.record_version}`, { method: 'DELETE' }), onSuccess: async () => { setSelectedId(''); setStepKey(''); await client.invalidateQueries({ queryKey: ['calibrations'] }) }, onError: (caught) => setError(caught instanceof Error ? caught.message : 'Could not delete calibration') })
   const canEdit = user?.role !== 'viewer'
   const ready = selected?.status === 'ready_to_publish'
-  const filamentName = (id: string) => { const item = filaments.data?.find((value) => value.id === id); return item ? `${item.vendor_name ?? ''} ${item.material_type} · ${item.color_name}`.trim() : 'Unknown filament' }
+  const filamentName = (id: string) => { const item = filaments.data?.find((value) => value.id === id); return item ? `${item.vendor_name ?? 'Unspecified vendor'} · ${materialIdentitySummary(item)}` : 'Unknown filament' }
   const plateSideName = (id: string | null) => plates.data
     ?.flatMap((plate) => plate.surfaces)
     .find((surface) => surface.id === id)?.surface_code

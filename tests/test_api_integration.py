@@ -168,7 +168,13 @@ async def test_unknown_tare_measurement_is_one_audited_transaction(monkeypatch: 
             assert stored_spool.remaining_mass_effective_g == Decimal("800.000")
             assert stored_spool.record_version == 2
             assert await session.scalar(select(func.count(SpoolMeasurement.id))) == 1
-            assert await session.scalar(select(func.count(OutboxJob.id))) == 2
+            assert await session.scalar(select(func.count(OutboxJob.id))) == 3
+            assert (
+                await session.scalar(
+                    select(OutboxJob.id).where(OutboxJob.job_type == "spoolman.spool.upsert")
+                )
+                is not None
+            )
             audit = await session.scalar(
                 select(AuditEvent).where(AuditEvent.action == "spool.measurement.accept")
             )
@@ -445,6 +451,15 @@ async def test_seed_system_route_creates_configured_resources(monkeypatch: pytes
 
         async with factory() as session:
             assert await session.scalar(select(func.count(Printer.id))) == 1
+            assert (
+                await session.scalar(
+                    select(OutboxJob.id).where(
+                        OutboxJob.idempotency_key.like(f"spool:{setup_spool.json()['id']}:delete:filament:%"),
+                        OutboxJob.job_type == "spoolman.filament.upsert",
+                    )
+                )
+                is not None
+            )
             assert await session.scalar(select(func.count(BuildPlate.id))) == 5
             assert await session.scalar(select(func.count(BuildPlateSurface.id))) == 5
             asa_template = await session.scalar(
@@ -780,7 +795,18 @@ async def test_workbook_upload_dry_run_and_commit_populates_inventory(
             assert await session.scalar(select(func.count(Spool.id))) == 35
             assert await session.scalar(select(func.count(Printer.id))) == 1
             assert await session.scalar(select(func.count(BuildPlate.id))) == 5
-            assert await session.scalar(select(func.count(OutboxJob.id))) == 66
+            assert (
+                await session.scalar(select(func.count(OutboxJob.id)))
+                == 36 + 2 * committed.json()["profiles"]
+            )
+            assert (
+                await session.scalar(
+                    select(func.count(OutboxJob.id)).where(
+                        OutboxJob.job_type == "spoolman.filament.upsert",
+                    )
+                )
+                == committed.json()["profiles"]
+            )
             assert (
                 await session.scalar(
                     select(func.count(OutboxJob.id)).where(OutboxJob.job_type == "spoolman.spool.upsert")

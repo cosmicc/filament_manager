@@ -111,6 +111,19 @@ class FilamentProduct(UUIDPrimaryKeyMixin, TimestampMixin, Base):
 
     vendor: Mapped[Vendor | None] = relationship()
 
+    @property
+    def display_name(self) -> str:
+        """Derive the live name without rewriting legacy names or historical records."""
+
+        absent_modifiers = {"none", "standard", "no filler", "no finish", "not specified"}
+        parts = [self.material_type.strip(), self.color_name.strip()]
+        parts.extend(
+            value.strip()
+            for value in (self.filler, self.finish)
+            if value and value.strip() and value.strip().casefold() not in absent_modifiers
+        )
+        return " · ".join(parts)
+
 
 class Spool(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     """A uniquely labelled physical spool."""

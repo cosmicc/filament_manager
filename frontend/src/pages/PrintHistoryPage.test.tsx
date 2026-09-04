@@ -29,10 +29,34 @@ const printJob: Record<string, unknown> = {
     printer: { name: 'Printer A' },
     nozzle: { code: 'NZ-040', material: 'Brass' },
     spool: { code: 'S-001' },
-    filament: { product_name: 'Workshop PLA' },
+    filament: { product_name: 'Workshop PLA', material_type: 'PLA', color_name: 'Blue', filler: 'Carbon Fiber', finish: 'Matte' },
     build_plate_surface: { code: 'P1' },
   },
   profile_snapshot: {},
+  print_settings_snapshot: {
+    schema_version: 1,
+    managed: {
+      profile_id: 'profile-id',
+      profile_version: 3,
+      resolved: { extruder_temp_c: '215', initial_bed_temp_c: '65', cura_extensions: {} },
+      differences: { extruder_temp_c: '215' },
+      difference_keys: ['extruder_temp_c'],
+      template: {
+        name: 'Template PLA',
+        version: 2,
+        settings: { extruder_temp_c: '210', initial_bed_temp_c: '65', cura_extensions: {} },
+      },
+    },
+    cura: {
+      available: true,
+      reason: null,
+      global: { name: 'Normal', settings: { layer_height: '0.2', wall_line_count: '=max(2, machine_nozzle_size)' } },
+      extruders: [{ position: '0', name: 'Extruder 1', settings: { material_print_temperature: '215' } }],
+      setting_count: 3,
+      filtered_count: 0,
+      truncated: false,
+    },
+  },
   inspection_status: 'passed',
   inspection_policy: 'warn',
   inspection: { file_metadata: { object_height: '20', layer_count: 100, size: 1_048_576 } },
@@ -87,13 +111,25 @@ const printJob: Record<string, unknown> = {
 }
 
 function printPage(items = [printJob]) {
-  return { items, page: 1, per_page: 10, total_items: items.length, total_pages: 1 }
+  return {
+    items: items.map((item) => Object.fromEntries(
+      Object.entries(item).filter(([key]) => key !== 'print_settings_snapshot'),
+    )),
+    page: 1,
+    per_page: 10,
+    total_items: items.length,
+    total_pages: 1,
+  }
 }
 
 function mockPrintPage(items = [printJob]) {
   apiFetchMock.mockImplementation((url: string) => {
     if (url === '/printers') return Promise.resolve([{ id: 'printer-id', name: 'Printer A' }])
     if (url.startsWith('/prints/page?')) return Promise.resolve(printPage(items))
+    if (url.startsWith('/prints/')) {
+      const printId = url.slice('/prints/'.length)
+      return Promise.resolve(items.find((item) => item.id === printId) ?? printJob)
+    }
     return Promise.reject(new Error(`Unexpected API path: ${url}`))
   })
 }
@@ -110,14 +146,29 @@ describe('PrintHistoryPage', () => {
     render(<QueryClientProvider client={queryClient}><PrintHistoryPage /></QueryClientProvider>)
 
     const names = await screen.findAllByText('cube.gcode')
+    expect(screen.getAllByText('PLA · Blue · Carbon Fiber · Matte').length).toBeGreaterThan(0)
     expect(screen.getAllByText(/\$0\.75/).length).toBeGreaterThan(0)
     fireEvent.click(names[0])
 
-    expect(screen.getByRole('dialog')).toBeTruthy()
-    expect(screen.getByAltText('Preview of cube.gcode')).toBeTruthy()
+    expect(await screen.findByAltText('Preview of cube.gcode')).toBeTruthy()
     expect(screen.getByText('+8% vs estimate')).toBeTruthy()
     expect(screen.getByText('-7% vs estimate')).toBeTruthy()
     expect(screen.getByText('3¢/g captured cost', { exact: false })).toBeTruthy()
+  })
+
+  it('shows immutable managed, template, global, and extruder settings', async () => {
+    mockPrintPage()
+    const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+    render(<QueryClientProvider client={queryClient}><PrintHistoryPage /></QueryClientProvider>)
+
+    fireEvent.click((await screen.findAllByText('cube.gcode'))[0])
+    fireEvent.click(await screen.findByRole('button', { name: /Advanced print settings/ }))
+
+    expect(screen.getByRole('heading', { name: 'Advanced print settings' })).toBeTruthy()
+    expect(screen.getByText('Different from template')).toBeTruthy()
+    expect(screen.getByText('=max(2, machine_nozzle_size)')).toBeTruthy()
+    expect(screen.getByText('Extruder 0')).toBeTruthy()
+    expect(screen.getByText('Template PLA · version 2')).toBeTruthy()
   })
 
   it('applies a distinct semantic row treatment to each terminal outcome', async () => {
@@ -149,7 +200,7 @@ describe('PrintHistoryPage', () => {
 
     fireEvent.click((await screen.findAllByText('cube.gcode'))[0])
 
-    expect(screen.getByText('Captured segment prices use different currencies and cannot be combined.')).toBeTruthy()
+    expect(await screen.findByText('Captured segment prices use different currencies and cannot be combined.')).toBeTruthy()
   })
 
   it('explains that the Cura inspection gate precedes the unchanged Klipper start macro', async () => {
@@ -164,7 +215,7 @@ describe('PrintHistoryPage', () => {
 
     fireEvent.click((await screen.findAllByText('cube.gcode'))[0])
 
-    expect(screen.getByText(/before it calls your unchanged Klipper START_PRINT macro/)).toBeTruthy()
+    expect(await screen.findByText(/before it calls your unchanged Klipper START_PRINT macro/)).toBeTruthy()
     expect(screen.getByText(/do not add this line inside START_PRINT/)).toBeTruthy()
   })
 
