@@ -1,5 +1,21 @@
 # Changelog
 
+## Unreleased - 09.04.2026
+
+### Added
+
+- Documented direct dependency review, combined Node 22 validation, and verified merged-branch cleanup. CodeRabbit is not part of the project workflow.
+
+### Changed
+
+- Updated React Query and Query Core from 5.101.4 to 5.102.8, the React Refresh ESLint plugin from 0.5.4 to 0.5.5, and Node type definitions from 24.13.3 to 26.4.0 after compatibility and combined frontend validation. The build runtime remains Node 22.
+- Kept the ESLint 10 and `@eslint/js` 10 updates deferred because their peer requirements conflict with the current lint toolchain. Existing release tags and version 0.7.0 remain unchanged.
+
+### Fixed
+
+- Included the React Refresh lint-plugin fix for uppercase constant re-exports incorrectly treated as React components.
+- Completed the material-comparison and new-filament browser fixtures for existing profile/template reads so isolated runs cannot leak those requests to an unavailable backend.
+
 ## 0.7.0 - 09.04.2026
 
 ### Added
