@@ -339,6 +339,7 @@ test('template validation centers, focuses, and highlights the rejected setting'
 
 test('comparison shows only differences and warns across profile scopes', async ({ page }) => {
   await page.route('**/api/v1/profiles/templates', (route) => route.fulfill({ json: [template] }))
+  await page.route('**/api/v1/profiles/templates?include_inactive=true', (route) => route.fulfill({ json: [template] }))
   await page.route('**/api/v1/profiles', (route) => route.fulfill({ json: [comparisonProfile, differentScopeProfile] }))
   await page.route('**/api/v1/filaments', (route) => route.fulfill({ json: [filament] }))
   await page.route('**/api/v1/workstation-agents', (route) => route.fulfill({ json: [] }))
@@ -381,6 +382,7 @@ test('filament creation requires and submits a current template', async ({ page 
   let submitted: Record<string, unknown> | null = null
   let created = false
   await page.route('**/api/v1/profiles/templates', (route) => route.fulfill({ json: [template] }))
+  await page.route('**/api/v1/profiles', (route) => route.fulfill({ json: [] }))
   await page.route('**/api/v1/vendors', (route) => route.fulfill({ json: [] }))
   await page.route('**/api/v1/filaments', async (route) => {
     if (route.request().method() === 'POST') {

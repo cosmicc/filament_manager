@@ -120,4 +120,6 @@ Keep `README.md`, `CHANGELOG.md`, `USER_CHANGELOG.md`, `VERSION`, this file, and
 
 At the start of repository work and again before release preparation, inspect every open automated dependency pull request. Merge a dependency update only when its compatibility ranges, full CI, lockfile, and relevant local tests show it is safe. Never bypass peer dependency resolution with force or legacy flags. Defer or close a blocked update with a concise reason, or combine linked major upgrades on a reviewed compatibility branch and merge them only after the complete set passes. Keep these dependency-only merges separate from unpublished application work.
 
+Use direct code review and the repository's automated checks; this project does not use CodeRabbit, so do not invoke it or require its installation or authentication. Validate combined dependency candidates against current `main` before merging. Delete only verified merged or superseded branches, preserve branches with open pull requests or unmerged work, and leave existing release tags unchanged during dependency maintenance. See `skills/testing.md` for the detailed review and cleanup checks.
+
 Do not commit, push, tag, publish images, or create a release unless the user explicitly authorizes that boundary.

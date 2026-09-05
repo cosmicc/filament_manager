@@ -13,7 +13,7 @@ From the repository root:
 npm run lint --prefix frontend
 npm test --prefix frontend
 npm run build --prefix frontend
-npm audit --omit=dev --prefix frontend
+npm audit --prefix frontend
 pip install -e './workstation-agent[dev]'
 ruff check workstation-agent/src workstation-agent/tests
 ruff format --check workstation-agent/src workstation-agent/tests
@@ -24,6 +24,12 @@ docker compose -f docker/docker-compose.yml config
 ```
 
 `pytest` uses a disposable PostgreSQL 17 container for integration coverage. Docker must be available. SQLite is intentionally unsupported.
+
+## Dependency pull requests
+
+Use direct diff review and automated validation; CodeRabbit is not required or used. Review engine and peer ranges, upstream changes, and the complete lockfile diff. Test compatible updates together against current `main` in an isolated worktree using Node 22, `npm ci`, `npm ls --all`, lint, tests, build, and a full dependency audit. Changes to browser data fetching also require desktop/mobile refresh and save-flow checks. Do not bypass peer conflicts with force or legacy resolution flags.
+
+Merge only reviewed exact PR heads with successful CI, verify the final `main` checks, and retain existing release tags. Delete a source branch only after proving its exact head was merged; preserve deferred PR branches and any unmerged work.
 
 ## Database migrations
 

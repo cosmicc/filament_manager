@@ -43,6 +43,8 @@ The newest CI-passing `main` image is published as `ghcr.io/cosmicc/filament-man
 
 ## Documentation
 
+Release tags are fixed snapshots. Later reviewed dependency updates may advance `main` and its `latest` image without changing an existing release; pin a release's immutable image when you need that exact tested version.
+
 - [Full-color 128 x 128 app icon for notification services](frontend/public/assets/filament-manager-icon-128.png)
 - [GUI color-profile palette reference](docs/design/theme-palettes.svg)
 - [Architecture](docs/ARCHITECTURE.md)
