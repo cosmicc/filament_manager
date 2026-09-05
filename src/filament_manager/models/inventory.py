@@ -53,6 +53,14 @@ class Vendor(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     record_version: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
 
 
+class SpoolLocationChoice(UUIDPrimaryKeyMixin, TimestampMixin, Base):
+    """Remember selectable labels; Spool.location still owns all assignments."""
+
+    __tablename__ = "spool_location_choices"
+
+    name: Mapped[str] = mapped_column(String(160), nullable=False, unique=True)
+
+
 class FilamentColor(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     """A remembered shared solid color or fixed rainbow screen sample."""
 
@@ -66,6 +74,21 @@ class FilamentColor(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     )
     color_hexes: Mapped[list[str]] = mapped_column(JSONB, nullable=False, default=list)
     record_version: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
+
+
+class FilamentAttributeChoice(UUIDPrimaryKeyMixin, TimestampMixin, Base):
+    """A durable user-created filler or finish, even before any product uses it."""
+
+    __tablename__ = "filament_attribute_choices"
+    __table_args__ = (
+        UniqueConstraint("kind", "name_key", name="uq_filament_attribute_choice"),
+        CheckConstraint("kind IN ('filler', 'finish')", name="attribute_choice_kind"),
+    )
+
+    kind: Mapped[str] = mapped_column(String(16), nullable=False)
+    name: Mapped[str] = mapped_column(String(96), nullable=False)
+    # A bounded digest also handles names expanded substantially by Unicode normalization.
+    name_key: Mapped[str] = mapped_column(String(64), nullable=False)
 
 
 class FilamentProduct(UUIDPrimaryKeyMixin, TimestampMixin, Base):
@@ -87,8 +110,8 @@ class FilamentProduct(UUIDPrimaryKeyMixin, TimestampMixin, Base):
 
     vendor_id: Mapped[UUID | None] = mapped_column(ForeignKey("vendors.id", ondelete="RESTRICT"))
     material_type: Mapped[str] = mapped_column(String(48), nullable=False, index=True)
-    filler: Mapped[str | None] = mapped_column(String(96))
-    finish: Mapped[str | None] = mapped_column(String(96))
+    filler: Mapped[str | None] = mapped_column(String(96), default="None", server_default="None")
+    finish: Mapped[str | None] = mapped_column(String(96), default="Standard", server_default="Standard")
     color_name: Mapped[str] = mapped_column(String(96), nullable=False)
     color_hex: Mapped[str | None] = mapped_column(String(6))
     color_mode: Mapped[str] = mapped_column(
@@ -417,6 +440,7 @@ class MaterialProfile(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     version: Mapped[int] = mapped_column(Integer, nullable=False)
     status: Mapped[ProfileStatus] = mapped_column(Enum(ProfileStatus, name="profile_status"), nullable=False)
     chamber_temp_c: Mapped[Decimal | None] = mapped_column(MEASUREMENT)
+    drying_temp_c: Mapped[Decimal | None] = mapped_column(MEASUREMENT)
     extruder_temp_c: Mapped[Decimal] = mapped_column(MEASUREMENT, nullable=False)
     bed_temp_c: Mapped[Decimal] = mapped_column(MEASUREMENT, nullable=False)
     initial_bed_temp_c: Mapped[Decimal] = mapped_column(

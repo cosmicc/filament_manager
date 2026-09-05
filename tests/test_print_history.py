@@ -87,22 +87,26 @@ def test_terminal_usage_aggregates_reused_spools_from_immutable_segments() -> No
 
     first_spool = uuid4()
     second_spool = uuid4()
+    captured_at = datetime.now(UTC)
     job = SimpleNamespace(
         segments=[
             SimpleNamespace(
                 segment_number=1,
+                created_at=captured_at,
                 spool_id=first_spool,
                 actual_filament_weight_g=Decimal("4.25"),
                 state_snapshot={"spool": {"remaining_mass_g": "900"}},
             ),
             SimpleNamespace(
                 segment_number=2,
+                created_at=captured_at,
                 spool_id=second_spool,
                 actual_filament_weight_g=Decimal("3.5"),
                 state_snapshot={"spool": {"remaining_mass_g": "700"}},
             ),
             SimpleNamespace(
                 segment_number=3,
+                created_at=captured_at,
                 spool_id=first_spool,
                 actual_filament_weight_g=Decimal("2.75"),
                 state_snapshot={"spool": {"remaining_mass_g": "900"}},
@@ -111,8 +115,8 @@ def test_terminal_usage_aggregates_reused_spools_from_immutable_segments() -> No
     )
 
     assert _terminal_usage_targets(job) == {
-        first_spool: (Decimal("900"), Decimal("7.000")),
-        second_spool: (Decimal("700"), Decimal("3.500")),
+        first_spool: (Decimal("900"), Decimal("7.000"), captured_at),
+        second_spool: (Decimal("700"), Decimal("3.500"), captured_at),
     }
 
 

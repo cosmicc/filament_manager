@@ -8,7 +8,7 @@ from uuid import UUID
 
 from fastapi import APIRouter, Request, status
 from fastapi.responses import JSONResponse
-from sqlalchemy import func, select
+from sqlalchemy import func, or_, select
 
 from filament_manager.domain.cura_import import material_settings_from_cura, merge_cura_settings
 from filament_manager.domain.cura_material_settings import (
@@ -60,10 +60,192 @@ from ..schemas import (
     ProfileFromTemplateRequest,
     ProfileResponse,
     ProfileRevisionCreate,
+    ProfileTemplateChangeRequest,
     ProfileTemplateRebaseRequest,
 )
 
 router = APIRouter(prefix="/profiles", tags=["material profiles"])
+
+
+@router.post("/{profile_id}/change-template", response_model=ProfileResponse, status_code=201)
+async def change_profile_template(
+    profile_id: UUID,
+    payload: ProfileTemplateChangeRequest,
+    request: Request,
+    operator: Operator,
+    session: DatabaseSession,
+) -> ProfileResponse:
+    """Rebase current settings without copying inherited values into custom overrides.
+
+    A material correction applies to the product's other current scopes atomically.
+    Missing or ambiguous matching templates fail before any snapshot is appended.
+    Historical profiles and print evidence are never edited.
+    """
+
+    source = await session.get(MaterialProfile, profile_id)
+    target = await session.get(MaterialTemplateRevision, payload.target_template_revision_id)
+    if source is None:
+        raise ApiError(404, "unknown_profile", "Profile not found")
+    if target is None or target.status != ProfileStatus.PUBLISHED:
+        raise ApiError(422, "template_unavailable", "Select a current active template")
+    # Match the template writer's row-lock order before locking its linked profiles.
+    locked_templates = list(
+        await session.scalars(
+            select(MaterialTemplate)
+            .where(
+                or_(
+                    MaterialTemplate.material_type
+                    == select(MaterialTemplate.material_type)
+                    .where(MaterialTemplate.id == target.material_template_id)
+                    .scalar_subquery(),
+                    MaterialTemplate.id.in_(
+                        select(MaterialTemplateRevision.material_template_id)
+                        .join(
+                            MaterialProfile,
+                            MaterialProfile.base_template_revision_id == MaterialTemplateRevision.id,
+                        )
+                        .where(MaterialProfile.filament_product_id == source.filament_product_id)
+                    ),
+                ),
+            )
+            .order_by(MaterialTemplate.id)
+            .with_for_update()
+        )
+    )
+    template = next(
+        (item for item in locked_templates if item.id == target.material_template_id and item.active), None
+    )
+    if (
+        template is None
+        or template.printer_id != source.printer_id
+        or template.nozzle_diameter_mm != source.nozzle_diameter_mm
+    ):
+        raise ApiError(
+            422, "template_scope_mismatch", "Select an active template for this printer and nozzle diameter"
+        )
+    templates = [
+        item for item in locked_templates if item.active and item.material_type == template.material_type
+    ]
+    product = await session.scalar(
+        select(FilamentProduct).where(FilamentProduct.id == source.filament_product_id).with_for_update()
+    )
+    if product is None or product.archived:
+        raise ApiError(409, "filament_unavailable", "Restore this filament before changing its template")
+    if product.record_version != payload.expected_filament_version:
+        raise ApiError(409, "version_conflict", "Filament changed; reload and retry")
+    if template.filament_diameter_mm != product.diameter_mm:
+        raise ApiError(
+            422, "filament_diameter_mismatch", "The template must match the physical filament diameter"
+        )
+    rows = await session.scalars(
+        select(MaterialProfile)
+        .where(
+            MaterialProfile.filament_product_id == product.id,
+            MaterialProfile.status == ProfileStatus.PUBLISHED,
+        )
+        .order_by(MaterialProfile.version.desc())
+        .with_for_update()
+        .execution_options(populate_existing=True)
+    )
+    current: dict[tuple[UUID, Decimal], MaterialProfile] = {}
+    for row in rows:
+        current.setdefault((row.printer_id, row.nozzle_diameter_mm), row)
+    if (
+        current.get((source.printer_id, source.nozzle_diameter_mm)) is not source
+        or source.record_version != payload.expected_profile_version
+    ):
+        raise ApiError(409, "version_conflict", "Print settings changed; reload and retry")
+    if source.base_template_revision_id == target.id:
+        raise ApiError(409, "template_unchanged", "These settings already use that template")
+    material_changed = product.material_type.casefold() != template.material_type.casefold()
+    planned: list[tuple[MaterialProfile, MaterialTemplateRevision]] = []
+    for profile in current.values():
+        if profile.id != source.id and not material_changed:
+            continue
+        candidates = [template]
+        if profile.id != source.id:
+            old_base = await session.get(MaterialTemplateRevision, profile.base_template_revision_id)
+            old_template = (
+                await session.get(MaterialTemplate, old_base.material_template_id) if old_base else None
+            )
+            candidates = [
+                item
+                for item in templates
+                if item.printer_id == profile.printer_id
+                and item.nozzle_diameter_mm == profile.nozzle_diameter_mm
+                and old_template is not None
+                and item.nozzle_id == old_template.nozzle_id
+            ]
+        if len(candidates) != 1:
+            raise ApiError(
+                409,
+                "matching_template_required",
+                "Create a matching material template for every existing printer/nozzle scope "
+                "before changing material type",
+            )
+        latest = await session.scalar(
+            select(MaterialTemplateRevision)
+            .where(
+                MaterialTemplateRevision.material_template_id == candidates[0].id,
+                MaterialTemplateRevision.status == ProfileStatus.PUBLISHED,
+            )
+            .order_by(MaterialTemplateRevision.version.desc())
+            .limit(1)
+        )
+        if latest is None or (profile.id == source.id and latest.id != target.id):
+            raise ApiError(
+                409, "template_changed", "Template changed or has no saved settings; reload and retry"
+            )
+        planned.append((profile, latest))
+    old_material = product.material_type
+    old_density = product.density_g_cm3
+    selected: MaterialProfile | None = None
+    for profile, base in planned:
+        revision = await create_published_profile_snapshot(
+            session,
+            filament_product_id=product.id,
+            printer_id=profile.printer_id,
+            nozzle_diameter_mm=profile.nozzle_diameter_mm,
+            base_revision=base,
+            settings=resolve_profile_settings(base.settings, profile.setting_overrides),
+            setting_overrides=dict(profile.setting_overrides or {}),
+        )
+        if profile.id == source.id:
+            selected = revision
+        add_audit_event(
+            session,
+            actor_id=operator.id,
+            source="web",
+            action="profile.template.change",
+            object_type="material_profile",
+            object_id=revision.id,
+            before={
+                "profile_id": str(profile.id),
+                "base_template_revision_id": str(profile.base_template_revision_id),
+            },
+            after={"base_template_revision_id": str(base.id), "overrides_preserved": True},
+            correlation_id=request.state.correlation_id,
+        )
+    assert selected is not None
+    product.material_type = template.material_type
+    product.density_g_cm3 = selected.filament_density_g_cm3
+    product.source_template_revision_id = target.id
+    product.record_version += 1
+    add_audit_event(
+        session,
+        actor_id=operator.id,
+        source="web",
+        action="filament.template.change",
+        object_type="filament_product",
+        object_id=product.id,
+        before={"material_type": old_material, "density_g_cm3": str(old_density)},
+        after={"material_type": product.material_type, "density_g_cm3": str(product.density_g_cm3)},
+        correlation_id=request.state.correlation_id,
+    )
+    await queue_managed_cura_library(session, requested_by=operator.id)
+    response = await _profile_response(session, selected)
+    await session.commit()
+    return response
 
 
 def _template_name(material_type: str) -> str:

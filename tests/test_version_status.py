@@ -4,6 +4,7 @@ import httpx
 import pytest
 import respx
 
+from filament_manager import __version__
 from filament_manager.services import version_status as version_service
 
 
@@ -20,7 +21,7 @@ async def test_version_status_includes_prereleases_and_caches_result(
             200,
             json=[
                 {"tag_name": "v9.0.0", "draft": True, "prerelease": False},
-                {"tag_name": "v0.7.0", "draft": False, "prerelease": True},
+                {"tag_name": f"v{__version__}", "draft": False, "prerelease": True},
                 {"tag_name": "v0.7.0", "draft": False, "prerelease": False},
                 {"tag_name": "not-a-version", "draft": False, "prerelease": False},
             ],
@@ -30,10 +31,10 @@ async def test_version_status_includes_prereleases_and_caches_result(
     first = await version_service.version_status()
     second = await version_service.version_status()
 
-    assert first.running_version == "0.7.0"
-    assert first.latest_version == "0.7.0"
+    assert first.running_version == __version__
+    assert first.latest_version == __version__
     assert first.status == "current"
-    assert first.release_url == "https://github.com/cosmicc/filament_manager/releases/tag/v0.7.0"
+    assert first.release_url == f"https://github.com/cosmicc/filament_manager/releases/tag/v{__version__}"
     assert second == first
     assert route.call_count == 1
 

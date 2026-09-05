@@ -1,8 +1,10 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { ArrowRight, PackageOpen, Plus, Search } from 'lucide-react'
+import { MaterialTypeFilter } from '../components/MaterialTypeFilter'
 import { type FormEvent, useEffect, useMemo, useState } from 'react'
 import { apiFetch } from '../api/client'
-import type { Filament, FilamentColor, MaterialProfile, MaterialTemplate, Vendor } from '../api/types'
+import type { Filament, FilamentColor, MaterialProfile, MaterialTemplate } from '../api/types'
+import { InventoryChoiceSelect } from '../components/NewItemSelect'
 import { EditorSection } from '../components/EditorSection'
 import { CollectionViewSelector } from '../components/CollectionViewSelector'
 import { FilamentColorEditor, type FilamentColorMode } from '../components/FilamentColorEditor'
@@ -19,7 +21,7 @@ import { compactNumber, grams } from '../lib/format'
 import { materialIdentitySummary, materialModifierSummary } from '../lib/materialIdentity'
 
 function FilamentIdentity({ filament, hero = false }: { filament: Filament; hero?: boolean }) {
-  return <div className="table-identity"><span className={`filament-swatch${hero ? ' filament-swatch--hero' : ''}`} style={filamentSwatchStyle(filament.color_mode, filament.color_hexes, filament.color_hex ?? '2F80A5')} /><span><strong>{filament.vendor_name ?? 'Unspecified vendor'}</strong><small>{materialIdentitySummary(filament)}</small></span></div>
+  return <div className="table-identity"><span className={`filament-swatch${hero ? ' filament-swatch--hero' : ''}`} style={filamentSwatchStyle(filament.color_mode, filament.color_hexes, filament.color_hex ?? '2F80A5')} /><span><strong>{filament.vendor_name ?? 'Unspecified manufacturer'}</strong><small>{materialIdentitySummary(filament)}</small></span></div>
 }
 
 function FilamentCard({
@@ -35,7 +37,7 @@ function FilamentCard({
 }) {
   return <Link className={`catalog-card catalog-card--link${detailed ? ' collection-card--detailed' : ''}`} to={`/filaments/${filament.id}`}>
     <span className="filament-swatch filament-swatch--hero" style={filamentSwatchStyle(filament.color_mode, filament.color_hexes, filament.color_hex ?? '2F80A5')} />
-    <div><p className="eyebrow">{filament.vendor_name ?? 'Unspecified vendor'}</p><h2>{materialIdentitySummary(filament)}</h2></div>
+    <div><p className="eyebrow">{filament.vendor_name ?? 'Unspecified manufacturer'}</p><h2>{materialIdentitySummary(filament)}</h2></div>
     <dl className="catalog-meta">
       <div><dt>Color</dt><dd>{filament.color_name}</dd></div>
       <div><dt>Tolerance</dt><dd>{filament.tolerance_mm ? `± ${compactNumber(filament.tolerance_mm, 2)} mm` : 'Not specified'}</dd></div>
@@ -55,6 +57,7 @@ export default function FilamentsPage() {
   const { user } = useAuth()
   const queryClient = useQueryClient()
   const [search, setSearch] = useState('')
+  const [material, setMaterial] = useState('')
   const [view, setView] = useCollectionView('filaments', 'cards')
   const [showCreate, setShowCreate] = useState(path === '/filaments/new' || Boolean(duplicateSourceId))
   const [createdFilament, setCreatedFilament] = useState<Filament | null>(null)
@@ -62,7 +65,10 @@ export default function FilamentsPage() {
   const [colorName, setColorName] = useState('')
   const [colorMode, setColorMode] = useState<FilamentColorMode>('solid')
   const [colorHexes, setColorHexes] = useState(['808080'])
-  const query = useQuery({ queryKey: ['filaments', search], queryFn: () => apiFetch<Filament[]>(`/filaments${search ? `?search=${encodeURIComponent(search)}` : ''}`) })
+  const filters = new URLSearchParams()
+  if (search) filters.set('search', search)
+  if (material) filters.set('material', material)
+  const query = useQuery({ queryKey: ['filaments', search, material], queryFn: () => apiFetch<Filament[]>(`/filaments${filters.size ? `?${filters}` : ''}`) })
   const duplicateSource = useQuery({
     queryKey: ['filament', duplicateSourceId],
     queryFn: () => apiFetch<Filament>(`/filaments/${duplicateSourceId}`),
@@ -70,7 +76,6 @@ export default function FilamentsPage() {
   })
   const templates = useQuery({ queryKey: ['material-templates'], queryFn: () => apiFetch<MaterialTemplate[]>('/profiles/templates') })
   const profiles = useQuery({ queryKey: ['profiles'], queryFn: () => apiFetch<MaterialProfile[]>('/profiles') })
-  const vendors = useQuery({ queryKey: ['vendors'], queryFn: () => apiFetch<Vendor[]>('/vendors') })
   const colors = useQuery({ queryKey: ['filament-colors'], queryFn: () => apiFetch<FilamentColor[]>('/filament-colors') })
   useEffect(() => {
     if (path === '/filaments/new' || duplicateSourceId) setShowCreate(true)
@@ -166,13 +171,13 @@ export default function FilamentsPage() {
   }
   return <div><PageHeader eyebrow="Product catalog" title="Filaments" description="Real filament products with physical identity, inventory, and printer/nozzle-specific print settings." actions={<><FilamentSectionNav />{user?.role !== 'viewer' ? <button className="button button--primary" onClick={() => setShowCreate(true)}><Plus size={17} /> Add filament</button> : null}</>} />
     {message && <div className="deployment-note" role="status">{message}</div>}
-    <section className="toolbar"><label className="search-field"><Search size={18} /><input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Search type, color, filler, or finish" aria-label="Search filaments" /></label><CollectionViewSelector label="Filaments" value={view} onChange={setView} /><span className="toolbar__summary">{query.data?.length ?? 0} products</span></section>{query.isLoading || profiles.isLoading ? <LoadingState /> : !query.data?.length ? <EmptyState icon={PackageOpen} title="No filament products" description="Add a material template, then add the first filament product here." /> : view === 'list' ? <div className="table-card collection-table"><table><thead><tr><th>Filament</th><th>Modifiers</th><th>Diameter</th><th>Density</th><th>Nominal</th><th>Print settings</th></tr></thead><tbody>{query.data.map((filament) => <tr key={filament.id} tabIndex={0} onClick={() => navigate(`/filaments/${filament.id}`)} onKeyDown={(event) => (event.key === 'Enter' || event.key === ' ') && navigate(`/filaments/${filament.id}`)}><td><FilamentIdentity filament={filament} /></td><td>{materialModifierSummary(filament) ?? 'Standard material'}</td><td>{compactNumber(filament.diameter_mm, 2)} mm</td><td>{compactNumber(filament.density_g_cm3, 2)} g/cm³</td><td>{grams(filament.nominal_net_mass_g)}</td><td>{filament.material_template_revision_id ? 'Available' : 'Unavailable'}</td></tr>)}</tbody></table></div> : <section className={`collection-grid collection-grid--${view}`}>{query.data.map((filament) => { const presentation = profilePresentation.get(filament.id); return <FilamentCard key={filament.id} filament={filament} detailed={view === 'detailed'} printingTemperature={presentation?.temperature ?? 'Not configured'} profileCount={presentation?.count ?? 0} /> })}</section>}
+    <section className="toolbar"><label className="search-field"><Search size={18} /><input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Search type, color, filler, or finish" aria-label="Search filaments" /></label><MaterialTypeFilter templates={templates.data ?? []} value={material} onChange={setMaterial} /><CollectionViewSelector label="Filaments" value={view} onChange={setView} /><span className="toolbar__summary">{query.data?.length ?? 0} products</span></section>{query.isLoading || profiles.isLoading ? <LoadingState /> : !query.data?.length ? <EmptyState icon={PackageOpen} title="No filament products" description="Add a material template, then add the first filament product here." /> : view === 'list' ? <div className="table-card collection-table"><table><thead><tr><th>Filament</th><th>Modifiers</th><th>Diameter</th><th>Density</th><th>Nominal</th><th>Print settings</th></tr></thead><tbody>{query.data.map((filament) => <tr key={filament.id} tabIndex={0} onClick={() => navigate(`/filaments/${filament.id}`)} onKeyDown={(event) => (event.key === 'Enter' || event.key === ' ') && navigate(`/filaments/${filament.id}`)}><td><FilamentIdentity filament={filament} /></td><td>{materialModifierSummary(filament) ?? 'Standard material'}</td><td>{compactNumber(filament.diameter_mm, 2)} mm</td><td>{compactNumber(filament.density_g_cm3, 2)} g/cm³</td><td>{grams(filament.nominal_net_mass_g)}</td><td>{filament.material_template_revision_id ? 'Available' : 'Unavailable'}</td></tr>)}</tbody></table></div> : <section className={`collection-grid collection-grid--${view}`}>{query.data.map((filament) => { const presentation = profilePresentation.get(filament.id); return <FilamentCard key={filament.id} filament={filament} detailed={view === 'detailed'} printingTemperature={presentation?.temperature ?? 'Not configured'} profileCount={presentation?.count ?? 0} /> })}</section>}
     {showCreate ? <Modal title={duplicateSourceId ? 'Duplicate filament' : 'Add a filament'} description={duplicateSourceId ? 'Create a separate product with the source filament’s product details and explicit settings for the selected source scope. Spools and history are not copied.' : 'This creates the filament and its first print-settings scope. Additional printer/nozzle settings can be added from the filament later.'} onClose={closeCreate} size="wide" footer={<><button className="button" type="button" onClick={closeCreate}>Cancel</button><button className="button button--primary" form="create-filament" disabled={create.isPending || !selectableTemplates.length || (Boolean(duplicateSourceId) && duplicateSource.isLoading)}><Plus size={17} />{create.isPending ? 'Creating…' : duplicateSourceId ? 'Create duplicate' : 'Create filament'}</button></>}>
       {duplicateSource.error ? <p className="form-error" role="alert">{duplicateSource.error.message}</p> : selectableTemplates.length && (!duplicateSourceId || duplicateSource.data) ? <form id="create-filament" className="editor-form" onSubmit={submit} key={duplicateSource.data?.id ?? 'new'}>
         <EditorSection title="Product identity" description="Choose the starting print-settings scope and the labels operators see throughout inventory.">
           <div className="form-grid">
             <label>Starting template<select name="material_template_revision_id" defaultValue={duplicateSource.data?.material_template_revision_id ?? ''} required autoFocus>{selectableTemplates.map(({ template, settingsSnapshot }) => <option key={settingsSnapshot.id} value={settingsSnapshot.id}>{template.name} · {compactNumber(template.nozzle_diameter_mm, 1)} mm</option>)}</select></label>
-            <label>Vendor<select name="vendor_id" defaultValue={duplicateSource.data?.vendor_id ?? ''}><option value="">Unspecified vendor</option>{vendors.data?.map((vendor) => <option key={vendor.id} value={vendor.id}>{vendor.name}</option>)}</select></label>
+            <label>Manufacturer<InventoryChoiceSelect kind="manufacturer" name="vendor_id" defaultValue={duplicateSource.data?.vendor_id ?? ''} /></label>
             <FilamentColorEditor name={colorName} mode={colorMode} colorHexes={colorHexes} rememberedColors={colors.data ?? []} onNameChange={setColorName} onModeChange={setColorMode} onColorsChange={setColorHexes} />
           </div>
         </EditorSection>
@@ -182,8 +187,8 @@ export default function FilamentsPage() {
             <label>Diameter tolerance (mm)<input name="tolerance_mm" type="number" min="0" step="0.01" defaultValue={duplicateSource.data?.tolerance_mm ?? ''} /></label>
             <label>Density (g/cm³)<input name="density_g_cm3" type="number" min="0.01" step="0.01" defaultValue={duplicateSource.data?.density_g_cm3 ?? '1.24'} required /></label>
             <label>Nominal net mass (g)<input name="nominal_net_mass_g" type="number" min="1" step="1" defaultValue={duplicateSource.data?.nominal_net_mass_g ?? '1000'} required /></label>
-            <label>Filler<input name="filler" defaultValue={duplicateSource.data?.filler ?? ''} maxLength={96} placeholder="Carbon fiber, glass…" /></label>
-            <label>Finish<input name="finish" defaultValue={duplicateSource.data?.finish ?? ''} maxLength={96} placeholder="Matte, silk…" /></label>
+            <label>Filler<InventoryChoiceSelect kind="filler" name="filler" defaultValue={duplicateSource.data?.filler ?? 'None'} /></label>
+            <label>Finish<InventoryChoiceSelect kind="finish" name="finish" defaultValue={duplicateSource.data?.finish ?? 'Standard'} /></label>
             <label className="form-grid__wide">Notes<textarea name="notes" defaultValue={duplicateSource.data?.notes ?? ''} rows={3} maxLength={4000} /></label>
           </div>
         </EditorSection>

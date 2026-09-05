@@ -415,7 +415,7 @@ async def test_pair_queue_claim_and_complete_workstation_deployment(
                 for material in claimed.json()["payload"]["materials"]
                 if material["source_kind"] == "product"
             )
-            assert claimed_product["material"]["filler"] is None
+            assert claimed_product["material"]["filler"] == "None"
             assert claimed_product["material"]["finish"] == "Silk"
             completed = await client.post(
                 f"/api/v1/workstation-agent/deployments/{deployment_id}/complete",

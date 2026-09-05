@@ -1,18 +1,42 @@
 # Changelog
 
-## Unreleased - 09.04.2026
+## 0.7.1 - 09.05.2026
+
+Testing release.
 
 ### Added
 
+- Added optional template-only filament drying temperature in the temperature section, inherited read-only in filament and spool details. It is never sent as a Cura setting or heater command. Migration `e3f4a5b6c789` adds its nullable resolved-profile cache; existing values remain unset.
+- Added remembered **Location** dropdowns to both spool forms, with **Unassigned**, existing/archived location choices, and a final **New Location** dialog that preserves unsaved spool values.
+- Added **New Color**, **New Manufacturer**, **New Filler**, and **New Finish** selectors with saved choices, nested creation dialogs, and automatic selection without losing the parent form draft.
+- Added **Change template** on filament print-settings cards. Preserve custom values, inherit the new defaults, and correct the filament material type across compatible scopes without rewriting retained profiles or print history.
+- Added **Locations** below Spools, grouping existing canonical location labels with counts, remaining filament, an Unassigned group, optional archived inventory, and paginated spool selection that opens the normal spool detail/actions.
+- Added template-derived **All**/material-type dropdowns beside search on Filaments and Spools.
+- Added read-only current total spool weight, calculated from remaining filament plus current empty-spool tare.
+- Added manufacturer-specific saved tare suggestions, including archived spools, ranked by frequency with original filament capacity. Suggestions require explicit selection; unknown manufacturers are never pooled.
+- Added live tare-edit previews and a used/unused choice during spool creation so only unused spools infer tare from purchase weight.
 - Documented direct dependency review, combined Node 22 validation, and verified merged-branch cleanup. CodeRabbit is not part of the project workflow.
 
 ### Changed
 
+- Migration `d2e3f4a5b678` seeds a location-label catalog without changing spool assignments or historical records. Newly named locations remain available even when unused; moving the last spool does not discard its old choice.
+- Color names are selected, not entered freely in the dropdown. Manufacturer replaces Vendor in filament forms/details. Filler defaults to **None** and Finish to **Standard**; these remain omitted from derived names.
+- Migration `c1d2e3f4a567` seeds durable filler/finish choices from all existing filaments, fills only blank canonical modifiers, audits each correction, and queues Spoolman metadata repair. Existing populated values and historical snapshots are unchanged.
+- Renamed the spool editor's **Bucket or location** field to **Location**, retaining **Bucket 12** as its example.
+- Recalculate measured spool balances whenever spool settings are saved using the last accepted gross observation, current tare, and subsequent signed usage/manual corrections. Preserve purchase-based estimates when no physical observation exists; retain original weigh-ins and append tare-adjustment history instead of rewriting measurements. No schema migration or additional Moonraker polling is required.
+- Applied the approved release-retention policy: retain the newest five published releases and every Git tag; verified and backed up the 28 older releases and 84 attached packages/checksum files before removing their GitHub release entries. See `docs/RELEASE_RETENTION.md`.
 - Updated React Query and Query Core from 5.101.4 to 5.102.8, the React Refresh ESLint plugin from 0.5.4 to 0.5.5, and Node type definitions from 24.13.3 to 26.4.0 after compatibility and combined frontend validation. The build runtime remains Node 22.
-- Kept the ESLint 10 and `@eslint/js` 10 updates deferred because their peer requirements conflict with the current lint toolchain. Existing release tags and version 0.7.0 remain unchanged.
+- Kept the ESLint 10 and `@eslint/js` 10 updates deferred because their peer requirements conflict with the current lint toolchain. Existing release tags remain unchanged; application and workstation package version surfaces are prepared locally for 0.7.1.
 
 ### Fixed
 
+- Added full-scale-weight save regression coverage: manufacturer data and response validation finish before commit, with atomic rollback of the spool, initial measurement, audit, and projections on response failure. Successful saves no longer turn into save errors when subsequent browser refreshes fail.
+- Nested creation dialogs isolate focus, Escape, and form submission so the parent draft is not submitted or dismissed accidentally.
+- Added regression coverage for case-insensitive color/filler/finish search in both filament and spool catalogs.
+- Fixed stale remaining filament after a tare edit, preserving consumption since the last weigh-in and preventing repeated saves from duplicating corrections. Explicit net corrections and tare adjustments queue supported Spoolman remaining-weight updates and inventory publication.
+- Prevent old Spoolman balances from being reimported as consumption while an explicit weight correction is still awaiting delivery. Terminal print accounting respects tare corrections after print capture without rewriting immutable snapshots.
+- Fixed manufacturer-linked spool creation/filament reassignment attempting an asynchronous vendor lookup during response serialization; load the vendor explicitly and validate spool responses before committing.
+- Preserve stored weight precision when an unrelated spool field is saved; rounded display values are not silently submitted as weight changes.
 - Included the React Refresh lint-plugin fix for uppercase constant re-exports incorrectly treated as React components.
 - Completed the material-comparison and new-filament browser fixtures for existing profile/template reads so isolated runs cannot leak those requests to an unavailable backend.
 

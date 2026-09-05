@@ -39,6 +39,20 @@ def _settings() -> dict[str, object]:
     }
 
 
+def test_drying_guidance_is_template_only_and_rebases_without_customization() -> None:
+    """A filament cannot override drying guidance, even through crafted API settings."""
+
+    base = {**_settings(), "drying_temp_c": "55"}
+    desired = {**base, "drying_temp_c": "120"}
+    assert "drying_temp_c" not in sparse_profile_overrides(base, desired)
+    assert resolve_profile_settings(base, {"drying_temp_c": "120"})["drying_temp_c"] == "55"
+    resolved, overrides = resolve_profile_settings_for_template_update(
+        {**base, "drying_temp_c": "65"}, desired, {"drying_temp_c": "120"}
+    )
+    assert resolved["drying_temp_c"] == "65"
+    assert "drying_temp_c" not in overrides
+
+
 def test_sparse_overrides_ignore_equivalent_decimals_and_resolve_removals() -> None:
     """Only semantic changes are owned by a filament profile."""
 

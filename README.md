@@ -12,7 +12,10 @@ PostgreSQL is the canonical data store. A distinct Spoolman service remains the 
 - A Filaments workspace with separate Catalog and Print settings views, searchable filler/finish metadata, automatic Type/Color/Filler/Finish names that omit blank, `None`, and `Standard` modifiers, a create-first-spool handoff and a **Create spool from filament** detail action, useful tolerance/printing-temperature card facts, multiple current printer/nozzle settings per physical filament, and exact-scope editing, comparison, Cura JSON export, inheritance, density updates, and duplication
 - Directly saved and automatically favorited `Template <material type>` Cura entries with clickable List/Cards/Detailed records, edit-page JSON export and confirmed history-preserving deletion, installed-nozzle defaults, editable printer/nozzle scope, confirmed create/overwrite import, and complete effective values that flow only to current exact scopes that inherit them, except for visibly highlighted sparse customizations, with template-only speed/smooth-time/acceleration controls, profile-editable cooling/pressure-advance/ironing values, a visible per-blank-field copy selector using any populated active template, refreshed-before-edit concurrency protection, centered exact inline validation with field-by-field reasons and safe diagnostic references, one primary Flow, separate regular and initial-layer Build Plate temperatures, and overlapping retract/fan aliases represented by one editor control
 - Difference-only comparison of two to four current profiles/templates with printer/nozzle scope warnings and exact-profile print success rates
-- Simple new-spool entry from purchased filament weight plus optional full scale weight, automatic empty-spool calculation, purchase cost and cost-per-gram display, correction editors, safe delete-or-archive behavior, and later gross-weight measurements with variance confirmation
+- Spool entry with unused-spool tare inference, manufacturer-specific empty-weight suggestions, read-only total weight, automatic tare/remaining recalculation that preserves recorded usage, purchase costs, and immutable weigh-in history
+- A **Locations** browser with direct spool details, remembered **Location** dropdowns with **New Location**, plus template-derived material filters beside Filaments and Spools search
+- Template-only filament drying temperature, shown read-only in filament and spool details
+- Saved color/manufacturer/filler/finish dropdowns with **New [Item]** creation, and per-filament **Change template** that preserves custom settings and historical prints while replacing inherited defaults
 - Color-aware QR spool labels with a centered solid, multicolor, or rainbow spool icon and high error correction for reliable scanning
 - Immutable audit history and a transactional Projection Queue with bounded retries, live retry timing, recovered-history supersession, and coalesced Spoolman weight corrections
 - Immediate Spoolman REST projection plus one-minute complete convergence and usage reconciliation, including owned free-text bucket locations and automatically populated filament price, empty weight, and installed-nozzle temperatures, plus Moonraker control clients with active-spool polling and retry inside one minute
@@ -44,6 +47,8 @@ The newest CI-passing `main` image is published as `ghcr.io/cosmicc/filament-man
 ## Documentation
 
 Release tags are fixed snapshots. Later reviewed dependency updates may advance `main` and its `latest` image without changing an existing release; pin a release's immutable image when you need that exact tested version.
+
+The newest five release packages stay on GitHub; older releases are backed up before removal, and all source tags remain. See [release retention and recovery](docs/RELEASE_RETENTION.md).
 
 - [Full-color 128 x 128 app icon for notification services](frontend/public/assets/filament-manager-icon-128.png)
 - [GUI color-profile palette reference](docs/design/theme-palettes.svg)

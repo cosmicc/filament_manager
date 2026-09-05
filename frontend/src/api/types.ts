@@ -35,6 +35,7 @@ export interface Spool {
   remaining_mass_expected_g: string
   remaining_mass_measured_g: string | null
   remaining_mass_effective_g: string
+  current_total_mass_g?: string
   remaining_percent: string
   weight_confidence: string
   status: 'needs_weighing' | 'in_stock' | 'low' | 'empty' | 'archived'
@@ -203,6 +204,7 @@ export interface CuraSettingCatalogItem {
 }
 
 export interface MaterialSettings {
+  drying_temp_c?: string | null
   chamber_temp_c: string | null
   extruder_temp_c: string
   bed_temp_c: string

@@ -37,6 +37,7 @@ const coreFields: Array<{
   { key: 'bed_temp_c', label: 'Build plate temperature', unit: '°C', required: true, precision: 0 },
   { key: 'initial_bed_temp_c', label: 'Initial layer build plate temperature', unit: '°C', required: true, precision: 0 },
   { key: 'chamber_temp_c', label: 'Build volume temperature', unit: '°C', precision: 0 },
+  { key: 'drying_temp_c', label: 'Filament drying temperature', unit: '°C', precision: 0, templateOnly: true },
   { key: 'flow_percent', label: 'Flow', unit: '%', required: true, defaultValue: '100', precision: 0 },
   { key: 'print_speed_mm_s', label: 'Print speed', unit: 'mm/s', precision: 0, templateOnly: true },
   { key: 'outer_wall_speed_mm_s', label: 'Outer wall speed', unit: 'mm/s', precision: 0, templateOnly: true },
@@ -124,6 +125,7 @@ function hasSettingValue(value: unknown): boolean {
 }
 
 function minimumForCoreField(key: keyof MaterialSettings, precision: number): string | undefined {
+  if (key === 'drying_temp_c') return '0'
   if (['cooling_min_percent', 'cooling_max_percent'].includes(key)) return '0'
   if (['retraction_distance_mm', 'retraction_speed_mm_s', 'retraction_prime_speed_mm_s', 'pressure_advance', 'ironing_flow_percent'].includes(key)) return '0'
   if (['support_overhang_angle_deg', 'tree_max_branch_angle_deg'].includes(key)) return '0'
@@ -143,6 +145,7 @@ function maximumForExtensionField(key: string): string | undefined {
 }
 
 function maximumForCoreField(key: keyof MaterialSettings): string | undefined {
+  if (key === 'drying_temp_c') return '300'
   if (['cooling_min_percent', 'cooling_max_percent', 'ironing_flow_percent'].includes(key)) return '100'
   if (['support_overhang_angle_deg', 'tree_max_branch_angle_deg'].includes(key)) return '90'
   if (key === 'pressure_advance') return '2'
@@ -188,6 +191,7 @@ export function settingsFromForm(
   }
   return {
     chamber_temp_c: nullable(preservedNumericValue(form, 'chamber_temp_c', data.get('chamber_temp_c'))),
+    drying_temp_c: nullable(preservedNumericValue(form, 'drying_temp_c', data.get('drying_temp_c'))),
     extruder_temp_c: String(preservedNumericValue(form, 'extruder_temp_c', data.get('extruder_temp_c'))),
     bed_temp_c: String(preservedNumericValue(form, 'bed_temp_c', data.get('bed_temp_c'))),
     initial_bed_temp_c: String(preservedNumericValue(form, 'initial_bed_temp_c', data.get('initial_bed_temp_c'))),
@@ -361,8 +365,8 @@ export function MaterialSettingsEditor({
     {
       id: 'temperature',
       title: 'Temperatures',
-      description: 'The print, build volume, normal build plate, and first-layer build plate temperatures used by Cura.',
-      keys: ['extruder_temp_c', 'bed_temp_c', 'initial_bed_temp_c', 'chamber_temp_c'],
+      description: 'Print temperatures used by Cura, plus template-only filament drying guidance. Drying guidance never controls a heater.',
+      keys: ['extruder_temp_c', 'bed_temp_c', 'initial_bed_temp_c', 'chamber_temp_c', 'drying_temp_c'],
     },
     {
       id: 'flow',

@@ -3,13 +3,16 @@
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from decimal import Decimal
+from hashlib import sha256
 from io import BytesIO
-from typing import Annotated, cast
+from typing import Annotated, Literal, cast
+from unicodedata import normalize
 from uuid import UUID
 
 from fastapi import APIRouter, Header, Query, Request, status
 from fastapi.responses import StreamingResponse
-from sqlalchemy import delete, func, or_, select
+from sqlalchemy import delete, func, or_, select, text
+from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.orm import joinedload
 from sqlalchemy.sql.elements import ColumnElement
 
@@ -34,6 +37,7 @@ from filament_manager.models.enums import (
     SpoolStatus,
 )
 from filament_manager.models.inventory import (
+    FilamentAttributeChoice,
     FilamentColor,
     FilamentProduct,
     MaterialProfile,
@@ -41,6 +45,7 @@ from filament_manager.models.inventory import (
     MaterialTemplateRevision,
     Printer,
     Spool,
+    SpoolLocationChoice,
     SpoolMeasurement,
     SpoolUsageEvent,
     Vendor,
@@ -56,11 +61,14 @@ from filament_manager.services.material_settings import (
 )
 from filament_manager.services.print_statistics import completed_spool_print_counts
 from filament_manager.services.spool_labels import render_spool_label_png
+from filament_manager.services.spool_mass import spool_mass_basis
 from filament_manager.services.spool_preflight import spool_change_target
 
 from ..dependencies import DatabaseSession, Operator, Viewer
 from ..errors import ApiError
 from ..schemas import (
+    FilamentAttributeCreate,
+    FilamentColorCreate,
     FilamentColorResponse,
     FilamentCreate,
     FilamentResponse,
@@ -70,7 +78,11 @@ from ..schemas import (
     MeasurementResponse,
     Page,
     SpoolCreate,
+    SpoolLocationChoiceCreate,
+    SpoolLocationResponse,
+    SpoolMassBasisResponse,
     SpoolResponse,
+    SpoolTareSuggestionResponse,
     SpoolUpdate,
     VendorCreate,
 )
@@ -153,6 +165,10 @@ async def _remember_color(
 
     display_name = color_name.strip()
     normalized_name = normalize_color_name(display_name)
+    await session.execute(
+        text("SELECT pg_advisory_xact_lock(hashtextextended(:key, 0))"),
+        {"key": f"filament-color:{normalized_name}"},
+    )
     if normalized_name == "rainbow":
         color_mode = "rainbow"
         color_hexes = []
@@ -354,6 +370,7 @@ def spool_response(spool: Spool, *, completed_print_count: int = 0) -> SpoolResp
         remaining_mass_expected_g=spool.remaining_mass_expected_g,
         remaining_mass_measured_g=spool.remaining_mass_measured_g,
         remaining_mass_effective_g=spool.remaining_mass_effective_g,
+        current_total_mass_g=spool.remaining_mass_effective_g + spool.tare_mass_g,
         remaining_percent=remaining_percent,
         weight_confidence=spool.weight_confidence,
         status=spool.status.value,
@@ -516,11 +533,14 @@ async def create_vendor(
 ) -> dict[str, object]:
     """Create a canonical filament manufacturer."""
 
-    existing = await session.scalar(
-        select(Vendor.id).where(func.lower(Vendor.name) == payload.name.casefold())
+    # Serialize normalized names, including Unicode case-fold equivalents.
+    normalized = normalize("NFKC", payload.name).casefold()
+    await session.execute(
+        text("SELECT pg_advisory_xact_lock(hashtextextended(:key, 0))"), {"key": f"manufacturer:{normalized}"}
     )
-    if existing:
-        raise ApiError(status.HTTP_409_CONFLICT, "vendor_exists", "Vendor already exists")
+    names = await session.scalars(select(Vendor.name))
+    if any(normalize("NFKC", name.strip()).casefold() == normalized for name in names):
+        raise ApiError(status.HTTP_409_CONFLICT, "vendor_exists", "Manufacturer already exists")
     vendor = Vendor(name=payload.name.strip(), preferred=payload.preferred, notes=payload.notes)
     session.add(vendor)
     await session.flush()
@@ -536,7 +556,134 @@ async def create_vendor(
         correlation_id=request.state.correlation_id,
     )
     await session.commit()
-    return {"id": vendor.id, "name": vendor.name, "preferred": vendor.preferred}
+    return {
+        "id": vendor.id,
+        "name": vendor.name,
+        "preferred": vendor.preferred,
+        "record_version": vendor.record_version,
+    }
+
+
+async def _remember_spool_location(session: DatabaseSession, name: str | None) -> UUID | None:
+    """Retain an exact selectable label inside the caller's inventory transaction."""
+
+    if not name or not name.strip():
+        return None
+    return await session.scalar(
+        insert(SpoolLocationChoice)
+        .values(name=name)
+        .on_conflict_do_nothing(index_elements=["name"])
+        .returning(SpoolLocationChoice.id)
+    )
+
+
+@router.get("/spool-location-choices", response_model=list[dict[str, str]])
+async def list_spool_location_choices(_: Viewer, session: DatabaseSession) -> list[dict[str, str]]:
+    """Combine remembered labels with live/imported assignments, including archived spools."""
+
+    names = await session.scalars(
+        select(SpoolLocationChoice.name).union(select(Spool.location).where(Spool.location.is_not(None)))
+    )
+    return [
+        {"name": name}
+        for name in sorted(
+            (name for name in names if name and name.strip()), key=lambda name: (name.casefold(), name)
+        )
+    ]
+
+
+@router.post("/spool-location-choices", response_model=SpoolLocationChoiceCreate, status_code=201)
+async def create_spool_location_choice(
+    payload: SpoolLocationChoiceCreate,
+    request: Request,
+    operator: Operator,
+    session: DatabaseSession,
+) -> SpoolLocationChoiceCreate:
+    """Remember an unused label without changing any spool or creating a location group."""
+
+    choice_id = await _remember_spool_location(session, payload.name)
+    if choice_id is not None:
+        add_audit_event(
+            session,
+            actor_id=operator.id,
+            source="web",
+            action="spool_location_choice.create",
+            object_type="spool_location_choice",
+            object_id=choice_id,
+            before=None,
+            after={"name": payload.name},
+            correlation_id=request.state.correlation_id,
+        )
+    await session.commit()
+    return payload
+
+
+@router.get("/filament-attributes", response_model=list[FilamentAttributeCreate])
+async def list_filament_attributes(
+    _: Viewer,
+    session: DatabaseSession,
+    kind: Literal["filler", "finish"],
+) -> list[FilamentAttributeCreate]:
+    """Include durable choices and legacy/imported values, including archived products."""
+
+    field = FilamentProduct.filler if kind == "filler" else FilamentProduct.finish
+    values = list(
+        await session.scalars(
+            select(FilamentAttributeChoice.name).where(FilamentAttributeChoice.kind == kind)
+        )
+    )
+    values.extend(
+        value for value in await session.scalars(select(field).distinct()) if value and value.strip()
+    )
+    values.append("None" if kind == "filler" else "Standard")
+    unique = {normalize("NFKC", value.strip()).casefold(): value.strip() for value in values}
+    return [
+        FilamentAttributeCreate(kind=kind, name=name) for name in sorted(unique.values(), key=str.casefold)
+    ]
+
+
+@router.post("/filament-attributes", response_model=FilamentAttributeCreate, status_code=201)
+async def create_filament_attribute(
+    payload: FilamentAttributeCreate,
+    request: Request,
+    operator: Operator,
+    session: DatabaseSession,
+) -> FilamentAttributeCreate:
+    """Remember an unused choice atomically without changing any existing product."""
+
+    normalized = normalize("NFKC", payload.name).casefold()
+    choice_id = await session.scalar(
+        insert(FilamentAttributeChoice)
+        .values(
+            kind=payload.kind,
+            name=payload.name,
+            name_key=sha256(normalized.encode("utf-8")).hexdigest(),
+        )
+        .on_conflict_do_nothing(constraint="uq_filament_attribute_choice")
+        .returning(FilamentAttributeChoice.id)
+    )
+    choice = await session.scalar(
+        select(FilamentAttributeChoice).where(
+            FilamentAttributeChoice.kind == payload.kind,
+            FilamentAttributeChoice.name_key == sha256(normalized.encode("utf-8")).hexdigest(),
+        )
+    )
+    assert choice is not None
+    if choice_id:
+        add_audit_event(
+            session,
+            actor_id=operator.id,
+            source="web",
+            action="filament_attribute.create",
+            object_type="filament_attribute",
+            object_id=choice.id,
+            before=None,
+            after={"kind": choice.kind, "name": choice.name},
+            correlation_id=request.state.correlation_id,
+        )
+    response = FilamentAttributeCreate.model_validate(choice)
+    await session.commit()
+    return response
 
 
 @router.get("/filaments", response_model=list[FilamentResponse])
@@ -599,6 +746,50 @@ async def get_filament(
         product,
         color_editable=not await _filaments_have_recorded_use(session, [product.id]),
     )
+
+
+@router.post("/filament-colors", response_model=FilamentColorResponse, status_code=201)
+async def create_filament_color(
+    payload: FilamentColorCreate,
+    request: Request,
+    operator: Operator,
+    session: DatabaseSession,
+) -> FilamentColorResponse:
+    """Explicit color creation must never silently change an existing shared palette."""
+
+    normalized = normalize_color_name(payload.name)
+    await session.execute(
+        text("SELECT pg_advisory_xact_lock(hashtextextended(:key, 0))"),
+        {"key": f"filament-color:{normalized}"},
+    )
+    existing = await session.scalar(
+        select(FilamentColor.id).where(FilamentColor.normalized_name == normalized)
+    )
+    if existing or normalized == "rainbow":
+        raise ApiError(409, "color_exists", "Color already exists; select it from the color list")
+    color = FilamentColor(
+        name=payload.name,
+        normalized_name=normalized,
+        color_hex=payload.color_hex.lstrip("#").upper(),
+        color_mode="solid",
+        color_hexes=[payload.color_hex.lstrip("#").upper()],
+    )
+    session.add(color)
+    await session.flush()
+    response = FilamentColorResponse.model_validate(color)
+    add_audit_event(
+        session,
+        actor_id=operator.id,
+        source="web",
+        action="filament_color.create",
+        object_type="filament_color",
+        object_id=color.id,
+        before=None,
+        after={"name": color.name, "color_hex": color.color_hex},
+        correlation_id=request.state.correlation_id,
+    )
+    await session.commit()
+    return response
 
 
 @router.post("/filaments", response_model=FilamentResponse, status_code=status.HTTP_201_CREATED)
@@ -1140,6 +1331,48 @@ async def delete_or_archive_filament(
     return {"disposition": "deleted"}
 
 
+@router.get("/locations", response_model=list[SpoolLocationResponse])
+async def list_spool_locations(
+    _: Viewer, session: DatabaseSession, include_archived: bool = False
+) -> list[SpoolLocationResponse]:
+    """Group canonical location labels without creating a second location authority."""
+
+    query = select(Spool.location, func.count(Spool.id), func.sum(Spool.remaining_mass_effective_g))
+    if not include_archived:
+        query = query.where(Spool.archived.is_(False))
+    rows = await session.execute(query.group_by(Spool.location).order_by(Spool.location.asc().nulls_last()))
+    return [
+        SpoolLocationResponse(location=location, spool_count=count, remaining_mass_g=mass)
+        for location, count, mass in rows
+    ]
+
+
+@router.get("/spool-tare-suggestions", response_model=list[SpoolTareSuggestionResponse])
+async def spool_tare_suggestions(
+    filament_product_id: UUID, _: Viewer, session: DatabaseSession
+) -> list[SpoolTareSuggestionResponse]:
+    """Suggest known positive tares for the same exact manufacturer, including archived spools."""
+
+    product = await session.get(FilamentProduct, filament_product_id)
+    if product is None:
+        raise ApiError(status.HTTP_404_NOT_FOUND, "not_found", "Filament not found")
+    if product.vendor_id is None:
+        return []
+    count = func.count(Spool.id)
+    rows = await session.execute(
+        select(Spool.tare_mass_g, Spool.nominal_net_mass_g, count)
+        .join(Spool.filament_product)
+        .where(FilamentProduct.vendor_id == product.vendor_id, Spool.tare_mass_g > 0)
+        .group_by(Spool.tare_mass_g, Spool.nominal_net_mass_g)
+        .order_by(count.desc(), Spool.tare_mass_g, Spool.nominal_net_mass_g)
+        .limit(50)
+    )
+    return [
+        SpoolTareSuggestionResponse(tare_mass_g=tare, nominal_net_mass_g=nominal, spool_count=frequency)
+        for tare, nominal, frequency in rows
+    ]
+
+
 @router.get("/spools", response_model=Page)
 async def list_spools(
     _: Viewer,
@@ -1149,6 +1382,8 @@ async def list_spools(
     spool_status: Annotated[str | None, Query(alias="status")] = None,
     manufacturer: str | None = None,
     location: str | None = None,
+    location_exact: str | None = Query(default=None, max_length=160),
+    unassigned: bool = False,
     include_archived: bool = False,
     limit: int = Query(default=50, ge=1, le=200),
     offset: int = Query(default=0, ge=0),
@@ -1182,6 +1417,10 @@ async def list_spools(
         filters.append(Vendor.name.ilike(f"%{manufacturer.strip()}%"))
     if location:
         filters.append(Spool.location.ilike(f"%{location.strip()}%"))
+    if location_exact is not None:
+        filters.append(Spool.location == location_exact)
+    if unassigned:
+        filters.append(Spool.location.is_(None))
 
     base = select(Spool).join(Spool.filament_product).outerjoin(FilamentProduct.vendor).where(*filters)
     count = await session.scalar(select(func.count()).select_from(base.subquery()))
@@ -1217,7 +1456,11 @@ async def create_spool(
         select(Spool.id).where(func.lower(Spool.spool_code) == payload.spool_code.casefold())
     ):
         raise ApiError(status.HTTP_409_CONFLICT, "spool_code_exists", "Spool code already exists")
-    product = await session.get(FilamentProduct, payload.filament_product_id)
+    product = await session.scalar(
+        select(FilamentProduct)
+        .where(FilamentProduct.id == payload.filament_product_id)
+        .options(joinedload(FilamentProduct.vendor))
+    )
     if product is None:
         raise ApiError(status.HTTP_422_UNPROCESSABLE_ENTITY, "unknown_filament", "Filament not found")
 
@@ -1229,6 +1472,12 @@ async def create_spool(
     initial_measured_at: datetime | None = None
     if payload.initial_gross_mass_g is not None:
         if payload.tare_mass_g is None or payload.tare_mass_g == 0:
+            if not payload.infer_tare_from_unused_spool:
+                raise ApiError(
+                    status.HTTP_422_UNPROCESSABLE_ENTITY,
+                    "tare_required",
+                    "A used spool needs an empty-spool weight; purchase weight cannot establish its tare",
+                )
             resolved_tare = payload.initial_gross_mass_g - payload.nominal_net_mass_g
             if resolved_tare < 0:
                 raise ApiError(
@@ -1327,9 +1576,13 @@ async def create_spool(
         payload={"spool_id": str(spool.id)},
     )
     await queue_managed_cura_library(session, requested_by=operator.id)
-    await session.commit()
     spool.filament_product = product
-    return await spool_response_with_statistics(session, spool)
+    await _remember_spool_location(session, spool.location)
+    # Finish response queries and validation before committing so a failed
+    # response cannot leave a saved spool that the operator may try to recreate.
+    response = await spool_response_with_statistics(session, spool)
+    await session.commit()
+    return response
 
 
 @router.get("/spools/{spool_id}", response_model=SpoolResponse)
@@ -1337,6 +1590,17 @@ async def get_spool(spool_id: UUID, _: Viewer, session: DatabaseSession) -> Spoo
     """Return one physical spool by UUID."""
 
     return await spool_response_with_statistics(session, await _get_spool(session, spool_id))
+
+
+@router.get("/spools/{spool_id}/mass-basis", response_model=SpoolMassBasisResponse)
+async def get_spool_mass_basis(spool_id: UUID, _: Viewer, session: DatabaseSession) -> SpoolMassBasisResponse:
+    """Expose bounded canonical weight evidence for the authenticated spool editor."""
+
+    basis = await spool_mass_basis(session, await _get_spool(session, spool_id))
+    return SpoolMassBasisResponse(
+        last_gross_mass_g=basis.gross_mass_g if basis else None,
+        adjustment_since_weighing_g=basis.adjustment_g if basis else None,
+    )
 
 
 @router.get("/spools/by-code/{spool_code}", response_model=SpoolResponse)
@@ -1381,7 +1645,11 @@ async def update_spool(
         )
     target_product: FilamentProduct | None = None
     if payload.filament_product_id is not None:
-        target_product = await session.get(FilamentProduct, payload.filament_product_id)
+        target_product = await session.scalar(
+            select(FilamentProduct)
+            .where(FilamentProduct.id == payload.filament_product_id)
+            .options(joinedload(FilamentProduct.vendor))
+        )
         if target_product is None or target_product.archived:
             raise ApiError(
                 status.HTTP_422_UNPROCESSABLE_ENTITY,
@@ -1389,10 +1657,18 @@ async def update_spool(
                 "Select an active filament product",
             )
     proposed_nominal = payload.nominal_net_mass_g or spool.nominal_net_mass_g
+    proposed_tare = payload.tare_mass_g if payload.tare_mass_g is not None else spool.tare_mass_g
+    basis = await spool_mass_basis(session, spool)
+    recalculated_remaining = spool.remaining_mass_effective_g
+    if basis is not None:
+        try:
+            recalculated_remaining = basis.remaining(proposed_tare)
+        except InvalidWeightError as exc:
+            raise ApiError(status.HTTP_422_UNPROCESSABLE_ENTITY, "invalid_weight", str(exc)) from exc
     proposed_remaining = (
         payload.remaining_mass_g
         if "remaining_mass_g" in payload.model_fields_set and payload.remaining_mass_g is not None
-        else spool.remaining_mass_effective_g
+        else recalculated_remaining
     )
     if proposed_remaining > proposed_nominal:
         raise ApiError(
@@ -1408,11 +1684,30 @@ async def update_spool(
         )
 
     editable_fields = payload.model_fields_set - {"expected_version", "remaining_mass_g"}
+    if "location" in editable_fields:
+        # Remember a legacy/imported label even when its last spool is moved.
+        await _remember_spool_location(session, spool.location)
     before = {field: getattr(spool, field) for field in editable_fields}
+    previous_remaining = spool.remaining_mass_effective_g
+    if basis is not None:
+        before["remaining_mass_g"] = previous_remaining
     if "remaining_mass_g" in payload.model_fields_set:
         before["remaining_mass_g"] = spool.remaining_mass_effective_g
     for field in editable_fields:
         value = getattr(payload, field)
+        if value is None and field in {
+            "spool_code",
+            "filament_product_id",
+            "nominal_net_mass_g",
+            "tare_mass_g",
+            "currency",
+            "archived",
+        }:
+            raise ApiError(
+                status.HTTP_422_UNPROCESSABLE_ENTITY,
+                "invalid_field",
+                "A required spool field cannot be cleared",
+            )
         if field == "spool_code" and value is not None:
             value = value.upper()
         if field in {"purchase_source", "notes"} and isinstance(value, str):
@@ -1420,6 +1715,25 @@ async def update_spool(
         setattr(spool, field, value)
     if target_product is not None:
         spool.filament_product = target_product
+    tare_correction = recalculated_remaining != previous_remaining
+    if basis is not None:
+        spool.remaining_mass_measured_g = (basis.gross_mass_g - proposed_tare).quantize(Decimal("0.001"))
+        spool.remaining_mass_effective_g = recalculated_remaining
+        spool.remaining_mass_expected_g = recalculated_remaining
+    if tare_correction:
+        occurred_at = datetime.now(UTC)
+        session.add(
+            SpoolUsageEvent(
+                spool_id=spool.id,
+                source="tare_correction",
+                printer_id=spool.active_printer_id,
+                mass_delta_g=recalculated_remaining - previous_remaining,
+                idempotency_key=f"tare:{request.state.correlation_id}"[:128],
+                occurred_at=occurred_at,
+                created_at=occurred_at,
+            )
+        )
+        spool.weight_confidence = "tare_recalculated"
     usage_correction = (
         "remaining_mass_g" in payload.model_fields_set
         and payload.remaining_mass_g is not None
@@ -1441,7 +1755,8 @@ async def update_spool(
             )
         )
         spool.remaining_mass_expected_g = payload.remaining_mass_g
-        spool.remaining_mass_measured_g = None
+        if basis is None:
+            spool.remaining_mass_measured_g = None
         spool.remaining_mass_effective_g = payload.remaining_mass_g
         spool.weight_confidence = "operator_corrected"
         spool.last_usage_event_at = occurred_at
@@ -1449,6 +1764,7 @@ async def update_spool(
         # A browser edit, including clearing the field, permanently establishes
         # Filament Manager as the owner instead of re-importing a remote value.
         spool.location_authoritative = True
+        await _remember_spool_location(session, spool.location)
     if spool.archived:
         spool.status = SpoolStatus.ARCHIVED
     elif spool.remaining_mass_effective_g <= 0:
@@ -1495,7 +1811,7 @@ async def update_spool(
         aggregate_version=spool.record_version,
         payload={"spool_id": str(spool.id)},
     )
-    if usage_correction and spool.spoolman_id is not None:
+    if (usage_correction or tare_correction) and spool.spoolman_id is not None:
         add_outbox_job(
             session,
             job_type="spoolman.spool.adjust_weight",
@@ -1507,8 +1823,19 @@ async def update_spool(
         )
     if cura_cost_changed:
         await queue_managed_cura_library(session, requested_by=operator.id)
+    if usage_correction or tare_correction:
+        add_outbox_job(
+            session,
+            job_type="google.inventory.publish",
+            idempotency_key=f"spool:{spool.id}:google:v{spool.record_version}",
+            aggregate_type="spool",
+            aggregate_id=spool.id,
+            aggregate_version=spool.record_version,
+            payload={"spool_id": str(spool.id)},
+        )
+    response = await spool_response_with_statistics(session, spool)
     await session.commit()
-    return await spool_response_with_statistics(session, spool)
+    return response
 
 
 @router.delete("/spools/{spool_id}")
