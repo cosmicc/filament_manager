@@ -340,6 +340,7 @@ async def test_direct_template_save_updates_linked_product_profile(
                     "expected_template_version": current_template["record_version"],
                     "settings": {
                         "chamber_temp_c": "40",
+                        "drying_temp_c": "80",
                         "extruder_temp_c": "250",
                         "bed_temp_c": "45",
                         "flow_percent": "100",
@@ -407,6 +408,8 @@ async def test_direct_template_save_updates_linked_product_profile(
             assert inherited_profile["base_template_version"] == 2
             assert Decimal(inherited_profile["extruder_temp_c"]) == Decimal("250")
             assert Decimal(inherited_profile["bed_temp_c"]) == Decimal("45")
+            assert Decimal(inherited_profile["drying_temp_c"]) == Decimal("80")
+            assert "drying_temp_c" not in inherited_profile["override_keys"]
             assert Decimal(inherited_profile["filament_density_g_cm3"]) == Decimal("1.21")
             assert Decimal(inherited_profile["pressure_advance"]) == Decimal("0.05")
             assert Decimal(inherited_profile["ironing_flow_percent"]) == Decimal("12")
@@ -573,7 +576,7 @@ async def test_direct_template_save_updates_linked_product_profile(
                 for item in materials
                 if item["source_kind"] == "product" and item["material"]["product_id"] == product_id
             )
-            assert product_material["material"]["filler"] is None
+            assert product_material["material"]["filler"] == "None"
             assert product_material["material"]["finish"] == "Silk"
             assert product_material["source_id"] == str(
                 cura_product_scope_id(product.id, printer_id, Decimal("0.6"))

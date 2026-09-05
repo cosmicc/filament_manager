@@ -20,12 +20,16 @@ import {
   useState,
 } from "react";
 import { ApiClientError, apiFetch, idempotencyKey } from "../api/client";
-import type { Filament, Page, Printer, Spool } from "../api/types";
+import type { Filament, MaterialTemplate, Page, Printer, Spool } from "../api/types";
 import { CollectionViewSelector } from "../components/CollectionViewSelector";
 import { EditorSection } from "../components/EditorSection";
 import { EmptyState } from "../components/EmptyState";
 import { LoadingState } from "../components/LoadingState";
 import { Modal } from "../components/Modal";
+import { MaterialTypeFilter } from "../components/MaterialTypeFilter";
+import { InventoryChoiceSelect } from "../components/NewItemSelect";
+import { DryingTemperatureDetails } from "../components/DryingTemperatureDetails";
+import { SpoolTareSuggestions } from "../components/SpoolTareSuggestions";
 import { PageHeader } from "../components/PageHeader";
 import { StatusPill } from "../components/StatusPill";
 import { useAuth } from "../context/AuthContext";
@@ -268,11 +272,13 @@ function CreateSpoolModal({
     inputNumber(initialFilament?.nominal_net_mass_g ?? "1000", 0),
   );
   const [fullSpoolMass, setFullSpoolMass] = useState("");
+  const [knownTare, setKnownTare] = useState("");
+  const [unusedSpool, setUnusedSpool] = useState(true);
   const [purchaseCost, setPurchaseCost] = useState("");
   const [error, setError] = useState("");
   const selected = filaments.find((item) => item.id === filamentId);
   const inferredTare =
-    fullSpoolMass && filamentMass
+    unusedSpool && fullSpoolMass && filamentMass
       ? Number(fullSpoolMass) - Number(filamentMass)
       : null;
   const mutation = useMutation({
@@ -285,7 +291,8 @@ function CreateSpoolModal({
           spool_code: String(data.get("spool_code")).trim(),
           filament_product_id: selected.id,
           nominal_net_mass_g: filamentMass,
-          tare_mass_g: null,
+          tare_mass_g: unusedSpool && fullSpoolMass.trim() ? null : knownTare.trim() || null,
+          infer_tare_from_unused_spool: unusedSpool,
           initial_gross_mass_g:
             fullSpoolMass.trim() || null,
           purchase_source:
@@ -299,11 +306,16 @@ function CreateSpoolModal({
       });
     },
     onSuccess: async () => {
-      await Promise.all([
+      // The POST has succeeded. Refresh failures belong to inventory queries,
+      // not a save error that could prompt creation of a duplicate spool.
+      onClose();
+      await Promise.allSettled([
         queryClient.invalidateQueries({ queryKey: ["spools"] }),
         queryClient.invalidateQueries({ queryKey: ["dashboard"] }),
+        queryClient.invalidateQueries({ queryKey: ["spool-tare-suggestions"] }),
+        queryClient.invalidateQueries({ queryKey: ["locations"] }),
+        queryClient.invalidateQueries({ queryKey: ["spool-location-choices"] }),
       ]);
-      onClose();
     },
     onError: (caught) =>
       setError(
@@ -354,6 +366,7 @@ function CreateSpoolModal({
                 onChange={(event) => {
                   const nextId = event.target.value;
                   setFilamentId(nextId);
+                  setKnownTare("");
                   const nextFilament = filaments.find((item) => item.id === nextId);
                   if (nextFilament) setFilamentMass(inputNumber(nextFilament.nominal_net_mass_g, 0));
                 }}
@@ -380,7 +393,7 @@ function CreateSpoolModal({
             </label>
             <label>
               Location
-              <input name="location" maxLength={160} placeholder="Rack A" />
+            <InventoryChoiceSelect kind="location" name="location" />
             </label>
           </div>
         </EditorSection>
@@ -389,6 +402,7 @@ function CreateSpoolModal({
           description="The filament amount starts inventory tracking. A full-spool scale weight lets Filament Manager calculate the empty-spool weight automatically."
         >
           <div className="form-grid">
+            <label className="check-row form-grid__wide"><input type="checkbox" checked={unusedSpool} onChange={(event) => setUnusedSpool(event.target.checked)} /><span>This spool is unused<small>Only an unused spool can infer tare from total scale weight minus purchased filament weight.</small></span></label>
             <label>
               Filament purchase weight (g)
               <input
@@ -424,6 +438,14 @@ function CreateSpoolModal({
               <p className="form-error" role="alert">Full spool weight must be at least the entered filament amount.</p>
             )
           ) : null}
+          <div className="form-grid">
+            <label>Empty spool weight (g) <span className="label-optional">Optional</span>
+              <input type="number" min="0" step="0.1" value={inferredTare !== null ? inputNumber(inferredTare, 1) : knownTare}
+                readOnly={inferredTare !== null} onChange={(event) => setKnownTare(event.target.value)} />
+              <small className="field-help">For an unused spool, total scale weight minus purchased filament gives the tare. For a used spool, enter a known or estimated tare; it can be corrected later.</small>
+            </label>
+            <SpoolTareSuggestions filamentId={filamentId} disabled={unusedSpool && Boolean(fullSpoolMass.trim())} onApply={setKnownTare} />
+          </div>
         </EditorSection>
         <EditorSection
           title="Purchase and notes"
@@ -486,16 +508,29 @@ function EditSpoolModal({
   const [purchaseWeight, setPurchaseWeight] = useState(inputNumber(spool.nominal_net_mass_g, 1));
   const [purchaseCost, setPurchaseCost] = useState(spool.purchase_cost ?? "");
   const [currencyCode, setCurrencyCode] = useState(spool.currency);
+  const [filamentId, setFilamentId] = useState(spool.filament_product_id);
+  const [tare, setTare] = useState(inputNumber(spool.tare_mass_g, 1));
+  const [tareEdited, setTareEdited] = useState(false);
+  const effectiveTare = tareEdited ? Number(tare) : Number(spool.tare_mass_g);
+  const updateTare = (value: string) => { setTare(value); setTareEdited(true); };
+  const [remainingOverride, setRemainingOverride] = useState<string | null>(null);
+  const basis = useQuery({
+    queryKey: ["spool-mass-basis", spool.id, spool.record_version],
+    queryFn: () => apiFetch<{ last_gross_mass_g: string | null; adjustment_since_weighing_g: string | null }>(`/spools/${spool.id}/mass-basis`),
+  });
+  const calculatedRemaining = basis.data?.last_gross_mass_g != null
+    ? Math.max(0, Number(basis.data.last_gross_mass_g) - effectiveTare + Number(basis.data.adjustment_since_weighing_g ?? 0))
+    : Number(spool.remaining_mass_effective_g);
+  const remaining = remainingOverride === null ? calculatedRemaining : Number(remainingOverride);
   const mutation = useMutation({
     mutationFn: (form: HTMLFormElement) => {
       const data = new FormData(form);
-      const remainingMass = String(data.get("remaining_mass_g"));
       const payload: Record<string, unknown> = {
         expected_version: spool.record_version,
         spool_code: String(data.get("spool_code")).trim(),
         filament_product_id: String(data.get("filament_product_id")),
-        nominal_net_mass_g: String(data.get("nominal_net_mass_g")),
-        tare_mass_g: String(data.get("tare_mass_g")),
+        nominal_net_mass_g: purchaseWeight === inputNumber(spool.nominal_net_mass_g, 1) ? spool.nominal_net_mass_g : purchaseWeight,
+        tare_mass_g: tareEdited ? tare : spool.tare_mass_g,
         location: String(data.get("location") ?? "").trim() || null,
         purchase_source: String(data.get("purchase_source") ?? "").trim() || null,
         purchase_date: String(data.get("purchase_date") ?? "") || null,
@@ -504,8 +539,8 @@ function EditSpoolModal({
         notes: String(data.get("notes") ?? "").trim() || null,
         archived: data.get("archived") === "on",
       };
-      if (Number(remainingMass) !== Number(spool.remaining_mass_effective_g)) {
-        payload.remaining_mass_g = remainingMass;
+      if (remainingOverride !== null) {
+        payload.remaining_mass_g = remainingOverride;
       }
       return apiFetch<Spool>(`/spools/${spool.id}`, {
         method: "PATCH",
@@ -513,11 +548,15 @@ function EditSpoolModal({
       });
     },
     onSuccess: async (updated) => {
-      await Promise.all([
+      onSaved(updated);
+      await Promise.allSettled([
         queryClient.invalidateQueries({ queryKey: ["spools"] }),
         queryClient.invalidateQueries({ queryKey: ["dashboard"] }),
+        queryClient.invalidateQueries({ queryKey: ["spool-tare-suggestions"] }),
+        queryClient.invalidateQueries({ queryKey: ["spool-mass-basis", spool.id] }),
+        queryClient.invalidateQueries({ queryKey: ["locations"] }),
+        queryClient.invalidateQueries({ queryKey: ["spool-location-choices"] }),
       ]);
-      onSaved(updated);
     },
     onError: (caught) =>
       setError(
@@ -562,7 +601,7 @@ function EditSpoolModal({
           <button
             className="button button--primary"
             form="edit-spool-form"
-            disabled={mutation.isPending || remove.isPending}
+            disabled={mutation.isPending || remove.isPending || basis.isPending || basis.isError}
           >
             <Pencil size={17} />
             {mutation.isPending ? "Saving…" : "Save spool"}
@@ -585,12 +624,16 @@ function EditSpoolModal({
         >
           <div className="form-grid">
             <label>Spool code<input name="spool_code" defaultValue={spool.spool_code} pattern={'[A-Za-z0-9_\\-]+'} maxLength={64} required autoFocus /></label>
-            <label>Filament product<select name="filament_product_id" defaultValue={spool.filament_product_id} required>{filaments.map((filament) => <option key={filament.id} value={filament.id}>{filament.vendor_name ?? 'Unspecified'} · {materialIdentitySummary(filament)}</option>)}</select></label>
+            <label>Filament product<select name="filament_product_id" value={filamentId} onChange={(event) => setFilamentId(event.target.value)} required>{filaments.map((filament) => <option key={filament.id} value={filament.id}>{filament.vendor_name ?? 'Unspecified'} · {materialIdentitySummary(filament)}</option>)}</select></label>
             <label>Filament purchase weight (g)<input name="nominal_net_mass_g" type="number" min="0.1" step="0.1" value={purchaseWeight} onChange={(event) => setPurchaseWeight(event.target.value)} required /><small className="field-help">Net filament purchased, excluding the empty physical spool.</small></label>
-            <label>Empty spool weight (g)<input name="tare_mass_g" type="number" min="0" step="0.1" defaultValue={inputNumber(spool.tare_mass_g, 1)} required /></label>
-            <label>Current filament remaining (g)<input name="remaining_mass_g" type="number" min="0" step="1" defaultValue={inputNumber(spool.remaining_mass_effective_g, 0)} required /><small className="field-help">Changing this records an operator correction and updates Spoolman.</small></label>
-            <label>Bucket or location<input name="location" defaultValue={spool.location ?? ''} maxLength={160} placeholder="Bucket 12" /></label>
+            <label>Empty spool weight (g)<input name="tare_mass_g" type="number" min="0" step="0.1" value={tare} onChange={(event) => updateTare(event.target.value)} required /><small className="field-help">Changing tare automatically recalculates remaining filament from the last scale weight and subsequent usage.</small></label>
+            <label>Current filament remaining (g)<input name="remaining_mass_g" type="number" min="0" step="0.1" value={remainingOverride ?? inputNumber(calculatedRemaining, 1)} onChange={(event) => setRemainingOverride(event.target.value)} required /><small className="field-help">Calculated automatically. Typing a value records an explicit operator correction.</small>{remainingOverride !== null ? <button type="button" className="text-button" onClick={() => setRemainingOverride(null)}>Use calculated remaining</button> : null}</label>
+            <label>Current total spool weight (g)<input value={inputNumber(remaining + effectiveTare, 1)} readOnly aria-readonly="true" /><small className="field-help">Remaining filament + empty spool weight.{effectiveTare <= 0 ? ' Tare is not yet known.' : ''}</small></label>
+          <label>Location<InventoryChoiceSelect kind="location" name="location" defaultValue={spool.location ?? ''} /></label>
+            <SpoolTareSuggestions filamentId={filamentId} onApply={updateTare} />
           </div>
+          {basis.data ? <p className="field-help">{basis.data.last_gross_mass_g === null ? 'No retained scale reading: the existing purchase/usage estimate is preserved until you weigh this spool.' : `Last scale weight: ${grams(basis.data.last_gross_mass_g, 1)}. Subsequent usage and adjustments: ${grams(basis.data.adjustment_since_weighing_g ?? '0', 1)}. Original weigh-in history is never overwritten.`}</p> : null}
+          {basis.isError ? <p className="form-error" role="alert">Weight evidence could not be loaded. Close and reopen this editor before saving.</p> : null}
           <p className="security-note">
             <MapPin size={16} /> Filament Manager remains authoritative and will project these corrections to Spoolman.
           </p>
@@ -624,24 +667,42 @@ export default function SpoolsPage() {
   const canEdit = user?.role !== "viewer";
   const [search, setSearch] = useState("");
   const [status, setStatus] = useState("");
+  const [material, setMaterial] = useState("");
   const [view, setView] = useCollectionView("spools", "list");
   const [selected, setSelected] = useState<Spool | null>(null);
+  const [requestedSpoolId, setRequestedSpoolId] = useState(creationRequest.get("spool_id"));
+  const requestedSpool = useQuery({
+    queryKey: ["spools", "detail", requestedSpoolId],
+    queryFn: () => apiFetch<Spool>(`/spools/${encodeURIComponent(requestedSpoolId ?? '')}`),
+    enabled: Boolean(requestedSpoolId),
+  });
+  useEffect(() => {
+    if (requestedSpool.data && requestedSpoolId) {
+      setSelected(requestedSpool.data);
+      setRequestedSpoolId(null);
+      navigate("/spools", true);
+    }
+  }, [navigate, requestedSpool.data, requestedSpoolId]);
   const [weighing, setWeighing] = useState<Spool | null>(null);
   const [editingSpool, setEditingSpool] = useState<Spool | null>(null);
   const [creating, setCreating] = useState(creationRequest.get("create") === "1");
   const [actionError, setActionError] = useState("");
   const [actionMessage, setActionMessage] = useState("");
   const query = useQuery({
-    queryKey: ["spools", search, status],
+    queryKey: ["spools", search, status, material],
     queryFn: () =>
       apiFetch<Page<Spool>>(
-        `/spools?limit=200${search ? `&search=${encodeURIComponent(search)}` : ""}${status ? `&status=${encodeURIComponent(status)}` : ""}`,
+        `/spools?limit=200${search ? `&search=${encodeURIComponent(search)}` : ""}${status ? `&status=${encodeURIComponent(status)}` : ""}${material ? `&material=${encodeURIComponent(material)}` : ""}`,
       ),
     refetchInterval: 15_000,
   });
   const filaments = useQuery({
     queryKey: ["filaments"],
     queryFn: () => apiFetch<Filament[]>("/filaments"),
+  });
+  const templates = useQuery({
+    queryKey: ["material-templates"],
+    queryFn: () => apiFetch<MaterialTemplate[]>("/profiles/templates"),
   });
   const printers = useQuery({
     queryKey: ["printers"],
@@ -745,6 +806,7 @@ export default function SpoolsPage() {
             aria-label="Search spools"
           />
         </label>
+        <MaterialTypeFilter templates={templates.data ?? []} value={material} onChange={setMaterial} />
         <label className="select-field">
           <Filter size={17} />
           <select
@@ -765,7 +827,8 @@ export default function SpoolsPage() {
         </span>
       </section>
 
-      {query.isLoading ? (
+      {requestedSpool.isError ? <p className="form-error" role="alert">The selected spool could not be loaded.</p> : null}
+      {query.isError ? <p className="form-error" role="alert">Spools could not be loaded. Please retry.</p> : query.isLoading ? (
         <LoadingState label="Loading spools" />
       ) : items.length === 0 ? (
         <EmptyState
@@ -882,6 +945,7 @@ export default function SpoolsPage() {
                 </header>
                 <div>
                   <dl className="definition-list">
+                    <DryingTemperatureDetails filamentId={selected.filament_product_id} />
                     <div>
                       <dt>Filament</dt>
                       <dd>
@@ -908,6 +972,7 @@ export default function SpoolsPage() {
                           : "Unknown"}
                       </dd>
                     </div>
+                    <div><dt>Current total spool weight</dt><dd>{grams(Number(selected.remaining_mass_effective_g) + Number(selected.tare_mass_g), 1)}{Number(selected.tare_mass_g) <= 0 ? ' (tare unknown)' : ''}</dd></div>
                     <div>
                       <dt>Purchase weight</dt>
                       <dd>{grams(selected.nominal_net_mass_g, 1)} filament only</dd>

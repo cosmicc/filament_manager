@@ -1,7 +1,10 @@
 import type { FilamentColor } from '../api/types'
 import { filamentSwatchStyle } from '../lib/colors'
-import { ChevronDown } from 'lucide-react'
-import { useId, useState } from 'react'
+import { useState } from 'react'
+import { useMutation, useQueryClient } from '@tanstack/react-query'
+import { apiFetch } from '../api/client'
+import { Modal } from './Modal'
+import { NewItemSelect } from './NewItemSelect'
 
 export type FilamentColorMode = 'solid' | 'multicolor' | 'rainbow'
 
@@ -28,11 +31,26 @@ export function FilamentColorEditor({
   errorIdPrefix?: string
   disabled?: boolean
 }) {
-  const [open, setOpen] = useState(false)
-  const listId = useId()
-  const colorOptions = rememberedColors.some((color) => color.normalized_name === 'rainbow')
-    ? rememberedColors
-    : [...rememberedColors, { id: 'rainbow', name: 'Rainbow', normalized_name: 'rainbow', color_hex: 'E53935', color_mode: 'rainbow' as const, color_hexes: [], record_version: 1 }]
+  const [creating, setCreating] = useState(false)
+  const [added, setAdded] = useState<FilamentColor[]>([])
+  const client = useQueryClient()
+  const knownColors = [...rememberedColors, ...added.filter((color) => !rememberedColors.some((known) => known.id === color.id))]
+  const colorOptions = knownColors.some((color) => color.normalized_name === 'rainbow')
+    ? knownColors
+    : [...knownColors, { id: 'rainbow', name: 'Rainbow', normalized_name: 'rainbow', color_hex: 'E53935', color_mode: 'rainbow' as const, color_hexes: [], record_version: 1 }]
+  const create = useMutation({
+    mutationFn: (data: FormData) => apiFetch<FilamentColor>('/filament-colors', {
+      method: 'POST', body: JSON.stringify({ name: String(data.get('name') ?? '').trim(), color_hex: data.get('color_hex') }),
+    }),
+    onSuccess: async (color) => {
+      setAdded((colors) => [...colors, color])
+      onNameChange(color.name)
+      onModeChange('solid')
+      onColorsChange([color.color_hex])
+      setCreating(false)
+      await client.invalidateQueries({ queryKey: ['filament-colors'] })
+    },
+  })
   const selectRemembered = (nextName: string) => {
     onNameChange(nextName)
     const normalized = nextName.normalize('NFKC').trim().toLocaleLowerCase()
@@ -77,29 +95,16 @@ export function FilamentColorEditor({
   return <>
     <label>
       Color name
-      <div className="color-combobox">
-        <input
-          value={name}
-          onChange={(event) => { selectRemembered(event.target.value); setOpen(true) }}
-          onFocus={() => setOpen(true)}
-          maxLength={96}
-          required
-          disabled={disabled}
-          placeholder="Choose one or type a custom name"
-          role="combobox"
-          aria-controls={listId}
-          aria-expanded={open}
-          aria-autocomplete="list"
-          aria-invalid={colorNameErrors.length ? true : undefined}
-          aria-describedby={colorNameErrors.length ? `${errorIdPrefix}-name-error` : undefined}
-        />
-        <button type="button" aria-label="Show color choices" disabled={disabled} onClick={() => setOpen((current) => !current)}><ChevronDown size={17} /></button>
-        {open ? <div className="color-combobox__menu" id={listId} role="listbox">
-          {colorOptions.map((color) => <button type="button" role="option" aria-selected={color.normalized_name === name.normalize('NFKC').trim().toLocaleLowerCase()} key={color.id} onClick={() => { selectRemembered(color.name); setOpen(false) }}><span className="filament-swatch" style={filamentSwatchStyle(color.color_mode, color.color_hexes, color.color_hex)} />{color.name}</button>)}
-        </div> : null}
-      </div>
+      <NewItemSelect value={name} required disabled={disabled} itemLabel="Color"
+        onChange={(event) => selectRemembered(event.target.value)}
+        onCreate={() => { create.reset(); setCreating(true) }}
+        options={[{ value: '', label: 'Choose a color' },
+          ...colorOptions.map((color) => ({ value: color.name, label: color.name })),
+          ...(name && !colorOptions.some((color) => color.name === name) ? [{ value: name, label: name }] : [])]}
+        aria-invalid={colorNameErrors.length ? true : undefined}
+        aria-describedby={colorNameErrors.length ? `${errorIdPrefix}-name-error` : undefined} />
       {errorBlock('name', colorNameErrors)}
-      <small className="field-help">Choose a remembered color or type any custom color name.</small>
+      <small className="field-help">Choose a saved color or use New Color to add a name and display color.</small>
     </label>
     <label>
       Display type
@@ -135,5 +140,13 @@ export function FilamentColorEditor({
       <span>Preview</span>
       <span className="filament-swatch filament-swatch--large" style={filamentSwatchStyle(mode, colorHexes)} aria-label={`${name || 'Filament'} color preview`} />
     </div>
+    {creating ? <Modal title="New Color" onClose={() => { if (!create.isPending) setCreating(false) }}>
+      <form className="editor-form" onSubmit={(event) => { event.preventDefault(); event.stopPropagation(); create.mutate(new FormData(event.currentTarget)) }}>
+        <label>Color name<input name="name" required maxLength={96} autoFocus disabled={create.isPending} /></label>
+        <label>Display color<input name="color_hex" type="color" defaultValue="#808080" disabled={create.isPending} /></label>
+        {create.error ? <p className="form-error" role="alert">{create.error.message}</p> : null}
+        <div className="form-actions"><button className="button" type="button" disabled={create.isPending} onClick={() => setCreating(false)}>Cancel</button><button className="button button--primary" disabled={create.isPending}>{create.isPending ? 'Saving…' : 'Add color'}</button></div>
+      </form>
+    </Modal> : null}
   </>
 }

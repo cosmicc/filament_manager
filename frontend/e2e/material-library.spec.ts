@@ -27,6 +27,7 @@ const nozzle = {
 }
 
 const settings = {
+  drying_temp_c: '65',
   chamber_temp_c: null, extruder_temp_c: '210', bed_temp_c: '60', initial_bed_temp_c: '60', flow_percent: '100',
   print_speed_mm_s: '120', outer_wall_speed_mm_s: '60', inner_wall_speed_mm_s: '90',
   infill_speed_mm_s: '110', top_bottom_speed_mm_s: '70', initial_layer_speed_mm_s: '30',
@@ -111,13 +112,81 @@ test.beforeEach(async ({ page }) => {
   await page.route('**/api/v1/nozzles', (route) => route.fulfill({ json: [nozzle] }))
   await page.route('**/api/v1/build-plates', (route) => route.fulfill({ json: [] }))
   await page.route('**/api/v1/notifications**', (route) => route.fulfill({ json: [] }))
-  await page.route('**/api/v1/filament-colors', (route) => route.fulfill({ json: [
-    { id: 'blue-id', name: 'Blue', normalized_name: 'blue', color_hex: '2F80A5', color_mode: 'solid', color_hexes: ['2F80A5'], record_version: 1 },
+  await page.route('**/api/v1/profiles/templates', (route) => route.fulfill({ json: [template] }))
+  await page.route('**/api/v1/profiles', (route) => route.fulfill({ json: [] }))
+  await page.route('**/api/v1/spool-tare-suggestions?**', (route) => route.fulfill({ json: [] }))
+  await page.route('**/api/v1/spool-location-choices', (route) => route.fulfill({ json: [{ name: 'Bucket 12' }] }))
+  await page.route('**/api/v1/filament-attributes?**', (route) => route.fulfill({ json: [
+    { kind: 'filler', name: 'None' }, { kind: 'filler', name: 'Carbon Fiber' },
+    { kind: 'finish', name: 'Standard' }, { kind: 'finish', name: 'Silk' },
   ] }))
+  await page.route('**/api/v1/filament-colors', (route) => {
+    if (route.request().method() === 'POST') {
+      const body = route.request().postDataJSON()
+      return route.fulfill({ status: 201, json: { id: 'created-color', name: body.name,
+        normalized_name: body.name.toLowerCase(), color_hex: body.color_hex.replace('#', '').toUpperCase(),
+        color_mode: 'solid', color_hexes: [body.color_hex.replace('#', '').toUpperCase()], record_version: 1 } })
+    }
+    return route.fulfill({ json: [
+    { id: 'blue-id', name: 'Blue', normalized_name: 'blue', color_hex: '2F80A5', color_mode: 'solid', color_hexes: ['2F80A5'], record_version: 1 },
+    { id: 'red-id', name: 'Red', normalized_name: 'red', color_hex: 'FF0000', color_mode: 'solid', color_hexes: ['FF0000'], record_version: 1 },
+  ] }) })
 })
 
 test.afterEach(async ({ page }) => {
   expect(browserErrors.get(page) ?? [], 'browser console and page errors').toEqual([])
+})
+
+test('new inventory choices preserve the draft and template changes retain custom values', async ({ page }) => {
+  let current = { ...filament }
+  let profile = { ...comparisonProfile, extruder_temp_c: '218', override_keys: ['extruder_temp_c'], override_count: 1 }
+  let changed: Record<string, unknown> | null = null
+  const tpu = { ...template, id: 'tpu-template', name: 'Template TPU', material_type: 'TPU',
+    revisions: [{ ...template.revisions[0], id: 'tpu-revision', settings: { ...settings, bed_temp_c: '45' } }] }
+  await page.route('**/api/v1/profiles/templates?**', (route) => route.fulfill({ json: [template, tpu] }))
+  await page.route('**/api/v1/profiles/cura-settings/catalog', (route) => route.fulfill({ json: [] }))
+  await page.route('**/api/v1/profiles', (route) => route.fulfill({ json: [profile] }))
+  await page.route('**/api/v1/vendors', (route) => route.fulfill({ json: route.request().method() === 'POST'
+    ? { id: 'maker-id', name: 'New Maker', preferred: false, record_version: 1 } : [] }))
+  await page.route('**/api/v1/filament-attributes', (route) => route.fulfill({ status: 201, json: route.request().postDataJSON() }))
+  await page.route(`**/api/v1/filaments/${filament.id}`, (route) => route.fulfill({ json: current }))
+  await page.route(`**/api/v1/profiles/${profile.id}/change-template`, async (route) => {
+    changed = route.request().postDataJSON()
+    current = { ...current, material_type: 'TPU', record_version: 2 }
+    profile = { ...profile, base_template_id: tpu.id, base_template_name: tpu.name,
+      base_template_revision_id: 'tpu-revision', bed_temp_c: '45' }
+    await route.fulfill({ status: 201, json: profile })
+  })
+  await page.goto(`/filaments/${filament.id}`)
+  await page.getByRole('button', { name: 'Edit product' }).click()
+  const editor = page.getByRole('dialog', { name: 'Edit filament product' })
+  await editor.getByLabel('Notes').fill('Preserve my draft')
+  for (const [label, name] of [['Manufacturer', 'New Maker'], ['Filler', 'Glass Fiber'], ['Finish', 'Velvet']]) {
+    const selector = editor.getByRole('combobox', { name: label, exact: true })
+    await selector.selectOption({ label: `New ${label}` })
+    const dialog = page.getByRole('dialog', { name: `New ${label}` })
+    await dialog.getByLabel(`${label} name`).fill(name)
+    await dialog.getByRole('button', { name: `Add ${label.toLowerCase()}` }).click()
+    await expect(dialog).toHaveCount(0)
+    await expect(selector).toHaveValue(label === 'Manufacturer' ? 'maker-id' : name)
+    await expect(editor.getByLabel('Notes')).toHaveValue('Preserve my draft')
+  }
+  await captureEvidence(page, 'inventory-choice-editor-v071')
+  await editor.getByRole('button', { name: 'Cancel', exact: true }).click()
+  await page.getByRole('button', { name: 'Change template', exact: true }).click()
+  const change = page.getByRole('dialog', { name: 'Change template' })
+  await change.getByLabel('New template').selectOption('tpu-revision')
+  await expect(change.getByText(/1 custom value will be reapplied/)).toBeVisible()
+  await expect(change.getByText(/corrects the filament type from PLA to TPU/)).toBeVisible()
+  await page.setViewportSize({ width: 390, height: 844 })
+  await captureEvidence(page, 'change-template-mobile-v071')
+  await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true)
+  await change.getByRole('button', { name: 'Change template', exact: true }).click()
+  await expect(change).toHaveCount(0)
+  await expect.poll(() => changed?.target_template_revision_id).toBe('tpu-revision')
+  await expect(page.getByRole('heading', { level: 1 })).toContainText('TPU')
+  await expect(page.getByText('218 °C', { exact: true })).toBeVisible()
+  await expect(page.getByText('45 °C', { exact: true })).toBeVisible()
 })
 
 test('template library is usable at desktop and mobile sizes', async ({ page }) => {
@@ -151,6 +220,7 @@ test('template library is usable at desktop and mobile sizes', async ({ page }) 
   await expect(page.getByRole('button', { name: 'Delete template' })).toHaveCount(0)
   await templateCard.click()
   await expect(page.getByRole('dialog', { name: 'Edit Template PLA' })).toBeVisible()
+  await expect(page.getByRole('spinbutton', { name: /^Filament drying temperature/ })).toHaveValue('65')
   await expect(page.getByRole('link', { name: 'Export Template PLA' })).toHaveAttribute('href', '/api/v1/profiles/templates/template-id/exports/json')
   await expect(page.getByRole('button', { name: 'Delete template' })).toBeVisible()
   await captureEvidence(page, 'template-editor-desktop-v057')
@@ -171,12 +241,14 @@ test('template library is usable at desktop and mobile sizes', async ({ page }) 
   await expect(page.getByRole('dialog', { name: 'Edit Template PLA' })).toBeVisible()
   await captureEvidence(page, 'template-editor-mobile-v057')
   await printingTemperature.fill('212')
+  await page.getByRole('spinbutton', { name: /^Filament drying temperature/ }).fill('70')
   await page.getByLabel('Ironing flow (%)').fill('12')
   await page.getByLabel('Ironing speed (mm/s)').fill('25')
   await page.getByLabel('Ironing line spacing (mm)').fill('0.12')
   await page.getByRole('button', { name: 'Save template' }).click()
   await expect.poll(() => templateUpdate?.expected_template_version).toBe(3)
   await expect.poll(() => (templateUpdate?.settings as Record<string, unknown>)?.extruder_temp_c).toBe('212')
+  await expect.poll(() => (templateUpdate?.settings as Record<string, unknown>)?.drying_temp_c).toBe('70')
   await expect.poll(() => (templateUpdate?.settings as Record<string, unknown>)?.ironing_flow_percent).toBe('12')
   await expect.poll(() => (templateUpdate?.settings as Record<string, unknown>)?.ironing_speed_mm_s).toBe('25')
   await expect.poll(() => (templateUpdate?.settings as Record<string, unknown>)?.ironing_line_spacing_mm).toBe('0.12')
@@ -395,7 +467,14 @@ test('filament creation requires and submits a current template', async ({ page 
   await page.goto('/filaments')
   await page.getByRole('button', { name: 'Add filament' }).click()
   await expect(page.getByLabel('Display name')).toHaveCount(0)
-  await page.getByRole('combobox', { name: /^Color name/ }).fill('Workshop Sunset')
+  await page.getByRole('combobox', { name: /^Color name/ }).selectOption({ label: 'New Color' })
+  const colorDialog = page.getByRole('dialog', { name: 'New Color' })
+  await colorDialog.getByLabel('Color name').fill('Workshop Sunset')
+  await colorDialog.getByLabel('Display color').fill('#ff0000')
+  await captureEvidence(page, 'new-color-v071')
+  await colorDialog.getByRole('button', { name: 'Add color' }).click()
+  await expect(colorDialog).toHaveCount(0)
+  await expect(page.getByRole('combobox', { name: /^Color name/ })).toHaveValue('Workshop Sunset')
   await page.getByLabel('Display type').selectOption('multicolor')
   await page.getByLabel('Number of colors').selectOption('3')
   await page.getByLabel('Color 1').fill('#ff0000')
@@ -512,7 +591,7 @@ test('filament details remember colors and save Cura settings directly', async (
   await expect(page.getByRole('heading', { name: '0.6 mm nozzle' })).toBeVisible()
   await page.getByRole('button', { name: 'Edit product' }).click()
   await expect(page.getByRole('dialog', { name: 'Edit filament product' })).toBeVisible()
-  await page.getByRole('combobox', { name: /^Color name/ }).fill('Red')
+  await page.getByRole('combobox', { name: /^Color name/ }).selectOption('Red')
   await page.getByLabel('Screen color sample').fill('#ff0000')
   await page.getByRole('button', { name: 'Save filament' }).click()
   await expect.poll(() => filamentUpdate?.color_name).toBe('Red')
@@ -622,6 +701,31 @@ test('Rainbow edits omit display names and rejected product fields are explicit'
   browserErrors.set(page, [])
 })
 
+test('drying guidance is read-only in filament and spool details', async ({ page }) => {
+  await page.route('**/api/v1/filaments', (route) => route.fulfill({ json: [filament] }))
+  await page.route(`**/api/v1/filaments/${filament.id}`, (route) => route.fulfill({ json: filament }))
+  await page.route('**/api/v1/profiles', (route) => route.fulfill({ json: [comparisonProfile] }))
+  await page.route('**/api/v1/profiles/templates?**', (route) => route.fulfill({ json: [template] }))
+  await page.route('**/api/v1/profiles/cura-settings/catalog', (route) => route.fulfill({ json: [] }))
+  await page.route('**/api/v1/vendors', (route) => route.fulfill({ json: [] }))
+  await page.route('**/api/v1/spools?**', (route) => route.fulfill({ json: { items: [spool], total: 1, limit: 200, offset: 0 } }))
+  await page.goto(`/filaments/${filament.id}`)
+  const drying = page.getByText('Filament drying temperature', { exact: true })
+  await expect(drying.locator('..')).toContainText('65 °C')
+  await page.getByRole('button', { name: 'Edit settings', exact: true }).click()
+  await expect(page.getByRole('spinbutton', { name: /^Filament drying temperature/ })).toHaveCount(0)
+  await page.getByRole('button', { name: 'Cancel', exact: true }).click()
+  await drying.scrollIntoViewIfNeeded()
+  await captureEvidence(page, 'drying-filament-desktop')
+  await page.setViewportSize({ width: 390, height: 844 })
+  await page.goto('/spools')
+  await page.getByText(spool.spool_code, { exact: true }).click()
+  await expect(drying.locator('..')).toContainText('65 °C')
+  await expect(page.getByRole('spinbutton', { name: /^Filament drying temperature/ })).toHaveCount(0)
+  await drying.scrollIntoViewIfNeeded()
+  await captureEvidence(page, 'drying-spool-mobile')
+})
+
 test('spool creation is available without opening Spoolman', async ({ page }) => {
   let submitted: Record<string, unknown> | null = null
   await page.route('**/api/v1/filaments', (route) => route.fulfill({ json: [filament] }))
@@ -648,12 +752,15 @@ test('spool creation is available without opening Spoolman', async ({ page }) =>
   await expect.poll(() => submitted?.purchase_cost).toBe('15')
 })
 
-test('free-text bucket location is editable from Filament Manager', async ({ page }) => {
+test('a remembered location is selectable from Filament Manager', async ({ page }) => {
   let submitted: Record<string, unknown> | null = null
   let currentSpool = spool
   await page.route('**/api/v1/filaments', (route) => route.fulfill({ json: [filament] }))
   await page.route('**/api/v1/spools?**', (route) => route.fulfill({
     json: { items: [currentSpool], total: 1, limit: 200, offset: 0 },
+  }))
+  await page.route('**/api/v1/spools/spool-id/mass-basis', (route) => route.fulfill({
+    json: { last_gross_mass_g: '1000', adjustment_since_weighing_g: '0' },
   }))
   await page.route('**/api/v1/spools/spool-id', async (route) => {
     submitted = route.request().postDataJSON() as Record<string, unknown>
@@ -668,7 +775,7 @@ test('free-text bucket location is editable from Filament Manager', async ({ pag
   await page.getByText('PLA-BLUE-01', { exact: true }).click()
   await expect(page.getByText('Bucket 3', { exact: true }).last()).toBeVisible()
   await page.getByRole('button', { name: 'Edit spool' }).click()
-  await page.getByLabel('Bucket or location').fill('Bucket 12')
+  await page.getByLabel('Location', { exact: true }).selectOption('Bucket 12')
   await page.setViewportSize({ width: 390, height: 844 })
   await page.getByRole('button', { name: 'Save spool' }).click()
 

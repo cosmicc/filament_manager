@@ -85,6 +85,8 @@ class PasswordChange(ApiModel):
 
 
 class VendorCreate(ApiModel):
+    model_config = ConfigDict(str_strip_whitespace=True)
+
     name: str = Field(min_length=1, max_length=160)
     preferred: bool = False
     notes: str | None = Field(default=None, max_length=2000)
@@ -93,11 +95,54 @@ class VendorCreate(ApiModel):
 ColorHex = Annotated[str, Field(pattern=r"^#?[0-9A-Fa-f]{6}$")]
 
 
-class FilamentCreate(ApiModel):
+class SpoolLocationChoiceCreate(ApiModel):
+    """A remembered location label, not a separate spool assignment."""
+
+    model_config = ConfigDict(str_strip_whitespace=True, extra="forbid")
+    name: str = Field(min_length=1, max_length=160)
+
+
+class FilamentAttributeCreate(ApiModel):
+    """An explicitly created, durable inventory dropdown choice."""
+
+    model_config = ConfigDict(str_strip_whitespace=True, extra="forbid")
+    kind: Literal["filler", "finish"]
+    name: str = Field(min_length=1, max_length=96)
+
+
+class FilamentColorCreate(ApiModel):
+    """Create a named shared solid display color without changing existing colors."""
+
+    model_config = ConfigDict(str_strip_whitespace=True, extra="forbid")
+    name: str = Field(min_length=1, max_length=96)
+    color_hex: ColorHex
+
+    @field_validator("name")
+    @classmethod
+    def bounded_normalized_name(cls, value: str) -> str:
+        from filament_manager.domain.colors import normalize_color_name
+
+        normalize_color_name(value)
+        return value
+
+
+class FilamentModifiers(ApiModel):
+    """Normalize only empty modifiers; retain every populated operator value."""
+
+    filler: str | None = Field(default="None", max_length=96)
+    finish: str | None = Field(default="Standard", max_length=96)
+
+    @field_validator("filler", "finish", mode="before")
+    @classmethod
+    def default_empty_modifier(cls, value: object, info: Any) -> object:
+        if value is None or (isinstance(value, str) and not value.strip()):
+            return "None" if info.field_name == "filler" else "Standard"
+        return value
+
+
+class FilamentCreate(FilamentModifiers):
     vendor_id: UUID | None = None
     material_type: str = Field(min_length=1, max_length=48)
-    filler: str | None = Field(default=None, max_length=96)
-    finish: str | None = Field(default=None, max_length=96)
     color_name: str = Field(min_length=1, max_length=96)
     color_hex: str | None = Field(default=None, pattern=r"^[0-9A-Fa-f]{6}$")
     color_mode: Literal["solid", "multicolor", "rainbow"] = "solid"
@@ -127,14 +172,12 @@ class FilamentResponse(FilamentCreate):
     record_version: int
 
 
-class FilamentUpdate(ApiModel):
+class FilamentUpdate(FilamentModifiers):
     """Editable product metadata with global color-sample semantics."""
 
     expected_version: int = Field(ge=1)
     vendor_id: UUID | None = None
     material_type: str | None = Field(default=None, min_length=1, max_length=48)
-    filler: str | None = Field(default=None, max_length=96)
-    finish: str | None = Field(default=None, max_length=96)
     color_name: str | None = Field(default=None, min_length=1, max_length=96)
     color_hex: str | None = Field(default=None, pattern=r"^[0-9A-Fa-f]{6}$")
     color_mode: Literal["solid", "multicolor", "rainbow"] | None = None
@@ -174,6 +217,7 @@ class SpoolCreate(ApiModel):
         ),
     )
     initial_gross_mass_g: Decimal | None = Field(default=None, ge=0)
+    infer_tare_from_unused_spool: bool = True
     purchase_source: str | None = Field(default=None, max_length=160)
     purchase_date: date | None = None
     purchase_cost: Decimal | None = Field(default=None, ge=0)
@@ -234,6 +278,7 @@ class SpoolResponse(ApiModel):
     remaining_mass_expected_g: Decimal
     remaining_mass_measured_g: Decimal | None
     remaining_mass_effective_g: Decimal
+    current_total_mass_g: Decimal
     remaining_percent: Decimal
     weight_confidence: str
     status: str
@@ -250,6 +295,29 @@ class SpoolResponse(ApiModel):
     archived: bool
     record_version: int
     completed_print_count: int = 0
+
+
+class SpoolMassBasisResponse(ApiModel):
+    """Read-only input evidence for an empty-spool-weight correction preview."""
+
+    last_gross_mass_g: Decimal | None
+    adjustment_since_weighing_g: Decimal | None
+
+
+class SpoolTareSuggestionResponse(ApiModel):
+    """Previously saved manufacturer tare/capacity pair; never an automatic edit."""
+
+    tare_mass_g: Decimal
+    nominal_net_mass_g: Decimal
+    spool_count: int
+
+
+class SpoolLocationResponse(ApiModel):
+    """One existing free-text location, including the unassigned inventory group."""
+
+    location: str | None
+    spool_count: int
+    remaining_mass_g: Decimal
 
 
 class MeasurementCreate(ApiModel):
@@ -485,6 +553,7 @@ class MaterialSettingsInput(ApiModel):
     """Complete typed and extension Cura settings reusable by profiles and templates."""
 
     chamber_temp_c: Decimal | None = None
+    drying_temp_c: Decimal | None = Field(default=None, ge=0, le=300)
     extruder_temp_c: Decimal
     bed_temp_c: Decimal
     initial_bed_temp_c: Decimal | None = None
@@ -1224,6 +1293,12 @@ class ProfileTemplateRebaseRequest(ApiModel):
 
     expected_profile_version: int = Field(ge=1)
     target_template_revision_id: UUID
+
+
+class ProfileTemplateChangeRequest(ProfileTemplateRebaseRequest):
+    """Guard both the selected settings snapshot and its shared filament identity."""
+
+    expected_filament_version: int = Field(ge=1)
 
 
 class WorkstationAgentResponse(ApiModel):

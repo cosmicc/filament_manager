@@ -460,10 +460,10 @@ def _actual_weight_g(length_mm: Decimal | None, snapshot: dict[str, object]) -> 
     return length_mm * cross_section_mm2 / Decimal("1000") * density
 
 
-def _terminal_usage_targets(job: PrintJob) -> dict[UUID, tuple[Decimal, Decimal]]:
-    """Return each exact spool's captured starting mass and total reported use."""
+def _terminal_usage_targets(job: PrintJob) -> dict[UUID, tuple[Decimal, Decimal, datetime]]:
+    """Return each spool's starting mass, total use, and exact snapshot boundary."""
 
-    targets: dict[UUID, tuple[Decimal, Decimal]] = {}
+    targets: dict[UUID, tuple[Decimal, Decimal, datetime]] = {}
     for segment in sorted(job.segments, key=lambda item: item.segment_number):
         if segment.spool_id is None or segment.actual_filament_weight_g is None:
             continue
@@ -480,6 +480,7 @@ def _terminal_usage_targets(job: PrintJob) -> dict[UUID, tuple[Decimal, Decimal]
         targets[segment.spool_id] = (
             previous[0] if previous is not None else starting,
             (previous[1] if previous is not None else Decimal("0")) + used,
+            previous[2] if previous is not None else segment.created_at,
         )
     return targets
 
@@ -523,7 +524,7 @@ async def _apply_terminal_spool_usage(
     }:
         return
     now = datetime.now(UTC)
-    for spool_id, (starting_mass, used_mass) in _terminal_usage_targets(job).items():
+    for spool_id, (starting_mass, used_mass, captured_at) in _terminal_usage_targets(job).items():
         usage_key = f"print:{job.id}:spool:{spool_id}"
         existing = await session.scalar(
             select(SpoolUsageEvent.id).where(
@@ -536,7 +537,18 @@ async def _apply_terminal_spool_usage(
         spool = await session.scalar(select(Spool).where(Spool.id == spool_id).with_for_update())
         if spool is None:
             continue
-        target_remaining = max(Decimal("0"), starting_mass - used_mass).quantize(MASS_QUANTUM)
+        # Use capture time, not print start: a spool first loaded by M600 may
+        # already include earlier tare edits in its immutable starting mass.
+        tare_adjustment = await session.scalar(
+            select(func.coalesce(func.sum(SpoolUsageEvent.mass_delta_g), 0)).where(
+                SpoolUsageEvent.spool_id == spool_id,
+                SpoolUsageEvent.source == "tare_correction",
+                SpoolUsageEvent.created_at > captured_at,
+            )
+        ) or Decimal("0")
+        target_remaining = max(Decimal("0"), starting_mass + tare_adjustment - used_mass).quantize(
+            MASS_QUANTUM
+        )
         before_effective = spool.remaining_mass_effective_g
         before_expected = spool.remaining_mass_expected_g
         corrected_remaining = min(before_effective, target_remaining)

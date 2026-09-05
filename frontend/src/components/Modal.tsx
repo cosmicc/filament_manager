@@ -1,5 +1,17 @@
 import { X } from 'lucide-react'
 import { type ReactNode, useEffect, useId, useRef } from 'react'
+import { createPortal } from 'react-dom'
+
+// Child creation dialogs must not close or focus-trap their still-open parent.
+const dialogs: HTMLElement[] = []
+let restoredOverflow = ''
+function updateDialogStack() {
+  dialogs.forEach((dialog, index) => {
+    dialog.inert = index !== dialogs.length - 1
+    if (dialog.inert) dialog.setAttribute('aria-hidden', 'true')
+    else dialog.removeAttribute('aria-hidden')
+  })
+}
 
 const focusableSelector = [
   'a[href]',
@@ -22,22 +34,28 @@ export function Modal({ title, description, children, onClose, footer, size = 's
   const descriptionId = useId()
   const dialogRef = useRef<HTMLElement>(null)
   const onCloseRef = useRef(onClose)
+  // Capture before React applies a child's autoFocus during the commit phase.
+  const returnFocusRef = useRef(document.activeElement instanceof HTMLElement ? document.activeElement : null)
 
   useEffect(() => {
     onCloseRef.current = onClose
   }, [onClose])
 
   useEffect(() => {
-    const previouslyFocused = document.activeElement instanceof HTMLElement ? document.activeElement : null
-    const previousOverflow = document.body.style.overflow
+    const previouslyFocused = returnFocusRef.current
+    if (!dialogs.length) restoredOverflow = document.body.style.overflow
     document.body.style.overflow = 'hidden'
 
     const dialog = dialogRef.current
+    if (!dialog) return
+    dialogs.push(dialog)
+    updateDialogStack()
     const initialFocus = dialog?.querySelector<HTMLElement>('[autofocus]')
       ?? dialog?.querySelector<HTMLElement>('input, select, textarea, button')
     initialFocus?.focus()
 
     const handleKeyDown = (event: KeyboardEvent) => {
+      if (dialogs.at(-1) !== dialog) return
       if (event.key === 'Escape') {
         event.preventDefault()
         onCloseRef.current()
@@ -63,12 +81,14 @@ export function Modal({ title, description, children, onClose, footer, size = 's
     document.addEventListener('keydown', handleKeyDown)
     return () => {
       document.removeEventListener('keydown', handleKeyDown)
-      document.body.style.overflow = previousOverflow
-      previouslyFocused?.focus()
+      dialogs.splice(dialogs.indexOf(dialog), 1)
+      updateDialogStack()
+      if (!dialogs.length) document.body.style.overflow = restoredOverflow
+      if (previouslyFocused?.isConnected) previouslyFocused.focus()
     }
   }, [])
 
-  return (
+  return createPortal(
     <div className="modal-backdrop" role="presentation" onMouseDown={(event) => event.target === event.currentTarget && onClose()}>
       <section
         className={`modal${size === 'wide' ? ' modal--wide' : ''}`}
@@ -89,6 +109,6 @@ export function Modal({ title, description, children, onClose, footer, size = 's
         <div className="modal__body">{children}</div>
         {footer && <footer className="modal__footer">{footer}</footer>}
       </section>
-    </div>
+    </div>, document.body,
   )
 }

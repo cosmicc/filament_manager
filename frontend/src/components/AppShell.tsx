@@ -1,7 +1,7 @@
 import {
   Activity, Bell, Boxes, ChevronLeft, ChevronRight, CircleGauge, FlaskConical,
   HeartPulse,
-  Layers3, Library, Menu, PackageOpen, Printer,
+  Layers3, Library, MapPin, Menu, PackageOpen, Printer,
   MonitorCog, QrCode, Settings, Wrench, X, History,
 } from 'lucide-react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
@@ -14,6 +14,7 @@ import { APP_VERSION } from '../lib/version'
 const primaryNavigation = [
   { to: '/', label: 'Dashboard', icon: CircleGauge },
   { to: '/spools', label: 'Spools', icon: Boxes },
+  { to: '/locations', label: 'Locations', icon: MapPin },
   { to: '/filaments', label: 'Filaments', icon: PackageOpen },
   { to: '/templates', label: 'Templates', icon: Library },
   { to: '/calibration', label: 'Calibration', icon: FlaskConical },

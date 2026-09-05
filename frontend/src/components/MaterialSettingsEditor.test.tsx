@@ -37,15 +37,23 @@ const settings: MaterialSettings = {
 }
 
 describe('MaterialSettingsEditor validation', () => {
-  it('shows only the four managed temperature controls', () => {
+  it('shows four print temperatures plus template-only drying guidance', () => {
     const rendered = render(<MaterialSettingsEditor settings={settings} catalog={[]} plates={[]} />)
 
     expect(screen.getByLabelText('Printing temperature (°C)')).toBeTruthy()
     expect(screen.getByLabelText('Build volume temperature (°C)')).toBeTruthy()
     expect(screen.getByLabelText('Build plate temperature (°C)')).toBeTruthy()
     expect(screen.getByLabelText('Initial layer build plate temperature (°C)')).toBeTruthy()
+    expect(screen.getByRole('spinbutton', { name: /^Filament drying temperature/ })).toBeTruthy()
     expect(screen.queryByText(/Default .*temperature/i)).toBeNull()
     expect(screen.queryByLabelText('Chamber temperature (°C)')).toBeNull()
+    rendered.unmount()
+  })
+
+  it('preserves drying temperature as hidden inherited data in a filament editor', () => {
+    const rendered = render(<form><MaterialSettingsEditor settings={{ ...settings, drying_temp_c: '65' }} catalog={[]} plates={[]} scope="profile" /></form>)
+    expect(screen.queryByRole('spinbutton', { name: /^Filament drying temperature/ })).toBeNull()
+    expect(settingsFromForm(rendered.container.querySelector('form')!, [], 'profile').drying_temp_c).toBe('65')
     rendered.unmount()
   })
 

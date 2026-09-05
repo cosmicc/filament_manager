@@ -699,6 +699,27 @@ async def _reconcile_spoolman(session: AsyncSession, client: SpoolmanClient) -> 
         )
         delta = remote_remaining - spool.remaining_mass_expected_g
         if delta < 0:
+            latest_correction_status = await session.scalar(
+                select(OutboxJob.status)
+                .where(
+                    OutboxJob.aggregate_id == spool.id,
+                    OutboxJob.job_type == "spoolman.spool.adjust_weight",
+                )
+                .order_by(
+                    OutboxJob.aggregate_version.desc(), OutboxJob.created_at.desc(), OutboxJob.id.desc()
+                )
+                .limit(1)
+            )
+            if latest_correction_status in {
+                JobStatus.PENDING,
+                JobStatus.RUNNING,
+                JobStatus.FAILED,
+                JobStatus.DEAD,
+            }:
+                # Until an explicit weighing/tare correction reaches Spoolman,
+                # its old lower balance is not evidence of new consumption.
+                # An older failed delivery must not mask a newer success.
+                continue
             occurred_at = datetime.now(UTC)
             expected_before = spool.remaining_mass_expected_g
             effective_before = spool.remaining_mass_effective_g

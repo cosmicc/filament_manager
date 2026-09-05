@@ -18,8 +18,106 @@ from filament_manager.models.inventory import (
     MaterialProfile,
     MaterialTemplateRevision,
     Printer,
+    Spool,
 )
 from filament_manager.startup import upgrade_database
+
+
+@pytest.mark.integration
+def test_modifier_catalog_backfills_only_blanks(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Upgrade populated 0.7.0 data and retain explicit modifier labels unchanged."""
+
+    with PostgresContainer("postgres:17-alpine", driver="psycopg") as postgres:
+        url = postgres.get_connection_url().replace("postgresql+psycopg2://", "postgresql+psycopg://")
+        monkeypatch.setenv("FILAMENT_MANAGER_DATABASE_URL", url)
+        get_settings.cache_clear()
+        config = Config("alembic.ini")
+        command.upgrade(config, "b0c1d2e3f456")
+        engine = create_engine(url)
+        with Session(engine) as session:
+            products = [
+                FilamentProduct(
+                    material_type="PLA",
+                    color_name=color,
+                    diameter_mm=Decimal("1.75"),
+                    density_g_cm3=Decimal("1.24"),
+                    nominal_net_mass_g=Decimal("1000"),
+                )
+                for color in ("Blue", "Red")
+            ]
+            session.add_all(products)
+            session.flush()
+            blank_id, populated_id = (product.id for product in products)
+            labels = ["Bucket %_12", "Bucket %_12", "bucket %_12", "Archived shelf", None]
+            for index, label in enumerate(labels):
+                session.add(
+                    Spool(
+                        spool_code=f"MIGRATION-{index}",
+                        filament_product_id=blank_id,
+                        nominal_net_mass_g=Decimal("1000"),
+                        tare_mass_g=Decimal("200"),
+                        remaining_mass_expected_g=Decimal("800"),
+                        remaining_mass_effective_g=Decimal("800"),
+                        location=label,
+                        archived=index == 3,
+                    )
+                )
+            session.execute(
+                text("UPDATE filament_products SET filler = NULL, finish = :blank WHERE id = :id"),
+                {"blank": " \t\n", "id": blank_id},
+            )
+            session.execute(
+                text(
+                    "UPDATE filament_products SET filler = 'Carbon Fiber', finish = 'Matte', "
+                    "archived = true WHERE id = :id"
+                ),
+                {"id": populated_id},
+            )
+            session.commit()
+        command.upgrade(config, "head")
+        with engine.connect() as connection:
+            assert set(connection.scalars(text("SELECT name FROM spool_location_choices"))) == {
+                "Bucket %_12",
+                "bucket %_12",
+                "Archived shelf",
+            }
+            assert list(connection.scalars(text("SELECT location FROM spools ORDER BY spool_code"))) == labels
+            rows = {
+                row.id: row
+                for row in connection.execute(
+                    text("SELECT id, filler, finish, record_version FROM filament_products")
+                )
+            }
+            assert (rows[blank_id].filler, rows[blank_id].finish, rows[blank_id].record_version) == (
+                "None",
+                "Standard",
+                2,
+            )
+            assert (
+                rows[populated_id].filler,
+                rows[populated_id].finish,
+                rows[populated_id].record_version,
+            ) == ("Carbon Fiber", "Matte", 1)
+            assert set(connection.execute(text("SELECT kind, name FROM filament_attribute_choices"))) == {
+                ("filler", "None"),
+                ("finish", "Standard"),
+                ("filler", "Carbon Fiber"),
+                ("finish", "Matte"),
+            }
+            assert (
+                connection.scalar(
+                    text("SELECT count(*) FROM audit_events WHERE action = 'filament.modifier_defaults'")
+                )
+                == 1
+            )
+            assert (
+                connection.scalar(
+                    text("SELECT count(*) FROM outbox_jobs WHERE idempotency_key LIKE 'modifier-defaults:%'")
+                )
+                == 1
+            )
+        engine.dispose()
+        get_settings.cache_clear()
 
 
 @pytest.mark.integration
@@ -340,7 +438,7 @@ def test_previous_schema_automatically_upgrades_to_metadata_head(
 
         upgrade_database(DatabaseConfig(url=database_url))
         with engine.connect() as connection:
-            assert connection.scalar(text("SELECT version_num FROM alembic_version")) == "b0c1d2e3f456"
+            assert connection.scalar(text("SELECT version_num FROM alembic_version")) == "e3f4a5b6c789"
             assert (
                 connection.scalar(
                     text(

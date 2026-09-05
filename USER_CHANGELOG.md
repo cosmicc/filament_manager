@@ -1,5 +1,33 @@
 # User Changelog
 
+## 0.7.1 - 09.05.2026
+
+In development; not yet published.
+
+### Added
+
+- Set **Filament drying temperature** in a template's temperature section and view it in filament/spool details. It cannot be changed on individual filaments and does not control printer heaters.
+- Spool **Location** is a dropdown of remembered locations. Choose **New Location** at the bottom to add one without losing your spool form; **Unassigned** clears the location.
+- Add saved colors, manufacturers, fillers, and finishes using the last **New [Item]** choice in their dropdowns. A new color includes its display color.
+- Change a filament's print-settings template while keeping custom values and using the new template's inherited defaults. Past prints remain unchanged.
+- Browse **Locations** to see each storage location and open the spools kept there, including unassigned or optionally archived spools.
+- Filter Filaments and Spools by template-derived filament type, with **All** selected initially.
+- View a read-only **Current total spool weight** and choose remembered empty-spool weights from the same manufacturer.
+
+### Changed
+
+- Filament details now say **Manufacturer**. Empty fillers become **None** and empty finishes become **Standard**, without adding those words to filament or spool names.
+- The spool location field is now simply **Location**, with **Bucket 12** as its example.
+- Changing empty-spool tare now updates remaining filament automatically from the last total scale weight while preserving subsequent usage. Spools without a weigh-in retain their existing estimate.
+- New-spool entry distinguishes unused spools, whose tare can be inferred, from used spools that need an entered or suggested tare.
+
+### Fixed
+
+- Fixed a red save error after a spool was actually created, including full-weight entry. A background refresh failure no longer makes a successful save look unsuccessful.
+- Corrected stale remaining weights after tare changes without altering original weigh-in history.
+- Prevented old Spoolman balances and unchanged rounded form values from undoing weight corrections.
+- Fixed saving spools linked to a manufacturer.
+
 ## 0.7.0 - 09.04.2026
 
 ### Added
