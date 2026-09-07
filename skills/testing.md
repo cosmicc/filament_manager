@@ -1,5 +1,7 @@
 # Testing and Validation Skill
 
+- API-removal regressions must explicitly cover both API-only startup and the built-SPA fallback. Do not depend on a developer's existing `frontend/dist`; assert removed routes are absent from OpenAPI in both environments.
+
 - Thumbnail contrast coverage includes transparent black/white/color/mixed fixtures, alpha halos, dark opaque and flat images, bounded samples, cache reuse, changed sources, denied external URLs, image failures, and unavailable canvas. Render real raster fixtures in desktop/light/dark Print History rows/detail and mobile cards plus the live Dashboard; prove repeated polling adds no thumbnail request. Preserve existing thumbnail authentication/sanitization tests and unchanged stored bytes.
 - Choice lifecycle tests must prove draft cancellation has no persisted choices, last-use removal forgets choices, archived products retain them, removed names can be added again, None finishes normalize to Standard, and multicolor samples remain editable and product-specific. Exercise the upgrade from 0.7.1 and verify no historical snapshot changes. Manufacturers/locations retain durable unused-choice behavior.
 - Check all twelve fourth-accent tokens against their four-swatch previews, text contrast, semantic warning separation, and light/dark/mobile browser layouts.

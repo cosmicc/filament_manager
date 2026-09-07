@@ -23,6 +23,7 @@ Testing release.
 
 ### Fixed
 
+- Backend API-removal tests explicitly cover clean checkouts and built-frontend deployments instead of depending on local frontend artifacts.
 - An empty/stale startup mesh no longer clears the app's selected plate. Restoration does not create a new activation or calibration date.
 - Mesh loads, aborted/failed probing, and adaptive meshes do not create full-side calibration records. Nonessential Moonraker work remains deferred during prints; plate mutations are guarded against printing and calibration.
 - Missing saved meshes never fall back to another side; managed print preflight requires an available selected mesh.

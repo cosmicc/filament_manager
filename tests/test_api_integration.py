@@ -502,8 +502,11 @@ async def test_seed_system_route_creates_configured_resources(monkeypatch: pytes
 
 @pytest.mark.integration
 @pytest.mark.asyncio
+@pytest.mark.parametrize("with_frontend", [False, True])
 async def test_single_account_password_identity_and_session_controls(
     monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    with_frontend: bool,
 ) -> None:
     """Enforce first-login replacement and singleton account editing."""
 
@@ -512,6 +515,12 @@ async def test_single_account_password_identity_and_session_controls(
             "postgresql+psycopg2://", "postgresql+psycopg://"
         )
         settings = integration_settings(database_url)
+        # CI has no frontend build; test both the API-only and SPA fallback shapes
+        # explicitly instead of depending on artifacts left in the working tree.
+        settings.app.static_dir = tmp_path / "static"
+        if with_frontend:
+            settings.app.static_dir.mkdir()
+            (settings.app.static_dir / "index.html").write_text("<html>Test SPA</html>", encoding="utf-8")
         engine = create_async_engine(database_url)
         factory = async_sessionmaker(engine, expire_on_commit=False)
         async with engine.begin() as connection:
@@ -647,7 +656,11 @@ async def test_single_account_password_identity_and_session_controls(
             maintenance = await admin.get(f"/api/v1/build-plates/maintenance/events?plate_id={plate_id}")
             # The SPA fallback may return HTML, but the removed API is not registered.
             assert "/api/v1/build-plates/maintenance/events" not in app.openapi()["paths"]
-            assert maintenance.headers.get("content-type", "").startswith("text/html")
+            if with_frontend:
+                assert maintenance.status_code == 200
+                assert maintenance.headers.get("content-type", "").startswith("text/html")
+            else:
+                assert maintenance.status_code == 404
             due_status = await admin.get("/api/v1/build-plates/maintenance/status")
             assert due_status.status_code == 200
             assert "cleaning_due" not in due_status.json()[0]
