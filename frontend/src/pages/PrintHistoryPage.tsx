@@ -107,6 +107,7 @@ function PrintSettingsTable({ settings, empty }: { settings: Record<string, unkn
 }
 
 function AdvancedPrintSettings({ job, onBack, onClose }: { job: PrintJob; onBack: () => void; onClose: () => void }) {
+  const comparison = job.current_template_comparison
   const snapshot = recordValue(job.print_settings_snapshot)
   const managed = recordValue(snapshot?.managed)
   const template = recordValue(managed?.template)
@@ -128,7 +129,15 @@ function AdvancedPrintSettings({ job, onBack, onClose }: { job: PrintJob; onBack
         : 'A safely bounded G-code inspection was unavailable for this print.'
   return <Modal title="Advanced print settings" description={`Immutable settings captured for ${job.filename}. Cura formulas are preserved as text and are never evaluated.`} size="wide" onClose={onBack} footer={<><button className="button" type="button" onClick={onBack}>Back to print</button><button className="button button--primary" type="button" onClick={onClose}>Close</button></>}>
     <section className="print-settings-summary"><div><span>Material differences</span><strong>{differenceKeys.length}</strong></div><div><span>Resolved material settings</span><strong>{printSettingRows(resolved).length}</strong></div><div><span>Cura settings</span><strong>{Number(cura?.setting_count ?? 0).toLocaleString()}</strong></div></section>
-    <details className="print-settings-group" open><summary><span>Different from template</span><small>{differenceKeys.length ? `${differenceKeys.length} saved difference${differenceKeys.length === 1 ? '' : 's'}` : 'Fully inherited'}</small></summary><PrintSettingsTable settings={differences} empty="Every saved material value matched the linked template at print time." /></details>
+    <details className="print-settings-group" open><summary><span>Current template comparison</span><small>{comparison?.status === 'matches' ? 'Matches current template' : comparison?.status === 'differs' ? 'Differs from current template' : comparison?.status === 'partial' ? 'Partial comparison' : 'Unavailable'}</small></summary><div className="print-template-comparison">
+      {!comparison || comparison.status === 'unavailable' ? <p className="warning-note">The original active template or exact saved print settings are unavailable. A match cannot be determined.</p> : <>
+        <p>{comparison.template_name} · current version {comparison.template_version} · checked {new Date(comparison.checked_at).toLocaleString()}</p>
+        {comparison.differences.length ? <><p className="warning-note">{comparison.differences.length} setting(s) differ from the current template.</p><div className="print-settings-table"><table><thead><tr><th>Setting</th><th>Used for this print</th><th>Current template</th></tr></thead><tbody>{comparison.differences.map((difference) => <tr className="print-setting-difference" key={difference.key}><td>{titleCase(difference.key)}</td><td><code>{printSettingValue(difference.used)}</code></td><td><code>{printSettingValue(difference.current)}</code></td></tr>)}</tbody></table></div></> : <p className={comparison.status === 'matches' ? 'success-note' : 'muted'}>{comparison.status === 'matches' ? 'All captured managed print settings still match the current template.' : 'Available values match, but the saved evidence is incomplete.'}</p>}
+        {comparison.missing_keys.length ? <p className="warning-note">Not captured: {comparison.missing_keys.map(titleCase).join(', ')}. These values cannot be compared.</p> : null}
+        <p className="muted">{comparison.matching_count} matching values. This compares managed print settings only; drying guidance and raw Cura expressions are excluded. Reopen this print to refresh the comparison.</p>
+      </>}
+    </div></details>
+    <details className="print-settings-group"><summary><span>Differences at print time</span><small>{!managed ? 'Unavailable' : differenceKeys.length ? `${differenceKeys.length} saved difference${differenceKeys.length === 1 ? '' : 's'}` : 'Fully inherited'}</small></summary>{managed ? <PrintSettingsTable settings={differences} empty="Every saved profile-editable material value matched the linked template at print time." /> : <p className="muted">No exact managed profile snapshot was captured.</p>}</details>
     <details className="print-settings-group"><summary><span>Resolved Filament Manager settings</span><small>Exact values used for comparison</small></summary>{managed ? <PrintSettingsTable settings={resolved} empty="No resolved material settings were captured." /> : <p className="muted">This legacy or unresolved print has no exact managed profile snapshot.</p>}</details>
     <details className="print-settings-group"><summary><span>Template at print time</span><small>{template ? `${String(template.name ?? 'Template')} · version ${String(template.version ?? 'unknown')}` : 'Unavailable'}</small></summary><PrintSettingsTable settings={recordValue(template?.settings) ?? {}} empty="No linked template snapshot was available." /></details>
     <section className="print-settings-source"><div className="section-heading"><div><p className="eyebrow">Cura G-code settings</p><h3>{curaAvailable ? 'Embedded SETTING_3 values' : 'Not available'}</h3></div>{curaAvailable ? <StatusPill status="captured" /> : <StatusPill status="unavailable" />}</div>
@@ -222,7 +231,7 @@ export default function PrintHistoryPage() {
     queryKey: ['prints', 'detail', selectedId],
     queryFn: () => apiFetch<PrintJob>(`/prints/${selectedId}`),
     enabled: selectedId !== null,
-    staleTime: 30_000,
+    staleTime: 0,
   })
   const currentPage = query.data?.page ?? page
   const totalPages = query.data?.total_pages ?? 1

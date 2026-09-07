@@ -20,6 +20,7 @@ from filament_manager.models.printing import PrintAssessment, PrintJob
 from filament_manager.services.events import add_audit_event
 from filament_manager.services.print_costs import print_cost_summary, segment_cost
 from filament_manager.services.print_history import profile_success_statistics
+from filament_manager.services.print_template_comparison import current_print_template_comparison
 
 from ..dependencies import DatabaseSession, Operator, Viewer
 from ..errors import ApiError
@@ -199,7 +200,11 @@ async def get_print(print_id: UUID, _: Viewer, session: DatabaseSession) -> Prin
     job = await session.scalar(_print_query().where(PrintJob.id == print_id))
     if job is None:
         raise ApiError(status.HTTP_404_NOT_FOUND, "unknown_print", "Print not found")
-    return _print_response(job, PrintJobResponse)
+    response = _print_response(job, PrintJobResponse)
+    response.current_template_comparison = await current_print_template_comparison(
+        session, job.print_settings_snapshot
+    )
+    return response
 
 
 @router.get("/{print_id}/thumbnail")

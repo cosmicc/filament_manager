@@ -145,7 +145,7 @@ Treat this as a printer-host scheduling failure, not a safe print completion. Ch
 
 Confirm the mesh is saved in Klipper as exact `P<number>` for Side A or `P<number>b` for Side B, such as `P6` or `P6b`. An Operator may use **Add Side B** before calibration, but it intentionally remains unavailable until Moonraker reports that exact lowercase-b mesh. `P0`, `P01`, uppercase `B`, lowercase plate names, and descriptive profiles are intentionally ignored. Wait for the next 10-second automatic idle-state pass, then confirm Klippy is ready and that Moonraker returns the `bed_mesh` object from `/printer/objects/query`. Inspect the worker log and the `moonraker.state.reconcile` job when the page remains stale.
 
-Run `SELECT_BUILD_PLATE` without `PLATE=` to inspect the live Fluidd list from `printer.bed_mesh.profiles`. The chooser requires no static per-plate helper macros and filters out every invalid profile name.
+Run `SELECT_BUILD_PLATE CHOOSE=1` to inspect the live Fluidd list from `printer.bed_mesh.profiles`. The chooser requires no static per-plate helper macros and filters out every invalid profile name.
 
 Synchronization never deletes canonical plates or sides or overwrites their descriptive and maintenance metadata. A previously known side is marked unavailable when its same-named mesh is missing. If Moonraker has a valid plate-side mesh loaded, that physical plate and side become active for the selected printer.
 

@@ -56,7 +56,7 @@ A physical nozzle belongs permanently to one printer and has an editable human c
 
 ### build_plate
 
-Physical plate record. Business IDs are exact uppercase `P<number>` values; `P1` through `P5` are the initial seeds. Fields include display name, description, manufacturer/product, shape/dimensions, magnetic/flexible properties, preferred materials, temperature limit, physical condition/status, last clean, notes, and bounded sanitized WebP picture bytes/media/checksum/version stored in PostgreSQL.
+Physical plate record. Business IDs are exact uppercase `P<number>` values; `P1` through `P5` are the initial seeds. Fields include display name, description, manufacturer/product, shape/dimensions, magnetic/flexible properties, preferred materials, temperature limit, physical condition/status, last activated, notes, and bounded sanitized WebP picture bytes/media/checksum/version stored in PostgreSQL.
 
 ### build_plate_surface
 
@@ -64,7 +64,7 @@ One printable side of a physical plate. Side A uses the physical plate code (`P4
 
 ### build_plate_maintenance_event
 
-Append-only cleaning or side-specific mesh-calibration evidence. Plate-level day and print-count thresholds calculate reminder state without rewriting the event history.
+Retained side-specific mesh-calibration evidence only. Cleaning data is removed by 0.7.3. New exact receipts are imported idempotently from successful native probing; unknown offline event times remain separate from observation dates. Plate-level day and print-count thresholds calculate reminder state without rewriting the event history.
 
 ### material_profile
 

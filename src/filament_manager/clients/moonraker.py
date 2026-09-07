@@ -1,9 +1,11 @@
 """Supported Moonraker HTTP client for spool, plate, and bed-mesh operations."""
 
 import hashlib
+import math
 import posixpath
 import re
 from dataclasses import dataclass
+from datetime import UTC, datetime
 from decimal import Decimal
 from typing import Any
 from urllib.parse import quote
@@ -28,6 +30,15 @@ class MoonrakerBedMeshState:
 
     profile_names: tuple[str, ...]
     active_profile: str | None
+    integration_available: bool = False
+    selected_profile: str | None = None
+    selection_origin: str = "unknown"
+    selection_sequence: int = 0
+    calibrating: bool = False
+    print_state: str = "unknown"
+    clock_ready: bool = False
+    estimated_print_time: float | None = None
+    calibration_receipts: tuple[tuple[str, int, datetime | None], ...] = ()
 
 
 @dataclass(frozen=True, slots=True)
@@ -755,7 +766,9 @@ class MoonrakerClient:
     async def clear_build_plate(self) -> dict[str, Any]:
         """Clear the loaded mesh so state reconciliation can clear active plate context."""
 
-        return await self._post("/printer/gcode/script", {"script": "FILAMENT_MANAGER_CLEAR_BUILD_PLATE"})
+        return await self._post(
+            "/printer/gcode/script", {"script": "FILAMENT_MANAGER_CLEAR_BUILD_PLATE SOURCE=app"}
+        )
 
     async def synchronize_spool_preflight_catalog(
         self, catalog: SpoolPreflightCatalog, *, inspection_policy: str = "warn"
@@ -850,7 +863,14 @@ class MoonrakerClient:
 
         payload = await self._post(
             "/printer/objects/query",
-            {"objects": {"bed_mesh": ["profile_name", "profiles"]}},
+            {
+                "objects": {
+                    "bed_mesh": ["profile_name", "profiles"],
+                    "gcode_macro FILAMENT_MANAGER_PLATE_STATE": None,
+                    "print_stats": ["state"],
+                    "toolhead": ["estimated_print_time"],
+                }
+            },
         )
         result = payload.get("result")
         if not isinstance(result, dict):
@@ -865,9 +885,81 @@ class MoonrakerClient:
             raise MoonrakerError("Moonraker returned invalid bed-mesh profiles")
         if not isinstance(active_profile, str):
             raise MoonrakerError("Moonraker returned an invalid active bed-mesh profile")
+        assert isinstance(status, dict)
+        plate_state = status.get("gcode_macro FILAMENT_MANAGER_PLATE_STATE", {})
+        if not isinstance(plate_state, dict):
+            plate_state = {}
+        sequence = plate_state.get("selection_sequence", 0)
+        if isinstance(sequence, bool) or not isinstance(sequence, int) or not 0 <= sequence < 2**63:
+            raise MoonrakerError("Invalid plate selection receipt")
+        receipts = plate_state.get("calibrations", {})
+        if not isinstance(receipts, dict) or len(receipts) > 256:
+            raise MoonrakerError("Invalid plate calibration receipts")
+        parsed: list[tuple[str, int, datetime | None]] = []
+        for code, receipt in receipts.items():
+            if (
+                not isinstance(code, str)
+                or not is_build_plate_surface_code(code)
+                or not isinstance(receipt, dict)
+            ):
+                continue
+            number = receipt.get("sequence")
+            epoch = receipt.get("time")
+            if isinstance(number, bool) or not isinstance(number, int) or not 0 < number < 2**63:
+                continue
+            occurred = None
+            if isinstance(epoch, (int, float)) and not isinstance(epoch, bool) and math.isfinite(epoch):
+                if 946684800 <= epoch <= datetime.now(UTC).timestamp() + 60:
+                    occurred = datetime.fromtimestamp(epoch, UTC)
+            parsed.append((code, number, occurred))
+        selected = plate_state.get("selected_plate")
+        origin = plate_state.get("selection_origin")
+        toolhead = status.get("toolhead", {})
+        estimate = toolhead.get("estimated_print_time") if isinstance(toolhead, dict) else None
+        if (
+            not isinstance(estimate, (int, float))
+            or isinstance(estimate, bool)
+            or not math.isfinite(estimate)
+            or estimate < 0
+        ):
+            estimate = None
+        print_stats = status.get("print_stats", {})
         return MoonrakerBedMeshState(
             profile_names=tuple(profiles),
             active_profile=active_profile or None,
+            integration_available=plate_state.get("version") == 1,
+            selected_profile=selected
+            if isinstance(selected, str) and is_build_plate_surface_code(selected)
+            else None,
+            selection_origin=origin if origin in ("manual", "app", "restore") else "unknown",
+            selection_sequence=sequence,
+            calibrating=plate_state.get("calibrating") == 1,
+            print_state=str(print_stats.get("state", "unknown"))
+            if isinstance(print_stats, dict)
+            else "unknown",
+            clock_ready=plate_state.get("clock_ready") == 1,
+            estimated_print_time=estimate,
+            calibration_receipts=tuple(parsed),
+        )
+
+    async def synchronize_plate_clock(self, estimate: float) -> None:
+        """Anchor Klipper's monotonic print clock once per boot for durable event times."""
+
+        if not math.isfinite(estimate) or estimate < 0:
+            raise ValueError("Invalid printer clock")
+        epoch = datetime.now(UTC).timestamp()
+        await self._post(
+            "/printer/gcode/script", {"script": f"FILAMENT_MANAGER_PLATE_CLOCK EPOCH={epoch:.6f}"}
+        )
+
+    async def restore_build_plate(self, plate_code: str | None) -> None:
+        """Restore canonical identity without counting a background load as activation."""
+
+        if plate_code is not None and not is_build_plate_surface_code(plate_code):
+            raise ValueError("Invalid build plate side")
+        await self._post(
+            "/printer/gcode/script",
+            {"script": f"FILAMENT_MANAGER_APPLY_BUILD_PLATE PLATE={plate_code or 'UNSET'}"},
         )
 
     async def select_build_plate(self, plate_code: str) -> dict[str, Any]:
@@ -875,4 +967,6 @@ class MoonrakerClient:
 
         if not is_build_plate_surface_code(plate_code):
             raise ValueError("plate side must use the exact P<number> or P<number>b format")
-        return await self._post("/printer/gcode/script", {"script": f"SELECT_BUILD_PLATE PLATE={plate_code}"})
+        return await self._post(
+            "/printer/gcode/script", {"script": f"SELECT_BUILD_PLATE PLATE={plate_code} SOURCE=app"}
+        )

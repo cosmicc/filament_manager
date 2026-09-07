@@ -15,8 +15,9 @@ from filament_manager.domain.build_plates import (
     is_build_plate_surface_code,
     split_build_plate_surface_code,
 )
-from filament_manager.models.enums import PlateCondition, PlateStatus
+from filament_manager.models.enums import JobStatus, PlateCondition, PlateMaintenanceType, PlateStatus
 from filament_manager.models.inventory import BuildPlate, BuildPlateSurface, Printer
+from filament_manager.models.operations import BuildPlateMaintenanceEvent, OutboxJob
 from filament_manager.services.events import add_audit_event, add_outbox_job
 
 BUILD_PLATE_SYNC_LOCK_KEY = 0x464D504C415445
@@ -37,6 +38,8 @@ class BuildPlateSyncResult:
     active_plate_changed: bool
     active_surface_changed: bool
     synchronized_at: datetime
+    restore_required: bool = False
+    desired_mesh_profile: str | None = None
 
 
 async def synchronize_build_plates(
@@ -120,35 +123,96 @@ async def synchronize_build_plates(
         if not available:
             unavailable_codes.append(code)
 
-    active_surface = (
-        surfaces_by_code.get(mesh_state.active_profile)
-        if mesh_state.active_profile in discovered_set
-        else None
-    )
-    active_plate = (
-        plates_by_code.get(split_build_plate_surface_code(active_surface.surface_code)[0])
-        if active_surface is not None
-        else None
-    )
+    # The canonical selection survives an empty/stale loaded mesh after restart.
+    # Only explicit new manual macro receipts (or initial adoption) change it.
     previous_active_plate_id = printer.active_plate_id
     previous_active_surface_id = printer.active_plate_surface_id
-    clear_confirmed = mesh_state.active_profile is None
-    active_plate_changed = (
-        active_plate.id != previous_active_plate_id
-        if active_plate is not None
-        else clear_confirmed and previous_active_plate_id is not None
+    pending_selection = await session.scalar(
+        select(OutboxJob.id)
+        .where(
+            OutboxJob.aggregate_id == printer.id,
+            OutboxJob.job_type.in_(("moonraker.build_plate.select", "moonraker.build_plate.clear")),
+            OutboxJob.status.in_((JobStatus.PENDING, JobStatus.RUNNING)),
+        )
+        .limit(1)
     )
-    active_surface_changed = (
-        active_surface.id != previous_active_surface_id
-        if active_surface is not None
-        else clear_confirmed and previous_active_surface_id is not None
+    manual_change = (
+        mesh_state.integration_available
+        and mesh_state.selection_origin == "manual"
+        and mesh_state.selection_sequence > printer.plate_selection_sequence
+        and pending_selection is None
     )
-    if active_plate is not None and active_surface is not None:
-        printer.active_plate_id = active_plate.id
-        printer.active_plate_surface_id = active_surface.id
-    elif clear_confirmed:
-        printer.active_plate_id = None
-        printer.active_plate_surface_id = None
+    adopt = not printer.plate_selection_initialized and pending_selection is None
+    observed_code = (
+        mesh_state.selected_profile if mesh_state.integration_available else mesh_state.active_profile
+    )
+    observed_surface = surfaces_by_code.get(observed_code or "")
+    if not mesh_state.calibrating and (manual_change or adopt):
+        if observed_surface is not None and observed_code in discovered_set:
+            printer.active_plate_surface_id = observed_surface.id
+            printer.active_plate_id = observed_surface.build_plate_id
+            printer.plate_selection_initialized = True
+        elif manual_change and observed_code is None:
+            printer.active_plate_id = None
+            printer.active_plate_surface_id = None
+            printer.plate_selection_initialized = True
+    if mesh_state.integration_available and not pending_selection:
+        printer.plate_selection_sequence = max(
+            printer.plate_selection_sequence, mesh_state.selection_sequence
+        )
+    active_surface = next(
+        (item for item in surfaces_by_code.values() if item.id == printer.active_plate_surface_id), None
+    )
+    active_plate = next(
+        (item for item in plates_by_code.values() if item.id == printer.active_plate_id), None
+    )
+    active_plate_changed = printer.active_plate_id != previous_active_plate_id
+    active_surface_changed = printer.active_plate_surface_id != previous_active_surface_id
+    if active_surface_changed and active_surface is not None:
+        active_surface.last_activated_at = synchronized_at
+    if active_plate_changed and active_plate is not None:
+        active_plate.last_activated_at = synchronized_at
+    for code, sequence, occurred_at in mesh_state.calibration_receipts:
+        receipt_surface = surfaces_by_code.get(code)
+        if receipt_surface is None or sequence <= receipt_surface.mesh_calibration_sequence:
+            continue
+        receipt_surface.mesh_calibration_sequence = sequence
+        receipt_surface.last_mesh_calibrated_at = occurred_at
+        receipt_surface.last_mesh_observed_at = synchronized_at
+        receipt_surface.record_version += 1
+        # Unknown offline event times remain unknown, never fabricated from discovery.
+        if occurred_at is not None:
+            session.add(
+                BuildPlateMaintenanceEvent(
+                    build_plate_id=receipt_surface.build_plate_id,
+                    build_plate_surface_id=receipt_surface.id,
+                    maintenance_type=PlateMaintenanceType.MESH_CALIBRATED,
+                    source="klipper",
+                    occurred_at=occurred_at,
+                    created_at=synchronized_at,
+                )
+            )
+        add_audit_event(
+            session,
+            actor_id=None,
+            source="klipper",
+            action="build_plate.mesh_calibration",
+            object_type="build_plate_surface",
+            object_id=receipt_surface.id,
+            before=None,
+            after={"sequence": sequence, "calibrated_at": occurred_at.isoformat() if occurred_at else None},
+            correlation_id=correlation_id,
+        )
+    desired = active_surface.surface_code if active_surface is not None else None
+    restore_required = (
+        mesh_state.integration_available
+        and printer.plate_selection_initialized
+        and not mesh_state.calibrating
+        and mesh_state.print_state not in ("printing", "paused", "unknown")
+        and pending_selection is None
+        and (desired in discovered_set if desired else True)
+        and (mesh_state.active_profile != desired or mesh_state.selected_profile != desired)
+    )
     if active_plate_changed or active_surface_changed or printer.status != "connected":
         printer.record_version += 1
     printer.status = "connected"
@@ -211,4 +275,6 @@ async def synchronize_build_plates(
         active_plate_changed=active_plate_changed,
         active_surface_changed=active_surface_changed,
         synchronized_at=synchronized_at,
+        restore_required=restore_required,
+        desired_mesh_profile=desired,
     )

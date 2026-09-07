@@ -28,11 +28,11 @@ Recommended fields:
 - per-side Klipper mesh profile name
 - preferred material classes
 - maximum recommended bed temperature
-- last cleaned
+- last activated and last printed for plate and side
 - per-side last mesh calibration
 - per-side latest Moonraker mesh availability and check time
-- clean/maintenance notes
-- photos later
+- notes
+- sanitized photos
 
 All current non-photo fields are editable in Filament Manager. An Operator may add the next physical plate; the server serializes the operation with Moonraker discovery, assigns the next P-number, creates `Build Plate P<number>`, and adds one same-named Side A whose mesh starts unavailable. An Operator may also add the one Side B record under an existing physical plate; the server derives its exact lowercase-b code and initially marks its mesh unavailable. The mesh-derived side identity, physical P-number identity, and exact same-named Klipper mapping remain immutable. Every mesh-unavailable side is visually identified with a distinct warning and the exact Klipper heatmap profile name it needs.
 
@@ -50,7 +50,7 @@ Side B uses its suffixed name:
 BED_MESH_PROFILE LOAD=P4b
 ```
 
-The provided macro validates exact `P<number>` or `P<number>b` input, stores the active side, and loads the matching same-named mesh. With no `PLATE` parameter, it reads Klipper's current `printer.bed_mesh.profiles` dictionary and builds a Fluidd button for each valid exact P-number name. Invalid names are omitted from the prompt and fail before any caller-controlled value can become a G-code command.
+The provided macro validates exact `P<number>` or `P<number>b` input, stores the active side, and loads the matching same-named mesh. With no parameters it restores the saved side without prompting. With `CHOOSE=1` it builds a Fluidd button for each valid exact P-number mesh. Invalid names cannot become G-code commands.
 
 ## Moonraker synchronization
 
@@ -58,11 +58,11 @@ The worker queries Moonraker's `bed_mesh` printer object every 10 seconds by def
 
 Completed-print totals are derived from immutable print jobs captured with that exact side and count each completed job once.
 
-When `bed_mesh.profile_name` is a discovered plate-side mesh, the selected printer's canonical active physical plate and active side are updated together. An empty, unsaved, or invalid profile does not overwrite the recorded selection.
+Initial adoption may use a discovered active mesh. After initialization, the app owns selection; only a new explicit manual macro selection receipt changes it from the printer. Empty or stale loaded state is restored from canonical selection while idle, never during printing or probing. Calibration receipts have monotonically increasing per-side sequences and retain unknown offline timestamps separately from detection time.
 
 ## Fluidd prompt
 
-Run `SELECT_BUILD_PLATE` without parameters to open the live saved-mesh chooser. Existing scripts may still pass a selected side directly as `SELECT_BUILD_PLATE PLATE=P1` or `SELECT_BUILD_PLATE PLATE=P4b`; static `MESH_P#` helper macros are no longer needed for new plates.
+Run `SELECT_BUILD_PLATE CHOOSE=1` to open the live saved-mesh chooser. Parameterless startup calls restore the persisted exact side automatically. Direct selection remains `SELECT_BUILD_PLATE PLATE=P1` or `SELECT_BUILD_PLATE PLATE=P4b`.
 
 ## Preferred build plate
 
@@ -70,17 +70,11 @@ A material profile may specify a preferred plate side. This creates a warning or
 
 ## Print-start guard
 
-Configurable behaviors:
+Managed Cura preflight requires the selected side's saved mesh and loads that exact profile. Missing meshes never fall back to another side. See [Build plate setup](../BUILD_PLATE_SETUP.md) for the startup contract and upgrade instructions.
 
-- off
-- warn when no active plate is recorded
-- require plate selection
-- warn when selected plate differs from the material profile preference
-- optionally require the corresponding mesh to be loaded
+## Calibration and activity
 
-## Maintenance
-
-Track whole-plate cleaning separately from side-specific mesh calibration and availability. A physical plate can remain usable while one side's mesh is stale or temporarily missing. Define configurable reminders by days or print-hours.
+Cleaning and its records are removed. Successful native full-bed probing automatically records side-specific mesh evidence; ordinary profile loads, failed/aborted probes, and adaptive/custom meshes do not. Mesh reminders use configurable days or completed-print counts. The page shows last printed/activated per plate and side, and last calibrated per side, without a maintenance ledger or manual timestamp button. Historical dates remain unknown when evidence is absent.
 
 ## Authoritative implementation references
 

@@ -33,6 +33,10 @@ const printJob: Record<string, unknown> = {
     build_plate_surface: { code: 'P1' },
   },
   profile_snapshot: {},
+  current_template_comparison: {
+    status: 'differs', checked_at: '2026-09-07T00:00:00Z', template_name: 'Template PLA', template_version: 4,
+    matching_count: 28, missing_keys: [], differences: [{ key: 'print_speed_mm_s', used: '120', current: '150' }],
+  },
   print_settings_snapshot: {
     schema_version: 1,
     managed: {
@@ -165,7 +169,10 @@ describe('PrintHistoryPage', () => {
     fireEvent.click(await screen.findByRole('button', { name: /Advanced print settings/ }))
 
     expect(screen.getByRole('heading', { name: 'Advanced print settings' })).toBeTruthy()
-    expect(screen.getByText('Different from template')).toBeTruthy()
+    expect(screen.getByText('Differences at print time')).toBeTruthy()
+    expect(screen.getByText('Differs from current template')).toBeTruthy()
+    expect(screen.getByText('Used for this print')).toBeTruthy()
+    expect(screen.getByText('150')).toBeTruthy()
     expect(screen.getByText('=max(2, machine_nozzle_size)')).toBeTruthy()
     expect(screen.getByText('Extruder 0')).toBeTruthy()
     expect(screen.getByText('Template PLA · version 2')).toBeTruthy()

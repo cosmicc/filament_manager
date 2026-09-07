@@ -1,8 +1,8 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { Check, Eraser, History, ImageUp, Layers3, Pencil, Plus, Save, Search, Sparkles, Trash2, TriangleAlert } from 'lucide-react'
+import { Check, Eraser, ImageUp, Layers3, Pencil, Plus, Save, Search, Sparkles, Trash2, TriangleAlert } from 'lucide-react'
 import { useEffect, useMemo, useState } from 'react'
 import { actionableApiError, apiFetch } from '../api/client'
-import type { BuildPlate, BuildPlateMaintenanceEvent, BuildPlateMaintenanceStatus, BuildPlateSurface, Printer } from '../api/types'
+import type { BuildPlate, BuildPlateSurface, Printer } from '../api/types'
 import { CollectionViewSelector } from '../components/CollectionViewSelector'
 import { EditorSection } from '../components/EditorSection'
 import { EmptyState } from '../components/EmptyState'
@@ -89,8 +89,6 @@ function PlateEditorModal({
               .map((item) => item.trim())
               .filter(Boolean),
             max_bed_temp_c: optional(data, 'max_bed_temp_c'),
-            cleaning_due_after_prints: Number(data.get('cleaning_due_after_prints')),
-            cleaning_due_after_days: Number(data.get('cleaning_due_after_days')),
             mesh_due_after_prints: Number(data.get('mesh_due_after_prints')),
             mesh_due_after_days: Number(data.get('mesh_due_after_days')),
             notes: optional(data, 'notes'),
@@ -116,7 +114,7 @@ function PlateEditorModal({
             {shape === 'round' ? <label>Diameter (mm)<input name="diameter" type="number" min="0.1" step="0.1" value={diameter} onChange={(event) => setDiameter(event.currentTarget.value)} /></label> : null}
           </div>
         </EditorSection>
-        <EditorSection title="Condition and use" description="Group maintenance state and slicer guidance in one place.">
+        <EditorSection title="Condition and use" description="Plate condition and slicer guidance.">
           <div className="form-grid">
             <label>Magnetic<select name="magnetic" defaultValue={plate.magnetic === null ? '' : String(plate.magnetic)}><option value="">Not specified</option><option value="true">Yes</option><option value="false">No</option></select></label>
             <label>Flexible<select name="flexible" defaultValue={plate.flexible === null ? '' : String(plate.flexible)}><option value="">Not specified</option><option value="true">Yes</option><option value="false">No</option></select></label>
@@ -127,8 +125,8 @@ function PlateEditorModal({
             <label className="form-grid__wide">Plate notes<textarea name="notes" defaultValue={plate.notes ?? ''} maxLength={4000} rows={3} /></label>
           </div>
         </EditorSection>
-        <EditorSection title="Maintenance reminders" description="A reminder becomes due when either its print-count or age threshold is reached.">
-          <div className="form-grid"><label>Clean every (prints)<input name="cleaning_due_after_prints" type="number" min="1" max="10000" defaultValue={plate.cleaning_due_after_prints} /></label><label>Clean every (days)<input name="cleaning_due_after_days" type="number" min="1" max="3650" defaultValue={plate.cleaning_due_after_days} /></label><label>Mesh every (prints)<input name="mesh_due_after_prints" type="number" min="1" max="10000" defaultValue={plate.mesh_due_after_prints} /></label><label>Mesh every (days)<input name="mesh_due_after_days" type="number" min="1" max="3650" defaultValue={plate.mesh_due_after_days} /></label></div>
+        <EditorSection title="Mesh calibration reminders" description="A reminder becomes due when either its print-count or age threshold is reached.">
+          <div className="form-grid"><label>Mesh every (prints)<input name="mesh_due_after_prints" type="number" min="1" max="10000" defaultValue={plate.mesh_due_after_prints} /></label><label>Mesh every (days)<input name="mesh_due_after_days" type="number" min="1" max="3650" defaultValue={plate.mesh_due_after_days} /></label></div>
         </EditorSection>
         <FormSubmissionError error={error} />
       </form>
@@ -227,7 +225,10 @@ function SurfaceCard({
         <div><dt>Finish</dt><dd>{surface.texture ?? 'Not specified'}</dd></div>
         <div><dt>Completed prints</dt><dd>{surface.completed_print_count.toLocaleString()}</dd></div>
         <div><dt>Last checked</dt><dd>{dateTime(surface.last_mesh_checked_at)}</dd></div>
-        <div><dt>Last calibrated</dt><dd>{dateTime(surface.last_mesh_calibrated_at)}</dd></div>
+        <div><dt>Last calibrated</dt><dd>{surface.last_mesh_calibrated_at ? dateTime(surface.last_mesh_calibrated_at) : 'Unknown'}</dd></div>
+        <div><dt>Last printed</dt><dd>{surface.last_printed_at ? dateTime(surface.last_printed_at) : 'Unknown'}</dd></div>
+        <div><dt>Last activated</dt><dd>{surface.last_activated_at ? dateTime(surface.last_activated_at) : 'Unknown'}</dd></div>
+        {surface.last_mesh_observed_at && !surface.last_mesh_calibrated_at ? <div><dt>Calibration detected</dt><dd>{dateTime(surface.last_mesh_observed_at)} · exact time unavailable</dd></div> : null}
       </dl>
       <div className="plate-surface__actions">
         {canSelect ? (
@@ -250,12 +251,9 @@ export default function BuildPlatesPage() {
   const [detailsPlate, setDetailsPlate] = useState<BuildPlate | null>(null)
   const [search, setSearch] = useState('')
   const [view, setView] = useCollectionView('build-plates', 'detailed')
-  const [historyType, setHistoryType] = useState('')
   const [message, setMessage] = useState('')
   const plates = useQuery({ queryKey: ['plates'], queryFn: () => apiFetch<BuildPlate[]>('/build-plates'), refetchInterval: 15_000 })
   const printers = useQuery({ queryKey: ['printers'], queryFn: () => apiFetch<Printer[]>('/printers'), refetchInterval: 15_000 })
-  const maintenance = useQuery({ queryKey: ['plate-maintenance-status'], queryFn: () => apiFetch<BuildPlateMaintenanceStatus[]>('/build-plates/maintenance/status'), refetchInterval: 15_000 })
-  const events = useQuery({ queryKey: ['plate-maintenance-events', historyType], queryFn: () => apiFetch<BuildPlateMaintenanceEvent[]>(`/build-plates/maintenance/events?limit=100${historyType ? `&maintenance_type=${historyType}` : ''}`) })
   const selectedPrinterId = printerId || printers.data?.[0]?.id || ''
   const selectedPrinter = printers.data?.find((printer) => printer.id === selectedPrinterId)
   const refreshCanonicalState = async () => {
@@ -263,8 +261,6 @@ export default function BuildPlatesPage() {
       client.invalidateQueries({ queryKey: ['plates'] }),
       client.invalidateQueries({ queryKey: ['printers'] }),
       client.invalidateQueries({ queryKey: ['dashboard'] }),
-      client.invalidateQueries({ queryKey: ['plate-maintenance-status'] }),
-      client.invalidateQueries({ queryKey: ['plate-maintenance-events'] }),
     ])
   }
   const selectSurface = useMutation({
@@ -296,10 +292,6 @@ export default function BuildPlatesPage() {
       setEditingPlate(plate)
     },
   })
-  const recordMaintenance = useMutation({
-    mutationFn: ({ plateId, maintenanceType, surfaceId }: { plateId: string; maintenanceType: 'cleaned' | 'mesh_calibrated'; surfaceId?: string }) => apiFetch(`/build-plates/${plateId}/maintenance-events`, { method: 'POST', body: JSON.stringify({ maintenance_type: maintenanceType, surface_id: surfaceId ?? null, notes: null }) }),
-    onSuccess: refreshCanonicalState,
-  })
   const uploadImage = useMutation({
     mutationFn: ({ plate, image }: { plate: BuildPlate; image: File }) => {
       const form = new FormData()
@@ -313,7 +305,7 @@ export default function BuildPlatesPage() {
     onSuccess: refreshCanonicalState,
   })
   const clearActive = useMutation({ mutationFn: () => apiFetch<{ printer_name: string }>('/build-plates/active/clear', { method: 'POST' }), onSuccess: refreshCanonicalState })
-  const mutationError = selectSurface.error ?? updatePlate.error ?? updateSurface.error ?? addSideB.error ?? createPlate.error ?? recordMaintenance.error ?? uploadImage.error ?? deleteImage.error ?? clearActive.error
+  const mutationError = selectSurface.error ?? updatePlate.error ?? updateSurface.error ?? addSideB.error ?? createPlate.error ?? uploadImage.error ?? deleteImage.error ?? clearActive.error
   const visiblePlates = useMemo(() => {
     const needle = search.trim().toLocaleLowerCase()
     if (!needle) return plates.data ?? []
@@ -338,7 +330,6 @@ export default function BuildPlatesPage() {
 
   const renderDetailedPlate = (plate: BuildPlate) => {
     const activePlate = selectedPrinter?.active_plate_id === plate.id
-    const due = maintenance.data?.find((item) => item.build_plate_id === plate.id)
     return <article className={`build-plate-card${activePlate ? ' build-plate-card--active' : ''}`} key={plate.id}>
       <div className="build-plate-card__summary">
         <div className={`plate-illustration plate-illustration--summary${plate.image_url ? ' plate-illustration--photo' : ''}`}>{plate.image_url ? <img src={plate.image_url} alt={`${plate.display_name} build plate`} /> : null}<span>{plate.plate_code}</span>{activePlate ? <i><Check size={16} /></i> : null}</div>
@@ -353,15 +344,14 @@ export default function BuildPlatesPage() {
             <div><dt>Properties</dt><dd>{[plate.magnetic === true ? 'Magnetic' : null, plate.flexible === true ? 'Flexible' : null].filter(Boolean).join(' · ') || 'Not specified'}</dd></div>
             <div><dt>Preferred materials</dt><dd>{plate.preferred_materials.join(', ') || 'Not specified'}</dd></div>
             <div><dt>Maximum bed temperature</dt><dd>{plate.max_bed_temp_c ? `${compactNumber(plate.max_bed_temp_c, 0)} °C` : 'Not specified'}</dd></div>
-            <div><dt>Last cleaned</dt><dd>{dateTime(plate.last_cleaned_at)}</dd></div>
-            <div><dt>Cleaning state</dt><dd>{due?.cleaning_due ? 'Due now' : `${due?.cleaning_prints_since ?? 0} prints since cleaning`}</dd></div>
+            <div><dt>Last printed</dt><dd>{plate.last_printed_at ? dateTime(plate.last_printed_at) : 'Unknown'}</dd></div>
+            <div><dt>Last activated</dt><dd>{plate.last_activated_at ? dateTime(plate.last_activated_at) : 'Unknown'}</dd></div>
           </dl>
-          {user?.role !== 'viewer' ? <div className="detail-actions build-plate-card__actions"><button className="button" onClick={() => { setDetailsPlate(null); setEditingPlate(plate) }}><Pencil size={16} /> Edit physical plate</button><label className="button file-button"><ImageUp size={16} /> {plate.image_url ? 'Replace picture' : 'Upload picture'}<input type="file" accept="image/png,image/jpeg,image/webp" disabled={uploadImage.isPending} onChange={(event) => { const image = event.target.files?.[0]; if (image) uploadImage.mutate({ plate, image }); event.currentTarget.value = '' }} /></label>{plate.image_url ? <button className="button" disabled={deleteImage.isPending} onClick={() => { if (window.confirm(`Remove the picture for ${plate.display_name}?`)) deleteImage.mutate(plate) }}><Trash2 size={16} /> Remove picture</button> : null}<button className="button" disabled={recordMaintenance.isPending} onClick={() => recordMaintenance.mutate({ plateId: plate.id, maintenanceType: 'cleaned' })}><Check size={16} /> Mark cleaned</button></div> : null}
+          {user?.role !== 'viewer' ? <div className="detail-actions build-plate-card__actions"><button className="button" onClick={() => { setDetailsPlate(null); setEditingPlate(plate) }}><Pencil size={16} /> Edit physical plate</button><label className="button file-button"><ImageUp size={16} /> {plate.image_url ? 'Replace picture' : 'Upload picture'}<input type="file" accept="image/png,image/jpeg,image/webp" disabled={uploadImage.isPending} onChange={(event) => { const image = event.target.files?.[0]; if (image) uploadImage.mutate({ plate, image }); event.currentTarget.value = '' }} /></label>{plate.image_url ? <button className="button" disabled={deleteImage.isPending} onClick={() => { if (window.confirm(`Remove the picture for ${plate.display_name}?`)) deleteImage.mutate(plate) }}><Trash2 size={16} /> Remove picture</button> : null}</div> : null}
         </div>
       </div>
       <div className="plate-surfaces">{plate.surfaces.map((surface) => <SurfaceCard key={surface.id} surface={surface} active={selectedPrinter?.active_plate_surface_id === surface.id} canEdit={user?.role !== 'viewer'} canSelect={user?.role !== 'viewer' && Boolean(printers.data?.length)} pending={selectSurface.isPending} onEdit={() => { setDetailsPlate(null); setEditingSurface({ plate, surface }) }} onSelect={() => selectSurface.mutate({ plateId: plate.id, surfaceId: surface.id })} />)}</div>
       {user?.role !== 'viewer' && !plate.surfaces.some((surface) => surface.side === 'b') ? <div className="plate-maintenance-actions"><button className="button" disabled={addSideB.isPending} onClick={() => addSideB.mutate(plate)}><Plus size={16} /> Add Side B</button><span className="muted">Creates {plate.plate_code}b now; Moonraker mesh availability updates automatically.</span></div> : null}
-      {user?.role !== 'viewer' ? <div className="plate-maintenance-actions">{plate.surfaces.map((surface) => { const state = due?.surfaces.find((item) => item.surface_id === surface.id); return <button className="button" key={surface.id} disabled={recordMaintenance.isPending} onClick={() => recordMaintenance.mutate({ plateId: plate.id, maintenanceType: 'mesh_calibrated', surfaceId: surface.id })}><Sparkles size={16} /> Mark {surface.surface_code} mesh calibrated{state?.mesh_due ? ' · due' : ''}</button> })}</div> : null}
     </article>
   }
   return (
@@ -379,8 +369,7 @@ export default function BuildPlatesPage() {
       <section className="toolbar"><label className="search-field"><Search size={18} /><input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Search plate, product, surface, or material" aria-label="Search build plates" /></label><CollectionViewSelector label="Build plates" value={view} onChange={setView} /><span className="toolbar__summary">{visiblePlates.length} physical plates</span></section>
       {plates.isLoading ? <LoadingState /> : !plates.data?.length ? (
         <EmptyState icon={Layers3} title="No plates configured" description="P1 through P5 and later P-number meshes are discovered automatically from the configured Moonraker printer." />
-      ) : !visiblePlates.length ? <EmptyState icon={Search} title="No build plates match" description="Adjust the search to see another physical plate or surface." /> : view === 'detailed' ? <section className="plate-list">{visiblePlates.map(renderDetailedPlate)}</section> : view === 'list' ? <div className="table-card collection-table"><table><thead><tr><th>Build plate</th><th>Product</th><th>Condition</th><th>Surfaces</th><th>Preferred materials</th><th>Maintenance</th><th aria-label="Actions" /></tr></thead><tbody>{visiblePlates.map((plate) => { const activePlate = selectedPrinter?.active_plate_id === plate.id; const due = maintenance.data?.find((item) => item.build_plate_id === plate.id); const missingMeshes = missingMeshCodes(plate); return <tr className={missingMeshes.length ? 'build-plate-entry--mesh-missing' : undefined} key={plate.id} tabIndex={0} onClick={() => setDetailsPlate(plate)} onKeyDown={(event) => (event.key === 'Enter' || event.key === ' ') && setDetailsPlate(plate)}><td><div className="table-identity"><div className={`plate-illustration plate-illustration--table${plate.image_url ? ' plate-illustration--photo' : ''}`}>{plate.image_url ? <img src={plate.image_url} alt="" /> : null}<span>{plate.plate_code}</span></div><span><strong>{plate.display_name}</strong><small>{activePlate ? 'Active physical plate' : plate.status}</small></span></div></td><td>{[plate.manufacturer, plate.product_name].filter(Boolean).join(' · ') || 'Not specified'}</td><td>{titleCase(plate.condition)}</td><td>{plate.surfaces.map((surface) => surface.surface_code).join(', ')}{missingMeshes.length ? <small className="table-subtext build-plate-mesh-warning"><TriangleAlert size={14} /> No matching heatmap: {missingMeshes.join(', ')}</small> : null}</td><td>{plate.preferred_materials.join(', ') || 'Not specified'}</td><td>{due?.cleaning_due ? 'Cleaning due' : `${due?.cleaning_prints_since ?? 0} prints since cleaning`}</td><td><button className="button" onClick={(event) => { event.stopPropagation(); setDetailsPlate(plate) }}>Open details</button></td></tr> })}</tbody></table></div> : <section className="collection-grid collection-grid--cards">{visiblePlates.map((plate) => { const activePlate = selectedPrinter?.active_plate_id === plate.id; const due = maintenance.data?.find((item) => item.build_plate_id === plate.id); const missingMeshes = missingMeshCodes(plate); return <button className={`collection-card collection-card--button${activePlate ? ' build-plate-card--active' : ''}${missingMeshes.length ? ' build-plate-entry--mesh-missing' : ''}`} key={plate.id} onClick={() => setDetailsPlate(plate)}><header className="collection-card__header"><div className={`plate-illustration${plate.image_url ? ' plate-illustration--photo' : ''}`}>{plate.image_url ? <img src={plate.image_url} alt={`${plate.display_name} build plate`} /> : null}<span>{plate.plate_code}</span>{activePlate ? <i><Check size={16} /></i> : null}</div><StatusPill status={activePlate ? 'active' : plate.status} /></header><div className="collection-card__body"><p className="eyebrow">Physical plate {plate.plate_code}</p><h2>{plate.display_name}</h2><p>{[plate.manufacturer, plate.product_name].filter(Boolean).join(' · ') || plate.description || 'No product details recorded'}</p>{missingMeshes.length ? <p className="build-plate-mesh-warning"><TriangleAlert size={15} /> No matching heatmap: {missingMeshes.join(', ')}</p> : null}</div><dl className="catalog-meta"><div><dt>Condition</dt><dd>{titleCase(plate.condition)}</dd></div><div><dt>Surfaces</dt><dd>{plate.surfaces.map((surface) => surface.surface_code).join(', ')}</dd></div><div><dt>Materials</dt><dd>{plate.preferred_materials.join(', ') || 'Not specified'}</dd></div><div><dt>Cleaning</dt><dd>{due?.cleaning_due ? 'Due now' : `${due?.cleaning_prints_since ?? 0} prints ago`}</dd></div></dl><span className="collection-card__link">Open details and actions</span></button> })}</section>}
-      <section className="card plate-history"><header className="card__header"><div><p className="eyebrow">Immutable ledger</p><h2><History size={20} /> Maintenance history</h2></div><label className="inline-field">Type<select value={historyType} onChange={(event) => setHistoryType(event.target.value)}><option value="">All</option><option value="cleaned">Cleaned</option><option value="mesh_calibrated">Mesh calibrated</option></select></label></header>{events.isLoading ? <LoadingState /> : events.data?.length ? <div className="mobile-card-list mobile-card-list--always">{events.data.map((event) => { const plate = plates.data?.find((item) => item.id === event.build_plate_id); const surface = plate?.surfaces.find((item) => item.id === event.build_plate_surface_id); return <article className="mobile-data-card" key={event.id}><strong>{plate?.plate_code ?? 'Unknown plate'} · {event.maintenance_type === 'cleaned' ? 'Cleaned' : `${surface?.surface_code ?? 'Side'} mesh calibrated`}</strong><span>{dateTime(event.occurred_at)}</span><small>{event.notes ?? titleCase(event.source)}</small></article> })}</div> : <p className="muted">No maintenance events match this filter.</p>}</section>
+      ) : !visiblePlates.length ? <EmptyState icon={Search} title="No build plates match" description="Adjust the search to see another physical plate or surface." /> : view === 'detailed' ? <section className="plate-list">{visiblePlates.map(renderDetailedPlate)}</section> : view === 'list' ? <div className="table-card collection-table"><table><thead><tr><th>Build plate</th><th>Product</th><th>Condition</th><th>Surfaces</th><th>Preferred materials</th><th>Last printed</th><th>Last activated</th><th aria-label="Actions" /></tr></thead><tbody>{visiblePlates.map((plate) => { const activePlate = selectedPrinter?.active_plate_id === plate.id; const missingMeshes = missingMeshCodes(plate); return <tr className={missingMeshes.length ? 'build-plate-entry--mesh-missing' : undefined} key={plate.id} tabIndex={0} onClick={() => setDetailsPlate(plate)} onKeyDown={(event) => (event.key === 'Enter' || event.key === ' ') && setDetailsPlate(plate)}><td><div className="table-identity"><div className={`plate-illustration plate-illustration--table${plate.image_url ? ' plate-illustration--photo' : ''}`}>{plate.image_url ? <img src={plate.image_url} alt="" /> : null}<span>{plate.plate_code}</span></div><span><strong>{plate.display_name}</strong><small>{activePlate ? 'Active physical plate' : plate.status}</small></span></div></td><td>{[plate.manufacturer, plate.product_name].filter(Boolean).join(' · ') || 'Not specified'}</td><td>{titleCase(plate.condition)}</td><td>{plate.surfaces.map((surface) => surface.surface_code).join(', ')}{missingMeshes.length ? <small className="table-subtext build-plate-mesh-warning"><TriangleAlert size={14} /> No matching heatmap: {missingMeshes.join(', ')}</small> : null}</td><td>{plate.preferred_materials.join(', ') || 'Not specified'}</td><td>{plate.last_printed_at ? dateTime(plate.last_printed_at) : 'Unknown'}</td><td>{plate.last_activated_at ? dateTime(plate.last_activated_at) : 'Unknown'}</td><td><button className="button" onClick={(event) => { event.stopPropagation(); setDetailsPlate(plate) }}>Open details</button></td></tr> })}</tbody></table></div> : <section className="collection-grid collection-grid--cards">{visiblePlates.map((plate) => { const activePlate = selectedPrinter?.active_plate_id === plate.id; const missingMeshes = missingMeshCodes(plate); return <button className={`collection-card collection-card--button${activePlate ? ' build-plate-card--active' : ''}${missingMeshes.length ? ' build-plate-entry--mesh-missing' : ''}`} key={plate.id} onClick={() => setDetailsPlate(plate)}><header className="collection-card__header"><div className={`plate-illustration${plate.image_url ? ' plate-illustration--photo' : ''}`}>{plate.image_url ? <img src={plate.image_url} alt={`${plate.display_name} build plate`} /> : null}<span>{plate.plate_code}</span>{activePlate ? <i><Check size={16} /></i> : null}</div><StatusPill status={activePlate ? 'active' : plate.status} /></header><div className="collection-card__body"><p className="eyebrow">Physical plate {plate.plate_code}</p><h2>{plate.display_name}</h2><p>{[plate.manufacturer, plate.product_name].filter(Boolean).join(' · ') || plate.description || 'No product details recorded'}</p>{missingMeshes.length ? <p className="build-plate-mesh-warning"><TriangleAlert size={15} /> No matching heatmap: {missingMeshes.join(', ')}</p> : null}</div><dl className="catalog-meta"><div><dt>Condition</dt><dd>{titleCase(plate.condition)}</dd></div><div><dt>Surfaces</dt><dd>{plate.surfaces.map((surface) => surface.surface_code).join(', ')}</dd></div><div><dt>Materials</dt><dd>{plate.preferred_materials.join(', ') || 'Not specified'}</dd></div><div><dt>Last printed</dt><dd>{plate.last_printed_at ? dateTime(plate.last_printed_at) : 'Unknown'}</dd></div><div><dt>Last activated</dt><dd>{plate.last_activated_at ? dateTime(plate.last_activated_at) : 'Unknown'}</dd></div></dl><span className="collection-card__link">Open details and actions</span></button> })}</section>}
       {editingPlate ? <PlateEditorModal plate={editingPlate} pending={updatePlate.isPending} error={updatePlate.error} onClose={() => setEditingPlate(null)} onSave={(values) => updatePlate.mutate({ plate: editingPlate, values })} /> : null}
       {editingSurface ? <SurfaceEditorModal surface={editingSurface.surface} pending={updateSurface.isPending} error={updateSurface.error} onClose={() => setEditingSurface(null)} onSave={(values) => updateSurface.mutate({ ...editingSurface, values })} /> : null}
       {detailsPlate ? <Modal title={`${detailsPlate.plate_code} details`} description="Inspect this physical build plate, its surfaces, and all available actions." size="wide" onClose={() => setDetailsPlate(null)} footer={<button className="button button--primary" onClick={() => setDetailsPlate(null)}>Done</button>}>{renderDetailedPlate(detailsPlate)}</Modal> : null}

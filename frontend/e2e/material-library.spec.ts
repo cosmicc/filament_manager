@@ -27,7 +27,7 @@ const nozzle = {
 }
 
 const settings = {
-  drying_temp_c: '65',
+  drying_temp_c: '65', drying_time_hours: '6-8', moisture_sensitivity: 'high-moderate',
   chamber_temp_c: null, extruder_temp_c: '210', bed_temp_c: '60', initial_bed_temp_c: '60', flow_percent: '100',
   print_speed_mm_s: '120', outer_wall_speed_mm_s: '60', inner_wall_speed_mm_s: '90',
   infill_speed_mm_s: '110', top_bottom_speed_mm_s: '70', initial_layer_speed_mm_s: '30',
@@ -221,6 +221,8 @@ test('template library is usable at desktop and mobile sizes', async ({ page }) 
   await templateCard.click()
   await expect(page.getByRole('dialog', { name: 'Edit Template PLA' })).toBeVisible()
   await expect(page.getByRole('spinbutton', { name: /^Filament drying temperature/ })).toHaveValue('65')
+  await expect(page.getByRole('combobox', { name: /^Filament drying time/ })).toHaveValue('6-8')
+  await expect(page.getByRole('combobox', { name: /^Filament moisture sensitivity/ })).toHaveValue('high-moderate')
   await expect(page.getByRole('link', { name: 'Export Template PLA' })).toHaveAttribute('href', '/api/v1/profiles/templates/template-id/exports/json')
   await expect(page.getByRole('button', { name: 'Delete template' })).toBeVisible()
   await captureEvidence(page, 'template-editor-desktop-v057')
@@ -242,6 +244,8 @@ test('template library is usable at desktop and mobile sizes', async ({ page }) 
   await captureEvidence(page, 'template-editor-mobile-v057')
   await printingTemperature.fill('212')
   await page.getByRole('spinbutton', { name: /^Filament drying temperature/ }).fill('70')
+  await page.getByRole('combobox', { name: /^Filament drying time/ }).selectOption('12+')
+  await page.getByRole('combobox', { name: /^Filament moisture sensitivity/ }).selectOption('extremely high')
   await page.getByLabel('Ironing flow (%)').fill('12')
   await page.getByLabel('Ironing speed (mm/s)').fill('25')
   await page.getByLabel('Ironing line spacing (mm)').fill('0.12')
@@ -249,6 +253,8 @@ test('template library is usable at desktop and mobile sizes', async ({ page }) 
   await expect.poll(() => templateUpdate?.expected_template_version).toBe(3)
   await expect.poll(() => (templateUpdate?.settings as Record<string, unknown>)?.extruder_temp_c).toBe('212')
   await expect.poll(() => (templateUpdate?.settings as Record<string, unknown>)?.drying_temp_c).toBe('70')
+  await expect.poll(() => (templateUpdate?.settings as Record<string, unknown>)?.drying_time_hours).toBe('12+')
+  await expect.poll(() => (templateUpdate?.settings as Record<string, unknown>)?.moisture_sensitivity).toBe('extremely high')
   await expect.poll(() => (templateUpdate?.settings as Record<string, unknown>)?.ironing_flow_percent).toBe('12')
   await expect.poll(() => (templateUpdate?.settings as Record<string, unknown>)?.ironing_speed_mm_s).toBe('25')
   await expect.poll(() => (templateUpdate?.settings as Record<string, unknown>)?.ironing_line_spacing_mm).toBe('0.12')
@@ -271,8 +277,10 @@ test('templates switch views and import portable JSON with explicit scope', asyn
   await page.getByLabel('Templates view').selectOption('detailed')
   await expect(page.locator('.collection-grid--detailed')).toBeVisible()
   const detailedTemplate = page.locator('.catalog-card--template')
-  await expect(detailedTemplate.getByText('Material flow')).toBeVisible()
-  await expect(detailedTemplate.getByText('100%')).toBeVisible()
+  await expect(detailedTemplate.getByText('Drying time', { exact: true })).toBeVisible()
+  await expect(detailedTemplate.getByText('6-8 hours')).toBeVisible()
+  await expect(detailedTemplate.getByText('Drying temperature', { exact: true })).toBeVisible()
+  await expect(detailedTemplate.getByText('Material flow')).toHaveCount(0)
   await expect(detailedTemplate.getByText(/unique controls/)).toHaveCount(0)
   const detailedLayout = await detailedTemplate.evaluate((card) => {
     const title = card.querySelector('h2')
@@ -557,6 +565,8 @@ test('multicolor corrections and new color drafts work on desktop and mobile', a
   await page.setViewportSize({ width: 390, height: 844 })
   await editor.getByRole('button', { name: 'New Color', exact: true }).scrollIntoViewIfNeeded()
   expect((await editor.getByRole('button', { name: 'New Color', exact: true }).boundingBox())!.height).toBeGreaterThanOrEqual(44)
+  // Resizing crosses the sidebar's 200 ms margin transition; assert the settled layout.
+  await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true)
   const overflow = await page.evaluate(() => ({
     width: document.documentElement.scrollWidth, viewport: innerWidth,
     elements: [...document.querySelectorAll('body *')].filter((element) => element.getBoundingClientRect().right > innerWidth + 1)
@@ -760,6 +770,8 @@ test('drying guidance is read-only in filament and spool details', async ({ page
   await page.goto(`/filaments/${filament.id}`)
   const drying = page.getByText('Filament drying temperature', { exact: true })
   await expect(drying.locator('..')).toContainText('65 °C')
+  await expect(page.getByText('Filament drying time', { exact: true }).locator('..')).toContainText('6-8 hours')
+  await expect(page.getByText('Filament moisture sensitivity', { exact: true }).locator('..')).toContainText('High-moderate')
   await page.getByRole('button', { name: 'Edit settings', exact: true }).click()
   await expect(page.getByRole('spinbutton', { name: /^Filament drying temperature/ })).toHaveCount(0)
   await page.getByRole('button', { name: 'Cancel', exact: true }).click()
@@ -769,6 +781,8 @@ test('drying guidance is read-only in filament and spool details', async ({ page
   await page.goto('/spools')
   await page.getByText(spool.spool_code, { exact: true }).click()
   await expect(drying.locator('..')).toContainText('65 °C')
+  await expect(page.getByText('Filament drying time', { exact: true }).locator('..')).toContainText('6-8 hours')
+  await expect(page.getByText('Filament moisture sensitivity', { exact: true }).locator('..')).toContainText('High-moderate')
   await expect(page.getByRole('spinbutton', { name: /^Filament drying temperature/ })).toHaveCount(0)
   await drying.scrollIntoViewIfNeeded()
   await captureEvidence(page, 'drying-spool-mobile')

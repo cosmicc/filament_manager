@@ -341,6 +341,8 @@ async def test_direct_template_save_updates_linked_product_profile(
                     "settings": {
                         "chamber_temp_c": "40",
                         "drying_temp_c": "80",
+                        "drying_time_hours": "8-12",
+                        "moisture_sensitivity": "very high",
                         "extruder_temp_c": "250",
                         "bed_temp_c": "45",
                         "flow_percent": "100",
@@ -410,6 +412,19 @@ async def test_direct_template_save_updates_linked_product_profile(
             assert Decimal(inherited_profile["bed_temp_c"]) == Decimal("45")
             assert Decimal(inherited_profile["drying_temp_c"]) == Decimal("80")
             assert "drying_temp_c" not in inherited_profile["override_keys"]
+            assert inherited_profile["drying_time_hours"] == "8-12"
+            assert inherited_profile["moisture_sensitivity"] == "very high"
+            from filament_manager.services.print_template_comparison import current_print_template_comparison
+
+            async with factory() as comparison_session:
+                comparison = await current_print_template_comparison(
+                    comparison_session,
+                    {"managed": {"resolved": original_profile, "template": {"id": template["id"]}}},
+                )
+                assert comparison.template_version == 2
+                assert comparison.status == "differs"
+                assert any(item.key == "bed_temp_c" for item in comparison.differences)
+                assert not any(item.key == "drying_time_hours" for item in comparison.differences)
             assert Decimal(inherited_profile["filament_density_g_cm3"]) == Decimal("1.21")
             assert Decimal(inherited_profile["pressure_advance"]) == Decimal("0.05")
             assert Decimal(inherited_profile["ironing_flow_percent"]) == Decimal("12")

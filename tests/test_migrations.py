@@ -1,6 +1,7 @@
 """PostgreSQL-backed Alembic upgrade and metadata-drift tests."""
 
 import json
+from datetime import UTC, datetime
 from decimal import Decimal
 from uuid import uuid4
 
@@ -17,10 +18,111 @@ from filament_manager.models.inventory import (
     FilamentProduct,
     MaterialProfile,
     MaterialTemplateRevision,
-    Printer,
     Spool,
 )
 from filament_manager.startup import upgrade_database
+
+
+@pytest.mark.integration
+def test_plate_cleaning_removal_preserves_mesh_and_selection_evidence(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Round-trip the prior schema with real cleaning, mesh, and selection records."""
+
+    from filament_manager.models.enums import NotificationSeverity
+    from filament_manager.models.inventory import BuildPlate, BuildPlateSurface, Printer
+    from filament_manager.models.operations import AuditEvent, Notification
+
+    with PostgresContainer("postgres:17-alpine", driver="psycopg") as postgres:
+        url = postgres.get_connection_url().replace("postgresql+psycopg2://", "postgresql+psycopg://")
+        monkeypatch.setenv("FILAMENT_MANAGER_DATABASE_URL", url)
+        get_settings.cache_clear()
+        config = Config("alembic.ini")
+        command.upgrade(config, "head")
+        engine = create_engine(url)
+        at = datetime(2026, 8, 1, tzinfo=UTC)
+        with Session(engine) as session:
+            plate = BuildPlate(plate_code="P1", display_name="Retained plate")
+            session.add(plate)
+            session.flush()
+            side = BuildPlateSurface(
+                build_plate_id=plate.id,
+                side="a",
+                surface_code="P1",
+                klipper_mesh_profile="P1",
+                last_mesh_calibrated_at=at,
+            )
+            session.add(side)
+            session.flush()
+            printer = Printer(
+                printer_code="test",
+                name="Test",
+                moonraker_base_url="http://test.invalid",
+                nozzle_diameter_mm=Decimal("0.4"),
+                active_plate_id=plate.id,
+                active_plate_surface_id=side.id,
+            )
+            session.add(printer)
+            plate_id, side_id = plate.id, side.id
+            for suffix in ("cleaning-due", "mesh-due"):
+                session.add(
+                    Notification(
+                        deduplication_key=f"plate:{plate_id}:{suffix}",
+                        category="plate_maintenance_due",
+                        severity=NotificationSeverity.WARNING,
+                        title=suffix,
+                        message=suffix,
+                        created_at=at,
+                        last_seen_at=at,
+                    )
+                )
+            for action, after in (
+                (
+                    "build_plate.select",
+                    {"active_plate_id": str(plate_id), "active_plate_surface_id": str(side_id)},
+                ),
+                ("build_plate.maintenance", {"maintenance_type": "cleaned"}),
+                ("build_plate.maintenance", {"cleaned": True, "mesh_calibrated": True}),
+            ):
+                session.add(
+                    AuditEvent(
+                        source="web",
+                        action=action,
+                        object_type="build_plate",
+                        object_id=plate_id,
+                        before=None,
+                        after=after,
+                        correlation_id="migration-test",
+                        occurred_at=at,
+                    )
+                )
+            session.commit()
+        command.downgrade(config, "f4a5b6c7d890")
+        with engine.begin() as connection:
+            for event_type in ("CLEANED", "MESH_CALIBRATED"):
+                connection.execute(
+                    text("""INSERT INTO build_plate_maintenance_events
+                    (id, build_plate_id, build_plate_surface_id, maintenance_type,
+                     source, occurred_at, created_at)
+                    VALUES (:id, :plate, :side, :kind, 'web', :at, :at)"""),
+                    {"id": uuid4(), "plate": plate_id, "side": side_id, "kind": event_type, "at": at},
+                )
+        command.upgrade(config, "head")
+        command.check(config)
+        with engine.connect() as connection:
+            assert connection.scalar(text("SELECT count(*) FROM build_plate_maintenance_events")) == 1
+            assert connection.scalar(text("SELECT count(*) FROM notifications")) == 1
+            assert connection.scalar(text("SELECT title FROM notifications")) == "mesh-due"
+            assert connection.scalar(text("SELECT count(*) FROM audit_events")) == 2
+            assert connection.scalar(text("SELECT last_activated_at FROM build_plates")) == at
+            assert connection.scalar(text("SELECT last_activated_at FROM build_plate_surfaces")) == at
+            assert connection.scalar(text("SELECT last_mesh_calibrated_at FROM build_plate_surfaces")) == at
+            assert connection.scalar(text("SELECT plate_selection_initialized FROM printers")) is True
+        assert "last_cleaned_at" not in {
+            column["name"] for column in inspect(engine).get_columns("build_plates")
+        }
+        engine.dispose()
+        get_settings.cache_clear()
 
 
 @pytest.mark.integration
@@ -223,14 +325,16 @@ def test_template_only_settings_migration_appends_corrected_profile_snapshot(
         engine = create_engine(database_url)
 
         with Session(engine) as session:
-            printer = Printer(
-                printer_code="migration-printer",
-                name="Migration Printer",
-                moonraker_base_url="http://moonraker.invalid",
-                nozzle_diameter_mm=Decimal("0.4"),
+            # Seed the historical schema without today's additional ORM columns.
+            printer_id = uuid4()
+            session.execute(
+                text("""INSERT INTO printers
+                (id, printer_code, name, moonraker_base_url, nozzle_diameter_mm,
+                 build_volume, status, spool_preflight_status, record_version)
+                VALUES (:id, 'migration-printer', 'Migration Printer',
+                        'http://moonraker.invalid', 0.4, '{}', 'unknown', 'unknown', 1)"""),
+                {"id": printer_id},
             )
-            session.add(printer)
-            session.flush()
             nozzle_id = uuid4()
             template_id = uuid4()
             session.execute(
@@ -259,7 +363,7 @@ def test_template_only_settings_migration_appends_corrected_profile_snapshot(
                     )
                     """
                 ),
-                {"id": template_id, "printer_id": printer.id},
+                {"id": template_id, "printer_id": printer_id},
             )
             revision = MaterialTemplateRevision(
                 material_template_id=template_id,
@@ -337,7 +441,7 @@ def test_template_only_settings_migration_appends_corrected_profile_snapshot(
                 {
                     "id": uuid4(),
                     "filament_product_id": product.id,
-                    "printer_id": printer.id,
+                    "printer_id": printer_id,
                     "nozzle_diameter_mm": Decimal("0.4"),
                     "extruder_temp_c": Decimal("215"),
                     "bed_temp_c": Decimal("60"),
@@ -524,7 +628,7 @@ def test_previous_schema_automatically_upgrades_to_metadata_head(
 
         upgrade_database(DatabaseConfig(url=database_url))
         with engine.connect() as connection:
-            assert connection.scalar(text("SELECT version_num FROM alembic_version")) == "f4a5b6c7d890"
+            assert connection.scalar(text("SELECT version_num FROM alembic_version")) == "b6c7d8e9f012"
             assert (
                 connection.scalar(
                     text(

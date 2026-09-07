@@ -32,12 +32,15 @@ const coreFields: Array<{
   defaultValue?: string
   precision?: number
   templateOnly?: boolean
+  options?: readonly string[]
 }> = [
   { key: 'extruder_temp_c', label: 'Printing temperature', unit: '°C', required: true, precision: 0 },
   { key: 'bed_temp_c', label: 'Build plate temperature', unit: '°C', required: true, precision: 0 },
   { key: 'initial_bed_temp_c', label: 'Initial layer build plate temperature', unit: '°C', required: true, precision: 0 },
   { key: 'chamber_temp_c', label: 'Build volume temperature', unit: '°C', precision: 0 },
   { key: 'drying_temp_c', label: 'Filament drying temperature', unit: '°C', precision: 0, templateOnly: true },
+  { key: 'drying_time_hours', label: 'Filament drying time', unit: 'hours', templateOnly: true, options: ['4-6', '6', '6-8', '4-8', '8-12', '10-12', '12', '12+'] },
+  { key: 'moisture_sensitivity', label: 'Filament moisture sensitivity', templateOnly: true, options: ['low', 'low-moderate', 'moderate', 'high-moderate', 'high', 'very high', 'extremely high'] },
   { key: 'flow_percent', label: 'Flow', unit: '%', required: true, defaultValue: '100', precision: 0 },
   { key: 'print_speed_mm_s', label: 'Print speed', unit: 'mm/s', precision: 0, templateOnly: true },
   { key: 'outer_wall_speed_mm_s', label: 'Outer wall speed', unit: 'mm/s', precision: 0, templateOnly: true },
@@ -192,6 +195,8 @@ export function settingsFromForm(
   return {
     chamber_temp_c: nullable(preservedNumericValue(form, 'chamber_temp_c', data.get('chamber_temp_c'))),
     drying_temp_c: nullable(preservedNumericValue(form, 'drying_temp_c', data.get('drying_temp_c'))),
+    drying_time_hours: nullable(data.get('drying_time_hours')) as MaterialSettings['drying_time_hours'],
+    moisture_sensitivity: nullable(data.get('moisture_sensitivity')) as MaterialSettings['moisture_sensitivity'],
     extruder_temp_c: String(preservedNumericValue(form, 'extruder_temp_c', data.get('extruder_temp_c'))),
     bed_temp_c: String(preservedNumericValue(form, 'bed_temp_c', data.get('bed_temp_c'))),
     initial_bed_temp_c: String(preservedNumericValue(form, 'initial_bed_temp_c', data.get('initial_bed_temp_c'))),
@@ -366,7 +371,7 @@ export function MaterialSettingsEditor({
       id: 'temperature',
       title: 'Temperatures',
       description: 'Print temperatures used by Cura, plus template-only filament drying guidance. Drying guidance never controls a heater.',
-      keys: ['extruder_temp_c', 'bed_temp_c', 'initial_bed_temp_c', 'chamber_temp_c', 'drying_temp_c'],
+      keys: ['extruder_temp_c', 'bed_temp_c', 'initial_bed_temp_c', 'chamber_temp_c', 'drying_temp_c', 'drying_time_hours', 'moisture_sensitivity'],
     },
     {
       id: 'flow',
@@ -465,7 +470,10 @@ export function MaterialSettingsEditor({
               <div className={`setting-field${customized(field.key) ? ' setting-field--customized' : ''}${errorsFor(field.key).length ? ' setting-field--invalid' : ''}`} key={field.key}>
                 <label>
                   <span>{field.label}{field.unit ? ` (${field.unit})` : ''}{field.templateOnly ? <small className="setting-scope">Template only</small> : null}</span>
-                  <input
+                  {field.options ? <select name={field.key} defaultValue={String(effectiveValue(field.key) ?? '')} aria-invalid={errorsFor(field.key).length ? true : undefined} aria-describedby={errorsFor(field.key).length ? errorId(field.key) : undefined} onChange={(event) => markValuePresence(field.key, event.currentTarget.value)}>
+                    <option value="">Not set</option>
+                    {field.options.map((value) => <option key={value} value={value}>{value.charAt(0).toUpperCase() + value.slice(1)}</option>)}
+                  </select> : <input
                     name={field.key}
                     type="number"
                     step={field.precision === 0 ? '1' : field.precision === 1 ? '0.1' : '0.01'}
@@ -477,7 +485,7 @@ export function MaterialSettingsEditor({
                     aria-invalid={errorsFor(field.key).length ? true : undefined}
                     aria-describedby={errorsFor(field.key).length ? errorId(field.key) : undefined}
                     onChange={(event) => { event.currentTarget.dataset.changed = 'true'; markOwnership(field.key, event.currentTarget.value, baseSettings?.[field.key] as string | number | boolean | null | undefined); markValuePresence(field.key, event.currentTarget.value) }}
-                  />
+                  />}
                 </label>
                 {copyControl(field.key, effectiveValue(field.key) ?? field.defaultValue, baseSettings?.[field.key] as string | number | boolean | null | undefined)}
                 {fieldErrors(field.key)}

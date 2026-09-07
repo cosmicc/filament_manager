@@ -37,9 +37,8 @@ const plate = {
   status: 'active',
   preferred_materials: [],
   max_bed_temp_c: '120',
-  last_cleaned_at: null,
-  cleaning_due_after_prints: 10,
-  cleaning_due_after_days: 7,
+  last_activated_at: '2026-09-01T12:00:00Z',
+  last_printed_at: '2026-09-02T14:00:00Z',
   mesh_due_after_prints: 30,
   mesh_due_after_days: 30,
   notes: null,
@@ -58,7 +57,9 @@ const plate = {
       texture: 'textured',
       mesh_available: true,
       last_mesh_checked_at: '2026-08-11T14:00:00Z',
-      last_mesh_calibrated_at: null,
+      last_mesh_calibrated_at: '2026-09-01T13:00:00Z',
+      last_activated_at: '2026-09-01T12:00:00Z',
+      last_printed_at: '2026-09-02T14:00:00Z',
       notes: null,
       record_version: 1,
       completed_print_count: 3,
@@ -74,6 +75,7 @@ const plate = {
       mesh_available: false,
       last_mesh_checked_at: '2026-08-11T14:00:00Z',
       last_mesh_calibrated_at: null,
+      last_mesh_observed_at: '2026-09-03T14:00:00Z',
       notes: null,
       record_version: 1,
       completed_print_count: 1,
@@ -95,14 +97,21 @@ test.beforeEach(async ({ page }) => {
     active_plate_surface_id: null,
     surfaces: [{ ...plate.surfaces[0], id: 'surface-five-id', build_plate_id: 'plate-five-id', surface_code: 'P5', klipper_mesh_profile: 'P5', mesh_available: false }],
   } : [plate] }))
-  await page.route('**/api/v1/build-plates/maintenance/status', (route) => route.fulfill({ json: [{ build_plate_id: plate.id, cleaning_due: false, cleaning_prints_since: 2, cleaning_due_at: null, surfaces: [] }] }))
-  await page.route('**/api/v1/build-plates/maintenance/events**', (route) => route.fulfill({ json: [] }))
   await page.route('**/api/v1/notifications**', (route) => route.fulfill({ json: [] }))
   await page.route('**/api/v1/printers', (route) => route.fulfill({ json: [printer] }))
 })
 
 test('groups both sides under one physical plate on desktop and mobile', async ({ page }) => {
+  const errors: string[] = []
+  page.on('pageerror', (error) => errors.push(error.message))
+  page.on('console', (message) => { if (['error', 'warning'].includes(message.type())) errors.push(message.text()) })
+  await page.addInitScript(() => {
+    if (!window.localStorage.getItem('filament-manager-theme')) window.localStorage.setItem('filament-manager-theme', 'dark-navy')
+  })
   await page.goto('/plates')
+  await expect(page).toHaveURL(/\/plates$/)
+  await expect(page).toHaveTitle('Filament Manager')
+  await expect(page.locator('vite-error-overlay')).toHaveCount(0)
 
   await expect(page.getByRole('heading', { name: 'Flexible P4' })).toBeVisible()
   await expect(page.getByRole('heading', { name: 'P4', exact: true })).toBeVisible()
@@ -121,7 +130,13 @@ test('groups both sides under one physical plate on desktop and mobile', async (
   const editPlateButton = page.getByRole('button', { name: 'Edit physical plate' })
   await expect(editPlateButton).toBeVisible()
   expect((await editPlateButton.boundingBox())?.width).toBeLessThan((await plateCard.boundingBox())?.width ?? 0)
-  await page.screenshot({ path: '../docs/design/validation/build-plates-v040.png', fullPage: true })
+  await expect(page.getByRole('link', { name: 'Calibration', exact: true })).toBeVisible()
+  await expect(page.getByText('Last activated').first()).toBeVisible()
+  await expect(page.getByText('Last printed').first()).toBeVisible()
+  await expect(page.getByRole('button', { name: /Mark cleaned|Mark calibrated/ })).toHaveCount(0)
+  await expect(page.getByText('Maintenance ledger')).toHaveCount(0)
+  await expect(page.getByRole('dialog')).toHaveCount(0)
+  await page.screenshot({ path: '/tmp/filament-manager-v073-plates-desktop.png', fullPage: true })
 
   await editPlateButton.click()
   const editor = page.getByRole('dialog', { name: 'Edit P4' })
@@ -129,7 +144,8 @@ test('groups both sides under one physical plate on desktop and mobile', async (
   await expect(editor.getByRole('heading', { name: 'Identity' })).toBeVisible()
   await expect(editor.getByRole('heading', { name: 'Geometry' })).toBeVisible()
   await expect(editor.getByRole('heading', { name: 'Condition and use' })).toBeVisible()
-  await expect(editor.getByRole('heading', { name: 'Maintenance reminders' })).toBeVisible()
+  await expect(editor.getByRole('heading', { name: 'Mesh calibration reminders' })).toBeVisible()
+  await expect(editor.getByLabel(/Cleaning/i)).toHaveCount(0)
   await expect(editor.getByLabel('Width (mm)')).toBeVisible()
   await expect(editor.getByLabel('Depth (mm)')).toBeVisible()
   await expect(editor.getByLabel('Diameter (mm)')).toHaveCount(0)
@@ -142,11 +158,16 @@ test('groups both sides under one physical plate on desktop and mobile', async (
   await expect(editor).toBeHidden()
 
   await page.setViewportSize({ width: 390, height: 844 })
+  await page.evaluate(() => window.localStorage.setItem('filament-manager-theme', 'light'))
+  await page.reload()
+  await expect(page.locator('html')).toHaveAttribute('data-theme', 'light-navy')
   await page.waitForTimeout(250)
   await expect(page.getByRole('heading', { name: 'Flexible P4' })).toBeVisible()
   await expect(
     page.getByRole('paragraph').filter({ hasText: 'Double-sided spring-steel plate' }),
   ).toBeVisible()
   await expect(page.getByRole('button', { name: 'Select P4' })).toBeVisible()
-  await page.screenshot({ path: '../docs/design/validation/build-plates-mobile-v040.png', fullPage: true })
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true)
+  await page.screenshot({ path: '/tmp/filament-manager-v073-plates-mobile.png', fullPage: true })
+  expect(errors).toEqual([])
 })

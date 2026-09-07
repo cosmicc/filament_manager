@@ -634,7 +634,7 @@ async def test_single_account_password_identity_and_session_controls(
                 headers=headers,
                 json={"maintenance_type": "cleaned", "notes": "Routine cleaning"},
             )
-            assert cleaned.status_code == 201, cleaned.text
+            assert cleaned.status_code in {404, 405}
             mesh_calibrated = await admin.post(
                 f"/api/v1/build-plates/{plate_id}/maintenance-events",
                 headers=headers,
@@ -643,17 +643,14 @@ async def test_single_account_password_identity_and_session_controls(
                     "surface_id": str(plate_surface_id),
                 },
             )
-            assert mesh_calibrated.status_code == 201, mesh_calibrated.text
+            assert mesh_calibrated.status_code in {404, 405}
             maintenance = await admin.get(f"/api/v1/build-plates/maintenance/events?plate_id={plate_id}")
-            assert maintenance.status_code == 200
-            assert [item["maintenance_type"] for item in maintenance.json()] == [
-                "mesh_calibrated",
-                "cleaned",
-            ]
+            # The SPA fallback may return HTML, but the removed API is not registered.
+            assert "/api/v1/build-plates/maintenance/events" not in app.openapi()["paths"]
+            assert maintenance.headers.get("content-type", "").startswith("text/html")
             due_status = await admin.get("/api/v1/build-plates/maintenance/status")
             assert due_status.status_code == 200
-            assert due_status.json()[0]["cleaning_due"] is False
-            assert due_status.json()[0]["surfaces"][0]["mesh_due"] is False
+            assert "cleaning_due" not in due_status.json()[0]
             reset = await admin.post(
                 f"/api/v1/auth/users/{administrator_id}/reset-password",
                 headers=headers,

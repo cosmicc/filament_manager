@@ -1,5 +1,6 @@
 """Read-only completed-print statistics derived from immutable print history."""
 
+from datetime import datetime
 from decimal import Decimal
 from uuid import UUID
 
@@ -8,6 +9,22 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from filament_manager.models.enums import PrintJobStatus
 from filament_manager.models.printing import PrintJob, PrintMaterialSegment
+
+
+async def last_build_plate_prints(
+    session: AsyncSession,
+) -> tuple[dict[UUID, datetime], dict[UUID, datetime]]:
+    """Return actual attributed print starts, including interrupted prints, in two batches."""
+
+    result: list[dict[UUID, datetime]] = []
+    for column in (PrintJob.build_plate_id, PrintJob.build_plate_surface_id):
+        rows = await session.execute(
+            select(column, func.max(PrintJob.started_at))
+            .where(column.is_not(None), PrintJob.started_at.is_not(None))
+            .group_by(column)
+        )
+        result.append({identity: occurred for identity, occurred in rows if occurred is not None})
+    return result[0], result[1]
 
 
 async def completed_surface_print_counts(

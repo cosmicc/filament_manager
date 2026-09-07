@@ -671,7 +671,17 @@ textarea { resize: vertical; }
 .print-settings-group[open] > summary { border-bottom: 1px solid var(--border); background: var(--surface-muted); }
 .print-settings-group > .muted { margin: 14px; }
 .print-settings-table { max-height: 430px; overflow: auto; }
-.print-settings-table table { min-width: 540px; }
+.print-settings-table table { min-width: 540px; width: 100%; border-collapse: collapse; text-align: left; }
+.print-settings-table th, .print-settings-table td { padding: 10px 14px; border-bottom: 1px solid var(--border); vertical-align: top; }
+.print-settings-table th { color: var(--text-muted); background: var(--surface-muted); }
+.print-template-comparison { padding: 14px; }
+.print-template-comparison > p { margin: 0 0 12px; }
+.print-template-comparison > p:last-child { margin: 12px 0 0; }
+.print-template-comparison .print-settings-table td:first-child { width: 40%; }
+.print-template-comparison .print-settings-table table { min-width: 0; table-layout: fixed; }
+.print-template-comparison .print-settings-table th { overflow-wrap: anywhere; }
+.print-setting-difference { background: var(--warning-bg); }
+.print-setting-difference td:first-child { box-shadow: inset 3px 0 var(--warning); }
 .print-settings-table td:first-child { width: 45%; color: var(--text-muted); font-weight: 650; }
 .print-settings-table code { color: var(--text); white-space: pre-wrap; overflow-wrap: anywhere; }
 .print-settings-source { margin-top: 22px; border-top: 1px solid var(--border); padding-top: 18px; }

@@ -144,7 +144,7 @@ class ApplicationSetting(UUIDPrimaryKeyMixin, TimestampMixin, Base):
 
 
 class BuildPlateMaintenanceEvent(UUIDPrimaryKeyMixin, Base):
-    """Append-only plate cleaning or side-specific mesh-calibration record."""
+    """Retained side-specific mesh-calibration evidence; no user maintenance ledger."""
 
     __tablename__ = "build_plate_maintenance_events"
     __table_args__ = (Index("ix_plate_maintenance_plate_time", "build_plate_id", "occurred_at"),)

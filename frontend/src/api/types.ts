@@ -72,6 +72,9 @@ export interface BuildPlateSurface {
   mesh_available: boolean | null
   last_mesh_checked_at: string | null
   last_mesh_calibrated_at: string | null
+  last_mesh_observed_at?: string | null
+  last_printed_at?: string | null
+  last_activated_at?: string | null
   notes: string | null
   record_version: number
   completed_print_count: number
@@ -97,9 +100,8 @@ export interface BuildPlate {
   status: string
   preferred_materials: string[]
   max_bed_temp_c: string | null
-  last_cleaned_at: string | null
-  cleaning_due_after_prints: number
-  cleaning_due_after_days: number
+  last_printed_at?: string | null
+  last_activated_at?: string | null
   mesh_due_after_prints: number
   mesh_due_after_days: number
   notes: string | null
@@ -207,6 +209,8 @@ export interface CuraSettingCatalogItem {
 
 export interface MaterialSettings {
   drying_temp_c?: string | null
+  drying_time_hours?: '4-6' | '6' | '6-8' | '4-8' | '8-12' | '10-12' | '12' | '12+' | null
+  moisture_sensitivity?: 'low' | 'low-moderate' | 'moderate' | 'high-moderate' | 'high' | 'very high' | 'extremely high' | null
   chamber_temp_c: string | null
   extruder_temp_c: string
   bed_temp_c: string
@@ -691,6 +695,16 @@ export interface PrintJob {
   state_snapshot: Record<string, unknown>
   profile_snapshot: Record<string, unknown>
   print_settings_snapshot: Record<string, unknown>
+  current_template_comparison?: {
+    status: 'matches' | 'differs' | 'partial' | 'unavailable'
+    checked_at: string
+    template_id: string | null
+    template_name: string | null
+    template_version: number | null
+    differences: Array<{ key: string; used: unknown; current: unknown }>
+    matching_count: number
+    missing_keys: string[]
+  } | null
   inspection_status: 'pending' | 'passed' | 'warning' | 'blocked' | 'unavailable'
   inspection_policy: 'warn' | 'block'
   inspection: {
@@ -746,7 +760,7 @@ export interface PrintJob {
   assessments: PrintAssessment[]
 }
 
-export type PrintJobSummary = Omit<PrintJob, 'print_settings_snapshot'>
+export type PrintJobSummary = Omit<PrintJob, 'print_settings_snapshot' | 'current_template_comparison'>
 
 export interface PrintJobPage {
   items: PrintJobSummary[]
@@ -896,29 +910,4 @@ export interface OperatorNotification {
   last_seen_at: string
   resolved_at: string | null
   read: boolean
-}
-
-export interface BuildPlateMaintenanceStatus {
-  build_plate_id: string
-  cleaning_due: boolean
-  cleaning_prints_since: number
-  cleaning_due_at: string | null
-  surfaces: Array<{
-    surface_id: string
-    surface_code: string
-    mesh_due: boolean
-    prints_since: number
-    due_at: string | null
-  }>
-}
-
-export interface BuildPlateMaintenanceEvent {
-  id: string
-  build_plate_id: string
-  build_plate_surface_id: string | null
-  maintenance_type: 'cleaned' | 'mesh_calibrated'
-  performed_by: string | null
-  source: string
-  notes: string | null
-  occurred_at: string
 }

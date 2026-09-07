@@ -81,7 +81,7 @@
 
 - **Expanded build-plate lifecycle analytics**
 
-  Add plate-side print count, hours used, wash and IPA-clean distinctions, adhesive use, surface-damage history, and mesh-variance trends. Correlate those facts with recorded adhesion failures without rewriting historical print state.
+  Extend existing plate-side print counts and activity dates with hours used, adhesive use, surface-damage history, and mesh-variance trends. Correlate those facts with recorded adhesion failures without rewriting historical print state. Cleaning tracking is intentionally excluded.
 
 - **Automatic build-plate recommendation**
 

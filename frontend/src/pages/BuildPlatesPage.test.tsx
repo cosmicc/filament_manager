@@ -48,9 +48,6 @@ const plate = {
   status: 'active',
   preferred_materials: [],
   max_bed_temp_c: '120',
-  last_cleaned_at: null,
-  cleaning_due_after_prints: 20,
-  cleaning_due_after_days: 14,
   mesh_due_after_prints: 50,
   mesh_due_after_days: 30,
   notes: null,
@@ -166,7 +163,8 @@ describe('BuildPlatesPage', () => {
     expect(actionRow).toBeTruthy()
     expect(actionRow?.classList.contains('detail-actions')).toBe(true)
     expect(actionRow?.contains(screen.getByText('Upload picture').closest('label'))).toBe(true)
-    expect(actionRow?.contains(screen.getByRole('button', { name: 'Mark cleaned' }))).toBe(true)
+    expect(screen.queryByRole('button', { name: 'Mark cleaned' })).toBeNull()
+    expect(screen.getAllByText('Last printed').length).toBeGreaterThan(0)
   })
 
   it('opens the complete plate actions from the list presentation', async () => {
@@ -184,7 +182,8 @@ describe('BuildPlatesPage', () => {
     const dialog = screen.getByRole('dialog', { name: 'P1 details' })
     expect(dialog).toBeTruthy()
     expect(screen.getByRole('button', { name: 'Edit physical plate' })).toBeTruthy()
-    expect(screen.getByRole('button', { name: 'Mark cleaned' })).toBeTruthy()
+    expect(screen.queryByRole('button', { name: 'Mark cleaned' })).toBeNull()
+    expect(screen.queryByRole('button', { name: 'Mark calibrated' })).toBeNull()
     expect(screen.getByRole('button', { name: 'Add Side B' })).toBeTruthy()
   })
 

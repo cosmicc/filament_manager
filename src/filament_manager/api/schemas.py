@@ -14,6 +14,7 @@ from filament_manager.domain.cura_material_settings import (
     CURA_RETIRED_SETTING_KEYS,
     cura_settings_for_profile,
 )
+from filament_manager.domain.filament_care import DryingTimeHours, MoistureSensitivity
 from filament_manager.models.enums import (
     CalibrationStatus,
     CalibrationStepStatus,
@@ -22,7 +23,6 @@ from filament_manager.models.enums import (
     MeasurementSource,
     NotificationSeverity,
     NozzleStatus,
-    PlateMaintenanceType,
     PlateSurfaceTexture,
     PrintJobStatus,
     PrintQualityRating,
@@ -366,6 +366,9 @@ class BuildPlateSurfaceResponse(ApiModel):
     mesh_available: bool | None
     last_mesh_checked_at: datetime | None
     last_mesh_calibrated_at: datetime | None
+    last_mesh_observed_at: datetime | None = None
+    last_activated_at: datetime | None = None
+    last_printed_at: datetime | None = None
     notes: str | None
     record_version: int
     completed_print_count: int = 0
@@ -405,9 +408,8 @@ class BuildPlateResponse(ApiModel):
     status: str
     preferred_materials: list[str]
     max_bed_temp_c: Decimal | None
-    last_cleaned_at: datetime | None
-    cleaning_due_after_prints: int
-    cleaning_due_after_days: int
+    last_activated_at: datetime | None = None
+    last_printed_at: datetime | None = None
     mesh_due_after_prints: int
     mesh_due_after_days: int
     notes: str | None
@@ -431,8 +433,6 @@ class BuildPlateUpdate(ApiModel):
     status: str | None = None
     preferred_materials: list[str] | None = Field(default=None, max_length=50)
     max_bed_temp_c: Decimal | None = Field(default=None, ge=0, le=500)
-    cleaning_due_after_prints: int | None = Field(default=None, ge=1, le=10_000)
-    cleaning_due_after_days: int | None = Field(default=None, ge=1, le=3650)
     mesh_due_after_prints: int | None = Field(default=None, ge=1, le=10_000)
     mesh_due_after_days: int | None = Field(default=None, ge=1, le=3650)
     notes: str | None = Field(default=None, max_length=4000)
@@ -474,28 +474,8 @@ class BuildPlateSyncResponse(ApiModel):
     synchronized_at: datetime
 
 
-class BuildPlateMaintenanceCreate(ApiModel):
-    maintenance_type: PlateMaintenanceType
-    surface_id: UUID | None = None
-    notes: str | None = Field(default=None, max_length=2000)
-
-
-class BuildPlateMaintenanceEventResponse(ApiModel):
-    id: UUID
-    build_plate_id: UUID
-    build_plate_surface_id: UUID | None
-    maintenance_type: PlateMaintenanceType
-    performed_by: UUID | None
-    source: str
-    notes: str | None
-    occurred_at: datetime
-
-
 class BuildPlateMaintenanceStatus(ApiModel):
     build_plate_id: UUID
-    cleaning_due: bool
-    cleaning_prints_since: int
-    cleaning_due_at: datetime | None
     surfaces: list[dict[str, Any]]
 
 
@@ -556,6 +536,8 @@ class MaterialSettingsInput(ApiModel):
 
     chamber_temp_c: Decimal | None = None
     drying_temp_c: Decimal | None = Field(default=None, ge=0, le=300)
+    moisture_sensitivity: MoistureSensitivity | None = None
+    drying_time_hours: DryingTimeHours | None = None
     extruder_temp_c: Decimal
     bed_temp_c: Decimal
     initial_bed_temp_c: Decimal | None = None
@@ -1651,10 +1633,32 @@ class PrintJobSummaryResponse(ApiModel):
     assessments: list[PrintAssessmentResponse]
 
 
+class PrintSettingDifference(ApiModel):
+    """One retained managed value compared to today's original template."""
+
+    key: str
+    used: Any
+    current: Any
+
+
+class PrintTemplateComparison(ApiModel):
+    """Read-only, detail-time comparison; never part of the historical evidence."""
+
+    status: Literal["matches", "differs", "partial", "unavailable"]
+    checked_at: datetime
+    template_id: UUID | None = None
+    template_name: str | None = None
+    template_version: int | None = None
+    differences: list[PrintSettingDifference] = Field(default_factory=list)
+    matching_count: int = 0
+    missing_keys: list[str] = Field(default_factory=list)
+
+
 class PrintJobResponse(PrintJobSummaryResponse):
     """One print with its potentially large immutable settings archive."""
 
     print_settings_snapshot: dict[str, Any]
+    current_template_comparison: PrintTemplateComparison | None = None
 
 
 class PrintJobPageResponse(ApiModel):

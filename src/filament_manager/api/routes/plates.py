@@ -1,4 +1,4 @@
-"""Physical build-plate inventory, side metadata, maintenance, and selection routes."""
+"""Physical build-plate inventory, side metadata, calibration status, and selection routes."""
 
 import hashlib
 import warnings
@@ -15,19 +15,17 @@ from sqlalchemy.orm import selectinload
 from filament_manager.clients.moonraker import MoonrakerClient, MoonrakerError
 from filament_manager.config import get_settings
 from filament_manager.domain.build_plates import BuildPlateDiscoveryError, build_plate_sort_key
-from filament_manager.models.enums import PlateCondition, PlateMaintenanceType, PlateStatus
+from filament_manager.models.enums import PlateCondition, PlateStatus, PrintJobStatus
 from filament_manager.models.inventory import BuildPlate, BuildPlateSurface, Printer
-from filament_manager.models.operations import BuildPlateMaintenanceEvent
+from filament_manager.models.printing import PrintJob
 from filament_manager.services.build_plate_sync import BUILD_PLATE_SYNC_LOCK_KEY, synchronize_build_plates
 from filament_manager.services.events import add_audit_event, add_outbox_job
 from filament_manager.services.notifications import build_plate_maintenance_status
-from filament_manager.services.print_statistics import completed_surface_print_counts
+from filament_manager.services.print_statistics import completed_surface_print_counts, last_build_plate_prints
 
 from ..dependencies import Administrator, DatabaseSession, Operator, Viewer
 from ..errors import ApiError
 from ..schemas import (
-    BuildPlateMaintenanceCreate,
-    BuildPlateMaintenanceEventResponse,
     BuildPlateMaintenanceStatus,
     BuildPlateResponse,
     BuildPlateSurfaceCreate,
@@ -43,6 +41,23 @@ router = APIRouter(prefix="/build-plates", tags=["build plates"])
 MAX_PLATE_IMAGE_UPLOAD_BYTES = 5 * 1024 * 1024
 MAX_PLATE_IMAGE_PIXELS = 16_000_000
 MAX_PLATE_IMAGE_SIDE = 1024
+
+
+async def _require_idle_plate_context(session: DatabaseSession, printer_id: UUID) -> None:
+    """Do not change captured physical plate identity while a print is active."""
+
+    active = await session.scalar(
+        select(PrintJob.id)
+        .where(
+            PrintJob.printer_id == printer_id,
+            PrintJob.status == PrintJobStatus.IN_PROGRESS,
+        )
+        .limit(1)
+    )
+    if active is not None:
+        raise ApiError(
+            status.HTTP_409_CONFLICT, "printer_busy", "Build plate changes require an idle printer"
+        )
 
 
 async def _get_plate(session: DatabaseSession, plate_id: UUID) -> BuildPlate:
@@ -63,6 +78,7 @@ async def build_plate_response(
     session: DatabaseSession,
     plate: BuildPlate,
     print_counts: dict[UUID, int] | None = None,
+    last_prints: tuple[dict[UUID, datetime], dict[UUID, datetime]] | None = None,
 ) -> BuildPlateResponse:
     """Render one physical plate with completed-print totals for each exact side."""
 
@@ -70,8 +86,12 @@ async def build_plate_response(
     if counts is None:
         counts = await completed_surface_print_counts(session, [surface.id for surface in plate.surfaces])
     response = BuildPlateResponse.model_validate(plate)
+    plate_prints, surface_prints = (
+        last_prints if last_prints is not None else await last_build_plate_prints(session)
+    )
     return response.model_copy(
         update={
+            "last_printed_at": plate_prints.get(plate.id),
             "image_url": (
                 f"/api/v1/build-plates/{plate.id}/image?v={plate.image_version}"
                 if plate.image_data is not None
@@ -79,7 +99,10 @@ async def build_plate_response(
             ),
             "surfaces": [
                 BuildPlateSurfaceResponse.model_validate(surface).model_copy(
-                    update={"completed_print_count": counts.get(surface.id, 0)}
+                    update={
+                        "completed_print_count": counts.get(surface.id, 0),
+                        "last_printed_at": surface_prints.get(surface.id),
+                    }
                 )
                 for surface in plate.surfaces
             ],
@@ -110,7 +133,8 @@ async def list_build_plates(_: Viewer, session: DatabaseSession) -> list[BuildPl
     counts = await completed_surface_print_counts(
         session, [surface.id for plate in plates for surface in plate.surfaces]
     )
-    return [await build_plate_response(session, plate, counts) for plate in plates]
+    last_prints = await last_build_plate_prints(session)
+    return [await build_plate_response(session, plate, counts, last_prints) for plate in plates]
 
 
 @router.post("", response_model=BuildPlateResponse, status_code=status.HTTP_201_CREATED)
@@ -180,25 +204,6 @@ async def list_maintenance_status(_: Viewer, session: DatabaseSession) -> list[B
     ]
 
 
-@router.get("/maintenance/events", response_model=list[BuildPlateMaintenanceEventResponse])
-async def list_maintenance_events(
-    _: Viewer,
-    session: DatabaseSession,
-    plate_id: UUID | None = None,
-    maintenance_type: PlateMaintenanceType | None = None,
-    limit: int = 100,
-) -> list[BuildPlateMaintenanceEventResponse]:
-    """Return filterable immutable plate-maintenance history."""
-
-    query = select(BuildPlateMaintenanceEvent).order_by(BuildPlateMaintenanceEvent.occurred_at.desc())
-    if plate_id is not None:
-        query = query.where(BuildPlateMaintenanceEvent.build_plate_id == plate_id)
-    if maintenance_type is not None:
-        query = query.where(BuildPlateMaintenanceEvent.maintenance_type == maintenance_type)
-    events = await session.scalars(query.limit(min(max(limit, 1), 500)))
-    return [BuildPlateMaintenanceEventResponse.model_validate(event) for event in events]
-
-
 @router.post("/active/clear", status_code=status.HTTP_202_ACCEPTED)
 async def clear_active_build_plate(
     request: Request,
@@ -215,6 +220,7 @@ async def clear_active_build_plate(
             "no_active_build_plate",
             "No build plate side is selected for the configured printer",
         )
+    await _require_idle_plate_context(session, printer.id)
     add_outbox_job(
         session,
         job_type="moonraker.build_plate.clear",
@@ -222,7 +228,7 @@ async def clear_active_build_plate(
         aggregate_type="printer",
         aggregate_id=printer.id,
         aggregate_version=printer.record_version,
-        payload={"printer_id": str(printer.id)},
+        payload={"printer_id": str(printer.id), "expected_surface_id": str(printer.active_plate_surface_id)},
     )
     add_audit_event(
         session,
@@ -254,6 +260,7 @@ async def synchronize_with_moonraker(
     printer_code = await session.scalar(select(Printer.printer_code).where(Printer.id == payload.printer_id))
     if printer_code is None:
         raise ApiError(status.HTTP_404_NOT_FOUND, "unknown_printer", "Printer not found")
+    await _require_idle_plate_context(session, payload.printer_id)
     await session.rollback()
 
     configured_printer = next(
@@ -504,8 +511,6 @@ async def update_build_plate(
     if "max_bed_temp_c" in payload.model_fields_set:
         plate.max_bed_temp_c = payload.max_bed_temp_c
     for field in (
-        "cleaning_due_after_prints",
-        "cleaning_due_after_days",
         "mesh_due_after_prints",
         "mesh_due_after_days",
     ):
@@ -690,6 +695,7 @@ async def select_build_plate(
         )
     if printer is None:
         raise ApiError(status.HTTP_404_NOT_FOUND, "unknown_printer", "Printer not found")
+    await _require_idle_plate_context(session, printer.id)
     if plate.status != PlateStatus.ACTIVE:
         raise ApiError(
             status.HTTP_409_CONFLICT,
@@ -711,6 +717,12 @@ async def select_build_plate(
 
     previous_plate_id = printer.active_plate_id
     previous_surface_id = printer.active_plate_surface_id
+    if previous_surface_id != surface.id:
+        now = datetime.now(UTC)
+        surface.last_activated_at = now
+        if previous_plate_id != plate.id:
+            plate.last_activated_at = now
+    printer.plate_selection_initialized = True
     printer.active_plate_id = plate.id
     printer.active_plate_surface_id = surface.id
     printer.record_version += 1
@@ -744,178 +756,3 @@ async def select_build_plate(
     )
     await session.commit()
     return {"status": "queued", "surface_code": surface.surface_code}
-
-
-@router.post(
-    "/{plate_id}/maintenance-events",
-    response_model=BuildPlateMaintenanceEventResponse,
-    status_code=status.HTTP_201_CREATED,
-)
-async def create_maintenance_event(
-    plate_id: UUID,
-    payload: BuildPlateMaintenanceCreate,
-    request: Request,
-    operator: Operator,
-    session: DatabaseSession,
-) -> BuildPlateMaintenanceEventResponse:
-    """Append one cleaning or side-specific mesh-calibration event."""
-
-    plate = await session.scalar(select(BuildPlate).where(BuildPlate.id == plate_id).with_for_update())
-    if plate is None:
-        raise ApiError(status.HTTP_404_NOT_FOUND, "unknown_build_plate", "Build plate not found")
-    surface = None
-    if payload.maintenance_type == PlateMaintenanceType.MESH_CALIBRATED:
-        if payload.surface_id is None:
-            raise ApiError(
-                status.HTTP_422_UNPROCESSABLE_ENTITY,
-                "surface_required",
-                "Select the plate side whose mesh was calibrated",
-            )
-        surface = await session.scalar(
-            select(BuildPlateSurface)
-            .where(
-                BuildPlateSurface.id == payload.surface_id,
-                BuildPlateSurface.build_plate_id == plate_id,
-            )
-            .with_for_update()
-        )
-        if surface is None:
-            raise ApiError(
-                status.HTTP_404_NOT_FOUND,
-                "unknown_build_plate_surface",
-                "Build plate side not found",
-            )
-    elif payload.surface_id is not None:
-        raise ApiError(
-            status.HTTP_422_UNPROCESSABLE_ENTITY,
-            "surface_not_allowed",
-            "Cleaning applies to the whole physical plate",
-        )
-    now = datetime.now(UTC)
-    event = BuildPlateMaintenanceEvent(
-        build_plate_id=plate.id,
-        build_plate_surface_id=surface.id if surface else None,
-        maintenance_type=payload.maintenance_type,
-        performed_by=operator.id,
-        source="web",
-        notes=payload.notes.strip() if payload.notes else None,
-        occurred_at=now,
-        created_at=now,
-    )
-    session.add(event)
-    if payload.maintenance_type == PlateMaintenanceType.CLEANED:
-        plate.last_cleaned_at = now
-    if surface is not None:
-        surface.last_mesh_calibrated_at = now
-        surface.record_version += 1
-    plate.record_version += 1
-    await session.flush()
-    add_audit_event(
-        session,
-        actor_id=operator.id,
-        source="web",
-        action="build_plate.maintenance",
-        object_type="build_plate_maintenance_event",
-        object_id=event.id,
-        before=None,
-        after={
-            "build_plate_id": str(plate.id),
-            "maintenance_type": event.maintenance_type.value,
-            "surface_code": surface.surface_code if surface else None,
-        },
-        correlation_id=request.state.correlation_id,
-    )
-    _queue_google_plate(session, plate)
-    await session.commit()
-    return BuildPlateMaintenanceEventResponse.model_validate(event)
-
-
-@router.post("/{plate_id}/maintenance", response_model=BuildPlateResponse)
-async def record_maintenance(
-    plate_id: UUID,
-    request: Request,
-    operator: Operator,
-    session: DatabaseSession,
-    cleaned: bool = False,
-    mesh_calibrated: bool = False,
-    surface_id: UUID | None = None,
-) -> BuildPlateResponse:
-    """Record whole-plate cleaning or side-specific mesh calibration."""
-
-    plate = await session.scalar(select(BuildPlate).where(BuildPlate.id == plate_id).with_for_update())
-    if plate is None:
-        raise ApiError(status.HTTP_404_NOT_FOUND, "unknown_build_plate", "Build plate not found")
-    if not cleaned and not mesh_calibrated:
-        raise ApiError(
-            status.HTTP_422_UNPROCESSABLE_ENTITY,
-            "maintenance_empty",
-            "Select a maintenance action",
-        )
-    surface = None
-    if mesh_calibrated:
-        if surface_id is None:
-            raise ApiError(
-                status.HTTP_422_UNPROCESSABLE_ENTITY,
-                "surface_required",
-                "Select the plate side whose mesh was calibrated",
-            )
-        surface = await session.scalar(
-            select(BuildPlateSurface)
-            .where(
-                BuildPlateSurface.id == surface_id,
-                BuildPlateSurface.build_plate_id == plate_id,
-            )
-            .with_for_update()
-        )
-        if surface is None:
-            raise ApiError(
-                status.HTTP_404_NOT_FOUND,
-                "unknown_build_plate_surface",
-                "Build plate side not found",
-            )
-    now = datetime.now(UTC)
-    if cleaned:
-        plate.last_cleaned_at = now
-        session.add(
-            BuildPlateMaintenanceEvent(
-                build_plate_id=plate.id,
-                maintenance_type=PlateMaintenanceType.CLEANED,
-                performed_by=operator.id,
-                source="legacy_web_route",
-                occurred_at=now,
-                created_at=now,
-            )
-        )
-    if surface is not None:
-        surface.last_mesh_calibrated_at = now
-        surface.record_version += 1
-        session.add(
-            BuildPlateMaintenanceEvent(
-                build_plate_id=plate.id,
-                build_plate_surface_id=surface.id,
-                maintenance_type=PlateMaintenanceType.MESH_CALIBRATED,
-                performed_by=operator.id,
-                source="legacy_web_route",
-                occurred_at=now,
-                created_at=now,
-            )
-        )
-    plate.record_version += 1
-    add_audit_event(
-        session,
-        actor_id=operator.id,
-        source="web",
-        action="build_plate.maintenance",
-        object_type="build_plate",
-        object_id=plate.id,
-        before=None,
-        after={
-            "cleaned": cleaned,
-            "mesh_calibrated": mesh_calibrated,
-            "surface_code": surface.surface_code if surface else None,
-        },
-        correlation_id=request.state.correlation_id,
-    )
-    _queue_google_plate(session, plate)
-    await session.commit()
-    return await build_plate_response(session, await _get_plate(session, plate.id))

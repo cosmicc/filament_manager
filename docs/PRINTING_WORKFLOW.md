@@ -30,11 +30,13 @@ A non-null spool selected directly in Spoolman is treated as the requested targe
 
 If a prompt was closed, run `FILAMENT_MANAGER_LOAD_TARGET` to reopen a pending selection. Run `FILAMENT_MANAGER_SPOOL_STATE` to see the current phase and active macro version; version 0.7.0 reports `macro=0.7.0`. Use `FILAMENT_MANAGER_ABORT` only when the pending workflow should be cancelled. The last completed physical boundary remains authoritative after cancellation.
 
-Run `SELECT_BUILD_PLATE` without parameters to open a chooser generated live from Klipper's saved meshes. Only exact `P<number>` Side A and `P<number>b` Side B names are shown; selecting one loads that same-named mesh and persists the plate side.
+Run `SELECT_BUILD_PLATE` without parameters to restore the persisted selected heightmap automatically. Use `SELECT_BUILD_PLATE CHOOSE=1` to open a chooser generated live from Klipper's saved meshes. See [Build plate setup](BUILD_PLATE_SETUP.md) for the 0.7.3 macro upgrade and automatic calibration tracking. Only exact `P<number>` Side A and `P<number>b` Side B names are shown; selecting one loads that same-named mesh and persists the plate side.
 
 ## Print history and assessment
 
 The worker checks and captures current print and preflight state in one combined Moonraker request every ten seconds. It postpones the complete Moonraker history listing plus nonessential spool, mesh, catalog, and printer-information synchronization while the printer is printing or paused, then resumes those operations after terminal state so they do not compete with printer motion. New records retain the exact printer, physical spool, material/profile snapshot, plate side, nozzle, G-code SHA-256, supported Cura/Moonraker metadata, predicted/actual use, timestamps, canonical result, and exact bounded Moonraker history outcome such as cancellation, Klippy shutdown, disconnection, or interruption. An `M600` closes the current immutable material segment and opens a new exact segment after the replacement is loaded. Print History defaults to all printers and loads newest-first in server-side pages of 10, with 25, 50, and 100 choices and complete page navigation.
+
+Open **Advanced print settings** to inspect the immutable resolved settings and template captured for that print. A separate **Current template comparison** checks those managed print values against the latest revision of the original active template, highlighting each difference. It includes template-owned motion settings but excludes drying guidance and raw Cura formulas. Missing historical values are explicitly partial/unavailable, not assumed to match. Reopen the print to refresh this database-only comparison; it never polls the printer or rewrites the saved evidence.
 
 History from before 0.2.1 is imported but marked legacy/unresolved when its exact canonical material state cannot be reconstructed. The app does not guess missing spool or profile history.
 

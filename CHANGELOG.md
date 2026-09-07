@@ -1,5 +1,32 @@
 # Changelog
 
+## 0.7.3 - 09.07.2026
+
+Testing release.
+
+### Added
+
+- Template-only moisture sensitivity and drying-time dropdowns beside drying temperature, inherited read-only in filament and spool details with separate printer/nozzle scopes preserved.
+- Print History advanced settings compare captured managed print values with the latest version of the original template, highlight differences, and distinguish incomplete or unavailable evidence. Original settings and at-print differences remain immutable; comparison adds no printer polling.
+- Last printed and last activated dates for physical build plates and each side, derived from retained print/selection evidence without inventing old dates.
+- Automatic exact-side mesh-calibration receipts from the updated Klipper macros, with idempotent import and explicit unknown timestamps when no clock anchor was available.
+- Persisted startup heightmap restoration and idle-only reconciliation with the app-selected plate. Existing parameterless `SELECT_BUILD_PLATE` startup calls now restore automatically; `CHOOSE=1` explicitly opens the chooser.
+
+### Changed
+
+- Renamed Printers to 3D Printers; the Calibration menu keeps its short name while its page title is Filament Calibration.
+- Template cards show drying temperature/time instead of linked behavior/flow; filament cards show drying temperature instead of tolerance, which remains in details.
+- Migration `b6c7d8e9f012` adds nullable resolved-profile drying-time and moisture-sensitivity caches. Existing templates remain unset and historical snapshots are not rewritten.
+- Removed build-plate cleaning controls, reminders, fields, records, and notifications, along with the maintenance ledger and manual calibration-record buttons. Mesh-calibration reminder thresholds remain.
+- Migration `a5b6c7d8e901` removes cleaning-only data and backfills activation dates from recorded transitions. Forward upgrades apply automatically; restoring deleted cleaning history requires a pre-upgrade backup.
+- The 0.7.3 Klipper reference wraps native mesh calibration/profile commands. Replace the included reference and restart firmware only while idle; see the build-plate setup guide. No live printer configuration is changed by the server upgrade.
+
+### Fixed
+
+- An empty/stale startup mesh no longer clears the app's selected plate. Restoration does not create a new activation or calibration date.
+- Mesh loads, aborted/failed probing, and adaptive meshes do not create full-side calibration records. Nonessential Moonraker work remains deferred during prints; plate mutations are guarded against printing and calibration.
+- Missing saved meshes never fall back to another side; managed print preflight requires an available selected mesh.
+
 ## 0.7.2 - 09.06.2026
 
 Testing release.

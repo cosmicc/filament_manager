@@ -25,6 +25,7 @@ from filament_manager.config import PrinterConfig, get_settings
 from filament_manager.domain.spoolman import decode_text_extra_field
 from filament_manager.models.enums import JobStatus, PrintJobStatus, SpoolStatus
 from filament_manager.models.inventory import (
+    BuildPlateSurface,
     FilamentProduct,
     Printer,
     Spool,
@@ -1044,6 +1045,15 @@ async def _reconcile_moonraker_state(session: AsyncSession, job: OutboxJob) -> N
                 actor_id=None,
                 correlation_id=correlation_id,
             )
+            if mesh_result.integration_available and mesh_result.print_state not in (
+                "printing",
+                "paused",
+                "unknown",
+            ):
+                if not mesh_result.clock_ready and mesh_result.estimated_print_time is not None:
+                    await client.synchronize_plate_clock(mesh_result.estimated_print_time)
+                if plate_sync.restore_required:
+                    await client.restore_build_plate(plate_sync.desired_mesh_profile)
             logger.info(
                 "moonraker_build_plates_synchronized",
                 printer_code=printer.printer_code,
@@ -1284,16 +1294,48 @@ async def dispatch_job(session: AsyncSession, job: OutboxJob) -> None:
         )
     elif job.job_type == "moonraker.build_plate.select":
         printer_id = UUID(str(job.payload["printer_id"]))
-        printer = await session.get(Printer, printer_id)
+        printer = await session.get(Printer, printer_id, with_for_update=True)
+        # Superseded requests must not load an old side after a newer app choice.
+        newer_request = await session.scalar(
+            select(OutboxJob.id)
+            .where(
+                OutboxJob.aggregate_id == job.aggregate_id,
+                OutboxJob.job_type.in_(("moonraker.build_plate.select", "moonraker.build_plate.clear")),
+                OutboxJob.created_at > job.created_at,
+            )
+            .limit(1)
+        )
+        if newer_request is not None:
+            return
+        surface = (
+            await session.get(BuildPlateSurface, printer.active_plate_surface_id)
+            if printer and printer.active_plate_surface_id
+            else None
+        )
+        if surface is None or surface.surface_code != job.payload["plate_code"]:
+            return
         select_config = next(
             (item for item in settings.moonraker.printers if printer and item.id == printer.printer_code),
             settings.moonraker.printers[0],
         )
         await MoonrakerClient(select_config).select_build_plate(str(job.payload["plate_code"]))
     elif job.job_type == "moonraker.build_plate.clear":
-        printer = await session.get(Printer, UUID(str(job.payload["printer_id"])))
+        printer = await session.get(Printer, UUID(str(job.payload["printer_id"])), with_for_update=True)
         if printer is None:
             raise LookupError("Build-plate clear references a missing printer")
+        if job.payload.get("expected_surface_id") != str(printer.active_plate_surface_id):
+            return
+        newer_request = await session.scalar(
+            select(OutboxJob.id)
+            .where(
+                OutboxJob.aggregate_id == job.aggregate_id,
+                OutboxJob.job_type.in_(("moonraker.build_plate.select", "moonraker.build_plate.clear")),
+                OutboxJob.created_at > job.created_at,
+            )
+            .limit(1)
+        )
+        if newer_request is not None:
+            return
         clear_config = next(
             (item for item in settings.moonraker.printers if item.id == printer.printer_code),
             None,
@@ -1301,6 +1343,10 @@ async def dispatch_job(session: AsyncSession, job: OutboxJob) -> None:
         if clear_config is None:
             raise LookupError("Build-plate clear references an unconfigured printer")
         await MoonrakerClient(clear_config).clear_build_plate()
+        printer.active_plate_id = None
+        printer.active_plate_surface_id = None
+        printer.plate_selection_initialized = True
+        printer.record_version += 1
     elif job.job_type == "moonraker.spool_unload.request":
         printer = await session.get(Printer, UUID(str(job.payload["printer_id"])))
         if printer is None:

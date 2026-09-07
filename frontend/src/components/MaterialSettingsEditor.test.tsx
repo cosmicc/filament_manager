@@ -37,6 +37,20 @@ const settings: MaterialSettings = {
 }
 
 describe('MaterialSettingsEditor validation', () => {
+  it('serializes fixed care dropdowns and supports copying a blank care value', () => {
+    const rendered = render(<form><MaterialSettingsEditor settings={settings} catalog={[]} plates={[]} scope="template" copySources={[{ id: 'care-source', label: 'Template PETG', settings: { ...settings, drying_time_hours: '6-8' } }]} /></form>)
+    const controls = within(rendered.container)
+    const moisture = controls.getByRole('combobox', { name: /^Filament moisture sensitivity/ })
+    expect(within(moisture).getAllByRole('option')).toHaveLength(8)
+    fireEvent.change(moisture, { target: { value: 'extremely high' } })
+    fireEvent.change(controls.getByLabelText('Copy Filament drying time from another template'), { target: { value: 'care-source' } })
+    const result = settingsFromForm(rendered.container.querySelector('form')!, [], 'template')
+    expect(result.drying_time_hours).toBe('6-8')
+    expect(result.moisture_sensitivity).toBe('extremely high')
+    expect(controls.queryByLabelText('Copy Filament drying time from another template')).toBeNull()
+    rendered.unmount()
+  })
+
   it('shows four print temperatures plus template-only drying guidance', () => {
     const rendered = render(<MaterialSettingsEditor settings={settings} catalog={[]} plates={[]} />)
 
@@ -51,9 +65,12 @@ describe('MaterialSettingsEditor validation', () => {
   })
 
   it('preserves drying temperature as hidden inherited data in a filament editor', () => {
-    const rendered = render(<form><MaterialSettingsEditor settings={{ ...settings, drying_temp_c: '65' }} catalog={[]} plates={[]} scope="profile" /></form>)
+    const rendered = render(<form><MaterialSettingsEditor settings={{ ...settings, drying_temp_c: '65', drying_time_hours: '4-6', moisture_sensitivity: 'moderate' }} catalog={[]} plates={[]} scope="profile" /></form>)
     expect(screen.queryByRole('spinbutton', { name: /^Filament drying temperature/ })).toBeNull()
     expect(settingsFromForm(rendered.container.querySelector('form')!, [], 'profile').drying_temp_c).toBe('65')
+    expect(screen.queryByRole('combobox', { name: /^Filament drying time/ })).toBeNull()
+    expect(settingsFromForm(rendered.container.querySelector('form')!, [], 'profile').drying_time_hours).toBe('4-6')
+    expect(settingsFromForm(rendered.container.querySelector('form')!, [], 'profile').moisture_sensitivity).toBe('moderate')
     rendered.unmount()
   })
 

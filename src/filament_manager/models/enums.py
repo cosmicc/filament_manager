@@ -134,7 +134,6 @@ class PrintQualityRating(StrEnum):
 class PlateMaintenanceType(StrEnum):
     """Immutable build-plate maintenance event kinds."""
 
-    CLEANED = "cleaned"
     MESH_CALIBRATED = "mesh_calibrated"
 
 

@@ -123,24 +123,6 @@ async def build_plate_maintenance_status(session: AsyncSession, plate: BuildPlat
     """Calculate configured day/print due state from immutable print and event history."""
 
     now = datetime.now(UTC)
-    last_cleaned = await session.scalar(
-        select(func.max(BuildPlateMaintenanceEvent.occurred_at)).where(
-            BuildPlateMaintenanceEvent.build_plate_id == plate.id,
-            BuildPlateMaintenanceEvent.maintenance_type == PlateMaintenanceType.CLEANED,
-        )
-    )
-    cleaning_origin = last_cleaned or plate.created_at
-    cleaning_prints = (
-        await session.scalar(
-            select(func.count(PrintJob.id)).where(
-                PrintJob.build_plate_id == plate.id,
-                PrintJob.status == PrintJobStatus.COMPLETED,
-                PrintJob.ended_at >= cleaning_origin,
-            )
-        )
-        or 0
-    )
-    cleaning_due_at = cleaning_origin + timedelta(days=plate.cleaning_due_after_days)
     surface_statuses: list[dict[str, object]] = []
     surfaces = list(
         await session.scalars(
@@ -156,7 +138,11 @@ async def build_plate_maintenance_status(session: AsyncSession, plate: BuildPlat
                 BuildPlateMaintenanceEvent.maintenance_type == PlateMaintenanceType.MESH_CALIBRATED,
             )
         )
-        mesh_origin = last_mesh or surface.created_at
+        if surface.mesh_calibration_sequence:
+            last_mesh = surface.last_mesh_calibrated_at
+        # An offline receipt has no exact event time. Begin a conservative reminder
+        # interval at detection without presenting that as its calibration date.
+        mesh_origin = last_mesh or surface.last_mesh_observed_at or surface.created_at
         print_count = (
             await session.scalar(
                 select(func.count(PrintJob.id)).where(
@@ -180,10 +166,6 @@ async def build_plate_maintenance_status(session: AsyncSession, plate: BuildPlat
         )
     return {
         "build_plate_id": plate.id,
-        "cleaning_due": cleaning_prints >= plate.cleaning_due_after_prints or now >= cleaning_due_at,
-        "cleaning_prints_since": cleaning_prints,
-        "cleaning_due_at": cleaning_due_at,
-        "last_cleaned_at": last_cleaned,
         "surfaces": surface_statuses,
     }
 
@@ -258,21 +240,6 @@ async def evaluate_operator_notifications(session: AsyncSession) -> int:
 
     for plate in await session.scalars(select(BuildPlate)):
         maintenance = await build_plate_maintenance_status(session, plate)
-        if maintenance["cleaning_due"]:
-            key = f"plate:{plate.id}:cleaning-due"
-            category_keys["plate_maintenance_due"].add(key)
-            await upsert_notification(
-                session,
-                deduplication_key=key,
-                category="plate_maintenance_due",
-                severity=NotificationSeverity.WARNING,
-                title=f"{plate.display_name} needs cleaning",
-                message="The configured print-count or day threshold has been reached.",
-                action_path="/plates",
-                object_type="build_plate",
-                object_id=plate.id,
-            )
-            touched += 1
         surfaces = maintenance.get("surfaces")
         assert isinstance(surfaces, list)
         for surface in surfaces:

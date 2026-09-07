@@ -18,6 +18,8 @@ if TYPE_CHECKING:
 
 
 PROFILE_SETTING_KEYS = (
+    "moisture_sensitivity",
+    "drying_time_hours",
     "drying_temp_c",
     "chamber_temp_c",
     "extruder_temp_c",
@@ -49,12 +51,22 @@ PROFILE_SETTING_KEYS = (
 )
 
 DECIMAL_SETTING_KEYS = frozenset(
-    key for key in PROFILE_SETTING_KEYS if key not in {"cooling_enabled", "preferred_build_plate_surface_id"}
+    key
+    for key in PROFILE_SETTING_KEYS
+    if key
+    not in {
+        "cooling_enabled",
+        "preferred_build_plate_surface_id",
+        "moisture_sensitivity",
+        "drying_time_hours",
+    }
 )
 NUMERIC_TEXT = re.compile(r"^-?\d+(?:\.\d+)?$")
 TEMPLATE_ONLY_PROFILE_SETTING_KEYS = frozenset(
     {
         "drying_temp_c",
+        "drying_time_hours",
+        "moisture_sensitivity",
         "print_speed_mm_s",
         "outer_wall_speed_mm_s",
         "inner_wall_speed_mm_s",

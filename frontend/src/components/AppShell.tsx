@@ -20,7 +20,7 @@ const primaryNavigation = [
   { to: '/calibration', label: 'Calibration', icon: FlaskConical },
   { to: '/plates', label: 'Build plates', icon: Layers3 },
   { to: '/nozzles', label: 'Nozzles', icon: Wrench },
-  { to: '/printers', label: 'Printers', icon: Printer },
+  { to: '/printers', label: '3D Printers', icon: Printer },
   { to: '/prints', label: 'Print history', icon: History },
   { to: '/labels', label: 'Labels', icon: QrCode },
 ]

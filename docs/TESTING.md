@@ -71,7 +71,7 @@ Before production, separately verify:
 - G-code warning and blocking modes with a match, mismatch, missing profile, unavailable file, and decimal-equivalent setting
 - print start-state capture after preflight, live/history deduplication, completed-status spelling variants, M600 segments, legacy unresolved state, and latest-assessment statistics
 - temporary-password route gating, password-reset and deactivation session revocation, last-Administrator protection, and notification recurrence becoming unread
-- cleaning/mesh maintenance thresholds and Moonraker mesh clearing before canonical active-plate clearing
+- automatic mesh receipts, mesh thresholds, startup restoration, removal of cleaning records and Moonraker mesh clearing before canonical active-plate clearing
 - exact plate-side discovery accepts P1, P4b, P6, and P10b while rejecting malformed names and G-code input
 - Moonraker synchronization groups A/B sides under physical plates, preserves metadata, marks missing side meshes unavailable without deletion, and aligns the active plate and side
 - pairing-code replay and disabled or cross-agent credentials

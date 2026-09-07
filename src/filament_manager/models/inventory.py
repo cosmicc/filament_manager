@@ -5,6 +5,7 @@ from decimal import Decimal
 from uuid import UUID
 
 from sqlalchemy import (
+    BigInteger,
     Boolean,
     CheckConstraint,
     Date,
@@ -282,6 +283,8 @@ class Printer(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     last_print_history_end_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     active_plate_id: Mapped[UUID | None] = mapped_column(ForeignKey("build_plates.id"))
     active_plate_surface_id: Mapped[UUID | None] = mapped_column(ForeignKey("build_plate_surfaces.id"))
+    plate_selection_initialized: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    plate_selection_sequence: Mapped[int] = mapped_column(BigInteger, nullable=False, default=0)
     active_nozzle_id: Mapped[UUID | None] = mapped_column(
         ForeignKey("nozzles.id", ondelete="SET NULL"), unique=True
     )
@@ -359,9 +362,7 @@ class BuildPlate(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     )
     preferred_materials: Mapped[list[str]] = mapped_column(JSONB, nullable=False, default=list)
     max_bed_temp_c: Mapped[Decimal | None] = mapped_column(MEASUREMENT)
-    last_cleaned_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
-    cleaning_due_after_prints: Mapped[int] = mapped_column(Integer, nullable=False, default=10)
-    cleaning_due_after_days: Mapped[int] = mapped_column(Integer, nullable=False, default=7)
+    last_activated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     mesh_due_after_prints: Mapped[int] = mapped_column(Integer, nullable=False, default=30)
     mesh_due_after_days: Mapped[int] = mapped_column(Integer, nullable=False, default=30)
     notes: Mapped[str | None] = mapped_column(Text)
@@ -408,6 +409,9 @@ class BuildPlateSurface(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     mesh_available: Mapped[bool | None] = mapped_column(Boolean)
     last_mesh_checked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     last_mesh_calibrated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    last_activated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    mesh_calibration_sequence: Mapped[int] = mapped_column(BigInteger, nullable=False, default=0)
+    last_mesh_observed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     notes: Mapped[str | None] = mapped_column(Text)
     record_version: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
     plate: Mapped[BuildPlate] = relationship(back_populates="surfaces")
@@ -441,6 +445,8 @@ class MaterialProfile(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     status: Mapped[ProfileStatus] = mapped_column(Enum(ProfileStatus, name="profile_status"), nullable=False)
     chamber_temp_c: Mapped[Decimal | None] = mapped_column(MEASUREMENT)
     drying_temp_c: Mapped[Decimal | None] = mapped_column(MEASUREMENT)
+    drying_time_hours: Mapped[str | None] = mapped_column(String(8))
+    moisture_sensitivity: Mapped[str | None] = mapped_column(String(24))
     extruder_temp_c: Mapped[Decimal] = mapped_column(MEASUREMENT, nullable=False)
     bed_temp_c: Mapped[Decimal] = mapped_column(MEASUREMENT, nullable=False)
     initial_bed_temp_c: Mapped[Decimal] = mapped_column(

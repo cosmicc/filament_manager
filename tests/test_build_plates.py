@@ -2,6 +2,7 @@
 
 import json
 from collections.abc import AsyncIterator
+from datetime import UTC, datetime
 from decimal import Decimal
 from io import BytesIO
 from typing import Any
@@ -147,7 +148,7 @@ async def test_moonraker_bed_mesh_state_uses_supported_object_query() -> None:
     assert state.active_profile == "P10"
     request = route.calls.last.request
     assert request.headers["X-Api-Key"] == "test-api-key"
-    assert request.read() == b'{"objects":{"bed_mesh":["profile_name","profiles"]}}'
+    assert json.loads(request.read())["objects"]["bed_mesh"] == ["profile_name", "profiles"]
 
 
 @respx.mock
@@ -161,6 +162,74 @@ async def test_moonraker_bed_mesh_state_rejects_missing_object() -> None:
 
     with pytest.raises(MoonrakerError, match="did not return"):
         await MoonrakerClient(printer_config()).bed_mesh_state()
+
+
+@respx.mock
+@pytest.mark.asyncio
+async def test_moonraker_parses_bounded_plate_receipts_and_unknown_times() -> None:
+    """Only exact side identities and valid counters enter canonical calibration evidence."""
+
+    at = datetime(2026, 8, 1, tzinfo=UTC)
+    route = respx.post("http://moonraker.test:7125/printer/objects/query").mock(
+        return_value=httpx.Response(
+            200,
+            json={
+                "result": {
+                    "status": {
+                        "bed_mesh": {"profile_name": "", "profiles": {"P1": {}, "P1b": {}}},
+                        "gcode_macro FILAMENT_MANAGER_PLATE_STATE": {
+                            "version": 1,
+                            "selected_plate": "P1b",
+                            "selection_origin": "manual",
+                            "selection_sequence": 12,
+                            "clock_ready": 1,
+                            "calibrating": 0,
+                            "calibrations": {
+                                "P1": {"sequence": 2, "time": at.timestamp()},
+                                "P1b": {"sequence": 3, "time": 0},
+                                "P2": {"sequence": True, "time": at.timestamp()},
+                                "P3;RESTART": {"sequence": 4, "time": at.timestamp()},
+                            },
+                        },
+                        "toolhead": {"estimated_print_time": 42.0},
+                        "print_stats": {"state": "standby"},
+                    }
+                }
+            },
+        ),
+    )
+    state = await MoonrakerClient(printer_config()).bed_mesh_state()
+    assert state.integration_available is True
+    assert state.active_profile is None
+    assert state.selected_profile == "P1b"
+    assert state.selection_sequence == 12
+    assert state.calibration_receipts == (("P1", 2, at), ("P1b", 3, None))
+    assert state.estimated_print_time == 42.0
+    assert route.call_count == 1
+
+
+@respx.mock
+@pytest.mark.asyncio
+async def test_plate_restore_commands_are_exact_and_do_not_home() -> None:
+    """Background alignment loads only a bounded side and never moves the printer."""
+
+    route = respx.post("http://moonraker.test:7125/printer/gcode/script").mock(
+        return_value=httpx.Response(200, json={"result": "ok"})
+    )
+    client = MoonrakerClient(printer_config())
+    await client.restore_build_plate("P4b")
+    assert (
+        json.loads(route.calls.last.request.read())["script"]
+        == "FILAMENT_MANAGER_APPLY_BUILD_PLATE PLATE=P4b"
+    )
+    with pytest.raises(ValueError):
+        await client.restore_build_plate("P4b\nG28")
+    await client.clear_build_plate()
+    assert (
+        json.loads(route.calls.last.request.read())["script"]
+        == "FILAMENT_MANAGER_CLEAR_BUILD_PLATE SOURCE=app"
+    )
+    assert route.call_count == 2
 
 
 @respx.mock
@@ -578,7 +647,7 @@ async def test_dynamic_plate_selection_allows_p10_and_rejects_gcode_input() -> N
         await client.select_build_plate("P10\nBED_MESH_CLEAR")
 
     assert route.call_count == 1
-    assert route.calls.last.request.read() == b'{"script":"SELECT_BUILD_PLATE PLATE=P10b"}'
+    assert route.calls.last.request.read() == b'{"script":"SELECT_BUILD_PLATE PLATE=P10b SOURCE=app"}'
 
 
 @pytest.mark.asyncio

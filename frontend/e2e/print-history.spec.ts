@@ -45,6 +45,10 @@ const printJob = {
     filament: { product_name: 'Workshop PETG', material_type: 'PETG', color_name: 'Galaxy Blue', filler: 'Carbon Fiber', finish: 'Matte' }, build_plate_surface: { code: 'P4b' },
   },
   profile_snapshot: { extruder_temp_c: '235', flow_percent: '96' },
+  current_template_comparison: {
+    status: 'differs', checked_at: '2026-09-07T00:00:00Z', template_id: '61000000-0000-0000-0000-000000000001', template_name: 'Template PETG', template_version: 5,
+    matching_count: 28, missing_keys: [], differences: [{ key: 'extruder_temp_c', used: '235', current: '245' }],
+  },
   print_settings_snapshot: {
     schema_version: 1,
     managed: {
@@ -121,7 +125,7 @@ const printJob = {
 
 test.beforeEach(async ({ page }) => {
   const printSummary = Object.fromEntries(
-    Object.entries(printJob).filter(([key]) => key !== 'print_settings_snapshot'),
+    Object.entries(printJob).filter(([key]) => key !== 'print_settings_snapshot' && key !== 'current_template_comparison'),
   )
   await page.route('**/runtime-config.js', (route) => route.fulfill({
     contentType: 'application/javascript',
@@ -200,6 +204,7 @@ test('adaptive raster previews retain color and readable contrast in history and
 })
 
 test('exact print state, inspection, scoring, notifications, and mobile cards render', async ({ page }) => {
+  await page.addInitScript(() => window.localStorage.setItem('filament-manager-theme', 'dark-navy'))
   await page.goto('/prints')
   await expect(page.getByRole('heading', { name: 'Print history' })).toBeVisible()
   await expect(page.getByLabel('Filter print history by printer')).toHaveValue('')
@@ -226,6 +231,9 @@ test('exact print state, inspection, scoring, notifications, and mobile cards re
   await expect(dialog.getByRole('button', { name: 'Save assessment' })).toBeVisible()
   await dialog.getByRole('button', { name: 'Advanced print settings' }).click()
   const settingsDialog = page.getByRole('dialog', { name: 'Advanced print settings' })
+  await expect(settingsDialog.getByText('Differs from current template')).toBeVisible()
+  await expect(settingsDialog.getByText('245', { exact: true })).toBeVisible()
+  await captureEvidence(page, 'current-template-comparison-desktop-v073')
   await settingsDialog.getByText('Global quality', { exact: true }).click()
   const preservedFormula = settingsDialog.getByText('=max(2, 3)')
   await expect(preservedFormula).toBeVisible()
@@ -236,6 +244,7 @@ test('exact print state, inspection, scoring, notifications, and mobile cards re
   await page.keyboard.press('Escape')
 
   await page.setViewportSize({ width: 390, height: 844 })
+  await page.addInitScript(() => window.localStorage.setItem('filament-manager-theme', 'light-navy'))
   await page.reload()
   await expect(page.getByRole('heading', { name: 'Print history' })).toBeVisible()
   await captureEvidence(page, 'print-history-mobile-v070')
@@ -244,6 +253,11 @@ test('exact print state, inspection, scoring, notifications, and mobile cards re
   await expect(mobilePrintDialog).toBeVisible()
   await mobilePrintDialog.getByRole('button', { name: 'Advanced print settings' }).click()
   const mobileSettingsDialog = page.getByRole('dialog', { name: 'Advanced print settings' })
+  await expect(mobileSettingsDialog.getByText('Differs from current template')).toBeVisible()
+  await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true)
+  await mobileSettingsDialog.getByText('245', { exact: true }).scrollIntoViewIfNeeded()
+  await expect(mobileSettingsDialog.getByText('245', { exact: true })).toBeVisible()
+  await captureEvidence(page, 'current-template-comparison-mobile-v073')
   await mobileSettingsDialog.getByText('Global quality', { exact: true }).click()
   await expect(mobileSettingsDialog.getByText('=max(2, 3)')).toBeVisible()
   await captureEvidence(page, 'print-history-advanced-settings-mobile-v070')

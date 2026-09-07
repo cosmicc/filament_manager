@@ -1,5 +1,29 @@
 # User Changelog
 
+## 0.7.3 - 09.07.2026
+
+Testing release.
+
+### Added
+
+- Moisture sensitivity and drying time in material templates, shown with drying temperature in linked filament and spool details.
+- Print History shows whether the saved print settings still match the current template and highlights changed values without altering the original record.
+- Last printed and last activated dates for every build plate and side.
+- Automatic recording of successful side heightmap calibrations with the updated printer macros.
+- Automatic restoration of the selected heightmap at printer startup, without a chooser.
+
+### Changed
+
+- Printers is now 3D Printers. The Calibration menu opens the Filament Calibration page.
+- Template cards now show drying temperature and time; filament cards show drying temperature instead of tolerance.
+- Removed plate cleaning tracking, reminders, history, and the maintenance ledger.
+- Use `SELECT_BUILD_PLATE CHOOSE=1` if you want to open the printer-side chooser manually.
+
+### Fixed
+
+- Restarting Klipper no longer forgets the app's selected build plate. Missing meshes block managed print start instead of selecting another plate.
+- Loading an existing heightmap no longer needs a manual calibration button and is never counted as a new calibration.
+
 ## 0.7.2 - 09.06.2026
 
 Testing release.

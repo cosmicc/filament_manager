@@ -37,7 +37,7 @@ const plate = {
   manufacturer: 'Workshop', product_name: 'PEI Flex', shape: 'rectangular',
   dimensions_mm: { width: '235', depth: '235', thickness: '1.2' }, magnetic: true, flexible: true,
   condition: 'good', status: 'active', preferred_materials: ['PLA', 'PETG'], max_bed_temp_c: '120',
-  last_cleaned_at: '2026-08-22T18:00:00Z', cleaning_due_after_prints: 20, cleaning_due_after_days: 14,
+  last_activated_at: '2026-08-22T18:00:00Z', last_printed_at: '2026-08-23T18:00:00Z',
   mesh_due_after_prints: 50, mesh_due_after_days: 30, notes: null, image_url: null, image_version: 0,
   record_version: 1, completed_print_count: 14, surfaces: [{
     id: 'surface-id', build_plate_id: 'plate-id', side: 'a', surface_code: 'P1', klipper_mesh_profile: 'P1',
@@ -68,8 +68,6 @@ test.beforeEach(async ({ page }) => {
   await page.route('**/api/v1/filament-colors', (route) => route.fulfill({ json: [] }))
   await page.route('**/api/v1/spools?**', (route) => route.fulfill({ json: { items: [spool], total: 1, limit: 200, offset: 0 } }))
   await page.route('**/api/v1/build-plates', (route) => route.fulfill({ json: [plate] }))
-  await page.route('**/api/v1/build-plates/maintenance/status', (route) => route.fulfill({ json: [{ build_plate_id: plate.id, cleaning_due: false, cleaning_prints_since: 3, cleaning_due_at: null, surfaces: [] }] }))
-  await page.route('**/api/v1/build-plates/maintenance/events**', (route) => route.fulfill({ json: [] }))
   await page.route('**/api/v1/nozzles?include_retired=true', (route) => route.fulfill({ json: [nozzle] }))
 })
 
@@ -107,7 +105,8 @@ test('catalog views are independent, remembered, full-width, and action complete
   await expect(page.getByLabel('Filaments view')).toHaveValue('cards')
   await expect(page.getByRole('heading', { name: 'PLA · Ocean Blue · Silk' })).toBeVisible()
   await expect(page.getByText('No filler')).toHaveCount(0)
-  await expect(page.getByText('± 0.02 mm')).toBeVisible()
+  await expect(page.getByText('± 0.02 mm')).toHaveCount(0)
+  await expect(page.getByText('Drying temperature', { exact: true })).toBeVisible()
   await expect(page.getByText('212 °C')).toBeVisible()
   await expect(page.getByText('1.75 mm')).toHaveCount(0)
   await expect(page.getByText('1,000 g')).toHaveCount(0)
