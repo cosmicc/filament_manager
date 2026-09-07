@@ -24,7 +24,7 @@ export function NewItemSelect({ itemLabel, options, onCreate, ...props }: Omit<S
   </select>
 }
 
-/** Persist a simple named catalog entry, then select it without losing the parent draft. */
+/** Select a new choice without losing the draft; filament attributes save with the filament. */
 export function InventoryChoiceSelect({ kind, defaultValue, ...props }: Omit<SelectHTMLAttributes<HTMLSelectElement>, 'children' | 'value' | 'onChange'> & {
   kind: 'manufacturer' | 'filler' | 'finish' | 'location'
   defaultValue?: string
@@ -48,8 +48,8 @@ export function InventoryChoiceSelect({ kind, defaultValue, ...props }: Omit<Sel
       setAdded((items) => [...items, { value, label: item.name }])
       setSelected(value)
       setCreating(false)
-      // A saved choice remains successful even if a background refresh fails.
-      await Promise.allSettled([client.invalidateQueries({ queryKey: key })])
+      // Attributes remain form-local until the filament transaction succeeds.
+      if (!isAttribute) await Promise.allSettled([client.invalidateQueries({ queryKey: key })])
     },
   })
   const options = new Map<string, string>([
@@ -70,6 +70,7 @@ export function InventoryChoiceSelect({ kind, defaultValue, ...props }: Omit<Sel
         create.mutate(String(new FormData(event.currentTarget).get('name') ?? '').trim())
       }}>
         <label>{label} name<input name="name" required maxLength={isAttribute ? 96 : 160} placeholder={kind === 'location' ? 'Bucket 12' : undefined} autoFocus disabled={create.isPending} /></label>
+        {isAttribute ? <p className="field-help">This choice is saved to the list only when you save the filament.</p> : null}
         {create.error ? <p className="form-error" role="alert">{create.error.message}</p> : null}
         <div className="form-actions"><button type="button" className="button" disabled={create.isPending} onClick={() => setCreating(false)}>Cancel</button><button className="button button--primary" disabled={create.isPending}>{create.isPending ? 'Saving…' : `Add ${label.toLowerCase()}`}</button></div>
       </form>

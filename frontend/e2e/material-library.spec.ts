@@ -123,9 +123,9 @@ test.beforeEach(async ({ page }) => {
   await page.route('**/api/v1/filament-colors', (route) => {
     if (route.request().method() === 'POST') {
       const body = route.request().postDataJSON()
-      return route.fulfill({ status: 201, json: { id: 'created-color', name: body.name,
+      return route.fulfill({ status: 200, json: { id: null, name: body.name,
         normalized_name: body.name.toLowerCase(), color_hex: body.color_hex.replace('#', '').toUpperCase(),
-        color_mode: 'solid', color_hexes: [body.color_hex.replace('#', '').toUpperCase()], record_version: 1 } })
+        color_mode: 'solid', color_hexes: [body.color_hex.replace('#', '').toUpperCase()], record_version: null } })
     }
     return route.fulfill({ json: [
     { id: 'blue-id', name: 'Blue', normalized_name: 'blue', color_hex: '2F80A5', color_mode: 'solid', color_hexes: ['2F80A5'], record_version: 1 },
@@ -519,6 +519,54 @@ test('filament details create a preselected spool with automatic names at deskto
     await expect(dialog.getByLabel('Filament product')).toHaveValue(filament.id)
     await expect(dialog.getByLabel('Filament product').locator('option:checked')).toHaveText(/PLA · Blue · Matte/)
   }
+})
+
+test('multicolor corrections and new color drafts work on desktop and mobile', async ({ page }, testInfo) => {
+  await page.route('**/api/v1/vendors', (route) => route.fulfill({ json: [] }))
+  await page.route('**/api/v1/profiles/templates?include_inactive=false', (route) => route.fulfill({ json: [] }))
+  await page.route('**/api/v1/profiles/cura-settings/catalog', (route) => route.fulfill({ json: [] }))
+  let current = { ...filament, color_name: 'Blend', color_mode: 'multicolor', color_hexes: ['112233', '445566'] }
+  const submissions: Record<string, unknown>[] = []
+  await page.route(`**/api/v1/filaments/${filament.id}`, async (route) => {
+    if (route.request().method() === 'PATCH') {
+      const data = route.request().postDataJSON()
+      submissions.push(data)
+      current = { ...current, ...data, record_version: current.record_version + 1 }
+    }
+    await route.fulfill({ json: current })
+  })
+  await page.goto(`/filaments/${filament.id}`)
+  await page.getByRole('button', { name: 'Edit product' }).click()
+  const editor = page.getByRole('dialog', { name: 'Edit filament product' })
+  await expect(editor.getByRole('button', { name: 'New Color', exact: true })).toBeVisible()
+  await editor.getByRole('button', { name: 'New Color', exact: true }).click()
+  const creator = page.getByRole('dialog', { name: 'New Color', exact: true })
+  await creator.getByLabel('Color name').fill('Unsaved color')
+  await creator.getByRole('button', { name: 'Add color' }).click()
+  await expect(editor.getByRole('combobox', { name: 'Color name' })).toHaveValue('Unsaved color')
+  await editor.getByRole('button', { name: 'Cancel', exact: true }).click()
+  expect(submissions).toHaveLength(0)
+  await page.getByRole('button', { name: 'Edit product' }).click()
+  await expect(editor.getByRole('combobox', { name: 'Color name' })).toHaveValue('Blend')
+  await expect(editor.getByRole('option', { name: 'Unsaved color' })).toHaveCount(0)
+  await editor.getByLabel('Color 1', { exact: true }).fill('#778899')
+  await editor.getByLabel('Color 2', { exact: true }).fill('#aabbcc')
+  await editor.getByLabel('Number of colors').selectOption('3')
+  await editor.getByLabel('Color 3', { exact: true }).fill('#ddeeff')
+  await page.screenshot({ path: testInfo.outputPath('multicolor-desktop.png'), fullPage: true })
+  await page.setViewportSize({ width: 390, height: 844 })
+  await editor.getByRole('button', { name: 'New Color', exact: true }).scrollIntoViewIfNeeded()
+  expect((await editor.getByRole('button', { name: 'New Color', exact: true }).boundingBox())!.height).toBeGreaterThanOrEqual(44)
+  const overflow = await page.evaluate(() => ({
+    width: document.documentElement.scrollWidth, viewport: innerWidth,
+    elements: [...document.querySelectorAll('body *')].filter((element) => element.getBoundingClientRect().right > innerWidth + 1)
+      .map((element) => ({ tag: element.tagName, class: element.className, parent: element.parentElement?.className, text: element.textContent?.slice(0, 55), right: element.getBoundingClientRect().right })).slice(0, 12),
+  }))
+  expect(overflow.width, JSON.stringify(overflow)).toBeLessThanOrEqual(overflow.viewport)
+  await page.screenshot({ path: testInfo.outputPath('multicolor-mobile.png'), fullPage: true })
+  await editor.getByRole('button', { name: 'Save filament' }).click()
+  await expect(editor).toBeHidden()
+  expect(submissions[0].color_hexes).toEqual(['778899', 'AABBCC', 'DDEEFF'])
 })
 
 test('filament details remember colors and save Cura settings directly', async ({ page }) => {

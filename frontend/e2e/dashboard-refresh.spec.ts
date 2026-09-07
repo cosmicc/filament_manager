@@ -39,6 +39,8 @@ test('dashboard replaces its rendered operational snapshot within ten seconds', 
           ? (++dashboardRequests === 1
               ? {
                   total_spools: 8,
+                  material_spool_counts: { PLA: 8 },
+                  distinct_colors: 2,
                   needs_weighing: 1,
                   low_spools: 0,
                   empty_spools: 0,
@@ -49,6 +51,8 @@ test('dashboard replaces its rendered operational snapshot within ten seconds', 
                 }
               : {
                   total_spools: 9,
+                  material_spool_counts: { PLA: 8, PETG: 1 },
+                  distinct_colors: 3,
                   needs_weighing: 1,
                   low_spools: 0,
                   empty_spools: 0,

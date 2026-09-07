@@ -1,4 +1,5 @@
 import { expect, test, type Page } from '@playwright/test'
+import { thumbnailFixture, type ThumbnailFixture } from './helpers/thumbnail-fixtures'
 
 async function captureEvidence(page: Page, name: string): Promise<void> {
   const directory = process.env.FILAMENT_MANAGER_E2E_EVIDENCE_DIR
@@ -150,6 +151,52 @@ test.beforeEach(async ({ page }) => {
     defect_tags: [], notes: null, assessed_by: user.id, supersedes_id: null,
     created_at: '2026-08-13T20:05:00Z',
   } }))
+})
+
+test('adaptive raster previews retain color and readable contrast in history and details', async ({ page }, testInfo) => {
+  const errors: string[] = []
+  page.on('pageerror', (error) => errors.push(error.message))
+  page.on('console', (message) => { if (['error', 'warning'].includes(message.type())) errors.push(message.text()) })
+  const variants: ThumbnailFixture[] = ['black', 'white', 'blue', 'yellow', 'mixed', 'opaque']
+  const jobs = variants.map((kind, index) => ({
+    ...printJob, id: `20000000-0000-0000-0000-${String(index + 10).padStart(12, '0')}`,
+    filename: `${kind}-model.gcode`,
+    thumbnail_url: `/api/v1/prints/20000000-0000-0000-0000-${String(index + 10).padStart(12, '0')}/thumbnail`,
+  }))
+  for (const [index, kind] of variants.entries()) {
+    const png = await thumbnailFixture(page, kind)
+    await page.route(`**/api/v1/prints/${jobs[index].id}/thumbnail`, (route) => route.fulfill({ contentType: 'image/png', body: png }))
+    await page.route(`**/api/v1/prints/${jobs[index].id}`, (route) => route.fulfill({ json: jobs[index] }))
+  }
+  await page.route('**/api/v1/prints/page?**', (route) => route.fulfill({ json: {
+    items: jobs, page: 1, per_page: 10, total_items: jobs.length, total_pages: 1,
+  } }))
+  await page.addInitScript(() => localStorage.setItem('filament-manager-theme', 'dark-navy'))
+  await page.goto('/prints')
+  await expect(page).toHaveTitle(/Filament Manager/)
+  await expect(page.getByRole('heading', { name: 'Print history' })).toBeVisible()
+  const backgrounds = ['light', 'dark', 'light', 'dark', 'neutral', 'light']
+  for (const [index, kind] of variants.entries()) {
+    const row = page.getByRole('row').filter({ hasText: `${kind}-model.gcode` })
+    await expect(row.locator('.adaptive-thumbnail')).toHaveClass(new RegExp(`adaptive-thumbnail--${backgrounds[index]}`))
+    await expect(row.locator('img')).toHaveAttribute('src', jobs[index].thumbnail_url)
+  }
+  await expect(page.getByRole('row').filter({ hasText: 'opaque-model.gcode' }).locator('.adaptive-thumbnail')).toHaveAttribute('data-thumbnail-contrast', 'enhanced')
+  await page.getByRole('row').filter({ hasText: 'black-model.gcode' }).click()
+  const modal = page.getByRole('dialog', { name: 'black-model.gcode' })
+  await expect(modal.locator('.print-thumbnail')).toHaveClass(/adaptive-thumbnail--light/)
+  await expect(modal.getByAltText('Preview of black-model.gcode')).toBeVisible()
+  await page.screenshot({ path: testInfo.outputPath('black-preview-dark-theme.png') })
+  await modal.getByRole('button', { name: 'Close', exact: true }).click()
+  await page.evaluate(() => { document.documentElement.dataset.theme = 'light-navy' })
+  await expect(page.getByRole('row').filter({ hasText: 'white-model.gcode' }).locator('.adaptive-thumbnail')).toHaveCSS('background-color', 'rgb(48, 52, 59)')
+  await page.setViewportSize({ width: 390, height: 844 })
+  await expect(page.locator('.mobile-card-list .adaptive-thumbnail')).toHaveCount(6)
+  await expect(page.locator('.mobile-card-list .adaptive-thumbnail--light').first()).toBeVisible()
+  await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true)
+  await page.screenshot({ path: testInfo.outputPath('previews-mobile-light-theme.png'), fullPage: true })
+  await expect(page.locator('vite-error-overlay')).toHaveCount(0)
+  expect(errors).toEqual([])
 })
 
 test('exact print state, inspection, scoring, notifications, and mobile cards render', async ({ page }) => {

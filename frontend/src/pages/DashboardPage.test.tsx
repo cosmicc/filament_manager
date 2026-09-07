@@ -12,6 +12,8 @@ vi.mock('../api/client', () => ({ apiFetch: apiFetchMock }))
 
 const dashboard = {
   total_spools: 8,
+  material_spool_counts: { PLA: 3, 'PLA+': 2, PETG: 2, TPU: 1 },
+  distinct_colors: 5,
   needs_weighing: 1,
   low_spools: 1,
   empty_spools: 0,
@@ -75,6 +77,13 @@ describe('DashboardPage', () => {
     expect(screen.getByText('8.4 g')).toBeTruthy()
     expect(screen.getByText('$0.48')).toBeTruthy()
     expect(screen.queryByText(/Inventory confidence/)).toBeNull()
+    expect(screen.queryByRole('heading', { name: 'Quick actions' })).toBeNull()
+    for (const [name, href] of Object.entries({
+      'Weigh spool': '/spools?action=weigh', 'Build plate': '/plates',
+      Calibrate: '/calibration', 'Add filament': '/filaments/new',
+      'Add spool': '/spools?create=1', 'Load spool': '/spools?action=load',
+    })) expect(screen.getByRole('link', { name }).getAttribute('href')).toBe(href)
+    for (const label of ['Colors', 'PLA', 'PLA+', 'PETG', 'TPU']) expect(screen.getByText(label)).toBeTruthy()
 
     const printerCard = screen.getByRole('heading', { name: 'IPLT-Max' }).closest('article')
     const printerBody = screen.getByRole('region', { name: 'Current print state' }).parentElement

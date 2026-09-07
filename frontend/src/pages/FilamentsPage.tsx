@@ -150,6 +150,8 @@ export default function FilamentsPage() {
       setColorHexes(['808080'])
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: ['filaments'] }),
+        queryClient.invalidateQueries({ queryKey: ['filament-colors'] }),
+        queryClient.invalidateQueries({ queryKey: ['filament-attributes'] }),
         queryClient.invalidateQueries({ queryKey: ['profiles'] }),
       ])
       setShowCreate(false)

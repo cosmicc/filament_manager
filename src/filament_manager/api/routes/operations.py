@@ -1,6 +1,7 @@
 """Dashboard, printers, integrations, audit, outbox, and future-device routes."""
 
 import asyncio
+import unicodedata
 from datetime import UTC, datetime
 from uuid import UUID
 
@@ -297,7 +298,23 @@ async def _dashboard_printer_state(session: DatabaseSession) -> DashboardPrinter
 async def dashboard(_: Viewer, session: DatabaseSession) -> DashboardResponse:
     """Return the operational first-view data without fake metrics."""
 
-    total = await session.scalar(select(func.count(Spool.id)).where(Spool.archived.is_(False))) or 0
+    # Group only canonical inventory, not profiles (which can have many scopes
+    # per product). Include low/empty spools, but never archived physical spools.
+    inventory = await session.execute(
+        select(FilamentProduct.material_type, FilamentProduct.color_name, func.count(Spool.id))
+        .join(Spool, Spool.filament_product_id == FilamentProduct.id)
+        .where(Spool.archived.is_(False))
+        .group_by(FilamentProduct.material_type, FilamentProduct.color_name)
+    )
+    material_counts: dict[str, int] = {}
+    colors: set[str] = set()
+    for material_type, color_name, count in inventory:
+        material = unicodedata.normalize("NFKC", material_type).strip().upper()
+        material_counts[material] = material_counts.get(material, 0) + count
+        color = unicodedata.normalize("NFKC", color_name).strip().casefold()
+        if color:
+            colors.add(color)
+    total = sum(material_counts.values())
     needs = (
         await session.scalar(
             select(func.count(Spool.id)).where(
@@ -351,6 +368,8 @@ async def dashboard(_: Viewer, session: DatabaseSession) -> DashboardResponse:
     )
     return DashboardResponse(
         total_spools=total,
+        material_spool_counts=dict(sorted(material_counts.items())),
+        distinct_colors=len(colors),
         needs_weighing=needs,
         low_spools=low,
         empty_spools=empty,

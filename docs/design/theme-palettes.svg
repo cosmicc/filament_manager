@@ -1,145 +1,18 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="1000" viewBox="0 0 1200 1000" role="img" aria-labelledby="title description">
-  <title id="title">Filament Manager GUI color profiles</title>
-  <desc id="description">Three light and nine dark application palettes with representative background, surface, primary, accent, and text colors.</desc>
-  <rect width="1200" height="1000" fill="#E8EDF3"/>
-  <text x="60" y="62" fill="#16324F" font-family="Inter, system-ui, sans-serif" font-size="32" font-weight="700">Filament Manager GUI color profiles</text>
-  <text x="60" y="94" fill="#536579" font-family="Inter, system-ui, sans-serif" font-size="16">Three light profiles and nine dark profiles</text>
-
-  <g font-family="Inter, system-ui, sans-serif">
-    <g transform="translate(60 130)">
-      <rect width="340" height="180" rx="18" fill="#F7FAFC" stroke="#C6D3DF"/>
-      <text x="20" y="34" fill="#16324F" font-size="20" font-weight="700">Workshop Navy</text>
-      <text x="20" y="58" fill="#536579" font-size="13">Light</text>
-      <rect x="20" y="82" width="56" height="56" rx="10" fill="#F7FAFC" stroke="#C6D3DF"/>
-      <rect x="82" y="82" width="56" height="56" rx="10" fill="#FFFFFF" stroke="#C6D3DF"/>
-      <rect x="144" y="82" width="56" height="56" rx="10" fill="#16324F"/>
-      <rect x="206" y="82" width="56" height="56" rx="10" fill="#2F80A5"/>
-      <rect x="268" y="82" width="52" height="56" rx="10" fill="#17212B"/>
-      <text x="20" y="160" fill="#536579" font-size="12">#F7FAFC · #FFFFFF · #16324F · #2F80A5</text>
-    </g>
-    <g transform="translate(430 130)">
-      <rect width="340" height="180" rx="18" fill="#F4F8F2" stroke="#C8D8CE"/>
-      <text x="20" y="34" fill="#1E4D4A" font-size="20" font-weight="700">Coastal Sage</text>
-      <text x="20" y="58" fill="#587069" font-size="13">Light</text>
-      <rect x="20" y="82" width="56" height="56" rx="10" fill="#F4F8F2" stroke="#C8D8CE"/>
-      <rect x="82" y="82" width="56" height="56" rx="10" fill="#FFFFFF" stroke="#C8D8CE"/>
-      <rect x="144" y="82" width="56" height="56" rx="10" fill="#1E4D4A"/>
-      <rect x="206" y="82" width="56" height="56" rx="10" fill="#4F8A78"/>
-      <rect x="268" y="82" width="52" height="56" rx="10" fill="#19312E"/>
-      <text x="20" y="160" fill="#587069" font-size="12">#F4F8F2 · #FFFFFF · #1E4D4A · #4F8A78</text>
-    </g>
-    <g transform="translate(800 130)">
-      <rect width="340" height="180" rx="18" fill="#FBF6ED" stroke="#DECDBE"/>
-      <text x="20" y="34" fill="#563B2F" font-size="20" font-weight="700">Warm Sand</text>
-      <text x="20" y="58" fill="#765E52" font-size="13">Light</text>
-      <rect x="20" y="82" width="56" height="56" rx="10" fill="#FBF6ED" stroke="#DECDBE"/>
-      <rect x="82" y="82" width="56" height="56" rx="10" fill="#FFFDF9" stroke="#DECDBE"/>
-      <rect x="144" y="82" width="56" height="56" rx="10" fill="#563B2F"/>
-      <rect x="206" y="82" width="56" height="56" rx="10" fill="#B85C38"/>
-      <rect x="268" y="82" width="52" height="56" rx="10" fill="#31231D"/>
-      <text x="20" y="160" fill="#765E52" font-size="12">#FBF6ED · #FFFDF9 · #563B2F · #B85C38</text>
-    </g>
-
-    <g transform="translate(60 340)">
-      <rect width="340" height="180" rx="18" fill="#081524" stroke="#244361"/>
-      <text x="20" y="34" fill="#E8F3FA" font-size="20" font-weight="700">Workshop Navy Dark</text>
-      <text x="20" y="58" fill="#9CB3C6" font-size="13">Dark</text>
-      <rect x="20" y="82" width="56" height="56" rx="10" fill="#081524" stroke="#244361"/>
-      <rect x="82" y="82" width="56" height="56" rx="10" fill="#182D46"/>
-      <rect x="144" y="82" width="56" height="56" rx="10" fill="#55A9CF"/>
-      <rect x="206" y="82" width="56" height="56" rx="10" fill="#D58A45"/>
-      <rect x="268" y="82" width="52" height="56" rx="10" fill="#E8F3FA"/>
-      <text x="20" y="160" fill="#9CB3C6" font-size="12">#081524 · #182D46 · #55A9CF · #D58A45</text>
-    </g>
-    <g transform="translate(430 340)">
-      <rect width="340" height="180" rx="18" fill="#111126" stroke="#353464"/>
-      <text x="20" y="34" fill="#F0EFFF" font-size="20" font-weight="700">Midnight Indigo</text>
-      <text x="20" y="58" fill="#AAA7D0" font-size="13">Dark</text>
-      <rect x="20" y="82" width="56" height="56" rx="10" fill="#111126" stroke="#353464"/>
-      <rect x="82" y="82" width="56" height="56" rx="10" fill="#24244A"/>
-      <rect x="144" y="82" width="56" height="56" rx="10" fill="#8478E8"/>
-      <rect x="206" y="82" width="56" height="56" rx="10" fill="#40B7AA"/>
-      <rect x="268" y="82" width="52" height="56" rx="10" fill="#F0EFFF"/>
-      <text x="20" y="160" fill="#AAA7D0" font-size="12">#111126 · #24244A · #8478E8 · #40B7AA</text>
-    </g>
-    <g transform="translate(800 340)">
-      <rect width="340" height="180" rx="18" fill="#151515" stroke="#44413B"/>
-      <text x="20" y="34" fill="#F3F0E8" font-size="20" font-weight="700">Graphite Amber</text>
-      <text x="20" y="58" fill="#B6AEA0" font-size="13">Dark</text>
-      <rect x="20" y="82" width="56" height="56" rx="10" fill="#151515" stroke="#44413B"/>
-      <rect x="82" y="82" width="56" height="56" rx="10" fill="#2A2927"/>
-      <rect x="144" y="82" width="56" height="56" rx="10" fill="#E5A63B"/>
-      <rect x="206" y="82" width="56" height="56" rx="10" fill="#6FA58B"/>
-      <rect x="268" y="82" width="52" height="56" rx="10" fill="#F3F0E8"/>
-      <text x="20" y="160" fill="#B6AEA0" font-size="12">#151515 · #2A2927 · #E5A63B · #6FA58B</text>
-    </g>
-
-    <g transform="translate(60 550)">
-      <rect width="340" height="180" rx="18" fill="#0C1B18" stroke="#285248"/>
-      <text x="20" y="34" fill="#EBF5F0" font-size="20" font-weight="700">Forest Ember</text>
-      <text x="20" y="58" fill="#9DB8AD" font-size="13">Dark</text>
-      <rect x="20" y="82" width="56" height="56" rx="10" fill="#0C1B18" stroke="#285248"/>
-      <rect x="82" y="82" width="56" height="56" rx="10" fill="#17352E"/>
-      <rect x="144" y="82" width="56" height="56" rx="10" fill="#E27A42"/>
-      <rect x="206" y="82" width="56" height="56" rx="10" fill="#55AA89"/>
-      <rect x="268" y="82" width="52" height="56" rx="10" fill="#EBF5F0"/>
-      <text x="20" y="160" fill="#9DB8AD" font-size="12">#0C1B18 · #17352E · #E27A42 · #55AA89</text>
-    </g>
-    <g transform="translate(430 550)">
-      <rect width="340" height="180" rx="18" fill="#1C1020" stroke="#56305E"/>
-      <text x="20" y="34" fill="#F8ECFA" font-size="20" font-weight="700">Plum Neon</text>
-      <text x="20" y="58" fill="#C5A5C9" font-size="13">Dark</text>
-      <rect x="20" y="82" width="56" height="56" rx="10" fill="#1C1020" stroke="#56305E"/>
-      <rect x="82" y="82" width="56" height="56" rx="10" fill="#3B2142"/>
-      <rect x="144" y="82" width="56" height="56" rx="10" fill="#D56BD8"/>
-      <rect x="206" y="82" width="56" height="56" rx="10" fill="#5CC8C3"/>
-      <rect x="268" y="82" width="52" height="56" rx="10" fill="#F8ECFA"/>
-      <text x="20" y="160" fill="#C5A5C9" font-size="12">#1C1020 · #3B2142 · #D56BD8 · #5CC8C3</text>
-    </g>
-    <g transform="translate(800 550)">
-      <rect width="340" height="180" rx="18" fill="#061416" stroke="#285054"/>
-      <text x="20" y="34" fill="#E7FAFA" font-size="20" font-weight="700">Deep Ocean</text>
-      <text x="20" y="58" fill="#AFD0D1" font-size="13">Dark</text>
-      <rect x="20" y="82" width="56" height="56" rx="10" fill="#061416" stroke="#285054"/>
-      <rect x="82" y="82" width="56" height="56" rx="10" fill="#18383C"/>
-      <rect x="144" y="82" width="56" height="56" rx="10" fill="#38C7C9"/>
-      <rect x="206" y="82" width="56" height="56" rx="10" fill="#B8E8C9"/>
-      <rect x="268" y="82" width="52" height="56" rx="10" fill="#E7FAFA"/>
-      <text x="20" y="160" fill="#AFD0D1" font-size="12">#061416 · #18383C · #38C7C9 · #B8E8C9</text>
-    </g>
-
-    <g transform="translate(60 760)">
-      <rect width="340" height="180" rx="18" fill="#10120E" stroke="#343B2B"/>
-      <text x="20" y="34" fill="#F2F7E9" font-size="20" font-weight="700">Carbon Lime</text>
-      <text x="20" y="58" fill="#BDC8AC" font-size="13">Dark</text>
-      <rect x="20" y="82" width="56" height="56" rx="10" fill="#10120E" stroke="#343B2B"/>
-      <rect x="82" y="82" width="56" height="56" rx="10" fill="#22261C"/>
-      <rect x="144" y="82" width="56" height="56" rx="10" fill="#A8D85E"/>
-      <rect x="206" y="82" width="56" height="56" rx="10" fill="#FFE199"/>
-      <rect x="268" y="82" width="52" height="56" rx="10" fill="#F2F7E9"/>
-      <text x="20" y="160" fill="#BDC8AC" font-size="12">#10120E · #22261C · #A8D85E · #FFE199</text>
-    </g>
-    <g transform="translate(430 760)">
-      <rect width="340" height="180" rx="18" fill="#180D0D" stroke="#4D2A27"/>
-      <text x="20" y="34" fill="#FFF1EC" font-size="20" font-weight="700">Ember Red</text>
-      <text x="20" y="58" fill="#D5B7AE" font-size="13">Dark</text>
-      <rect x="20" y="82" width="56" height="56" rx="10" fill="#180D0D" stroke="#4D2A27"/>
-      <rect x="82" y="82" width="56" height="56" rx="10" fill="#2D1817"/>
-      <rect x="144" y="82" width="56" height="56" rx="10" fill="#E76F51"/>
-      <rect x="206" y="82" width="56" height="56" rx="10" fill="#B9E5C3"/>
-      <rect x="268" y="82" width="52" height="56" rx="10" fill="#FFF1EC"/>
-      <text x="20" y="160" fill="#D5B7AE" font-size="12">#180D0D · #2D1817 · #E76F51 · #B9E5C3</text>
-    </g>
-    <g transform="translate(800 760)">
-      <rect width="340" height="180" rx="18" fill="#0D141D" stroke="#304458"/>
-      <text x="20" y="34" fill="#EEF7FF" font-size="20" font-weight="700">Arctic Slate</text>
-      <text x="20" y="58" fill="#B6C8D9" font-size="13">Dark</text>
-      <rect x="20" y="82" width="56" height="56" rx="10" fill="#0D141D" stroke="#304458"/>
-      <rect x="82" y="82" width="56" height="56" rx="10" fill="#1D2A38"/>
-      <rect x="144" y="82" width="56" height="56" rx="10" fill="#74B9E6"/>
-      <rect x="206" y="82" width="56" height="56" rx="10" fill="#BCE7C8"/>
-      <rect x="268" y="82" width="52" height="56" rx="10" fill="#EEF7FF"/>
-      <text x="20" y="160" fill="#B6C8D9" font-size="12">#0D141D · #1D2A38 · #74B9E6 · #BCE7C8</text>
-    </g>
-  </g>
-</svg>
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="980" viewBox="0 0 1200 980" role="img" aria-labelledby="title desc">
+<title id="title">Approved fourth accents for Filament Manager</title>
+<desc id="desc">Twelve existing palettes with a coordinated fourth accent. The final swatch in each row is the approved addition.</desc>
+<rect width="1200" height="980" fill="#E8EDF3"/>
+<g font-family="system-ui, sans-serif"><text x="36" y="48" font-size="28" font-weight="700" fill="#16324F">Approved fourth accents</text><text x="36" y="78" font-size="16" fill="#536579">Existing three swatches + one complementary accent, used consistently for secondary details.</text>
+<g transform="translate(36 108)"><rect width="368" height="196" rx="12" fill="#F7FAFC"/><text x="16" y="30" fill="#16324F" font-size="19" font-weight="700">Workshop Navy</text><text x="16" y="53" fill="#16324F" font-size="12">Light · Amber accent #946018</text><rect x="16" y="70" width="76" height="48" rx="6" fill="#16324F" stroke="#16324F" stroke-opacity=".18"/><rect x="100" y="70" width="76" height="48" rx="6" fill="#2F80A5" stroke="#16324F" stroke-opacity=".18"/><rect x="184" y="70" width="76" height="48" rx="6" fill="#F7FAFC" stroke="#16324F" stroke-opacity=".18"/><rect x="268" y="70" width="76" height="48" rx="6" fill="#946018" stroke="#16324F" stroke-opacity=".18"/><rect x="16" y="140" width="4" height="35" rx="2" fill="#946018"/><text x="30" y="155" fill="#946018" font-size="12" font-weight="700">SECTION DETAIL</text><text x="30" y="175" fill="#16324F" font-size="13">Primary actions and status colors stay distinct.</text></g>
+<g transform="translate(416 108)"><rect width="368" height="196" rx="12" fill="#F4F8F2"/><text x="16" y="30" fill="#16324F" font-size="19" font-weight="700">Coastal Sage</text><text x="16" y="53" fill="#16324F" font-size="12">Light · Plum accent #855278</text><rect x="16" y="70" width="76" height="48" rx="6" fill="#1E4D4A" stroke="#16324F" stroke-opacity=".18"/><rect x="100" y="70" width="76" height="48" rx="6" fill="#4F8A78" stroke="#16324F" stroke-opacity=".18"/><rect x="184" y="70" width="76" height="48" rx="6" fill="#F4F8F2" stroke="#16324F" stroke-opacity=".18"/><rect x="268" y="70" width="76" height="48" rx="6" fill="#855278" stroke="#16324F" stroke-opacity=".18"/><rect x="16" y="140" width="4" height="35" rx="2" fill="#855278"/><text x="30" y="155" fill="#855278" font-size="12" font-weight="700">SECTION DETAIL</text><text x="30" y="175" fill="#16324F" font-size="13">Primary actions and status colors stay distinct.</text></g>
+<g transform="translate(796 108)"><rect width="368" height="196" rx="12" fill="#FBF6ED"/><text x="16" y="30" fill="#16324F" font-size="19" font-weight="700">Warm Sand</text><text x="16" y="53" fill="#16324F" font-size="12">Light · Teal accent #26726F</text><rect x="16" y="70" width="76" height="48" rx="6" fill="#563B2F" stroke="#16324F" stroke-opacity=".18"/><rect x="100" y="70" width="76" height="48" rx="6" fill="#B85C38" stroke="#16324F" stroke-opacity=".18"/><rect x="184" y="70" width="76" height="48" rx="6" fill="#FBF6ED" stroke="#16324F" stroke-opacity=".18"/><rect x="268" y="70" width="76" height="48" rx="6" fill="#26726F" stroke="#16324F" stroke-opacity=".18"/><rect x="16" y="140" width="4" height="35" rx="2" fill="#26726F"/><text x="30" y="155" fill="#26726F" font-size="12" font-weight="700">SECTION DETAIL</text><text x="30" y="175" fill="#16324F" font-size="13">Primary actions and status colors stay distinct.</text></g>
+<g transform="translate(36 320)"><rect width="368" height="196" rx="12" fill="#182D46"/><text x="16" y="30" fill="#F7FAFC" font-size="19" font-weight="700">Workshop Navy Dark</text><text x="16" y="53" fill="#F7FAFC" font-size="12">Dark · Amber accent #E8B66D</text><rect x="16" y="70" width="76" height="48" rx="6" fill="#081524" stroke="#F7FAFC" stroke-opacity=".18"/><rect x="100" y="70" width="76" height="48" rx="6" fill="#55A9CF" stroke="#F7FAFC" stroke-opacity=".18"/><rect x="184" y="70" width="76" height="48" rx="6" fill="#182D46" stroke="#F7FAFC" stroke-opacity=".18"/><rect x="268" y="70" width="76" height="48" rx="6" fill="#E8B66D" stroke="#F7FAFC" stroke-opacity=".18"/><rect x="16" y="140" width="4" height="35" rx="2" fill="#E8B66D"/><text x="30" y="155" fill="#E8B66D" font-size="12" font-weight="700">SECTION DETAIL</text><text x="30" y="175" fill="#F7FAFC" font-size="13">Primary actions and status colors stay distinct.</text></g>
+<g transform="translate(416 320)"><rect width="368" height="196" rx="12" fill="#24244A"/><text x="16" y="30" fill="#F7FAFC" font-size="19" font-weight="700">Midnight Indigo</text><text x="16" y="53" fill="#F7FAFC" font-size="12">Dark · Peach accent #EEB294</text><rect x="16" y="70" width="76" height="48" rx="6" fill="#111126" stroke="#F7FAFC" stroke-opacity=".18"/><rect x="100" y="70" width="76" height="48" rx="6" fill="#8478E8" stroke="#F7FAFC" stroke-opacity=".18"/><rect x="184" y="70" width="76" height="48" rx="6" fill="#24244A" stroke="#F7FAFC" stroke-opacity=".18"/><rect x="268" y="70" width="76" height="48" rx="6" fill="#EEB294" stroke="#F7FAFC" stroke-opacity=".18"/><rect x="16" y="140" width="4" height="35" rx="2" fill="#EEB294"/><text x="30" y="155" fill="#EEB294" font-size="12" font-weight="700">SECTION DETAIL</text><text x="30" y="175" fill="#F7FAFC" font-size="13">Primary actions and status colors stay distinct.</text></g>
+<g transform="translate(796 320)"><rect width="368" height="196" rx="12" fill="#2A2927"/><text x="16" y="30" fill="#F7FAFC" font-size="19" font-weight="700">Graphite Amber</text><text x="16" y="53" fill="#F7FAFC" font-size="12">Dark · Cyan accent #7ACBD2</text><rect x="16" y="70" width="76" height="48" rx="6" fill="#151515" stroke="#F7FAFC" stroke-opacity=".18"/><rect x="100" y="70" width="76" height="48" rx="6" fill="#E5A63B" stroke="#F7FAFC" stroke-opacity=".18"/><rect x="184" y="70" width="76" height="48" rx="6" fill="#2A2927" stroke="#F7FAFC" stroke-opacity=".18"/><rect x="268" y="70" width="76" height="48" rx="6" fill="#7ACBD2" stroke="#F7FAFC" stroke-opacity=".18"/><rect x="16" y="140" width="4" height="35" rx="2" fill="#7ACBD2"/><text x="30" y="155" fill="#7ACBD2" font-size="12" font-weight="700">SECTION DETAIL</text><text x="30" y="175" fill="#F7FAFC" font-size="13">Primary actions and status colors stay distinct.</text></g>
+<g transform="translate(36 532)"><rect width="368" height="196" rx="12" fill="#17352E"/><text x="16" y="30" fill="#F7FAFC" font-size="19" font-weight="700">Forest Ember</text><text x="16" y="53" fill="#F7FAFC" font-size="12">Dark · Lavender accent #BDB0EA</text><rect x="16" y="70" width="76" height="48" rx="6" fill="#0C1B18" stroke="#F7FAFC" stroke-opacity=".18"/><rect x="100" y="70" width="76" height="48" rx="6" fill="#E27A42" stroke="#F7FAFC" stroke-opacity=".18"/><rect x="184" y="70" width="76" height="48" rx="6" fill="#17352E" stroke="#F7FAFC" stroke-opacity=".18"/><rect x="268" y="70" width="76" height="48" rx="6" fill="#BDB0EA" stroke="#F7FAFC" stroke-opacity=".18"/><rect x="16" y="140" width="4" height="35" rx="2" fill="#BDB0EA"/><text x="30" y="155" fill="#BDB0EA" font-size="12" font-weight="700">SECTION DETAIL</text><text x="30" y="175" fill="#F7FAFC" font-size="13">Primary actions and status colors stay distinct.</text></g>
+<g transform="translate(416 532)"><rect width="368" height="196" rx="12" fill="#3B2142"/><text x="16" y="30" fill="#F7FAFC" font-size="19" font-weight="700">Plum Neon</text><text x="16" y="53" fill="#F7FAFC" font-size="12">Dark · Mint accent #83D8BE</text><rect x="16" y="70" width="76" height="48" rx="6" fill="#1C1020" stroke="#F7FAFC" stroke-opacity=".18"/><rect x="100" y="70" width="76" height="48" rx="6" fill="#D56BD8" stroke="#F7FAFC" stroke-opacity=".18"/><rect x="184" y="70" width="76" height="48" rx="6" fill="#3B2142" stroke="#F7FAFC" stroke-opacity=".18"/><rect x="268" y="70" width="76" height="48" rx="6" fill="#83D8BE" stroke="#F7FAFC" stroke-opacity=".18"/><rect x="16" y="140" width="4" height="35" rx="2" fill="#83D8BE"/><text x="30" y="155" fill="#83D8BE" font-size="12" font-weight="700">SECTION DETAIL</text><text x="30" y="175" fill="#F7FAFC" font-size="13">Primary actions and status colors stay distinct.</text></g>
+<g transform="translate(796 532)"><rect width="368" height="196" rx="12" fill="#18383C"/><text x="16" y="30" fill="#F7FAFC" font-size="19" font-weight="700">Deep Ocean</text><text x="16" y="53" fill="#F7FAFC" font-size="12">Dark · Coral accent #F0AA99</text><rect x="16" y="70" width="76" height="48" rx="6" fill="#061416" stroke="#F7FAFC" stroke-opacity=".18"/><rect x="100" y="70" width="76" height="48" rx="6" fill="#38C7C9" stroke="#F7FAFC" stroke-opacity=".18"/><rect x="184" y="70" width="76" height="48" rx="6" fill="#18383C" stroke="#F7FAFC" stroke-opacity=".18"/><rect x="268" y="70" width="76" height="48" rx="6" fill="#F0AA99" stroke="#F7FAFC" stroke-opacity=".18"/><rect x="16" y="140" width="4" height="35" rx="2" fill="#F0AA99"/><text x="30" y="155" fill="#F0AA99" font-size="12" font-weight="700">SECTION DETAIL</text><text x="30" y="175" fill="#F7FAFC" font-size="13">Primary actions and status colors stay distinct.</text></g>
+<g transform="translate(36 744)"><rect width="368" height="196" rx="12" fill="#22261C"/><text x="16" y="30" fill="#F7FAFC" font-size="19" font-weight="700">Carbon Lime</text><text x="16" y="53" fill="#F7FAFC" font-size="12">Dark · Periwinkle accent #ACB8F2</text><rect x="16" y="70" width="76" height="48" rx="6" fill="#10120E" stroke="#F7FAFC" stroke-opacity=".18"/><rect x="100" y="70" width="76" height="48" rx="6" fill="#A8D85E" stroke="#F7FAFC" stroke-opacity=".18"/><rect x="184" y="70" width="76" height="48" rx="6" fill="#22261C" stroke="#F7FAFC" stroke-opacity=".18"/><rect x="268" y="70" width="76" height="48" rx="6" fill="#ACB8F2" stroke="#F7FAFC" stroke-opacity=".18"/><rect x="16" y="140" width="4" height="35" rx="2" fill="#ACB8F2"/><text x="30" y="155" fill="#ACB8F2" font-size="12" font-weight="700">SECTION DETAIL</text><text x="30" y="175" fill="#F7FAFC" font-size="13">Primary actions and status colors stay distinct.</text></g>
+<g transform="translate(416 744)"><rect width="368" height="196" rx="12" fill="#2D1817"/><text x="16" y="30" fill="#F7FAFC" font-size="19" font-weight="700">Ember Red</text><text x="16" y="53" fill="#F7FAFC" font-size="12">Dark · Turquoise accent #81CCC5</text><rect x="16" y="70" width="76" height="48" rx="6" fill="#180D0D" stroke="#F7FAFC" stroke-opacity=".18"/><rect x="100" y="70" width="76" height="48" rx="6" fill="#E76F51" stroke="#F7FAFC" stroke-opacity=".18"/><rect x="184" y="70" width="76" height="48" rx="6" fill="#2D1817" stroke="#F7FAFC" stroke-opacity=".18"/><rect x="268" y="70" width="76" height="48" rx="6" fill="#81CCC5" stroke="#F7FAFC" stroke-opacity=".18"/><rect x="16" y="140" width="4" height="35" rx="2" fill="#81CCC5"/><text x="30" y="155" fill="#81CCC5" font-size="12" font-weight="700">SECTION DETAIL</text><text x="30" y="175" fill="#F7FAFC" font-size="13">Primary actions and status colors stay distinct.</text></g>
+<g transform="translate(796 744)"><rect width="368" height="196" rx="12" fill="#1D2A38"/><text x="16" y="30" fill="#F7FAFC" font-size="19" font-weight="700">Arctic Slate</text><text x="16" y="53" fill="#F7FAFC" font-size="12">Dark · Lilac accent #CCB2EA</text><rect x="16" y="70" width="76" height="48" rx="6" fill="#0D141D" stroke="#F7FAFC" stroke-opacity=".18"/><rect x="100" y="70" width="76" height="48" rx="6" fill="#74B9E6" stroke="#F7FAFC" stroke-opacity=".18"/><rect x="184" y="70" width="76" height="48" rx="6" fill="#1D2A38" stroke="#F7FAFC" stroke-opacity=".18"/><rect x="268" y="70" width="76" height="48" rx="6" fill="#CCB2EA" stroke="#F7FAFC" stroke-opacity=".18"/><rect x="16" y="140" width="4" height="35" rx="2" fill="#CCB2EA"/><text x="30" y="155" fill="#CCB2EA" font-size="12" font-weight="700">SECTION DETAIL</text><text x="30" y="175" fill="#F7FAFC" font-size="13">Primary actions and status colors stay distinct.</text></g>
+</g></svg>

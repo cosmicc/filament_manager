@@ -54,7 +54,7 @@ describe('FilamentsPage', () => {
     window.localStorage.clear()
   })
 
-  it('shows material identity and creates a color without losing the filament draft', async () => {
+  it('shows material identity and validates a new color without losing the filament draft', async () => {
     window.scrollTo = vi.fn()
     apiFetchMock.mockImplementation((path: string, options?: { method?: string }) => {
       if (path === '/filaments' && options?.method === 'POST') return Promise.resolve(filament)
@@ -74,8 +74,8 @@ describe('FilamentsPage', () => {
       if (path === '/vendors') return Promise.resolve([])
       if (path.startsWith('/filament-attributes')) return Promise.resolve([])
       if (path === '/filament-colors' && options?.method === 'POST') return Promise.resolve({
-        id: 'color-id', name: 'Custom', normalized_name: 'custom', color_hex: '808080',
-        color_hexes: ['808080'], color_mode: 'solid', record_version: 1,
+        id: null, name: 'Custom', normalized_name: 'custom', color_hex: '808080',
+        color_hexes: ['808080'], color_mode: 'solid', record_version: null,
       })
       if (path === '/filament-colors') return Promise.resolve([])
       return Promise.reject(new Error(`Unexpected API request: ${path}`))
@@ -98,6 +98,7 @@ describe('FilamentsPage', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Add filament' }))
     const colorName = await screen.findByLabelText(/Color name/) as HTMLSelectElement
     expect(colorName.tagName).toBe('SELECT')
+    expect(screen.getByRole('button', { name: 'New Color' })).toBeTruthy()
     fireEvent.change(screen.getByLabelText('Notes'), { target: { value: 'Keep this draft' } })
     fireEvent.change(colorName, { target: { value: '__filament_manager_new_item__' } })
     fireEvent.change(screen.getByLabelText('Color name', { selector: 'input' }), { target: { value: 'Custom' } })

@@ -128,14 +128,16 @@ export default function FilamentDetailPage() {
       })
     },
     onSuccess: async () => {
-      setMessage('Filament details saved. Density changes were applied to every current print-settings scope.')
+      setMessage('Filament details and linked spools updated. Saved print history is unchanged; synchronization was queued.')
       setEditingProduct(false)
       await Promise.all([
         client.invalidateQueries({ queryKey: ['filament', filamentId] }),
         client.invalidateQueries({ queryKey: ['filaments'] }),
         client.invalidateQueries({ queryKey: ['profiles'] }),
         client.invalidateQueries({ queryKey: ['filament-colors'] }),
+        client.invalidateQueries({ queryKey: ['filament-attributes'] }),
         client.invalidateQueries({ queryKey: ['spools'] }),
+        client.invalidateQueries({ queryKey: ['dashboard'] }),
       ])
     },
   })
@@ -146,6 +148,8 @@ export default function FilamentDetailPage() {
         client.invalidateQueries({ queryKey: ['filaments'] }),
         client.invalidateQueries({ queryKey: ['profiles'] }),
         client.invalidateQueries({ queryKey: ['spools'] }),
+        client.invalidateQueries({ queryKey: ['filament-colors'] }),
+        client.invalidateQueries({ queryKey: ['filament-attributes'] }),
       ])
       navigate('/filaments')
     },
@@ -226,7 +230,7 @@ export default function FilamentDetailPage() {
     })
   }
 
-  return <div>
+  return <div className="filament-detail-page">
     <PageHeader eyebrow={item.vendor_name ?? 'Unspecified manufacturer'} title={materialIdentitySummary(item)} description="Manage the physical filament identity separately from its printer/nozzle-specific print settings." actions={<><Link className="button" to="/filaments"><ArrowLeft size={16} /> All filaments</Link>{canEdit ? <><Link className="button" to={`/filaments/duplicate/${item.id}`}><Copy size={16} /> Duplicate</Link>{!item.archived ? <Link className="button button--primary" to={`/spools?create=1&filament_id=${encodeURIComponent(item.id)}`}><Plus size={16} /> Create spool from filament</Link> : null}</> : null}</>} />
     {message && <div className="deployment-note" role="status">{message}</div>}
     <section className="card product-editor">
@@ -252,7 +256,7 @@ export default function FilamentDetailPage() {
             <label>Manufacturer<InventoryChoiceSelect kind="manufacturer" name="vendor_id" defaultValue={item.vendor_id ?? ''} autoFocus aria-invalid={productErrorsFor('vendor_id').length ? true : undefined} aria-describedby={productErrorsFor('vendor_id').length ? productErrorId('vendor_id') : undefined} />{productFieldError('vendor_id')}</label>
             <label>Material type<input name="material_type" value={materialType} onChange={(event) => setMaterialType(event.target.value)} maxLength={48} required aria-invalid={productErrorsFor('material_type').length ? true : undefined} aria-describedby={productErrorsFor('material_type').length ? productErrorId('material_type') : undefined} />{productFieldError('material_type')}</label>
             <FilamentColorEditor name={colorName} mode={colorMode} colorHexes={colorHexes} rememberedColors={colors.data ?? []} onNameChange={setColorName} onModeChange={setColorMode} onColorsChange={setColorHexes} validationErrors={productValidationErrors} errorIdPrefix="filament-product-color" disabled={!item.color_editable} />
-            {!item.color_editable ? <p className="security-note form-grid__wide">Color is locked because this filament already has recorded spool use or print history.</p> : null}
+            <p className="field-help form-grid__wide">Color corrections update this filament and all linked spools. Previously saved print history keeps its original colors.</p>
           </div>
         </EditorSection>
         <EditorSection title="Physical specifications" description="Dimensions, density, packaged mass, and material modifiers.">

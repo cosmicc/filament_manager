@@ -21,22 +21,22 @@ export interface ThemeOption {
   label: string
   mode: 'light' | 'dark'
   description: string
-  swatches: [string, string, string]
+  swatches: [string, string, string, string]
 }
 
 export const THEME_OPTIONS: ThemeOption[] = [
-  { id: 'light-navy', label: 'Workshop Navy', mode: 'light', description: 'Clean navy and cool workshop blue.', swatches: ['#16324F', '#2F80A5', '#F7FAFC'] },
-  { id: 'light-sage', label: 'Coastal Sage', mode: 'light', description: 'Soft sage with deep teal accents.', swatches: ['#1E4D4A', '#4F8A78', '#F4F8F2'] },
-  { id: 'light-sand', label: 'Warm Sand', mode: 'light', description: 'Warm parchment with terracotta accents.', swatches: ['#563B2F', '#B85C38', '#FBF6ED'] },
-  { id: 'dark-navy', label: 'Workshop Navy Dark', mode: 'dark', description: 'The original deep workshop blue.', swatches: ['#081524', '#55A9CF', '#182D46'] },
-  { id: 'dark-indigo', label: 'Midnight Indigo', mode: 'dark', description: 'Inky indigo with electric violet.', swatches: ['#111126', '#8478E8', '#24244A'] },
-  { id: 'dark-graphite', label: 'Graphite Amber', mode: 'dark', description: 'Neutral graphite with warm amber.', swatches: ['#151515', '#E5A63B', '#2A2927'] },
-  { id: 'dark-forest', label: 'Forest Ember', mode: 'dark', description: 'Deep evergreen with ember orange.', swatches: ['#0C1B18', '#E27A42', '#17352E'] },
-  { id: 'dark-plum', label: 'Plum Neon', mode: 'dark', description: 'Dark plum with lively pink-violet.', swatches: ['#1C1020', '#D56BD8', '#3B2142'] },
-  { id: 'dark-ocean', label: 'Deep Ocean', mode: 'dark', description: 'Blue-green depths with bright aqua.', swatches: ['#061416', '#38C7C9', '#18383C'] },
-  { id: 'dark-carbon', label: 'Carbon Lime', mode: 'dark', description: 'Near-black carbon with crisp lime.', swatches: ['#10120E', '#A8D85E', '#22261C'] },
-  { id: 'dark-ember', label: 'Ember Red', mode: 'dark', description: 'Smoldering brown-red with coral.', swatches: ['#180D0D', '#E76F51', '#2D1817'] },
-  { id: 'dark-arctic', label: 'Arctic Slate', mode: 'dark', description: 'Cool slate with clear ice blue.', swatches: ['#0D141D', '#74B9E6', '#1D2A38'] },
+  { id: 'light-navy', label: 'Workshop Navy', mode: 'light', description: 'Clean navy and cool workshop blue.', swatches: ['#16324F', '#2F80A5', '#F7FAFC', '#946018'] },
+  { id: 'light-sage', label: 'Coastal Sage', mode: 'light', description: 'Soft sage with deep teal accents.', swatches: ['#1E4D4A', '#4F8A78', '#F4F8F2', '#855278'] },
+  { id: 'light-sand', label: 'Warm Sand', mode: 'light', description: 'Warm parchment with terracotta accents.', swatches: ['#563B2F', '#B85C38', '#FBF6ED', '#26726F'] },
+  { id: 'dark-navy', label: 'Workshop Navy Dark', mode: 'dark', description: 'The original deep workshop blue.', swatches: ['#081524', '#55A9CF', '#182D46', '#E8B66D'] },
+  { id: 'dark-indigo', label: 'Midnight Indigo', mode: 'dark', description: 'Inky indigo with electric violet.', swatches: ['#111126', '#8478E8', '#24244A', '#EEB294'] },
+  { id: 'dark-graphite', label: 'Graphite Amber', mode: 'dark', description: 'Neutral graphite with warm amber.', swatches: ['#151515', '#E5A63B', '#2A2927', '#7ACBD2'] },
+  { id: 'dark-forest', label: 'Forest Ember', mode: 'dark', description: 'Deep evergreen with ember orange.', swatches: ['#0C1B18', '#E27A42', '#17352E', '#BDB0EA'] },
+  { id: 'dark-plum', label: 'Plum Neon', mode: 'dark', description: 'Dark plum with lively pink-violet.', swatches: ['#1C1020', '#D56BD8', '#3B2142', '#83D8BE'] },
+  { id: 'dark-ocean', label: 'Deep Ocean', mode: 'dark', description: 'Blue-green depths with bright aqua.', swatches: ['#061416', '#38C7C9', '#18383C', '#F0AA99'] },
+  { id: 'dark-carbon', label: 'Carbon Lime', mode: 'dark', description: 'Near-black carbon with crisp lime.', swatches: ['#10120E', '#A8D85E', '#22261C', '#ACB8F2'] },
+  { id: 'dark-ember', label: 'Ember Red', mode: 'dark', description: 'Smoldering brown-red with coral.', swatches: ['#180D0D', '#E76F51', '#2D1817', '#81CCC5'] },
+  { id: 'dark-arctic', label: 'Arctic Slate', mode: 'dark', description: 'Cool slate with clear ice blue.', swatches: ['#0D141D', '#74B9E6', '#1D2A38', '#CCB2EA'] },
 ]
 
 interface ThemeContextValue {

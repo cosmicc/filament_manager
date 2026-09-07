@@ -82,26 +82,26 @@ async def test_choices_search_and_template_correction(
                 result = await client.post(
                     "/api/v1/filament-attributes", json={"kind": kind, "name": "  Velvet  "}
                 )
-                assert result.status_code == 201, result.text
+                assert result.status_code == 200, result.text
                 duplicate = await client.post(
                     "/api/v1/filament-attributes", json={"kind": kind, "name": "VELVET"}
                 )
-                assert duplicate.json()["name"] == "Velvet"
-                assert len((await client.get(f"/api/v1/filament-attributes?kind={kind}")).json()) == 2
+                assert duplicate.json()["name"] == "VELVET"
+                assert len((await client.get(f"/api/v1/filament-attributes?kind={kind}")).json()) == 1
             assert (
                 await client.post("/api/v1/filament-attributes", json={"kind": "finish", "name": "  "})
             ).status_code == 422
             color = await client.post(
                 "/api/v1/filament-colors", json={"name": "Custom Blue", "color_hex": "#1122ff"}
             )
-            assert color.status_code == 201, color.text
+            assert color.status_code == 200, color.text
             assert color.json()["color_hex"] == "1122FF"
             assert (
                 await client.post(
                     "/api/v1/filament-colors", json={"name": "custom blue", "color_hex": "000000"}
                 )
-            ).status_code == 409
-            assert (await client.get("/api/v1/filament-colors")).json()[0]["color_hex"] == "1122FF"
+            ).status_code == 200
+            assert (await client.get("/api/v1/filament-colors")).json() == []
             manufacturer = await client.post("/api/v1/vendors", json={"name": "  Maker  "})
             assert manufacturer.status_code == 201, manufacturer.text
             assert (await client.post("/api/v1/vendors", json={"name": "maker"})).status_code == 409

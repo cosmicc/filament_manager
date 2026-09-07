@@ -6,6 +6,9 @@ PostgreSQL is the canonical data store. A distinct Spoolman service remains the 
 
 ## Current capabilities
 
+- Automatically contrasting print thumbnails in History and the Dashboard, including display-only enhancement of dark opaque previews without changing stored images
+- Compact dashboard actions, non-archived spool totals by material type, and distinct named inventory colors
+- Correctable filament colors that update all linked spools and synchronization targets while preserving captured print history
 - One editable local Administrator account, created as `admin` / `admin` on an empty installation with a mandatory first-login password change, plus a thirty-day absolute browser session and rolling seven-day idle window
 - Canonical spool, filament, exact printer-owned physical-nozzle print settings, printer, editable per-printer nozzle codes, per-product multicolor/rainbow palettes, and compact responsive build-plate records with independently remembered List, Cards, and Detailed catalog views and complete selected-item actions
 - Browser-based `.xlsx` workbook upload with automatic first-run printer/build-plate seeding and a conservative `Template ASA` takeover target for each configured printer/nozzle
@@ -15,7 +18,8 @@ PostgreSQL is the canonical data store. A distinct Spoolman service remains the 
 - Spool entry with unused-spool tare inference, manufacturer-specific empty-weight suggestions, read-only total weight, automatic tare/remaining recalculation that preserves recorded usage, purchase costs, and immutable weigh-in history
 - A **Locations** browser with direct spool details, remembered **Location** dropdowns with **New Location**, plus template-derived material filters beside Filaments and Spools search
 - Template-only filament drying temperature, shown read-only in filament and spool details
-- Saved color/manufacturer/filler/finish dropdowns with **New [Item]** creation, and per-filament **Change template** that preserves custom settings and historical prints while replacing inherited defaults
+- **New Color** beside the color picker and **New [Item]** dropdown actions; colors/fillers/finishes save with the filament and disappear when unused by all current/archived filaments. Filler defaults to **None**, finish to **Standard**. Manufacturers/locations save immediately.
+- Twelve coordinated four-color themes, plus per-filament **Change template** that preserves custom settings and historical prints while replacing inherited defaults
 - Color-aware QR spool labels with a centered solid, multicolor, or rainbow spool icon and high error correction for reliable scanning
 - Immutable audit history and a transactional Projection Queue with bounded retries, live retry timing, recovered-history supersession, and coalesced Spoolman weight corrections
 - Immediate Spoolman REST projection plus one-minute complete convergence and usage reconciliation, including owned free-text bucket locations and automatically populated filament price, empty weight, and installed-nozzle temperatures, plus Moonraker control clients with active-spool polling and retry inside one minute

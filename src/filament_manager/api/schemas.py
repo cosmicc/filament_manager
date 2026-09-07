@@ -103,7 +103,7 @@ class SpoolLocationChoiceCreate(ApiModel):
 
 
 class FilamentAttributeCreate(ApiModel):
-    """An explicitly created, durable inventory dropdown choice."""
+    """A validated draft choice, persisted only with its filament."""
 
     model_config = ConfigDict(str_strip_whitespace=True, extra="forbid")
     kind: Literal["filler", "finish"]
@@ -127,7 +127,7 @@ class FilamentColorCreate(ApiModel):
 
 
 class FilamentModifiers(ApiModel):
-    """Normalize only empty modifiers; retain every populated operator value."""
+    """Normalize empty modifiers and the legacy None finish."""
 
     filler: str | None = Field(default="None", max_length=96)
     finish: str | None = Field(default="Standard", max_length=96)
@@ -135,8 +135,10 @@ class FilamentModifiers(ApiModel):
     @field_validator("filler", "finish", mode="before")
     @classmethod
     def default_empty_modifier(cls, value: object, info: Any) -> object:
-        if value is None or (isinstance(value, str) and not value.strip()):
-            return "None" if info.field_name == "filler" else "Standard"
+        from filament_manager.services.inventory_choices import normalize_modifier
+
+        if value is None or isinstance(value, str):
+            return normalize_modifier(info.field_name, value)
         return value
 
 
@@ -193,15 +195,15 @@ class FilamentUpdate(FilamentModifiers):
 
 
 class FilamentColorResponse(ApiModel):
-    """A remembered color-name mapping used by every matching product."""
+    """A saved or draft picker choice; multicolor samples remain product-specific."""
 
-    id: UUID
+    id: UUID | None = None
     name: str
     normalized_name: str
     color_hex: str
     color_mode: Literal["solid", "multicolor", "rainbow"]
     color_hexes: list[str]
-    record_version: int
+    record_version: int | None = None
 
 
 class SpoolCreate(ApiModel):
@@ -1070,6 +1072,8 @@ class DashboardPrinterStateResponse(ApiModel):
 
 class DashboardResponse(ApiModel):
     total_spools: int
+    material_spool_counts: dict[str, int] = Field(default_factory=dict)
+    distinct_colors: int = 0
     needs_weighing: int
     low_spools: int
     empty_spools: int
