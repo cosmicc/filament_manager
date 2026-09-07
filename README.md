@@ -44,7 +44,7 @@ PostgreSQL is the canonical data store. A distinct Spoolman service remains the 
 
 For automatic heightmap restoration and the 0.7.4 printer macro upgrade, see [Build plate setup](docs/BUILD_PLATE_SETUP.md).
 
-For the 0.7.6 one-way Cura update, upgrade the server first and then the workstation agent. Edit tracked settings in the app only. On Cura Workstations, select **Push app settings**, keep Cura closed, and wait for **Succeeded** before reopening. Offline agents receive the request on their next check-in. Existing app overrides are preserved.
+Version 0.7.7 fixes valid Cura material settings turning red and blocking slicing. Upgrade the server/worker and workstation agent, close Cura, then select **Push app settings** on Cura Workstations and wait for **Succeeded** before reopening. Edit tracked settings in the app only; existing overrides are preserved. No new Klipper macro installation is required from 0.7.6. See [Cura troubleshooting](docs/CURA_WORKSTATION_AGENT.md#red-settings-and-slicing-errors-after-075-or-076).
 
 ## Start locally
 

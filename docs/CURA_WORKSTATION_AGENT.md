@@ -87,7 +87,13 @@ Run the same installer again to upgrade an existing agent. It stops a running pe
 
 ## Use
 
-Before takeover, open **Cura Workstations**, review replacement of the discovered library, and confirm. No Cura settings are imported. Existing user materials are backed up and replaced with app values; unrelated Cura quality settings remain workstation-owned. The app owns managed machine start/end G-code. Template and product GUIDs remain stable. Renderer revision 24 installs app-deployed per-GUID settings, ignoring local material edits and old pending receipts. Upgrade the server first, then the agent. Use **Push app settings**, keep Cura closed, and wait for **Succeeded** before reopening. Offline agents receive work on their next check-in. App saves still queue synchronization automatically.
+Before takeover, open **Cura Workstations**, review replacement of the discovered library, and confirm. No Cura settings are imported. Existing user materials are backed up and replaced with app values; unrelated Cura quality settings remain workstation-owned. The app owns managed machine start/end G-code. Template and product GUIDs remain stable. Renderer revision 25 installs app-deployed per-GUID settings with Cura-compatible runtime types, ignoring local material edits and old pending receipts. Upgrade the server first, then the agent. Use **Push app settings**, keep Cura closed, and wait for **Succeeded** before reopening. Offline agents receive work on their next check-in. App saves still queue synchronization automatically.
+
+### Red settings and slicing errors after 0.7.5 or 0.7.6
+
+Version 0.7.7 fixes a plugin conversion bug: app decimal values are transported as text, but Cura's runtime validators and dependent calculations require numbers. The affected plugin returned that text directly. The corrected plugin converts values according to Cura's declared setting type and keeps genuine range errors visible. App ownership and automatic reversion of Cura edits remain intentional.
+
+Upgrade both the app and workstation agent to 0.7.7, close Cura, select **Push app settings**, and wait for **Succeeded** before reopening and slicing a small model. Updating only the server does not replace the workstation plugin. Renderer revision 25 forces replacement even when no template value changed. There is no need to reset templates, remove overrides, or reinstall Klipper macros when upgrading from 0.7.6. If errors remain after this upgrade, retain Cura's error details and logs for diagnosis rather than disabling validation.
 
 Useful local commands:
 

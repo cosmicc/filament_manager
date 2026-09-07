@@ -1,5 +1,7 @@
 # Deployment and Operations Skill
 
+- Version 0.7.7 fixes Cura runtime scalar types. Upgrade web/worker and workstation agents; renderer revision 25 replaces plugin 2.2.1 while Cura is closed even if canonical settings are unchanged. Use **Push app settings**, wait for **Succeeded**, and reopen Cura before testing slicing. Do not imply a server-only upgrade updates the workstation plugin. No database migration or new Klipper macro installation is required from 0.7.6; the macro reference remains version 0.7.6.
+
 - The 0.7.6 one-way settings update requires upgrading the server first and then each workstation agent. Renderer revision 24 reinstalls the plugin while Cura is closed; legacy pending edits are ignored. Use Push app settings, keep Cura closed, and wait for Succeeded before reopening. Offline agents process the request on their next check-in. No database migration or automatic reset of existing app overrides is performed.
 
 - The 0.7.6 printer-interlock changes require replacing the included macro reference and restarting firmware while idle. Ordinary spool and native mesh changes refuse active/paused prints; explicit M600/runout remains available. Do not deploy unreleased files without authorization or claim live printer validation from rendered tests.

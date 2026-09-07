@@ -1,5 +1,7 @@
 # Testing and Validation Skill
 
+- Cura runtime-value regressions must load the generated plugin and exercise numeric comparisons and dependent arithmetic, integer counts, Boolean false, fractional/zero retraction window equality, unchanged text/enums, material switching, unsupported/unpopulated keys, and native validation-property delegation. Invalid/non-finite literals and expressions must remain invalid without executing text, silently using zero, or falling back to local edits. Confirm renderer revision 24 manifests invalidate under revision 25 with unchanged canonical checksums. Supplement test doubles with the official supported Cura/Uranium validator when changing this boundary.
+
 - Retraction tests cover fixed count 100, exact window/distance equality including zero and decimals, unset distance, rejection of custom derived-key overrides, live read-only template previews, and inclusion in the 56-key plugin contract.
 
 - One-way Cura regressions must prove stale and explicitly edited product/template reports cannot change canonical settings, legacy imports and takeover mappings are rejected, app template changes preserve custom values, and Push app settings queues the full canonical library idempotently with authorization and closed-process safety. Test generated plugin values against mutable Cura container edits and legacy pending receipts, renderer revision 23 refresh, and button success/failure/disabled feedback.

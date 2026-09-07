@@ -1,5 +1,21 @@
 # User Changelog
 
+## 0.7.7 - 09.07.2026
+
+### Added
+
+- Automatic replacement of the affected Cura plugin after upgrading the workstation agent and synchronizing with Cura closed.
+
+### Changed
+
+- Filament Manager continues to control tracked print settings. Cura edits still revert to the app's values, and your templates and custom filament settings are preserved.
+
+### Fixed
+
+- Fixed valid material print settings turning red and preventing slicing after recent updates. Cura now receives numbers and on/off values in the format its validation system expects.
+
+Upgrade the app and workstation agent to 0.7.7. Close Cura, select **Push app settings**, wait for **Succeeded**, then reopen Cura. No new Klipper macro installation is needed when upgrading from 0.7.6.
+
 ## 0.7.6 - 09.07.2026
 
 ### Added

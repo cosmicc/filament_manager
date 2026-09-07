@@ -240,6 +240,7 @@ PLUGIN_MODULE_TEMPLATE = '''"""Enforce Filament Manager material ownership insid
 
 import hashlib
 import json
+import math
 import os
 import re
 import tempfile
@@ -428,6 +429,41 @@ def _is_managed_material(stack):
     return material_id.startswith(MANAGED_PREFIX)
 
 
+def _typed_material_value(value, setting_type):
+    """Convert app transport scalars to Cura runtime types without evaluating text.
+
+    The app preserves decimal precision as JSON strings. Cura normally converts
+    those strings in SettingInstance; our authoritative overlay bypasses that
+    path, so it must return typed values for validators and dependent formulas.
+    Invalid literals remain invalid (None), never a made-up zero or a fallback
+    to workstation settings. Cura still owns all range/warning validation.
+    """
+
+    if setting_type in {"float", "int"}:
+        if isinstance(value, bool):
+            return None
+        try:
+            number = float(value)
+        except (TypeError, ValueError, OverflowError):
+            return None
+        if not math.isfinite(number):
+            return None
+        if setting_type == "int":
+            return int(number) if number.is_integer() else None
+        return number
+    if setting_type == "bool":
+        if isinstance(value, bool):
+            return value
+        if isinstance(value, str):
+            literal = value.strip().casefold()
+            if literal in {"true", "false"}:
+                return literal == "true"
+        return None
+    if setting_type in {"str", "enum"} and isinstance(value, str):
+        return value
+    return None
+
+
 def _managed_material_value(stack, key):
     """Resolve an explicit canonical material value without dirtying the quality profile."""
 
@@ -442,7 +478,10 @@ def _managed_material_value(stack, key):
     # Never trust a mutable Cura material container or a legacy pending edit.
     # This map is generated only from the app's validated deployment payload.
     settings = CANONICAL_MATERIAL_SETTINGS.get(_material_guid(stack), {})
-    return settings.get(key, MISSING_VALUE)
+    value = settings.get(key, MISSING_VALUE)
+    if value is MISSING_VALUE:
+        return MISSING_VALUE
+    return _typed_material_value(value, stack.getProperty(key, "type"))
 
 
 def _install_runtime_material_overlay():
@@ -643,7 +682,7 @@ class FilamentManagerVisibility(Extension):
 PLUGIN_METADATA = b"""{
   "name": "Filament Manager Material Visibility",
   "author": "Filament Manager",
-  "version": "2.2.0",
+  "version": "2.2.1",
   "description": "Enforces the Filament Manager material library and print boundary.",
   "api": 5,
   "supported_sdk_versions": ["8.0.0"]

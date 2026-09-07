@@ -1,5 +1,23 @@
 # Changelog
 
+## 0.7.7 - 09.07.2026
+
+Testing release. Upgrade web/worker and the workstation agent. Close Cura, use **Push app settings**, and wait for **Succeeded** before reopening. No database migration or Klipper macro replacement is required when upgrading from 0.7.6.
+
+### Added
+
+- Generated-plugin regression coverage for numeric range checks, dependent arithmetic, Boolean false, integral counts, fractional retraction distance/window equality, material switching, invalid literals, and preserved native validation.
+
+### Changed
+
+- The app-owned Cura runtime overlay converts deployed decimal strings according to Cura's declared setting type before returning them. The transport retains exact decimal text; templates, overrides, and historical print settings remain unchanged.
+- Workstation renderer revision 25 and visibility plugin 2.2.1 automatically invalidate the previous local deployment, even when the app's settings have not changed.
+
+### Fixed
+
+- Fixed valid managed settings appearing red and blocking slicing after the one-way settings update: the overlay bypassed Cura's normal string-to-number conversion, causing its validator and dependent calculations to receive text instead of numeric values. The 0.7.6 supported-key filter did not address this type mismatch.
+- Invalid numeric/Boolean literals remain invalid without evaluating expressions, silently substituting zero, truncating fractional integer settings, or accepting workstation overrides. Cura's normal range and warning checks remain authoritative.
+
 ## 0.7.6 - 09.07.2026
 
 Testing release.
