@@ -218,6 +218,9 @@ async def commit_approved_run(
 ) -> dict[str, int]:
     """Import the exact approved workbook hash in one canonical transaction."""
 
+    from filament_manager.services.inventory_choices import lock_inventory_choices, normalize_modifier
+
+    await lock_inventory_choices(session)
     run = await session.scalar(select(ImportRun).where(ImportRun.id == run_id).with_for_update())
     if run is None or not run.dry_run:
         raise ValueError("approved dry-run report was not found")
@@ -294,7 +297,7 @@ async def commit_approved_run(
                 vendor_id=vendor.id,
                 material_type=str(values["Material Type"]),
                 filler=str(values["Filler / Reinforcement"] or "None"),
-                finish=str(values["Finish / Effect"] or "Standard"),
+                finish=normalize_modifier("finish", str(values["Finish / Effect"] or "")),
                 color_name=color.name,
                 color_hex=color.color_hex,
                 product_name=str(values["Product / Grade / Hardness"] or "") or None,

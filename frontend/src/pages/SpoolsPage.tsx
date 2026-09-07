@@ -664,6 +664,7 @@ export default function SpoolsPage() {
   const queryClient = useQueryClient();
   const creationRequest = new URLSearchParams(window.location.search);
   const requestedFilamentId = creationRequest.get("filament_id") ?? undefined;
+  const requestedAction = creationRequest.get("action");
   const canEdit = user?.role !== "viewer";
   const [search, setSearch] = useState("");
   const [status, setStatus] = useState("");
@@ -688,6 +689,10 @@ export default function SpoolsPage() {
   const [creating, setCreating] = useState(creationRequest.get("create") === "1");
   const [actionError, setActionError] = useState("");
   const [actionMessage, setActionMessage] = useState("");
+  const openSpool = (spool: Spool) => {
+    if (requestedAction === "weigh" && canEdit) setWeighing(spool);
+    else setSelected(spool);
+  };
   const query = useQuery({
     queryKey: ["spools", search, status, material],
     queryFn: () =>
@@ -796,6 +801,7 @@ export default function SpoolsPage() {
           ) : undefined
         }
       />
+      {requestedAction === "weigh" || requestedAction === "load" ? <p className="inline-note" role="status">{requestedAction === "weigh" ? "Select a spool to record its full scale weight." : "Select a spool, then choose Load spool. The active spool changes only after the confirmed physical load finishes."}</p> : null}
       <section className="toolbar">
         <label className="search-field">
           <Search size={18} />
@@ -855,10 +861,10 @@ export default function SpoolsPage() {
                 {items.map((spool) => (
                   <tr
                     key={spool.id}
-                    onClick={() => setSelected(spool)}
+                    onClick={() => openSpool(spool)}
                     tabIndex={0}
                     onKeyDown={(event) =>
-                      (event.key === "Enter" || event.key === " ") && setSelected(spool)
+                      (event.key === "Enter" || event.key === " ") && openSpool(spool)
                     }
                   >
                     <td>
@@ -912,7 +918,7 @@ export default function SpoolsPage() {
           </div>
       ) : (
         <section className={`collection-grid collection-grid--${view}`}>
-          {items.map((spool) => <button className={`collection-card collection-card--button${view === "detailed" ? " collection-card--detailed" : ""}`} key={spool.id} onClick={() => setSelected(spool)}>
+          {items.map((spool) => <button className={`collection-card collection-card--button${view === "detailed" ? " collection-card--detailed" : ""}`} key={spool.id} onClick={() => openSpool(spool)}>
             <header className="collection-card__header">
               <div className="table-identity"><span className={`filament-swatch${view === "detailed" ? " filament-swatch--large" : ""}`} style={filamentSwatchStyle(spool.color_mode, spool.color_hexes, spool.color_hex ?? "2F80A5")} /><span><strong>{spool.spool_code}</strong><small>{spool.vendor_name ?? "No vendor"}</small></span></div>
               <span className="status-stack">{spool.active_printer_id ? <StatusPill status="active" /> : null}<StatusPill status={spool.status} /></span>

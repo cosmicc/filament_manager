@@ -24,6 +24,92 @@ from filament_manager.startup import upgrade_database
 
 
 @pytest.mark.integration
+def test_choice_cleanup_retains_archived_usage(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Upgrade 0.7.1 choices, correct None finishes, and never resurrect orphan names."""
+
+    with PostgresContainer("postgres:17-alpine", driver="psycopg") as postgres:
+        url = postgres.get_connection_url().replace("postgresql+psycopg2://", "postgresql+psycopg://")
+        monkeypatch.setenv("FILAMENT_MANAGER_DATABASE_URL", url)
+        get_settings.cache_clear()
+        config = Config("alembic.ini")
+        command.upgrade(config, "e3f4a5b6c789")
+        engine = create_engine(url)
+        from filament_manager.models.inventory import FilamentAttributeChoice, FilamentColor
+
+        with Session(engine) as session:
+            product = FilamentProduct(
+                material_type="PLA",
+                color_name="Copper",
+                archived=True,
+                filler="Glass",
+                finish=" nOnE ",
+                diameter_mm=Decimal("1.75"),
+                density_g_cm3=Decimal("1.24"),
+                nominal_net_mass_g=Decimal("1000"),
+            )
+            session.add(product)
+            for name in ("Copper", "Orphan"):
+                session.add(
+                    FilamentColor(
+                        name=name,
+                        normalized_name=name.casefold(),
+                        color_hex="AA6633",
+                        color_mode="solid",
+                        color_hexes=["AA6633"],
+                    )
+                )
+            for index, (kind, name) in enumerate(
+                [
+                    ("filler", "Glass"),
+                    ("filler", "Unused"),
+                    ("finish", "None"),
+                    ("finish", "Silk"),
+                ]
+            ):
+                session.add(FilamentAttributeChoice(kind=kind, name=name, name_key=str(index)))
+            session.commit()
+            product_id = product.id
+        command.upgrade(config, "head")
+        with engine.connect() as connection:
+            row = connection.execute(
+                text("SELECT filler, finish, archived, record_version FROM filament_products WHERE id=:id"),
+                {"id": product_id},
+            ).one()
+            assert tuple(row) == ("Glass", "Standard", True, 2)
+            assert set(connection.scalars(text("SELECT name FROM filament_colors"))) == {"Copper"}
+            assert set(connection.execute(text("SELECT kind, name FROM filament_attribute_choices"))) == {
+                ("filler", "Glass"),
+                ("finish", "Standard"),
+            }
+            assert (
+                connection.scalar(
+                    text("SELECT count(*) FROM audit_events WHERE action='filament.choice_normalization'")
+                )
+                == 1
+            )
+            assert (
+                connection.scalar(
+                    text(
+                        "SELECT count(*) FROM outbox_jobs WHERE idempotency_key LIKE 'choice-normalization:%'"
+                    )
+                )
+                == 1
+            )
+        command.downgrade(config, "e3f4a5b6c789")
+        command.upgrade(config, "head")
+        with engine.connect() as connection:
+            assert set(connection.scalars(text("SELECT name FROM filament_colors"))) == {"Copper"}
+            assert (
+                connection.scalar(
+                    text("SELECT record_version FROM filament_products WHERE id=:id"), {"id": product_id}
+                )
+                == 2
+            )
+        engine.dispose()
+        get_settings.cache_clear()
+
+
+@pytest.mark.integration
 def test_modifier_catalog_backfills_only_blanks(monkeypatch: pytest.MonkeyPatch) -> None:
     """Upgrade populated 0.7.0 data and retain explicit modifier labels unchanged."""
 
@@ -438,7 +524,7 @@ def test_previous_schema_automatically_upgrades_to_metadata_head(
 
         upgrade_database(DatabaseConfig(url=database_url))
         with engine.connect() as connection:
-            assert connection.scalar(text("SELECT version_num FROM alembic_version")) == "e3f4a5b6c789"
+            assert connection.scalar(text("SELECT version_num FROM alembic_version")) == "f4a5b6c7d890"
             assert (
                 connection.scalar(
                     text(

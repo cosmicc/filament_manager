@@ -1,7 +1,7 @@
 import type { FilamentColor } from '../api/types'
 import { filamentSwatchStyle } from '../lib/colors'
 import { useState } from 'react'
-import { useMutation, useQueryClient } from '@tanstack/react-query'
+import { useMutation } from '@tanstack/react-query'
 import { apiFetch } from '../api/client'
 import { Modal } from './Modal'
 import { NewItemSelect } from './NewItemSelect'
@@ -33,22 +33,17 @@ export function FilamentColorEditor({
 }) {
   const [creating, setCreating] = useState(false)
   const [added, setAdded] = useState<FilamentColor[]>([])
-  const client = useQueryClient()
-  const knownColors = [...rememberedColors, ...added.filter((color) => !rememberedColors.some((known) => known.id === color.id))]
-  const colorOptions = knownColors.some((color) => color.normalized_name === 'rainbow')
-    ? knownColors
-    : [...knownColors, { id: 'rainbow', name: 'Rainbow', normalized_name: 'rainbow', color_hex: 'E53935', color_mode: 'rainbow' as const, color_hexes: [], record_version: 1 }]
+  const colorOptions = [...rememberedColors, ...added.filter((color) => !rememberedColors.some((known) => known.normalized_name === color.normalized_name))]
   const create = useMutation({
     mutationFn: (data: FormData) => apiFetch<FilamentColor>('/filament-colors', {
       method: 'POST', body: JSON.stringify({ name: String(data.get('name') ?? '').trim(), color_hex: data.get('color_hex') }),
     }),
-    onSuccess: async (color) => {
+    onSuccess: (color) => {
       setAdded((colors) => [...colors, color])
       onNameChange(color.name)
-      onModeChange('solid')
-      onColorsChange([color.color_hex])
+      onModeChange(color.color_mode)
+      onColorsChange(color.color_hexes)
       setCreating(false)
-      await client.invalidateQueries({ queryKey: ['filament-colors'] })
     },
   })
   const selectRemembered = (nextName: string) => {
@@ -63,6 +58,11 @@ export function FilamentColorEditor({
       return
     }
     onModeChange(remembered.color_mode ?? 'solid')
+    // A multicolor name is reusable, but its samples belong to each product.
+    if (remembered.color_mode === 'multicolor') {
+      onColorsChange(colorHexes.slice(0, 3).length ? colorHexes.slice(0, 3) : ['808080'])
+      return
+    }
     onColorsChange(
       remembered.color_hexes?.length ? remembered.color_hexes : [remembered.color_hex],
     )
@@ -93,9 +93,10 @@ export function FilamentColorEditor({
   const colorSampleErrors = errorsFor('color_hex')
 
   return <>
+    <div className="setting-field">
     <label>
       Color name
-      <NewItemSelect value={name} required disabled={disabled} itemLabel="Color"
+      <NewItemSelect aria-label="Color name" value={name} required disabled={disabled} itemLabel="Color"
         onChange={(event) => selectRemembered(event.target.value)}
         onCreate={() => { create.reset(); setCreating(true) }}
         options={[{ value: '', label: 'Choose a color' },
@@ -106,7 +107,9 @@ export function FilamentColorEditor({
       {errorBlock('name', colorNameErrors)}
       <small className="field-help">Choose a saved color or use New Color to add a name and display color.</small>
     </label>
-    <label>
+    <button className="button color-create-button" type="button" disabled={disabled} onClick={() => { create.reset(); setCreating(true) }}>New Color</button>
+    </div>
+    <label className="color-editor-field">
       Display type
       <select value={mode === 'rainbow' ? 'solid' : mode} onChange={(event) => changeMode(event.target.value as FilamentColorMode)} disabled={disabled || mode === 'rainbow'} aria-invalid={colorModeErrors.length ? true : undefined} aria-describedby={colorModeErrors.length ? `${errorIdPrefix}-mode-error` : undefined}>
         <option value="solid">Solid</option>
@@ -142,6 +145,7 @@ export function FilamentColorEditor({
     </div>
     {creating ? <Modal title="New Color" onClose={() => { if (!create.isPending) setCreating(false) }}>
       <form className="editor-form" onSubmit={(event) => { event.preventDefault(); event.stopPropagation(); create.mutate(new FormData(event.currentTarget)) }}>
+        <p className="field-help">This color is saved to the list only when you save the filament.</p>
         <label>Color name<input name="name" required maxLength={96} autoFocus disabled={create.isPending} /></label>
         <label>Display color<input name="color_hex" type="color" defaultValue="#808080" disabled={create.isPending} /></label>
         {create.error ? <p className="form-error" role="alert">{create.error.message}</p> : null}

@@ -1,10 +1,11 @@
 import { useQuery } from '@tanstack/react-query'
-import { AlertTriangle, ArrowRight, Boxes, FlaskConical, Gauge, Layers3, PackageOpen, Plus, Printer, Scale, Thermometer, WifiOff } from 'lucide-react'
+import { AlertTriangle, ArrowRight, Boxes, FlaskConical, Gauge, Layers3, PackageOpen, Palette, Plus, Printer, Scale, Thermometer, WifiOff } from 'lucide-react'
 import { apiFetch } from '../api/client'
 import type { DashboardData } from '../api/types'
 import { EmptyState } from '../components/EmptyState'
 import { LoadingState } from '../components/LoadingState'
 import { PageHeader } from '../components/PageHeader'
+import { PrintThumbnail } from '../components/PrintThumbnail'
 import { StatusPill } from '../components/StatusPill'
 import { Link } from '../context/RouterContext'
 import { filamentSwatchStyle } from '../lib/colors'
@@ -35,7 +36,7 @@ function MetricCard({ icon: Icon, label, value, detail, tone = '' }: {
   tone?: string
 }) {
   return (
-    <article className={`metric-card ${tone}`}>
+    <article className={`metric-card ${tone}`} title={`${label}: ${value} · ${detail}`}>
       <span className="metric-card__icon"><Icon size={20} /></span>
       <div><p>{label}</p><strong>{value}</strong><small>{detail}</small></div>
     </article>
@@ -54,8 +55,15 @@ export default function DashboardPage() {
   if (!query.data) return <EmptyState icon={AlertTriangle} title="Dashboard unavailable" description="The operational overview could not be loaded. Check the application service and try again." action={<button className="button" onClick={() => void query.refetch()}>Try again</button>} />
   const data = query.data
   return (
-    <div>
-      <PageHeader eyebrow="Workshop overview" title="Dashboard" actions={<Link to="/spools" className="button button--primary"><Scale size={17} /> Record a weight</Link>} />
+    <div className="dashboard-page">
+      <PageHeader eyebrow="Workshop overview" title="Dashboard" actions={<>
+        <Link to="/spools?action=weigh" className="button button--primary"><Scale size={17} /> Weigh spool</Link>
+        <Link to="/plates" className="button"><Layers3 size={17} /> Build plate</Link>
+        <Link to="/calibration" className="button"><FlaskConical size={17} /> Calibrate</Link>
+        <Link to="/filaments/new" className="button"><PackageOpen size={17} /> Add filament</Link>
+        <Link to="/spools?create=1" className="button"><Plus size={17} /> Add spool</Link>
+        <Link to="/spools?action=load" className="button"><Boxes size={17} /> Load spool</Link>
+      </>} />
       <section className="dashboard-grid">
         <article className={`card printer-state-card printer-state-card--${data.printer_state.operational_status}`}>
           <header className="printer-state-card__header">
@@ -73,7 +81,7 @@ export default function DashboardPage() {
           </header>
           {data.printer_state.connection_status === 'connected' ? <div className={`printer-state-card__body${data.printer_state.operational_status === 'printing' ? ' printer-state-card__body--printing' : ''}`}>
             <section className={`printer-current-print${data.printer_state.thumbnail_url ? '' : ' printer-current-print--without-thumbnail'}`} aria-label="Current print state">
-              {data.printer_state.thumbnail_url ? <img className="printer-current-print__thumbnail" src={data.printer_state.thumbnail_url} alt={`Preview of ${data.printer_state.filename ?? 'current print'}`} /> : null}
+              {data.printer_state.thumbnail_url ? <PrintThumbnail className="printer-current-print__thumbnail" src={data.printer_state.thumbnail_url} alt={`Preview of ${data.printer_state.filename ?? 'current print'}`} /> : null}
               <div className="printer-current-print__content">
                 <div className="printer-job-state">
                   <span><Gauge size={21} /></span>
@@ -100,8 +108,10 @@ export default function DashboardPage() {
 
         <section className="metric-grid dashboard-metric-grid" aria-label="Inventory summary">
           <MetricCard icon={Boxes} label="Total spools" value={data.total_spools} detail="Active inventory" />
-          <MetricCard icon={Scale} label="Needs weighing" value={data.needs_weighing} detail="Manual check required" tone={data.needs_weighing ? 'metric-card--warning' : ''} />
+          <MetricCard icon={Scale} label="Needs weighing" value={data.needs_weighing} detail="Manual check" tone={data.needs_weighing ? 'metric-card--warning' : ''} />
           <MetricCard icon={AlertTriangle} label="Low or empty" value={data.low_spools + data.empty_spools} detail={`${data.empty_spools} empty`} tone={data.low_spools + data.empty_spools ? 'metric-card--warning' : ''} />
+          <MetricCard icon={Palette} label="Colors" value={data.distinct_colors} detail="Named colors" tone="metric-card--accent" />
+          {Object.entries(data.material_spool_counts).map(([material, count]) => <MetricCard key={material} icon={PackageOpen} label={material} value={count} detail={count === 1 ? 'spool' : 'spools'} tone="metric-card--material" />)}
         </section>
 
         <article className="card active-spool-card">
@@ -121,10 +131,6 @@ export default function DashboardPage() {
           {data.active_plate ? <div className="plate-summary"><div className={`plate-illustration${data.active_plate.image_url ? ' plate-illustration--photo' : ''}`}>{data.active_plate.image_url ? <img src={data.active_plate.image_url} alt={`${data.active_plate.display_name} build plate`} /> : null}<span>{data.active_plate_surface?.surface_code ?? data.active_plate.plate_code}</span></div><strong>{data.active_plate.display_name}</strong><span>{data.active_plate_surface ? `Side ${data.active_plate_surface.side.toUpperCase()} · ${data.active_plate_surface.surface_material ?? 'Surface not specified'}` : 'Side not selected'}</span><StatusPill status={data.active_plate.condition} /></div> : <EmptyState icon={Layers3} title="No plate selected" description="Select a synchronized P-number plate side for a configured printer." action={<Link className="button" to="/plates">Open plates</Link>} />}
         </article>
 
-        <article className="card quick-card">
-          <header className="card__header"><div><p className="eyebrow">Keep moving</p><h2>Quick actions</h2></div></header>
-          <div className="quick-actions"><Link to="/spools"><Scale size={19} /><span><strong>Weigh a spool</strong><small>Record a trusted manual measurement</small></span><ArrowRight size={17} /></Link><Link to="/calibration"><FlaskConical size={19} /><span><strong>Resume calibration</strong><small>Continue the seven-step workflow</small></span><ArrowRight size={17} /></Link><Link to="/plates"><Layers3 size={19} /><span><strong>Select build plate</strong><small>Update the active Moonraker surface</small></span><ArrowRight size={17} /></Link><Link to="/filaments"><PackageOpen size={19} /><span><strong>Select a filament</strong><small>Open the filament catalog</small></span><ArrowRight size={17} /></Link><Link to="/filaments/new"><Plus size={19} /><span><strong>Add a filament</strong><small>Create a template-linked product</small></span><ArrowRight size={17} /></Link></div>
-        </article>
       </section>
     </div>
   )

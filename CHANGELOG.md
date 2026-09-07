@@ -1,5 +1,31 @@
 # Changelog
 
+## 0.7.2 - 09.06.2026
+
+Testing release.
+
+### Added
+
+- Automatic thumbnail contrast in Print History rows, mobile cards, detail overlays, and the live Dashboard: light-gray backing for dark models, dark-gray backing for light models, and neutral backing with subtle outlines for mixed transparent previews.
+- Approved fourth accent in all twelve GUI palettes, with four-swatch previews and consistent section, summary-icon, and secondary highlights.
+- Visible New Color button beside the filament color dropdown, preserving its final New Color option.
+- Compact dashboard header actions for weighing, build plates, calibration, adding filament/spools, and the guarded physical spool-load workflow.
+- Canonical dashboard spool counts by material type and distinct named colors across non-archived inventory, including low/empty spools and keeping PLA distinct from PLA+.
+
+### Changed
+
+- Color/filler/finish choices now derive only from saved current or archived filaments. New choices stay in the form until Save filament; cancelling leaves no catalog entry. Manufacturer/location creation remains durable.
+- Migration `f4a5b6c7d890` converts legacy None finishes to Standard, audits corrections, queues projection, and permanently prunes unused choice metadata. Automatic upgrades apply it; downgrades do not restore discarded choices. No filament or historical record is deleted.
+- Removed the dashboard Quick actions card and reduced inventory statistic card size, with responsive wrapping actions and statistics.
+- Filament colors and shared solid swatches remain editable after recorded use. Linked spool identities update automatically, and corrected Spoolman spool metadata and managed Cura libraries are queued transactionally.
+
+### Fixed
+
+- Dark slicer thumbnails no longer disappear against dark GUI themes. Browser-only, alpha-aware analysis reuses the loaded image and caches bounded presentation metadata; dark low-contrast opaque thumbnails receive a bounded tonal boost. Captured images remain unchanged, failures degrade safely, and no printer queries or database migrations are added.
+- Removed unused Rainbow/legacy dropdown entries and ensured removed choices can be explicitly added again. Multicolor names never share another product's samples; all two/three-color samples remain editable.
+- Filament detail actions wrap cleanly on narrow screens without pushing the page wider than the viewport.
+- Color corrections no longer require replacing a filament with retained history. Original print, material-segment, and settings snapshots stay unchanged, along with spool IDs and weights.
+
 ## 0.7.1 - 09.05.2026
 
 Testing release.

@@ -433,8 +433,9 @@ async def test_seed_system_route_creates_configured_resources(monkeypatch: pytes
         assert corrected_spool.status_code == 200, corrected_spool.text
         assert Decimal(corrected_spool.json()["remaining_mass_effective_g"]) == Decimal("925")
         assert archived_spool.json() == {"disposition": "archived"}
-        assert locked_color.status_code == 409, locked_color.text
-        assert locked_color.json()["code"] == "filament_color_locked"
+        assert locked_color.status_code == 200, locked_color.text
+        assert locked_color.json()["color_name"] == "Dark Red"
+        assert locked_color.json()["color_editable"] is True
         remembered_red = next(
             color for color in remembered_colors.json() if color["name"].casefold() == "red"
         )
@@ -487,7 +488,7 @@ async def test_seed_system_route_creates_configured_resources(monkeypatch: pytes
                 for product in products
                 if product.color_name == "Galaxy"
             }
-            assert [product.color_hex for product in red_products] == ["A00000", "A00000"]
+            assert [product.color_hex for product in red_products] == ["A00000"]
             assert galaxy_products == {
                 "Blend A": ["FF0000", "0000FF"],
                 "Blend B": ["00FF00", "FFFF00", "800080"],

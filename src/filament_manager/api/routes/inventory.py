@@ -3,7 +3,6 @@
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from decimal import Decimal
-from hashlib import sha256
 from io import BytesIO
 from typing import Annotated, Literal, cast
 from unicodedata import normalize
@@ -18,7 +17,6 @@ from sqlalchemy.sql.elements import ColumnElement
 
 from filament_manager.config import get_settings
 from filament_manager.domain.colors import (
-    normalize_color_hex,
     normalize_color_name,
     normalize_color_palette,
 )
@@ -37,7 +35,6 @@ from filament_manager.models.enums import (
     SpoolStatus,
 )
 from filament_manager.models.inventory import (
-    FilamentAttributeChoice,
     FilamentColor,
     FilamentProduct,
     MaterialProfile,
@@ -55,6 +52,12 @@ from filament_manager.models.printing import PrintJob, PrintMaterialSegment
 from filament_manager.models.workstations import CuraDeployment
 from filament_manager.services.events import add_audit_event, add_outbox_job
 from filament_manager.services.filament_defaults import queue_filament_default_projection
+from filament_manager.services.inventory_choices import (
+    choice_key,
+    lock_inventory_choices,
+    normalize_modifier,
+    prune_inventory_choices,
+)
 from filament_manager.services.material_settings import (
     create_published_profile_snapshot,
     queue_managed_cura_library,
@@ -265,14 +268,6 @@ async def _remember_color(
         if selected_mode == "solid" and mapping.color_mode == "solid"
         else []
     )
-    if affected_products and await _filaments_have_recorded_use(
-        session, [product.id for product in affected_products]
-    ):
-        raise ApiError(
-            status.HTTP_409_CONFLICT,
-            "color_in_use",
-            "This remembered color is locked because a matching filament has recorded use",
-        )
     mapping.color_hex = selected_hex
     mapping.color_mode = selected_mode
     mapping.color_hexes = selected_palette
@@ -292,6 +287,7 @@ async def _remember_color(
             aggregate_version=product.record_version,
             payload={"filament_product_id": str(product.id)},
         )
+        await _queue_spool_identity_projection(session, product)
     add_audit_event(
         session,
         actor_id=actor_id,
@@ -311,33 +307,22 @@ async def _remember_color(
     return _resolved_color(mapping)
 
 
-async def _filaments_have_recorded_use(
-    session: DatabaseSession,
-    filament_ids: list[UUID],
-) -> bool:
-    """Return whether any selected product is already part of immutable use history."""
+async def _queue_spool_identity_projection(session: DatabaseSession, product: FilamentProduct) -> None:
+    """Refresh linked spool labels without editing weights, IDs, or captured history."""
 
-    if not filament_ids:
-        return False
-    usage = await session.scalar(
-        select(SpoolUsageEvent.id)
-        .join(Spool, Spool.id == SpoolUsageEvent.spool_id)
-        .where(Spool.filament_product_id.in_(filament_ids))
-        .limit(1)
+    spools = await session.execute(
+        select(Spool.id, Spool.record_version).where(Spool.filament_product_id == product.id)
     )
-    if usage is not None:
-        return True
-    print_job = await session.scalar(
-        select(PrintJob.id).where(PrintJob.filament_product_id.in_(filament_ids)).limit(1)
-    )
-    if print_job is not None:
-        return True
-    print_segment = await session.scalar(
-        select(PrintMaterialSegment.id)
-        .where(PrintMaterialSegment.filament_product_id.in_(filament_ids))
-        .limit(1)
-    )
-    return print_segment is not None
+    for spool_id, record_version in spools:
+        add_outbox_job(
+            session,
+            job_type="spoolman.spool.upsert",
+            idempotency_key=f"filament:{product.id}:v{product.record_version}:spool:{spool_id}",
+            aggregate_type="spool",
+            aggregate_id=spool_id,
+            aggregate_version=record_version,
+            payload={"spool_id": str(spool_id)},
+        )
 
 
 def spool_response(spool: Spool, *, completed_print_count: int = 0) -> SpoolResponse:
@@ -624,66 +609,25 @@ async def list_filament_attributes(
     session: DatabaseSession,
     kind: Literal["filler", "finish"],
 ) -> list[FilamentAttributeCreate]:
-    """Include durable choices and legacy/imported values, including archived products."""
+    """List only values used by current or archived products, plus the defaults."""
 
     field = FilamentProduct.filler if kind == "filler" else FilamentProduct.finish
-    values = list(
-        await session.scalars(
-            select(FilamentAttributeChoice.name).where(FilamentAttributeChoice.kind == kind)
-        )
-    )
-    values.extend(
-        value for value in await session.scalars(select(field).distinct()) if value and value.strip()
-    )
-    values.append("None" if kind == "filler" else "Standard")
-    unique = {normalize("NFKC", value.strip()).casefold(): value.strip() for value in values}
+    values = [normalize_modifier(kind, value) for value in await session.scalars(select(field).distinct())]
+    values.append(normalize_modifier(kind, None))
+    unique = {choice_key(value): value for value in values}
     return [
         FilamentAttributeCreate(kind=kind, name=name) for name in sorted(unique.values(), key=str.casefold)
     ]
 
 
-@router.post("/filament-attributes", response_model=FilamentAttributeCreate, status_code=201)
+@router.post("/filament-attributes", response_model=FilamentAttributeCreate)
 async def create_filament_attribute(
     payload: FilamentAttributeCreate,
-    request: Request,
-    operator: Operator,
-    session: DatabaseSession,
+    _: Operator,
 ) -> FilamentAttributeCreate:
-    """Remember an unused choice atomically without changing any existing product."""
+    """Validate a form-local choice without persisting cancelled or unused drafts."""
 
-    normalized = normalize("NFKC", payload.name).casefold()
-    choice_id = await session.scalar(
-        insert(FilamentAttributeChoice)
-        .values(
-            kind=payload.kind,
-            name=payload.name,
-            name_key=sha256(normalized.encode("utf-8")).hexdigest(),
-        )
-        .on_conflict_do_nothing(constraint="uq_filament_attribute_choice")
-        .returning(FilamentAttributeChoice.id)
-    )
-    choice = await session.scalar(
-        select(FilamentAttributeChoice).where(
-            FilamentAttributeChoice.kind == payload.kind,
-            FilamentAttributeChoice.name_key == sha256(normalized.encode("utf-8")).hexdigest(),
-        )
-    )
-    assert choice is not None
-    if choice_id:
-        add_audit_event(
-            session,
-            actor_id=operator.id,
-            source="web",
-            action="filament_attribute.create",
-            object_type="filament_attribute",
-            object_id=choice.id,
-            before=None,
-            after={"kind": choice.kind, "name": choice.name},
-            correlation_id=request.state.correlation_id,
-        )
-    response = FilamentAttributeCreate.model_validate(choice)
-    await session.commit()
-    return response
+    return FilamentAttributeCreate(kind=payload.kind, name=normalize_modifier(payload.kind, payload.name))
 
 
 @router.get("/filaments", response_model=list[FilamentResponse])
@@ -717,14 +661,39 @@ async def list_filaments(
 
 
 @router.get("/filament-colors", response_model=list[FilamentColorResponse])
-async def list_filament_colors(_: Viewer, session: DatabaseSession) -> list[FilamentColor]:
-    """List shared solid and fixed-rainbow samples for color pickers."""
+async def list_filament_colors(_: Viewer, session: DatabaseSession) -> list[FilamentColorResponse]:
+    """Derive membership from all saved products, without sharing multicolor samples."""
 
-    return list(
-        await session.scalars(
-            select(FilamentColor).where(FilamentColor.color_mode != "multicolor").order_by(FilamentColor.name)
+    products = (
+        await session.execute(
+            select(
+                FilamentProduct.color_name,
+                FilamentProduct.color_mode,
+                FilamentProduct.color_hex,
+                FilamentProduct.color_hexes,
+            ).order_by(FilamentProduct.created_at, FilamentProduct.id)
         )
-    )
+    ).all()
+    mappings = {item.normalized_name: item for item in await session.scalars(select(FilamentColor))}
+    choices: dict[str, FilamentColorResponse] = {}
+    for product in products:
+        key = choice_key(product.color_name)
+        # Prefer the shared solid/rainbow choice when the same name also has a
+        # product-specific multicolor palette. Never copy another product's samples.
+        if key in choices and product.color_mode == "multicolor":
+            continue
+        mapping = mappings.get(key)
+        if mapping is not None and product.color_mode != "multicolor":
+            choices[key] = FilamentColorResponse.model_validate(mapping)
+        else:
+            choices[key] = FilamentColorResponse(
+                name=product.color_name,
+                normalized_name=key,
+                color_mode=product.color_mode,
+                color_hex=product.color_hex if product.color_mode != "multicolor" else "808080",
+                color_hexes=product.color_hexes if product.color_mode != "multicolor" else [],
+            )
+    return sorted(choices.values(), key=lambda item: item.name.casefold())
 
 
 @router.get("/filaments/{filament_id}", response_model=FilamentResponse)
@@ -742,54 +711,31 @@ async def get_filament(
     )
     if product is None:
         raise ApiError(status.HTTP_404_NOT_FOUND, "unknown_filament", "Filament not found")
-    return filament_response(
-        product,
-        color_editable=not await _filaments_have_recorded_use(session, [product.id]),
-    )
+    return filament_response(product)
 
 
-@router.post("/filament-colors", response_model=FilamentColorResponse, status_code=201)
+@router.post("/filament-colors", response_model=FilamentColorResponse)
 async def create_filament_color(
     payload: FilamentColorCreate,
-    request: Request,
-    operator: Operator,
+    _: Operator,
     session: DatabaseSession,
 ) -> FilamentColorResponse:
-    """Explicit color creation must never silently change an existing shared palette."""
+    """Validate a draft color without changing shared palettes or saving a catalog row."""
 
     normalized = normalize_color_name(payload.name)
-    await session.execute(
-        text("SELECT pg_advisory_xact_lock(hashtextextended(:key, 0))"),
-        {"key": f"filament-color:{normalized}"},
-    )
-    existing = await session.scalar(
-        select(FilamentColor.id).where(FilamentColor.normalized_name == normalized)
-    )
-    if existing or normalized == "rainbow":
+    names = await session.scalars(select(FilamentProduct.color_name).distinct())
+    if any(choice_key(name) == normalized for name in names):
         raise ApiError(409, "color_exists", "Color already exists; select it from the color list")
-    color = FilamentColor(
+    mode, palette = normalize_color_palette(
+        "rainbow" if normalized == "rainbow" else "solid", payload.color_hex, None
+    )
+    return FilamentColorResponse(
         name=payload.name,
         normalized_name=normalized,
-        color_hex=payload.color_hex.lstrip("#").upper(),
-        color_mode="solid",
-        color_hexes=[payload.color_hex.lstrip("#").upper()],
+        color_hex=palette[0],
+        color_mode=mode,
+        color_hexes=palette,
     )
-    session.add(color)
-    await session.flush()
-    response = FilamentColorResponse.model_validate(color)
-    add_audit_event(
-        session,
-        actor_id=operator.id,
-        source="web",
-        action="filament_color.create",
-        object_type="filament_color",
-        object_id=color.id,
-        before=None,
-        after={"name": color.name, "color_hex": color.color_hex},
-        correlation_id=request.state.correlation_id,
-    )
-    await session.commit()
-    return response
 
 
 @router.post("/filaments", response_model=FilamentResponse, status_code=status.HTTP_201_CREATED)
@@ -801,6 +747,7 @@ async def create_filament(
 ) -> FilamentResponse:
     """Create a canonical filament product definition."""
 
+    await lock_inventory_choices(session)
     template_revision: MaterialTemplateRevision | None = None
     template: MaterialTemplate | None = None
     duplicate_source: FilamentProduct | None = None
@@ -964,17 +911,16 @@ async def create_filament(
         aggregate_version=1,
         payload={"filament_product_id": str(product.id)},
     )
-    if profile is not None:
-        await queue_managed_cura_library(session, requested_by=operator.id)
+    # Queue once after the complete product transaction, including any shared
+    # swatch correction to existing products, so no intermediate library is built.
+    await queue_managed_cura_library(session, requested_by=operator.id)
     # Validate the exact API representation before committing. This keeps a
     # future response-contract regression from persisting a mutation that the
     # client is subsequently unable to read back.
     await session.flush()
     await session.refresh(product, attribute_names=["vendor"])
-    response = filament_response(
-        product,
-        color_editable=not await _filaments_have_recorded_use(session, [product.id]),
-    )
+    response = filament_response(product)
+    await prune_inventory_choices(session)
     await session.commit()
     return response
 
@@ -989,6 +935,7 @@ async def update_filament(
 ) -> FilamentResponse:
     """Update product metadata and apply its color sample to matching products."""
 
+    await lock_inventory_choices(session)
     product = await session.scalar(
         select(FilamentProduct).where(FilamentProduct.id == filament_id).with_for_update()
     )
@@ -1067,20 +1014,8 @@ async def update_filament(
             requested_palette = [requested_hex or "808080"]
         elif requested_mode == "multicolor":
             requested_palette = [requested_hex or "808080", *requested_palette[1:]]
-    current_palette = product.color_hexes or [product.color_hex or "808080"]
-    comparison_palette = requested_palette or [requested_hex or "808080"]
-    color_is_changing = (
-        normalize_color_name(color_name) != normalize_color_name(product.color_name)
-        or normalize_color_hex(requested_hex or "808080") != (product.color_hex or "808080")
-        or requested_mode != product.color_mode
-        or [normalize_color_hex(value) for value in comparison_palette] != current_palette
-    )
-    if color_is_changing and await _filaments_have_recorded_use(session, [product.id]):
-        raise ApiError(
-            status.HTTP_409_CONFLICT,
-            "filament_color_locked",
-            "Filament color cannot change after recorded use",
-        )
+    # Product identity is correctable even after use. Exact print/segment
+    # snapshots remain immutable and keep their original captured colors.
     color = await _remember_color(
         session,
         color_name=color_name,
@@ -1209,16 +1144,14 @@ async def update_filament(
         aggregate_version=product.record_version,
         payload={"filament_product_id": str(product.id)},
     )
-    if created_profiles or "archived" in payload.model_fields_set:
-        await queue_managed_cura_library(session, requested_by=operator.id)
+    await _queue_spool_identity_projection(session, product)
+    await queue_managed_cura_library(session, requested_by=operator.id)
     # Build and validate the response inside the transaction so a serialization
     # failure rolls the edit back instead of leaving the catalog unreadable.
     await session.flush()
     await session.refresh(product, attribute_names=["vendor"])
-    response = filament_response(
-        product,
-        color_editable=not await _filaments_have_recorded_use(session, [product.id]),
-    )
+    response = filament_response(product)
+    await prune_inventory_choices(session)
     await session.commit()
     return response
 
@@ -1232,6 +1165,7 @@ async def delete_or_archive_filament(
 ) -> dict[str, str]:
     """Delete an unused setup mistake, or archive a product with retained history."""
 
+    await lock_inventory_choices(session)
     product = await session.scalar(
         select(FilamentProduct).where(FilamentProduct.id == filament_id).with_for_update()
     )
@@ -1326,6 +1260,7 @@ async def delete_or_archive_filament(
         await session.execute(delete(MaterialProfile).where(MaterialProfile.id.in_(profile_ids)))
     await session.delete(product)
     await session.flush()
+    await prune_inventory_choices(session)
     await queue_managed_cura_library(session, requested_by=operator.id)
     await session.commit()
     return {"disposition": "deleted"}

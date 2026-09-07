@@ -1,8 +1,33 @@
 # User Changelog
 
+## 0.7.2 - 09.06.2026
+
+Testing release.
+
+### Added
+
+- Easier-to-see print thumbnails in Print History and on the Dashboard, with automatic contrasting backgrounds for dark, light, and mixed-color models.
+- A coordinated fourth accent for every theme, used in section headings and summary details.
+- A visible New Color button beside the filament color list.
+- Six compact dashboard buttons: Weigh spool, Build plate, Calibrate, Add filament, Add spool, and Load spool.
+- Smaller inventory cards showing spool totals, weighing needs, low/empty stock, counts by material type, and how many named colors you own.
+
+### Changed
+
+- Color, filler, and finish lists contain choices used by current or archived filaments. New choices are saved only when you save the filament; cancelling leaves no unused entries.
+- Dashboard actions now live together in the header instead of a separate Quick actions card.
+- Filament colors can be corrected after use; all linked spools update automatically.
+
+### Fixed
+
+- Dark previews with a built-in background get a display-only contrast boost where the image contains recoverable detail. Original thumbnails and print history stay unchanged.
+- None finishes now become Standard, while filler keeps None as its default.
+- You can correct all two or three colors of a multicolor filament without changing previous print history.
+- Correcting a color preserves previous print-history colors and settings, spool IDs, and recorded weights.
+
 ## 0.7.1 - 09.05.2026
 
-In development; not yet published.
+Testing release.
 
 ### Added
 

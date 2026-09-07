@@ -1,5 +1,13 @@
 # Roadmap
 
+- ~~**0.7.2 inventory choice cleanup**~~
+
+  Implemented for 0.7.2: saved current/archived filaments define choices; unused choices are forgotten, None finishes become Standard, and new color/filler/finish choices save with the filament. Multicolor samples remain editable after use.
+
+- ~~**Fourth theme accent**~~
+
+  Implemented the approved fourth accent in all twelve profiles through shared semantic roles. Approved samples are in `docs/design/theme-palettes.svg`.
+
 - **Calibration candidate measurements and graphs**
 
   Extend each calibration step beyond its selected result so every tested candidate and its structured observation remain available permanently. For example, a retraction test should retain the tested distance, stringing severity, and surface-defect result for every tower segment before recording the selected distance.

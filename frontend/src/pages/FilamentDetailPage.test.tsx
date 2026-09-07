@@ -207,6 +207,8 @@ describe('FilamentDetailPage', () => {
 
     fireEvent.click(await screen.findByRole('button', { name: 'Edit product' }))
     expect(screen.queryByLabelText('Display name')).toBeNull()
+    expect((screen.getByLabelText('Color name') as HTMLSelectElement).disabled).toBe(false)
+    expect(screen.getByText(/Previously saved print history keeps its original colors/)).toBeTruthy()
     expect(screen.getByRole('heading', { level: 1, name: 'PLA · Rainbow' })).toBeTruthy()
     expect(screen.getByRole('link', { name: 'Create spool from filament' }).getAttribute('href')).toBe(
       '/spools?create=1&filament_id=product-id',

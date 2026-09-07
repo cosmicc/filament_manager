@@ -125,6 +125,8 @@ export interface BuildPlateSyncResult {
 
 export interface DashboardData {
   total_spools: number
+  material_spool_counts: Record<string, number>
+  distinct_colors: number
   needs_weighing: number
   low_spools: number
   empty_spools: number
@@ -185,13 +187,13 @@ export interface Filament {
 }
 
 export interface FilamentColor {
-  id: string
+  id?: string | null
   name: string
   normalized_name: string
   color_hex: string
   color_mode: 'solid' | 'multicolor' | 'rainbow'
   color_hexes: string[]
-  record_version: number
+  record_version?: number | null
 }
 
 export interface CuraSettingCatalogItem {
