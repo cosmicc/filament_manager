@@ -299,6 +299,15 @@ def _available_material_setting_keys(application):
     return available
 
 
+def _enforceable_material_setting_keys(application):
+    """Return managed settings that can be enforced on the active machine."""
+
+    available = _available_material_setting_keys(application)
+    if available is None:
+        return None
+    return MANAGED_SETTING_KEYS & set(available)
+
+
 def _material_settings_status_payload(application):
     """Build a value-free receipt for the settings Cura actually exposes."""
 
@@ -306,24 +315,27 @@ def _material_settings_status_payload(application):
     visible_raw = str(preferences.getValue("material_settings/visible_settings") or "")
     visible = {key for key in visible_raw.split(";") if key}
     available = _available_material_setting_keys(application)
-    if available is None:
+    enforceable = _enforceable_material_setting_keys(application)
+    if enforceable is None:
         exposed = set()
-        missing = set(MANAGED_SETTING_KEYS)
+        expected = set(MANAGED_SETTING_KEYS)
+        missing = expected.copy()
         status = "waiting_for_machine"
     else:
-        exposed = MANAGED_SETTING_KEYS & visible & available
-        missing = MANAGED_SETTING_KEYS - exposed
+        exposed = set(enforceable) & visible
+        expected = set(enforceable)
+        missing = expected - exposed
         status = "healthy" if not missing and not (visible & RETIRED_SETTING_KEYS) else "degraded"
     return {
         "schema_version": MATERIAL_SETTINGS_STATUS_SCHEMA_VERSION,
         "catalog_checksum": _catalog_checksum(),
         "status": status,
-        "expected_count": len(MANAGED_SETTING_KEYS),
+        "expected_count": len(expected),
         "exposed_count": len(exposed),
         "missing_keys": sorted(missing),
         "unexpected_keys": sorted(visible & RETIRED_SETTING_KEYS),
         "material_settings_plugin_ready": (
-            MANAGED_SETTING_KEYS <= visible and not (visible & RETIRED_SETTING_KEYS)
+            expected <= visible and not (visible & RETIRED_SETTING_KEYS)
         ),
         "klipper_settings_plugin_ready": (
             False if available is None else KLIPPER_SETTING_KEYS <= available
@@ -377,7 +389,13 @@ def _configure_material_settings_plugin(application):
     preferences = application.getPreferences()
     current = str(preferences.getValue("material_settings/visible_settings") or "")
     selected = {key for key in current.split(";") if key}
-    updated = (selected | MANAGED_SETTING_KEYS) - RETIRED_SETTING_KEYS
+    enforceable = _enforceable_material_setting_keys(application)
+    managed_selected = selected - set(MANAGED_SETTING_KEYS)
+    if enforceable is None:
+        managed_selected.update(MANAGED_SETTING_KEYS)
+    else:
+        managed_selected.update(enforceable)
+    updated = managed_selected - RETIRED_SETTING_KEYS
     rendered = ";".join(sorted(updated))
     if rendered != current:
         preferences.setValue("material_settings/visible_settings", rendered)
@@ -414,6 +432,12 @@ def _managed_material_value(stack, key):
     """Resolve an explicit canonical material value without dirtying the quality profile."""
 
     if key not in MANAGED_SETTING_KEYS or not _is_managed_material(stack):
+        return MISSING_VALUE
+    try:
+        get_all_keys = getattr(stack, "getAllKeys", None)
+        if callable(get_all_keys) and key not in get_all_keys():
+            return MISSING_VALUE
+    except Exception:
         return MISSING_VALUE
     # Never trust a mutable Cura material container or a legacy pending edit.
     # This map is generated only from the app's validated deployment payload.
@@ -580,6 +604,9 @@ class FilamentManagerVisibility(Extension):
                 return
             extruders = list(global_stack.extruderList)
             stacks = [global_stack] + extruders
+            enforceable = _enforceable_material_setting_keys(self._application)
+            if enforceable is None:
+                enforceable = set()
             for stack in stacks:
                 quality_changes = stack.qualityChanges
                 self._watch(stack.userChanges, stack)
@@ -587,7 +614,7 @@ class FilamentManagerVisibility(Extension):
                 if _is_managed_material(stack):
                     self._watch(stack.material, stack)
                 changed = False
-                for key in MANAGED_SETTING_KEYS.intersection(quality_changes.getAllKeys()):
+                for key in set(enforceable).intersection(quality_changes.getAllKeys()):
                     quality_changes.removeInstance(key, postpone_emit=True)
                     changed = True
                 if changed:
@@ -599,7 +626,7 @@ class FilamentManagerVisibility(Extension):
             for stack in stacks:
                 user_changes = stack.userChanges
                 changed = False
-                for key in MANAGED_SETTING_KEYS.intersection(user_changes.getAllKeys()):
+                for key in set(enforceable).intersection(user_changes.getAllKeys()):
                     user_changes.removeInstance(key, postpone_emit=True)
                     changed = True
                 if changed:

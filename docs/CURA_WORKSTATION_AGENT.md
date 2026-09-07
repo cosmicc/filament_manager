@@ -87,7 +87,7 @@ Run the same installer again to upgrade an existing agent. It stops a running pe
 
 ## Use
 
-Before takeover, open **Cura Workstations**, review replacement of the discovered library, and confirm. No Cura settings are imported. Existing user materials are backed up and replaced with app values; unrelated Cura quality settings remain workstation-owned. The app owns managed machine start/end G-code. Template and product GUIDs remain stable. Renderer revision 23 installs app-deployed per-GUID settings, ignoring local material edits and old pending receipts. Upgrade the server first, then the agent. Use **Push app settings**, keep Cura closed, and wait for **Succeeded** before reopening. Offline agents receive work on their next check-in. App saves still queue synchronization automatically.
+Before takeover, open **Cura Workstations**, review replacement of the discovered library, and confirm. No Cura settings are imported. Existing user materials are backed up and replaced with app values; unrelated Cura quality settings remain workstation-owned. The app owns managed machine start/end G-code. Template and product GUIDs remain stable. Renderer revision 24 installs app-deployed per-GUID settings, ignoring local material edits and old pending receipts. Upgrade the server first, then the agent. Use **Push app settings**, keep Cura closed, and wait for **Succeeded** before reopening. Offline agents receive work on their next check-in. App saves still queue synchronization automatically.
 
 Useful local commands:
 

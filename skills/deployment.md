@@ -1,8 +1,8 @@
 # Deployment and Operations Skill
 
-- The 0.7.5 one-way settings update requires upgrading the server first and then each workstation agent. Renderer revision 23 reinstalls the plugin while Cura is closed; legacy pending edits are ignored. Use Push app settings, keep Cura closed, and wait for Succeeded before reopening. Offline agents process the request on their next check-in. No database migration or automatic reset of existing app overrides is performed.
+- The 0.7.6 one-way settings update requires upgrading the server first and then each workstation agent. Renderer revision 24 reinstalls the plugin while Cura is closed; legacy pending edits are ignored. Use Push app settings, keep Cura closed, and wait for Succeeded before reopening. Offline agents process the request on their next check-in. No database migration or automatic reset of existing app overrides is performed.
 
-- The 0.7.5 printer-interlock changes require replacing the included macro reference and restarting firmware while idle. Ordinary spool and native mesh changes refuse active/paused prints; explicit M600/runout remains available. Do not deploy unreleased files without authorization or claim live printer validation from rendered tests.
+- The 0.7.6 printer-interlock changes require replacing the included macro reference and restarting firmware while idle. Ordinary spool and native mesh changes refuse active/paused prints; explicit M600/runout remains available. Do not deploy unreleased files without authorization or claim live printer validation from rendered tests.
 
 - The default production deployment uses root `docker-stack.yml` for Spoolman, Filament Manager web, and the worker. It assumes remote PostgreSQL and creates its overlay network and application data volumes.
 - The independent `docker/spoolman-stack.yml` and `docker/filament-manager-stack.yml` files remain supported when separate application lifecycle boundaries are required.

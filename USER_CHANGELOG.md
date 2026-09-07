@@ -1,5 +1,20 @@
 # User Changelog
 
+## 0.7.6 - 09.07.2026
+
+### Added
+
+- Cura synchronization now refreshes plugin enforcement safely on the active machine profile instead of forcing unsupported settings.
+
+### Changed
+
+- Push app settings now keeps managed Cura plugins aligned to the current machine's visible Material Settings keys, so valid configurations no longer show red overrides when slicing.
+
+### Fixed
+
+- Managed print settings that are supported by the active machine no longer appear invalid after recent one-way Cura updates.
+- Stationary settings now stay writable only from Filament Manager, and Cura now receives refreshed plugin behavior from the latest closed-Cura app update.
+
 ## 0.7.5 - 09.07.2026
 
 ### Added

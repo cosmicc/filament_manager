@@ -1,5 +1,24 @@
 # Changelog
 
+## 0.7.6 - 09.07.2026
+
+Testing release.
+
+### Added
+
+- Workstation deployment renderer revision 24 so existing closed-Cura managed installations can refresh plugin enforcement when the canonical manifest and machine support differ.
+
+### Changed
+
+- The Cura material-settings status contract now tracks only keys that are actually exposed by the active machine, which prevents false red warnings from keys Cura cannot resolve on a specific printer profile.
+
+### Fixed
+
+- Fixed a bad interaction where supported-print settings were treated as missing on some machines, which left managed settings marked as custom/errored in Cura and blocked valid slicing.
+- Kept enforcement limited to enforceable managed keys when removing entries from `quality_changes` and `user_changes`, preserving unrelated user keys.
+- Resolved managed settings only when the active Cura stack exposes that key, preventing plugin-managed settings from being forced onto unsupported profile scopes.
+- Bumped server, frontend, and agent versions to `0.7.6`; raised workstation `DEPLOYMENT_RENDERER_REVISION` to `24`.
+
 ## 0.7.5 - 09.07.2026
 
 Testing release. Upgrade web/worker and workstation agents, close Cura for synchronization, and replace the Klipper macro reference followed by an idle FIRMWARE_RESTART. Live printer/Cura validation remains an operator check.

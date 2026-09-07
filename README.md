@@ -1,6 +1,6 @@
 # Filament Manager
 
-Ordinary build-plate, nozzle, and active-spool changes are locked during printing and pauses. Use M600/runout handling for deliberate filament replacement. The 0.7.5 interlock update requires the matching Klipper macros and an idle firmware restart.
+Ordinary build-plate, nozzle, and active-spool changes are locked during printing and pauses. Use M600/runout handling for deliberate filament replacement. The 0.7.6 interlock update requires the matching Klipper macros and an idle firmware restart.
 
 Filament Manager is a self-hosted inventory and calibration application for physical filament spools, manual weight measurements, material profiles, build plates, and Klipper-based printers.
 
@@ -44,7 +44,7 @@ PostgreSQL is the canonical data store. A distinct Spoolman service remains the 
 
 For automatic heightmap restoration and the 0.7.4 printer macro upgrade, see [Build plate setup](docs/BUILD_PLATE_SETUP.md).
 
-For the 0.7.5 one-way Cura update, upgrade the server first and then the workstation agent. Edit tracked settings in the app only. On Cura Workstations, select **Push app settings**, keep Cura closed, and wait for **Succeeded** before reopening. Offline agents receive the request on their next check-in. Existing app overrides are preserved.
+For the 0.7.6 one-way Cura update, upgrade the server first and then the workstation agent. Edit tracked settings in the app only. On Cura Workstations, select **Push app settings**, keep Cura closed, and wait for **Succeeded** before reopening. Offline agents receive the request on their next check-in. Existing app overrides are preserved.
 
 ## Start locally
 
