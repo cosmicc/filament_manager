@@ -17,11 +17,11 @@ import { useAuth } from '../context/AuthContext'
 import { Link, useRouter } from '../context/RouterContext'
 import { useCollectionView } from '../hooks/useCollectionView'
 import { filamentSwatchStyle } from '../lib/colors'
-import { compactNumber, grams } from '../lib/format'
+import { compactNumber, grams, inputNumber } from '../lib/format'
 import { materialIdentitySummary, materialModifierSummary } from '../lib/materialIdentity'
 
 function FilamentIdentity({ filament, hero = false }: { filament: Filament; hero?: boolean }) {
-  return <div className="table-identity"><span className={`filament-swatch${hero ? ' filament-swatch--hero' : ''}`} style={filamentSwatchStyle(filament.color_mode, filament.color_hexes, filament.color_hex ?? '2F80A5')} /><span><strong>{filament.vendor_name ?? 'Unspecified manufacturer'}</strong><small>{materialIdentitySummary(filament)}</small></span></div>
+  return <div className="table-identity"><span className={`filament-swatch${hero ? ' filament-swatch--hero' : ''}`} style={filamentSwatchStyle(filament.color_mode, filament.color_hexes, filament.color_hex ?? '2F80A5')} /><span><strong>{filament.vendor_name ?? 'Unknown'}</strong><small>{materialIdentitySummary(filament)}</small></span></div>
 }
 
 function FilamentCard({
@@ -39,7 +39,7 @@ function FilamentCard({
 }) {
   return <Link className={`catalog-card catalog-card--link${detailed ? ' collection-card--detailed' : ''}`} to={`/filaments/${filament.id}`}>
     <span className="filament-swatch filament-swatch--hero" style={filamentSwatchStyle(filament.color_mode, filament.color_hexes, filament.color_hex ?? '2F80A5')} />
-    <div><p className="eyebrow">{filament.vendor_name ?? 'Unspecified manufacturer'}</p><h2>{materialIdentitySummary(filament)}</h2></div>
+    <div><p className="eyebrow">{filament.vendor_name ?? 'Unknown'}</p><h2>{materialIdentitySummary(filament)}</h2></div>
     <dl className="catalog-meta">
       <div><dt>Color</dt><dd>{filament.color_name}</dd></div>
       <div><dt>Drying temperature</dt><dd>{dryingTemperature}</dd></div>
@@ -196,7 +196,7 @@ export default function FilamentsPage() {
         </EditorSection>
         <EditorSection title="Physical specifications" description="Record the diameter, density, packaged mass, and material modifiers.">
           <div className="form-grid">
-            <label>Filament diameter (mm)<input name="diameter_mm" type="number" min="0.1" step="0.01" defaultValue={duplicateSource.data?.diameter_mm ?? '1.75'} required /></label>
+            <label>Filament diameter (mm)<input name="diameter_mm" type="number" min="0.1" step="0.01" defaultValue={inputNumber(duplicateSource.data?.diameter_mm ?? '1.75', 2)} required /></label>
             <label>Diameter tolerance (mm)<input name="tolerance_mm" type="number" min="0" step="0.01" defaultValue={duplicateSource.data?.tolerance_mm ?? ''} /></label>
             <label>Density (g/cm³)<input name="density_g_cm3" type="number" min="0.01" step="0.01" defaultValue={duplicateSource.data?.density_g_cm3 ?? '1.24'} required /></label>
             <label>Nominal net mass (g)<input name="nominal_net_mass_g" type="number" min="1" step="1" defaultValue={duplicateSource.data?.nominal_net_mass_g ?? '1000'} required /></label>

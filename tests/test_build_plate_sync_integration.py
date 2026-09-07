@@ -1,7 +1,8 @@
 """PostgreSQL-backed build-plate synchronization tests."""
 
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from decimal import Decimal
+from types import SimpleNamespace
 
 import pytest
 from sqlalchemy import func, select
@@ -9,6 +10,7 @@ from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 from testcontainers.community.postgres import PostgresContainer
 
 from filament_manager.api.errors import ApiError
+from filament_manager.api.routes import plates as plate_routes
 from filament_manager.api.routes.plates import _require_idle_plate_context
 from filament_manager.clients.moonraker import MoonrakerBedMeshState, MoonrakerClient, MoonrakerError
 from filament_manager.config import Settings
@@ -258,13 +260,53 @@ async def test_sync_creates_preserves_marks_missing_and_tracks_active(
             assert active_job is not None
             active_job.status = PrintJobStatus.IN_PROGRESS
             await session.flush()
+            monkeypatch.setattr(plate_routes, "get_settings", lambda: settings)
+            live_state = "printing"
+
+            async def live_mesh(_self):
+                if live_state == "unreachable":
+                    raise MoonrakerError("Unavailable")
+                return MoonrakerBedMeshState(
+                    profile_names=("P1", "P2"),
+                    active_profile="P2",
+                    print_state="standby" if live_state == "probing" else live_state,
+                    calibrating=live_state == "probing",
+                )
+
+            monkeypatch.setattr(MoonrakerClient, "bed_mesh_state", live_mesh)
             with pytest.raises(ApiError, match="idle printer"):
                 await _require_idle_plate_context(session, printer.id)
-            active_job.status = PrintJobStatus.FAILED
-            await session.flush()
+            # A stale history row must not block a confirmed physically idle printer.
+            live_state = "standby"
             await _require_idle_plate_context(session, printer.id)
+            assert active_job.status == PrintJobStatus.IN_PROGRESS
+            live_state = "unknown"
+            with pytest.raises(ApiError, match="idle printer"):
+                await _require_idle_plate_context(session, printer.id)
 
             monkeypatch.setattr(dispatcher, "get_settings", lambda: settings)
+            for unavailable_state in ("probing", "unreachable"):
+                live_state = unavailable_state
+                with pytest.raises(ApiError):
+                    await _require_idle_plate_context(session, printer.id)
+            live_reads = []
+
+            async def live_print(_self):
+                live_reads.append(True)
+                return SimpleNamespace(state=live_state)
+
+            monkeypatch.setattr(MoonrakerClient, "print_state", live_print)
+            assert await dispatcher._canonical_print_is_active(session, printer.id)
+            assert not live_reads  # Fresh printing still adds no idle poll.
+            active_job.updated_at = datetime.now(UTC) - timedelta(minutes=5)
+            await session.flush()
+            live_state = "standby"
+            assert not await dispatcher._canonical_print_is_active(session, printer.id)
+            assert active_job.status == PrintJobStatus.IN_PROGRESS
+            live_state = "paused"
+            assert await dispatcher._canonical_print_is_active(session, printer.id)
+            live_state = "unknown"
+            assert await dispatcher._canonical_print_is_active(session, printer.id)
             printer.active_plate_id = selected_surface.build_plate_id
             printer.active_plate_surface_id = selected_surface.id
             calls: list[str] = []

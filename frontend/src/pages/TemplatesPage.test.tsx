@@ -54,7 +54,7 @@ const template = {
   printer_id: 'printer-id',
   nozzle_id: 'nozzle-id',
   nozzle_diameter_mm: '0.4',
-  filament_diameter_mm: '1.75',
+  filament_diameter_mm: '1.75000',
   active: true,
   record_version: 1,
   revisions: [{
@@ -92,6 +92,7 @@ describe('TemplatesPage', () => {
 
     fireEvent.click(await screen.findByRole('button', { name: 'Edit Template PLA' }))
     expect(await screen.findByRole('dialog', { name: 'Edit Template PLA' })).toBeTruthy()
+    expect((screen.getByRole('spinbutton', { name: 'Filament diameter' }) as HTMLInputElement).value).toBe('1.75')
     fireEvent.change(screen.getByLabelText('Build plate temperature (°C)'), { target: { value: '45' } })
     fireEvent.click(screen.getByRole('button', { name: 'Save template' }))
 

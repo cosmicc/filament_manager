@@ -43,7 +43,7 @@ const settings = {
 const template = {
   id: 'template-id', name: 'Template PLA', material_type: 'PLA',
   description: 'Starting settings for ordinary PLA', printer_id: printer.id, nozzle_id: nozzle.id,
-  nozzle_diameter_mm: '0.4', filament_diameter_mm: '1.75', active: true,
+  nozzle_diameter_mm: '0.4', filament_diameter_mm: '1.75000', active: true,
   source_workstation_agent_id: null, source_cura_material_id: null,
   record_version: 2, created_at: '2026-08-11T12:00:00Z', updated_at: '2026-08-11T13:00:00Z',
   revisions: [{
@@ -220,6 +220,7 @@ test('template library is usable at desktop and mobile sizes', async ({ page }) 
   await expect(page.getByRole('button', { name: 'Delete template' })).toHaveCount(0)
   await templateCard.click()
   await expect(page.getByRole('dialog', { name: 'Edit Template PLA' })).toBeVisible()
+  await expect(page.getByRole('spinbutton', { name: 'Filament diameter', exact: true })).toHaveValue('1.75')
   await expect(page.getByRole('spinbutton', { name: /^Filament drying temperature/ })).toHaveValue('65')
   await expect(page.getByRole('combobox', { name: /^Filament drying time/ })).toHaveValue('6-8')
   await expect(page.getByRole('combobox', { name: /^Filament moisture sensitivity/ })).toHaveValue('high-moderate')

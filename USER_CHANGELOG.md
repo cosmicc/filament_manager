@@ -1,5 +1,27 @@
 # User Changelog
 
+## 0.7.4 - 09.07.2026
+
+Testing release.
+
+### Added
+
+- Successful idle loads of exact P-number Klipper meshes update the app-selected build plate side without recording a calibration.
+
+### Changed
+
+- Filament diameter inputs and details use at most two decimal places.
+- Missing and unspecified manufacturers consolidate under Unknown, including archived filaments, without changing print history.
+- Filaments with matching names remain separate, with their original spools and print history preserved.
+- Spoolman filament defaults use the most common positive empty-spool weight for each manufacturer and filament capacity, including archived evidence. Individual spool tare weights remain unchanged; Unknown manufacturers are not pooled.
+
+### Fixed
+
+- Build-plate selection confirms live printer/probe state and saved mesh availability instead of remaining blocked by an old in-progress print record.
+- Stale print records no longer indefinitely prevent idle background printer synchronization; unreachable or unknown printer state remains safely blocked.
+
+
+
 ## 0.7.3 - 09.07.2026
 
 Testing release.

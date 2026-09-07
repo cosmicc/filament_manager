@@ -67,7 +67,7 @@ export default function LocationsPage() {
         </div>
         {spools.isError ? <p className="form-error" role="alert">Spools in this location could not be loaded.</p> : spools.isPending ? <LoadingState label="Loading location spools" /> : !spools.data?.items.length ? <p className="muted">No spools on this page. Choose Previous or another location.</p> : <div className="collection-grid collection-grid--cards">
           {spools.data.items.map((spool) => <button key={spool.id} className="collection-card collection-card--button" onClick={() => navigate(`/spools?spool_id=${encodeURIComponent(spool.id)}`)}>
-            <header className="collection-card__header"><div className="table-identity"><span className="filament-swatch" style={filamentSwatchStyle(spool.color_mode, spool.color_hexes, spool.color_hex ?? '2F80A5')} /><span><strong>{spool.spool_code}</strong><small>{spool.vendor_name ?? 'Unspecified manufacturer'}</small></span></div><StatusPill status={spool.status} /></header>
+            <header className="collection-card__header"><div className="table-identity"><span className="filament-swatch" style={filamentSwatchStyle(spool.color_mode, spool.color_hexes, spool.color_hex ?? '2F80A5')} /><span><strong>{spool.spool_code}</strong><small>{spool.vendor_name ?? 'Unknown'}</small></span></div><StatusPill status={spool.status} /></header>
             <div className="collection-card__body"><h2 title={materialIdentitySummary(spool)}>{materialIdentitySummary(spool)}</h2><p>{grams(spool.remaining_mass_effective_g, 1)} filament remaining</p></div>
             <span className="collection-card__link">Open spool details</span>
           </button>)}

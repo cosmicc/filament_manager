@@ -1,10 +1,10 @@
 # Build plates and automatic heightmaps
 
-Version 0.7.3 keeps the app-selected build plate and its exact saved Klipper mesh aligned. Side A uses `P<number>`; Side B uses `P<number>b`. Select the side that is physically installed—software cannot detect a physical plate swap.
+Version 0.7.4 keeps the app-selected build plate and its exact saved Klipper mesh aligned. Side A uses `P<number>`; Side B uses `P<number>b`. Select the side that is physically installed—software cannot detect a physical plate swap.
 
 ## Upgrade the printer integration
 
-Back up the canonical database and current printer configuration. While the printer is idle, replace the file named by its active include with [the complete macro reference](../integrations/klipper/filament-manager-macros.cfg). Keep `[bed_mesh]`, `[save_variables]`, and the existing integration prerequisites. The reference now wraps native `BED_MESH_CALIBRATE` and `BED_MESH_PROFILE`; remove or reconcile any other wrappers of those two commands before including it. Preserve the native bed-mesh module and the existing hardware load/unload routines. Run `FIRMWARE_RESTART` only when no print is active and verify that `FILAMENT_MANAGER_SPOOL_STATE` reports `0.7.3`.
+Back up the canonical database and current printer configuration. While the printer is idle, replace the file named by its active include with [the complete macro reference](../integrations/klipper/filament-manager-macros.cfg). Keep `[bed_mesh]`, `[save_variables]`, and the existing integration prerequisites. The reference now wraps native `BED_MESH_CALIBRATE` and `BED_MESH_PROFILE`; remove or reconcile any other wrappers of those two commands before including it. Preserve the native bed-mesh module and the existing hardware load/unload routines. Run `FIRMWARE_RESTART` only when no print is active and verify that `FILAMENT_MANAGER_SPOOL_STATE` reports `0.7.4`.
 
 Your startup block can remain unchanged:
 
@@ -22,7 +22,13 @@ The final command now loads the persisted selected side without prompting. Light
 
 If the app is offline, Klipper uses its locally persisted selection. When connected, the app repairs stale loaded state while idle. An empty or missing mesh does not erase the app selection or select another side. Startup reports the missing mesh; managed print preflight refuses to proceed until the selected side has an available mesh. No synchronization switches a mesh during printing, pause, or probing.
 
-Open the optional Fluidd chooser with `SELECT_BUILD_PLATE CHOOSE=1`, or choose an exact side with `SELECT_BUILD_PLATE PLATE=P4b`. A direct native `BED_MESH_PROFILE LOAD` is not a physical selection and may be corrected by idle reconciliation.
+Open the optional Fluidd chooser with `SELECT_BUILD_PLATE CHOOSE=1`, or choose an exact side with `SELECT_BUILD_PLATE PLATE=P4b`. A successful native `BED_MESH_PROFILE LOAD=P4b` while idle also records that exact side as a manual selection. Non-P-number profiles never become plate identities, and loads never count as calibration. App-driven and startup restoration do not produce manual-selection receipts.
+
+## Selection troubleshooting
+
+If selecting a plate reports `printer_busy` despite an idle printer, 0.7.4 confirms live print/probe state instead of trusting a retained in-progress history row. Unknown or unreachable state still blocks selection safely. The worker checks stale rows before resuming idle synchronization, without rewriting print history.
+
+The message **selected plate mesh unavailable** means the persisted side is unset or its exact saved mesh is missing. After upgrading the app and included macros, choose the physically installed side in the app, or use `SELECT_BUILD_PLATE CHOOSE=1` while idle. Confirm that the matching saved `P<number>`/`P<number>b` mesh exists; save a newly calibrated mesh with the normal `SAVE_CONFIG` workflow. Do not bypass the missing-mesh print gate.
 
 ## Calibration and activity dates
 

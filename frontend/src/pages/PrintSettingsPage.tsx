@@ -22,7 +22,7 @@ export default function PrintSettingsPage() {
   const [comparisonProfileId, setComparisonProfileId] = useState<string | null>(null)
   const filamentName = (id: string) => {
     const item = filaments.data?.find((value) => value.id === id)
-    return item ? `${item.vendor_name ?? 'Unspecified vendor'} · ${materialIdentitySummary(item)}` : 'Unknown filament'
+    return item ? `${item.vendor_name ?? 'Unknown'} · ${materialIdentitySummary(item)}` : 'Unknown filament'
   }
   const printerName = (id: string) => printers.data?.find((value) => value.id === id)?.name ?? 'Unknown printer'
 

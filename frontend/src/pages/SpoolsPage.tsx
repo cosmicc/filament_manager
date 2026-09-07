@@ -134,7 +134,7 @@ function WeighModal({ spool, onClose }: { spool: Spool; onClose: () => void }) {
           <div>
             <strong>{materialIdentitySummary(spool)}</strong>
             <span>
-              {spool.vendor_name ?? "Unspecified vendor"} · expected{" "}
+              {spool.vendor_name ?? "Unknown"} · expected{" "}
               {grams(spool.remaining_mass_expected_g)}
             </span>
           </div>
@@ -955,7 +955,7 @@ export default function SpoolsPage() {
                     <div>
                       <dt>Filament</dt>
                       <dd>
-                        {selected.vendor_name ?? "Unspecified vendor"} ·{" "}
+                        {selected.vendor_name ?? "Unknown"} ·{" "}
                         {materialIdentitySummary(selected)}
                       </dd>
                     </div>

@@ -156,3 +156,23 @@ def test_adaptive_mesh_is_not_saved_as_a_full_plate_calibration() -> None:
     assert "_FILAMENT_MANAGER_NATIVE_BED_MESH_CALIBRATE ADAPTIVE=1" in result
     assert "VARIABLE=capture_target VALUE=\"'P4b'\"" not in result
     assert result.index("BED_MESH_CLEAR") < result.index("UPDATE_DELAYED_GCODE")
+
+
+def test_native_load_receipt_is_after_success_and_only_for_idle_exact_sides() -> None:
+    """Native loads update selection, not calibration; app/startup loads bypass this receipt."""
+
+    printer = printer_snapshot()
+    result = render("BED_MESH_PROFILE", printer, LOAD="P4b")
+    assert result.index("_FILAMENT_MANAGER_NATIVE_BED_MESH_PROFILE") < result.index(
+        "_FILAMENT_MANAGER_LOADED_PLATE"
+    )
+    receipt = render("_FILAMENT_MANAGER_LOADED_PLATE", printer)
+    assert "PLATE=P4b SOURCE=manual" in receipt
+    assert "mesh_calibrations" not in receipt
+    for state in ("printing", "paused", "unknown"):
+        printer["print_stats"]["state"] = state
+        assert "SAVE_VARIABLE" not in render("_FILAMENT_MANAGER_LOADED_PLATE", printer)
+    printer["print_stats"]["state"] = "standby"
+    printer["bed_mesh"]["profile_name"] = "custom"
+    assert "SAVE_VARIABLE" not in render("_FILAMENT_MANAGER_LOADED_PLATE", printer)
+    assert "_FILAMENT_MANAGER_NATIVE_BED_MESH_PROFILE LOAD=P4b" in render("SELECT_BUILD_PLATE", printer)

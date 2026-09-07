@@ -10,6 +10,14 @@ const api = vi.hoisted(() => vi.fn())
 vi.mock('../api/client', () => ({ apiFetch: api }))
 afterEach(() => { cleanup(); api.mockReset() })
 
+it('selects the canonical Unknown manufacturer once without an unspecified option', async () => {
+  api.mockResolvedValue([{ id: 'unknown-id', name: 'Unknown' }, { id: 'maker', name: 'Maker' }])
+  render(<QueryClientProvider client={new QueryClient()}><InventoryChoiceSelect kind="manufacturer" /></QueryClientProvider>)
+  const select = screen.getByRole('combobox') as HTMLSelectElement
+  await waitFor(() => expect(select.value).toBe('unknown-id'))
+  expect(Array.from(select.options).map((option) => option.text)).toEqual(['Unknown', 'Maker', 'New Manufacturer'])
+})
+
 it('closes only the top creation dialog and retains the parent draft and focus', async () => {
   api.mockResolvedValue([])
   function Editor() {

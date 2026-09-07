@@ -9,11 +9,12 @@ import pytest
 from alembic import command
 from alembic.config import Config
 from sqlalchemy import BigInteger, create_engine, inspect, text
+from sqlalchemy import select as sa_select
 from sqlalchemy.orm import Session
 from testcontainers.community.postgres import PostgresContainer
 
 from filament_manager.config import DatabaseConfig, get_settings
-from filament_manager.models.enums import ProfileStatus
+from filament_manager.models.enums import PrintJobStatus, ProfileStatus
 from filament_manager.models.inventory import (
     FilamentProduct,
     MaterialProfile,
@@ -21,6 +22,122 @@ from filament_manager.models.inventory import (
     Spool,
 )
 from filament_manager.startup import upgrade_database
+
+
+@pytest.mark.integration
+@pytest.mark.parametrize("collision", [False, True])
+def test_unknown_manufacturer_upgrade_preserves_archived_filaments_and_snapshots(
+    monkeypatch: pytest.MonkeyPatch,
+    collision: bool,
+) -> None:
+    """Consolidate only placeholder brands, retaining physical and historical identity evidence."""
+
+    from filament_manager.models.inventory import Printer, Vendor
+    from filament_manager.models.printing import PrintJob
+
+    with PostgresContainer("postgres:17-alpine", driver="psycopg") as postgres:
+        url = postgres.get_connection_url()
+        monkeypatch.setenv("FILAMENT_MANAGER_DATABASE_URL", url)
+        get_settings.cache_clear()
+        config = Config("alembic.ini")
+        command.upgrade(config, "b6c7d8e9f012")
+        engine = create_engine(url)
+        with Session(engine) as session:
+            old, known = Vendor(name="Unspecified manufacturer"), Vendor(name="Maker")
+            session.add_all([old, known])
+            session.flush()
+            products = [
+                FilamentProduct(
+                    vendor_id=vendor_id,
+                    product_name="Duplicate" if collision else f"Legacy {index}",
+                    material_type="PLA",
+                    color_name="Black",
+                    color_hex="000000",
+                    diameter_mm=Decimal("1.75000"),
+                    density_g_cm3=Decimal("1.24"),
+                    nominal_net_mass_g=Decimal("1000"),
+                    archived=True,
+                )
+                for index, vendor_id in enumerate((old.id, None, known.id))
+            ]
+            session.add_all(products)
+            printer = Printer(
+                printer_code="test",
+                name="Test",
+                moonraker_base_url="http://test.invalid",
+                nozzle_diameter_mm=Decimal("0.4"),
+            )
+            session.add(printer)
+            session.flush()
+            snapshot = {"vendor_name": "Unspecified manufacturer", "filament_diameter_mm": "1.75000"}
+            spools = [
+                Spool(
+                    spool_code=f"spool-{index}",
+                    filament_product_id=product.id,
+                    nominal_net_mass_g=Decimal("1000"),
+                    tare_mass_g=Decimal("200"),
+                    remaining_mass_expected_g=Decimal("500"),
+                    remaining_mass_effective_g=Decimal("500"),
+                )
+                for index, product in enumerate(products)
+            ]
+            session.add_all(spools)
+            session.flush()
+            jobs = [
+                PrintJob(
+                    printer_id=printer.id,
+                    spool_id=spool.id,
+                    filament_product_id=spool.filament_product_id,
+                    filename="old.gcode",
+                    status=PrintJobStatus.COMPLETED,
+                    print_settings_snapshot=snapshot,
+                )
+                for spool in spools
+            ]
+            session.add_all(jobs)
+            session.commit()
+            ids, known_id = [p.id for p in products], known.id
+            links = [
+                (job.id, spool.id, spool.filament_product_id) for job, spool in zip(jobs, spools, strict=True)
+            ]
+        command.upgrade(config, "head")
+        command.check(config)
+        if collision:
+            with pytest.raises(RuntimeError, match="legacy filament identity rule"):
+                command.downgrade(config, "b6c7d8e9f012")
+            with engine.connect() as connection:
+                assert connection.scalar(text("SELECT version_num FROM alembic_version")) == "c7d8e9f012a3"
+        else:
+            command.downgrade(config, "b6c7d8e9f012")
+            assert "uq_filament_product_identity" in {
+                item["name"] for item in inspect(engine).get_unique_constraints("filament_products")
+            }
+            command.upgrade(config, "head")
+        with Session(engine) as session:
+            unknown_id = session.scalar(sa_select(Vendor.id).where(Vendor.name == "Unknown"))
+            assert unknown_id is not None
+            assert [session.get(FilamentProduct, identifier).vendor_id for identifier in ids] == [
+                unknown_id,
+                unknown_id,
+                known_id,
+            ]
+            for job_id, spool_id, product_id in links:
+                job = session.get(PrintJob, job_id)
+                spool = session.get(Spool, spool_id)
+                assert job.print_settings_snapshot == snapshot
+                assert (job.spool_id, job.filament_product_id) == (spool_id, product_id)
+                assert spool.filament_product_id == product_id
+                assert spool.tare_mass_g == Decimal("200")
+                assert spool.remaining_mass_effective_g == Decimal("500")
+                product = session.get(FilamentProduct, product_id)
+                assert product.archived
+                expected_name = "Duplicate" if collision else f"Legacy {ids.index(product_id)}"
+                assert product.product_name == expected_name
+            assert (
+                session.scalar(sa_select(Vendor.id).where(Vendor.name == "Unspecified manufacturer")) is None
+            )
+        engine.dispose()
+        get_settings.cache_clear()
 
 
 @pytest.mark.integration
@@ -177,7 +294,7 @@ def test_choice_cleanup_retains_archived_usage(monkeypatch: pytest.MonkeyPatch) 
                 text("SELECT filler, finish, archived, record_version FROM filament_products WHERE id=:id"),
                 {"id": product_id},
             ).one()
-            assert tuple(row) == ("Glass", "Standard", True, 2)
+            assert tuple(row) == ("Glass", "Standard", True, 3)
             assert set(connection.scalars(text("SELECT name FROM filament_colors"))) == {"Copper"}
             assert set(connection.execute(text("SELECT kind, name FROM filament_attribute_choices"))) == {
                 ("filler", "Glass"),
@@ -205,7 +322,7 @@ def test_choice_cleanup_retains_archived_usage(monkeypatch: pytest.MonkeyPatch) 
                 connection.scalar(
                     text("SELECT record_version FROM filament_products WHERE id=:id"), {"id": product_id}
                 )
-                == 2
+                == 3
             )
         engine.dispose()
         get_settings.cache_clear()
@@ -279,13 +396,13 @@ def test_modifier_catalog_backfills_only_blanks(monkeypatch: pytest.MonkeyPatch)
             assert (rows[blank_id].filler, rows[blank_id].finish, rows[blank_id].record_version) == (
                 "None",
                 "Standard",
-                2,
+                3,
             )
             assert (
                 rows[populated_id].filler,
                 rows[populated_id].finish,
                 rows[populated_id].record_version,
-            ) == ("Carbon Fiber", "Matte", 1)
+            ) == ("Carbon Fiber", "Matte", 2)
             assert set(connection.execute(text("SELECT kind, name FROM filament_attribute_choices"))) == {
                 ("filler", "None"),
                 ("finish", "Standard"),
@@ -628,7 +745,7 @@ def test_previous_schema_automatically_upgrades_to_metadata_head(
 
         upgrade_database(DatabaseConfig(url=database_url))
         with engine.connect() as connection:
-            assert connection.scalar(text("SELECT version_num FROM alembic_version")) == "b6c7d8e9f012"
+            assert connection.scalar(text("SELECT version_num FROM alembic_version")) == "c7d8e9f012a3"
             assert (
                 connection.scalar(
                     text(

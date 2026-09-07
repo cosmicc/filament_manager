@@ -25,6 +25,7 @@ from filament_manager.models.inventory import (
     Nozzle,
     Printer,
     Spool,
+    Vendor,
 )
 from filament_manager.models.operations import OutboxJob
 from filament_manager.services import events
@@ -130,6 +131,7 @@ async def test_real_spoolman_names_and_metadata_preserve_usage(monkeypatch: pyte
             await client.ensure_managed_fields()
             async with factory() as session:
                 product = FilamentProduct(
+                    vendor=Vendor(name="Test manufacturer"),
                     material_type="PLA",
                     color_name="Blue",
                     filler="Standard",
@@ -230,7 +232,7 @@ async def test_real_spoolman_names_and_metadata_preserve_usage(monkeypatch: pyte
                 refreshed = await client.get_spool(remote_id)
                 # (24.50 + 15.00) / (1000 + 500) * 750, without an intermediate rounding.
                 assert refreshed["filament"]["price"] == 19.75
-                assert refreshed["filament"]["spool_weight"] == 180
+                assert refreshed["filament"].get("spool_weight") is None  # No 750 g packaging evidence.
                 assert refreshed["filament"]["settings_extruder_temp"] == 245
                 assert refreshed["filament"]["settings_bed_temp"] == 0
                 assert refreshed["price"] == 24.5
@@ -255,7 +257,7 @@ async def test_real_spoolman_names_and_metadata_preserve_usage(monkeypatch: pyte
                 await session.commit()
                 refreshed = await client.get_spool(remote_id)
                 assert refreshed["filament"]["price"] == 18.38
-                assert refreshed["filament"]["spool_weight"] == 210
+                assert refreshed["filament"].get("spool_weight") is None
 
                 # Same-diameter rebasing must not resurrect the older installed-nozzle profile.
                 await _add_profile(

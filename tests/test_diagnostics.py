@@ -14,7 +14,7 @@ from filament_manager.services.diagnostics import (
 def test_expected_schema_matches_current_migration_head() -> None:
     """Diagnostics must advance whenever the single Alembic head advances."""
 
-    assert EXPECTED_SCHEMA_VERSION == "b6c7d8e9f012"
+    assert EXPECTED_SCHEMA_VERSION == "c7d8e9f012a3"
 
 
 def test_error_details_remove_database_and_external_response_content() -> None:

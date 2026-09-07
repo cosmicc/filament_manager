@@ -53,13 +53,16 @@ export function InventoryChoiceSelect({ kind, defaultValue, ...props }: Omit<Sel
     },
   })
   const options = new Map<string, string>([
-    [fallback, kind === 'manufacturer' ? 'Unspecified manufacturer' : kind === 'location' ? 'Unassigned' : fallback],
+    [fallback, kind === 'manufacturer' ? 'Unknown' : kind === 'location' ? 'Unassigned' : fallback],
     ...(choices.data ?? []).map((item): [string, string] => [kind === 'manufacturer' ? item.id! : item.name, item.name]),
     ...added.map((item): [string, string] => [item.value, item.label]),
   ])
-  if (!options.has(selected)) options.set(selected, selected)
+  const unknownManufacturer = kind === 'manufacturer' ? choices.data?.find((item) => item.name === 'Unknown') : undefined
+  if (unknownManufacturer?.id) options.delete(fallback)
+  const effectiveSelected = selected || unknownManufacturer?.id || fallback
+  if (!options.has(effectiveSelected)) options.set(effectiveSelected, effectiveSelected)
   return <>
-    <NewItemSelect aria-label={label} {...props} value={selected} onChange={(event) => setSelected(event.target.value)} itemLabel={label}
+    <NewItemSelect aria-label={label} {...props} value={effectiveSelected} onChange={(event) => setSelected(event.target.value)} itemLabel={label}
       options={Array.from(options, ([value, name]) => ({ value, label: name }))}
       onCreate={() => { create.reset(); setCreating(true) }} />
     {choices.error ? <small className="form-error" role="alert">Unable to load {label.toLowerCase()} choices. Your current selection is preserved.</small> : null}

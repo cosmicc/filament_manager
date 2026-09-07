@@ -1,7 +1,11 @@
 import { describe, expect, it } from 'vitest'
-import { costPerGram, currencyAmount, dateTime, grams, percent, titleCase } from './format'
+import { costPerGram, currencyAmount, dateTime, grams, percent, preserveUnchangedNumber, titleCase } from './format'
 
 describe('presentation formatting', () => {
+  it('retains precise filament diameter unless its displayed value changes', () => {
+    expect(preserveUnchangedNumber('1.75', '1.75400', 2)).toBe('1.75400')
+    expect(preserveUnchangedNumber('2.85', '1.75400', 2)).toBe('2.85')
+  })
   it('formats mass and percentage values without changing source data', () => {
     expect(grams('812.400')).toBe('812 g')
     expect(grams('812.400', 1)).toBe('812.4 g')

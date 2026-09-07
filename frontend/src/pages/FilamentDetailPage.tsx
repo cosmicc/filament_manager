@@ -18,7 +18,7 @@ import { PageHeader } from '../components/PageHeader'
 import { useAuth } from '../context/AuthContext'
 import { Link, useRouter } from '../context/RouterContext'
 import { filamentSwatchStyle } from '../lib/colors'
-import { compactNumber, inputNumber } from '../lib/format'
+import { compactNumber, inputNumber, preserveUnchangedNumber } from '../lib/format'
 import { materialIdentitySummary, materialModifierSummary } from '../lib/materialIdentity'
 
 function optional(data: FormData, key: string) {
@@ -117,7 +117,7 @@ export default function FilamentDetailPage() {
           // Do not send Rainbow's fixed six-sample response palette through
           // the one-to-three user-defined multicolor request contract.
           color_hexes: colorMode === 'rainbow' ? [] : colorHexes,
-          diameter_mm: String(data.get('diameter_mm')),
+          diameter_mm: preserveUnchangedNumber(String(data.get('diameter_mm')), filament.data.diameter_mm, 2),
           tolerance_mm: optional(data, 'tolerance_mm'),
           density_g_cm3: String(data.get('density_g_cm3')),
           nominal_net_mass_g: String(data.get('nominal_net_mass_g')),
@@ -231,11 +231,11 @@ export default function FilamentDetailPage() {
   }
 
   return <div className="filament-detail-page">
-    <PageHeader eyebrow={item.vendor_name ?? 'Unspecified manufacturer'} title={materialIdentitySummary(item)} description="Manage the physical filament identity separately from its printer/nozzle-specific print settings." actions={<><Link className="button" to="/filaments"><ArrowLeft size={16} /> All filaments</Link>{canEdit ? <><Link className="button" to={`/filaments/duplicate/${item.id}`}><Copy size={16} /> Duplicate</Link>{!item.archived ? <Link className="button button--primary" to={`/spools?create=1&filament_id=${encodeURIComponent(item.id)}`}><Plus size={16} /> Create spool from filament</Link> : null}</> : null}</>} />
+    <PageHeader eyebrow={item.vendor_name ?? 'Unknown'} title={materialIdentitySummary(item)} description="Manage the physical filament identity separately from its printer/nozzle-specific print settings." actions={<><Link className="button" to="/filaments"><ArrowLeft size={16} /> All filaments</Link>{canEdit ? <><Link className="button" to={`/filaments/duplicate/${item.id}`}><Copy size={16} /> Duplicate</Link>{!item.archived ? <Link className="button button--primary" to={`/spools?create=1&filament_id=${encodeURIComponent(item.id)}`}><Plus size={16} /> Create spool from filament</Link> : null}</> : null}</>} />
     {message && <div className="deployment-note" role="status">{message}</div>}
     <section className="card product-editor">
       <header className="card__header"><div><p className="eyebrow">Canonical filament</p><h2>Product details</h2></div><div className="card-header-actions"><span className="filament-swatch" style={filamentSwatchStyle(item.color_mode, item.color_hexes, item.color_hex ?? '808080')} />{canEdit ? <><button className="button" onClick={() => { update.reset(); setEditingProduct(true) }}><Pencil size={16} /> Edit product</button><button className="button button--danger" disabled={remove.isPending} onClick={() => { if (window.confirm('Delete this filament? It will be archived instead if retained history prevents safe deletion.')) remove.mutate() }}><Trash2 size={16} /> {remove.isPending ? 'Removing…' : 'Delete or archive'}</button></> : null}</div></header>
-      <dl className="definition-list"><div><dt>Manufacturer</dt><dd>{item.vendor_name ?? 'Unspecified manufacturer'}</dd></div><div><dt>Material</dt><dd>{item.material_type}{itemModifiers ? ` · ${itemModifiers}` : ''}</dd></div><div><dt>Color</dt><dd>{item.color_name} · {item.color_mode === 'rainbow' ? 'Rainbow' : item.color_hexes.map((color) => `#${color}`).join(' / ')}</dd></div><div><dt>Diameter</dt><dd>{compactNumber(item.diameter_mm, 2)} mm{item.tolerance_mm ? ` ± ${compactNumber(item.tolerance_mm, 2)} mm` : ''}</dd></div><div><dt>Density</dt><dd>{compactNumber(item.density_g_cm3, 2)} g/cm³</dd></div><div><dt>Nominal net mass</dt><dd>{compactNumber(item.nominal_net_mass_g, 0)} g</dd></div><div><dt>Notes</dt><dd>{item.notes ?? 'No notes'}</dd></div></dl>
+      <dl className="definition-list"><div><dt>Manufacturer</dt><dd>{item.vendor_name ?? 'Unknown'}</dd></div><div><dt>Material</dt><dd>{item.material_type}{itemModifiers ? ` · ${itemModifiers}` : ''}</dd></div><div><dt>Color</dt><dd>{item.color_name} · {item.color_mode === 'rainbow' ? 'Rainbow' : item.color_hexes.map((color) => `#${color}`).join(' / ')}</dd></div><div><dt>Diameter</dt><dd>{compactNumber(item.diameter_mm, 2)} mm{item.tolerance_mm ? ` ± ${compactNumber(item.tolerance_mm, 2)} mm` : ''}</dd></div><div><dt>Density</dt><dd>{compactNumber(item.density_g_cm3, 2)} g/cm³</dd></div><div><dt>Nominal net mass</dt><dd>{compactNumber(item.nominal_net_mass_g, 0)} g</dd></div><div><dt>Notes</dt><dd>{item.notes ?? 'No notes'}</dd></div></dl>
       <dl className="definition-list"><DryingTemperatureDetails filamentId={item.id} /></dl>
     </section>
 

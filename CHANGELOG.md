@@ -1,5 +1,31 @@
 # Changelog
 
+## 0.7.4 - 09.07.2026
+
+Testing release.
+
+### Added
+
+- Successful idle loads of exact P-number Klipper meshes update the app-selected build plate side without recording a calibration.
+
+### Changed
+
+- Filament diameter inputs and details use at most two decimal places.
+- Missing and unspecified manufacturers consolidate under Unknown, including archived filaments, without changing print history.
+- Spoolman filament defaults use the most common positive empty-spool weight for each manufacturer and filament capacity, including archived evidence. Individual spool tare weights remain unchanged; Unknown manufacturers are not pooled.
+
+### Fixed
+
+- Build-plate selection confirms live printer/probe state and saved mesh availability instead of remaining blocked by an old in-progress print record.
+- Stale print records no longer indefinitely prevent idle background printer synchronization; unreachable or unknown printer state remains safely blocked.
+
+Upgrade note: migration `c7d8e9f012a3` audits manufacturer consolidation and queues Spoolman convergence. Replace the included 0.7.4 Klipper macro file and run `FIRMWARE_RESTART` only while idle. No deployment or live-printer test has been performed.
+
+Migration safety: the obsolete filament-name uniqueness constraint is replaced with a nonunique lookup index, preserving independent duplicate filaments and all spool/history links during manufacturer consolidation. A downgrade refuses atomically if duplicates prevent restoring the old rule; use a pre-upgrade backup instead of deleting or merging records. Manufacturer normalization is retained on a compatible downgrade.
+
+Local validation: 257 backend tests, 96 frontend tests, 46 workstation-agent tests, 18 Playwright scenarios, Ruff, mypy, and the frontend build passed. The full backend suite was rerun after removing legacy uniqueness; all seven migration tests passed separately, including duplicate preservation, schema parity, downgrade refusal, and safe round-trip coverage. Live printer behavior remains unverified.
+
+
 ## 0.7.3 - 09.07.2026
 
 Testing release.

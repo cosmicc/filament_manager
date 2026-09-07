@@ -16,6 +16,7 @@ from filament_manager.models.inventory import (
     MaterialTemplateRevision,
     Printer,
     Spool,
+    Vendor,
 )
 from filament_manager.services.events import add_outbox_job
 
@@ -50,6 +51,24 @@ async def queue_filament_default_projection(
         aggregate_id=product.id,
         aggregate_version=product.record_version,
         payload={"filament_id": str(product.id)},
+    )
+
+
+def queue_manufacturer_tare_projection(session: AsyncSession, *, source_key: str) -> None:
+    """Converge dependent products after shared manufacturer evidence changes.
+
+    The existing full sweep batches lookups and imports usage before metadata;
+    it never replaces the exact price or tare saved on a physical spool.
+    """
+
+    add_outbox_job(
+        session,
+        job_type="spoolman.reconcile.full",
+        idempotency_key=f"{source_key}:manufacturer-tares",
+        aggregate_type="system",
+        aggregate_id=UUID(int=0),
+        aggregate_version=1,
+        payload={},
     )
 
 
@@ -116,7 +135,7 @@ async def spoolman_filament_defaults(
     *,
     printer_code: str | None,
 ) -> dict[UUID, dict[str, float | int | None]]:
-    """Batch-load exact costs, latest tare, and installed-nozzle temperatures.
+    """Batch-load exact costs, modal manufacturer tares, and installed-nozzle temperatures.
 
     Missing/ambiguous scope and cost evidence explicitly clear remote defaults.
     No printer I/O is needed: nozzle and settings state come from PostgreSQL.
@@ -126,19 +145,34 @@ async def spoolman_filament_defaults(
     if not product_ids:
         return {}
     costs = await product_cost_bases(session, product_ids)
-    newest_spools = await session.execute(
-        select(Spool.filament_product_id, Spool.tare_mass_g)
-        .where(Spool.filament_product_id.in_(product_ids), Spool.archived.is_(False))
-        .distinct(Spool.filament_product_id)
-        .order_by(Spool.filament_product_id, Spool.created_at.desc(), Spool.id.desc())
+    # Positive measured/entered tares are evidence even after a spool is archived.
+    # Capacity is essential: a manufacturer's 250 g and 3 kg packaging differ.
+    frequency = func.count(Spool.id)
+    rows = await session.execute(
+        select(FilamentProduct.vendor_id, Spool.nominal_net_mass_g, Spool.tare_mass_g, frequency)
+        .join(Spool, Spool.filament_product_id == FilamentProduct.id)
+        .join(Vendor, Vendor.id == FilamentProduct.vendor_id)
+        .where(
+            FilamentProduct.vendor_id.in_({product.vendor_id for product in products if product.vendor_id}),
+            func.lower(func.trim(Vendor.name)).not_in(
+                ("unknown", "unspecified manufacturer", "unspecified vendor", "unspecified")
+            ),
+            Spool.tare_mass_g > 0,
+        )
+        .group_by(FilamentProduct.vendor_id, Spool.nominal_net_mass_g, Spool.tare_mass_g)
+        .order_by(frequency.desc(), Spool.tare_mass_g)
     )
-    tares = {row.filament_product_id: row.tare_mass_g for row in newest_spools}
+    tares: dict[tuple[UUID | None, Decimal], Decimal] = {}
+    for vendor_id, capacity, tare, _frequency in rows:
+        tares.setdefault((vendor_id, capacity), tare)
     result: dict[UUID, dict[str, float | int | None]] = {
         product.id: {
             "price": float(costs[product.id].price_for_weight(product.nominal_net_mass_g))
             if product.id in costs
             else None,
-            "spool_weight": float(tares[product.id]) if product.id in tares else None,
+            "spool_weight": float(tares[(product.vendor_id, product.nominal_net_mass_g)])
+            if (product.vendor_id, product.nominal_net_mass_g) in tares
+            else None,
             "settings_extruder_temp": None,
             "settings_bed_temp": None,
         }

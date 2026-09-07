@@ -255,6 +255,14 @@ async def commit_approved_run(
         if not values["Spool ID"]:
             continue
         vendor_name = str(values["Manufacturer"] or "Unknown").strip()
+        if vendor_name.casefold() in {
+            "",
+            "unspecified",
+            "unspecified manufacturer",
+            "unspecified vendor",
+            "unknown",
+        }:
+            vendor_name = "Unknown"
         vendor = vendors.get(vendor_name.casefold())
         if vendor is None:
             vendor = Vendor(

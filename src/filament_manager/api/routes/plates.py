@@ -12,12 +12,11 @@ from PIL import Image, ImageOps, UnidentifiedImageError
 from sqlalchemy import select, text
 from sqlalchemy.orm import selectinload
 
-from filament_manager.clients.moonraker import MoonrakerClient, MoonrakerError
+from filament_manager.clients.moonraker import MoonrakerBedMeshState, MoonrakerClient, MoonrakerError
 from filament_manager.config import get_settings
 from filament_manager.domain.build_plates import BuildPlateDiscoveryError, build_plate_sort_key
-from filament_manager.models.enums import PlateCondition, PlateStatus, PrintJobStatus
+from filament_manager.models.enums import PlateCondition, PlateStatus
 from filament_manager.models.inventory import BuildPlate, BuildPlateSurface, Printer
-from filament_manager.models.printing import PrintJob
 from filament_manager.services.build_plate_sync import BUILD_PLATE_SYNC_LOCK_KEY, synchronize_build_plates
 from filament_manager.services.events import add_audit_event, add_outbox_job
 from filament_manager.services.notifications import build_plate_maintenance_status
@@ -43,21 +42,28 @@ MAX_PLATE_IMAGE_PIXELS = 16_000_000
 MAX_PLATE_IMAGE_SIDE = 1024
 
 
-async def _require_idle_plate_context(session: DatabaseSession, printer_id: UUID) -> None:
+async def _require_idle_plate_context(session: DatabaseSession, printer_id: UUID) -> MoonrakerBedMeshState:
     """Do not change captured physical plate identity while a print is active."""
 
-    active = await session.scalar(
-        select(PrintJob.id)
-        .where(
-            PrintJob.printer_id == printer_id,
-            PrintJob.status == PrintJobStatus.IN_PROGRESS,
-        )
-        .limit(1)
-    )
-    if active is not None:
+    printer_code = await session.scalar(select(Printer.printer_code).where(Printer.id == printer_id))
+    configured = next((item for item in get_settings().moonraker.printers if item.id == printer_code), None)
+    if configured is None:
+        raise ApiError(status.HTTP_409_CONFLICT, "printer_not_configured", "Printer is not configured")
+    try:
+        live = await MoonrakerClient(configured).bed_mesh_state()
+    except MoonrakerError as exc:
+        raise ApiError(
+            status.HTTP_502_BAD_GATEWAY,
+            "printer_state_unavailable",
+            "Cannot confirm that the printer is idle; try again when Moonraker is available",
+        ) from exc
+    # A retained in-progress history row is not physical motion evidence after
+    # a restart. Do not rewrite that history to permit an inventory selection.
+    if live.calibrating or live.print_state not in {"standby", "complete", "cancelled", "error"}:
         raise ApiError(
             status.HTTP_409_CONFLICT, "printer_busy", "Build plate changes require an idle printer"
         )
+    return live
 
 
 async def _get_plate(session: DatabaseSession, plate_id: UUID) -> BuildPlate:
@@ -260,7 +266,7 @@ async def synchronize_with_moonraker(
     printer_code = await session.scalar(select(Printer.printer_code).where(Printer.id == payload.printer_id))
     if printer_code is None:
         raise ApiError(status.HTTP_404_NOT_FOUND, "unknown_printer", "Printer not found")
-    await _require_idle_plate_context(session, payload.printer_id)
+    mesh_state = await _require_idle_plate_context(session, payload.printer_id)
     await session.rollback()
 
     configured_printer = next(
@@ -274,7 +280,6 @@ async def synchronize_with_moonraker(
             "Printer does not have a matching Moonraker configuration",
         )
     try:
-        mesh_state = await MoonrakerClient(configured_printer).bed_mesh_state()
         result = await synchronize_build_plates(
             session,
             printer_id=payload.printer_id,
@@ -695,18 +700,18 @@ async def select_build_plate(
         )
     if printer is None:
         raise ApiError(status.HTTP_404_NOT_FOUND, "unknown_printer", "Printer not found")
-    await _require_idle_plate_context(session, printer.id)
+    live = await _require_idle_plate_context(session, printer.id)
     if plate.status != PlateStatus.ACTIVE:
         raise ApiError(
             status.HTTP_409_CONFLICT,
             "build_plate_unavailable",
             "Build plate is not active",
         )
-    if surface.mesh_available is False:
+    if surface.surface_code not in live.profile_names:
         raise ApiError(
             status.HTTP_409_CONFLICT,
             "plate_mesh_unavailable",
-            "The matching Moonraker mesh was not found during the latest synchronization",
+            "The matching saved mesh is not available in Klipper",
         )
     if surface.surface_code != surface.klipper_mesh_profile:
         raise ApiError(
@@ -715,6 +720,8 @@ async def select_build_plate(
             "Plate-side mesh mapping is invalid",
         )
 
+    surface.mesh_available = True
+    surface.last_mesh_checked_at = datetime.now(UTC)
     previous_plate_id = printer.active_plate_id
     previous_surface_id = printer.active_plate_surface_id
     if previous_surface_id != surface.id:

@@ -17,6 +17,7 @@ from sqlalchemy.orm import joinedload
 from filament_manager.clients.google_sheets import GoogleSheetsClient
 from filament_manager.clients.moonraker import (
     MoonrakerClient,
+    MoonrakerError,
     MoonrakerPrintState,
     MoonrakerSpoolPreflightState,
 )
@@ -816,14 +817,31 @@ async def _canonical_print_is_active(session: AsyncSession, printer_id: UUID) ->
     """Return whether exact live capture still considers this printer in motion."""
 
     active = await session.scalar(
-        select(PrintJob.id)
+        select(PrintJob.updated_at)
         .where(
             PrintJob.printer_id == printer_id,
             PrintJob.status == PrintJobStatus.IN_PROGRESS,
         )
+        .order_by(PrintJob.updated_at.desc())
         .limit(1)
     )
-    return active is not None
+    if active is None:
+        return False
+    freshness = max(60, get_settings().sync.moonraker_print_interval_seconds * 3)
+    if datetime.now(UTC) - active <= timedelta(seconds=freshness):
+        return True
+    printer = await session.get(Printer, printer_id)
+    configured = next(
+        (item for item in get_settings().moonraker.printers if printer and item.id == printer.printer_code),
+        None,
+    )
+    if configured is None:
+        return True
+    try:
+        live = await MoonrakerClient(configured).print_state()
+    except MoonrakerError:
+        return True
+    return live.state not in {"standby", "complete", "cancelled", "error"}
 
 
 async def _reconcile_moonraker_state(session: AsyncSession, job: OutboxJob) -> None:

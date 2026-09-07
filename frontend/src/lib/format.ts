@@ -69,6 +69,11 @@ export function dateTime(value: string | null | undefined): string {
   return new Intl.DateTimeFormat(undefined, { dateStyle: 'medium', timeStyle: 'short' }).format(new Date(value))
 }
 
+/** Keep stored precision when an operator saves an unchanged rounded control. */
+export function preserveUnchangedNumber(value: string, original: string, precision: number): string {
+  return Number(value) === Number(inputNumber(original, precision)) ? original : value
+}
+
 export function titleCase(value: string): string {
   return value.replaceAll('_', ' ').replace(/\b\w/g, (character) => character.toUpperCase())
 }

@@ -51,13 +51,17 @@ from filament_manager.models.operations import NfcTag, ProjectionState
 from filament_manager.models.printing import PrintJob, PrintMaterialSegment
 from filament_manager.models.workstations import CuraDeployment
 from filament_manager.services.events import add_audit_event, add_outbox_job
-from filament_manager.services.filament_defaults import queue_filament_default_projection
+from filament_manager.services.filament_defaults import (
+    queue_filament_default_projection,
+    queue_manufacturer_tare_projection,
+)
 from filament_manager.services.inventory_choices import (
     choice_key,
     lock_inventory_choices,
     normalize_modifier,
     prune_inventory_choices,
 )
+from filament_manager.services.manufacturers import unknown_manufacturer_id
 from filament_manager.services.material_settings import (
     create_published_profile_snapshot,
     queue_managed_cura_library,
@@ -519,7 +523,10 @@ async def create_vendor(
     """Create a canonical filament manufacturer."""
 
     # Serialize normalized names, including Unicode case-fold equivalents.
-    normalized = normalize("NFKC", payload.name).casefold()
+    normalized = normalize("NFKC", payload.name).strip().casefold()
+    if normalized in {"unspecified", "unspecified manufacturer", "unspecified vendor"}:
+        payload = payload.model_copy(update={"name": "Unknown"})
+        normalized = "unknown"
     await session.execute(
         text("SELECT pg_advisory_xact_lock(hashtextextended(:key, 0))"), {"key": f"manufacturer:{normalized}"}
     )
@@ -832,6 +839,7 @@ async def create_filament(
             "color_hexes",
         }
     )
+    product_values["vendor_id"] = payload.vendor_id or await unknown_manufacturer_id(session)
     product = FilamentProduct(
         **product_values,
         material_type=payload.material_type.strip(),
@@ -1031,7 +1039,7 @@ async def update_filament(
     product.color_mode = color.color_mode
     product.color_hexes = color.color_hexes
     if "vendor_id" in payload.model_fields_set:
-        product.vendor_id = payload.vendor_id
+        product.vendor_id = payload.vendor_id or await unknown_manufacturer_id(session)
     for field in (
         "material_type",
         "diameter_mm",
@@ -1145,6 +1153,7 @@ async def update_filament(
         payload={"filament_product_id": str(product.id)},
     )
     await _queue_spool_identity_projection(session, product)
+    queue_manufacturer_tare_projection(session, source_key=f"filament:{product.id}:v{product.record_version}")
     await queue_managed_cura_library(session, requested_by=operator.id)
     # Build and validate the response inside the transaction so a serialization
     # failure rolls the edit back instead of leaving the catalog unreadable.
@@ -1291,7 +1300,8 @@ async def spool_tare_suggestions(
     product = await session.get(FilamentProduct, filament_product_id)
     if product is None:
         raise ApiError(status.HTTP_404_NOT_FOUND, "not_found", "Filament not found")
-    if product.vendor_id is None:
+    vendor = await session.get(Vendor, product.vendor_id) if product.vendor_id else None
+    if vendor is None or vendor.name.strip().casefold() == "unknown":
         return []
     count = func.count(Spool.id)
     rows = await session.execute(
@@ -1515,6 +1525,7 @@ async def create_spool(
     await _remember_spool_location(session, spool.location)
     # Finish response queries and validation before committing so a failed
     # response cannot leave a saved spool that the operator may try to recreate.
+    queue_manufacturer_tare_projection(session, source_key=f"spool:{spool.id}:v{spool.record_version}")
     response = await spool_response_with_statistics(session, spool)
     await session.commit()
     return response
@@ -1768,6 +1779,7 @@ async def update_spool(
             aggregate_version=spool.record_version,
             payload={"spool_id": str(spool.id)},
         )
+    queue_manufacturer_tare_projection(session, source_key=f"spool:{spool.id}:v{spool.record_version}")
     response = await spool_response_with_statistics(session, spool)
     await session.commit()
     return response
@@ -1853,6 +1865,7 @@ async def delete_or_archive_spool(
         )
     )
     await session.delete(spool)
+    queue_manufacturer_tare_projection(session, source_key=f"spool:{spool.id}:delete")
     await queue_filament_default_projection(
         session,
         product_id=spool.filament_product_id,

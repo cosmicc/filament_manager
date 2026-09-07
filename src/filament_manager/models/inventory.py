@@ -97,13 +97,13 @@ class FilamentProduct(UUIDPrimaryKeyMixin, TimestampMixin, Base):
 
     __tablename__ = "filament_products"
     __table_args__ = (
-        UniqueConstraint(
+        Index(
+            "ix_filament_product_identity",
             "vendor_id",
             "material_type",
             "product_name",
             "color_name",
             "diameter_mm",
-            name="uq_filament_product_identity",
         ),
         CheckConstraint("diameter_mm > 0", name="diameter_positive"),
         CheckConstraint("density_g_cm3 > 0", name="density_positive"),

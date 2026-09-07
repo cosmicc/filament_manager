@@ -22,7 +22,7 @@ import { Modal } from '../components/Modal'
 import { PageHeader } from '../components/PageHeader'
 import { useAuth } from '../context/AuthContext'
 import { useCollectionView } from '../hooks/useCollectionView'
-import { compactNumber } from '../lib/format'
+import { compactNumber, inputNumber, preserveUnchangedNumber } from '../lib/format'
 
 interface PortableTemplateDocument {
   schema_version: 1
@@ -96,7 +96,7 @@ export default function TemplatesPage() {
           printer_id: String(data.get('printer_id')),
           nozzle_id: String(data.get('nozzle_id')),
           nozzle_diameter_mm: nozzles.data?.find((nozzle) => nozzle.id === data.get('nozzle_id'))?.diameter_mm,
-          filament_diameter_mm: String(data.get('filament_diameter_mm')),
+          filament_diameter_mm: template ? preserveUnchangedNumber(String(data.get('filament_diameter_mm')), template.filament_diameter_mm, 2) : String(data.get('filament_diameter_mm')),
           settings,
         }),
       })
@@ -332,7 +332,7 @@ export default function TemplatesPage() {
             <label>Material type<input name="material_type" list="common-material-types" placeholder="PLA, PEBA, PP…" defaultValue={editSource?.material_type ?? ''} required autoFocus aria-invalid={identityError('material_type').length ? true : undefined} aria-describedby={identityError('material_type').length ? identityErrorId('material_type') : undefined} /><small className="field-help">Cura name: Template + material type; brand: Template.</small>{identityFieldError('material_type')}<datalist id="common-material-types">{['PLA', 'PLA+', 'PETG', 'ASA', 'ABS', 'TPU', 'PEBA', 'PP', 'PCTPE', 'Nylon 645'].map((material) => <option key={material} value={material} />)}</datalist></label>
             <label>Printer<select name="printer_id" value={newPrinterId} onChange={(event) => setNewPrinterId(event.target.value)} required aria-invalid={identityError('printer_id').length ? true : undefined} aria-describedby={identityError('printer_id').length ? identityErrorId('printer_id') : undefined}>{printers.data?.map((printer) => <option key={printer.id} value={printer.id}>{printer.name}</option>)}</select>{identityFieldError('printer_id')}</label>
             <label>Physical nozzle<select name="nozzle_id" value={newNozzleId} onChange={(event) => setNewNozzleId(event.target.value)} required aria-invalid={identityError('nozzle_id').length ? true : undefined} aria-describedby={identityError('nozzle_id').length ? identityErrorId('nozzle_id') : undefined}><option value="" disabled>No nozzle available</option>{nozzles.data?.filter((nozzle) => nozzle.printer_id === newPrinterId).map((nozzle) => <option key={nozzle.id} value={nozzle.id}>{nozzle.nozzle_code} · {compactNumber(nozzle.diameter_mm, 1)} mm · {nozzle.material}</option>)}</select>{identityFieldError('nozzle_id')}</label>
-            <label>Filament diameter<input name="filament_diameter_mm" type="number" min="0.1" step="0.01" defaultValue={editSource?.filament_diameter_mm ?? '1.75'} required aria-invalid={identityError('filament_diameter_mm').length ? true : undefined} aria-describedby={identityError('filament_diameter_mm').length ? identityErrorId('filament_diameter_mm') : undefined} />{identityFieldError('filament_diameter_mm')}</label>
+            <label>Filament diameter<input name="filament_diameter_mm" type="number" min="0.1" step="0.01" defaultValue={inputNumber(editSource?.filament_diameter_mm ?? '1.75', 2)} required aria-invalid={identityError('filament_diameter_mm').length ? true : undefined} aria-describedby={identityError('filament_diameter_mm').length ? identityErrorId('filament_diameter_mm') : undefined} />{identityFieldError('filament_diameter_mm')}</label>
             <label className="form-grid__wide">Description<textarea name="description" rows={2} defaultValue={editSource?.description ?? ''} placeholder="Purpose, behavior, and calibration notes" aria-invalid={identityError('description').length ? true : undefined} aria-describedby={identityError('description').length ? identityErrorId('description') : undefined} />{identityFieldError('description')}</label>
           </div>
         </EditorSection>

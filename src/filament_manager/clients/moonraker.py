@@ -868,6 +868,7 @@ class MoonrakerClient:
                     "bed_mesh": ["profile_name", "profiles"],
                     "gcode_macro FILAMENT_MANAGER_PLATE_STATE": None,
                     "print_stats": ["state"],
+                    "manual_probe": ["is_active"],
                     "toolhead": ["estimated_print_time"],
                 }
             },
@@ -933,7 +934,11 @@ class MoonrakerClient:
             else None,
             selection_origin=origin if origin in ("manual", "app", "restore") else "unknown",
             selection_sequence=sequence,
-            calibrating=plate_state.get("calibrating") == 1,
+            calibrating=plate_state.get("calibrating") == 1
+            or (
+                isinstance(status.get("manual_probe"), dict)
+                and status["manual_probe"].get("is_active") is True
+            ),
             print_state=str(print_stats.get("state", "unknown"))
             if isinstance(print_stats, dict)
             else "unknown",
