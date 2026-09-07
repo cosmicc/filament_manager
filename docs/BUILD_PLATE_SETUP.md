@@ -1,10 +1,12 @@
 # Build plates and automatic heightmaps
 
+The 0.7.5 interlock update blocks ordinary plate, nozzle, and spool changes while printing or paused. Use explicit M600 for an intentional filament replacement. Its native mesh-load and spool execution guards require updating the included macro file and restarting firmware while idle; app preflight restoration remains supported.
+
 Version 0.7.4 keeps the app-selected build plate and its exact saved Klipper mesh aligned. Side A uses `P<number>`; Side B uses `P<number>b`. Select the side that is physically installed—software cannot detect a physical plate swap.
 
 ## Upgrade the printer integration
 
-Back up the canonical database and current printer configuration. While the printer is idle, replace the file named by its active include with [the complete macro reference](../integrations/klipper/filament-manager-macros.cfg). Keep `[bed_mesh]`, `[save_variables]`, and the existing integration prerequisites. The reference now wraps native `BED_MESH_CALIBRATE` and `BED_MESH_PROFILE`; remove or reconcile any other wrappers of those two commands before including it. Preserve the native bed-mesh module and the existing hardware load/unload routines. Run `FIRMWARE_RESTART` only when no print is active and verify that `FILAMENT_MANAGER_SPOOL_STATE` reports `0.7.4`.
+Back up the canonical database and current printer configuration. While the printer is idle, replace the file named by its active include with [the complete macro reference](../integrations/klipper/filament-manager-macros.cfg). Keep `[bed_mesh]`, `[save_variables]`, and the existing integration prerequisites. The reference now wraps native `BED_MESH_CALIBRATE` and `BED_MESH_PROFILE`; remove or reconcile any other wrappers of those two commands before including it. Preserve the native bed-mesh module and the existing hardware load/unload routines. Run `FIRMWARE_RESTART` only when no print is active and verify that `FILAMENT_MANAGER_SPOOL_STATE` reports `0.7.5`.
 
 Your startup block can remain unchanged:
 

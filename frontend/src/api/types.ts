@@ -279,6 +279,7 @@ export interface Vendor {
 }
 
 export interface Printer {
+  configuration_locked?: boolean
   id: string
   printer_code: string
   name: string

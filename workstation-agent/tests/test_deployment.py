@@ -518,21 +518,19 @@ def test_generated_plugin_defers_machine_manager_until_cura_initialization(
     assert managed_global_stack.getProperty("machine_start_gcode", "value") is None
     assert managed_global_stack.getProperty("machine_extruder_count", "value") is None
 
-    plugin_module._record_pending_material_edit(  # type: ignore[attr-defined]
-        FakeStack("Polymaker"), "material_print_temperature", "228"
-    )
-    plugin_module._record_pending_material_edit(  # type: ignore[attr-defined]
-        FakeStack("Polymaker"), "speed_print", "150"
-    )
     pending_path = plugin_file.with_name("managed-material-edits.json")
-    pending = json.loads(pending_path.read_text(encoding="utf-8"))
-    product_values = pending["materials"]["00000000-0000-4000-8000-000000000001"]
-    assert product_values == {"material_print_temperature": "228"}
-    plugin_module._record_pending_material_edit(  # type: ignore[attr-defined]
-        FakeStack("Template"), "speed_print", "150"
+    pending_path.write_text(
+        json.dumps(
+            {
+                "schema_version": 1,
+                "materials": {"00000000-0000-4000-8000-000000000001": {"material_print_temperature": "999"}},
+            }
+        )
     )
-    pending = json.loads(pending_path.read_text(encoding="utf-8"))
-    assert pending["materials"]["00000000-0000-4000-8000-000000000001"]["speed_print"] == "150"
+    assert not hasattr(plugin_module, "_record_pending_material_edit")
+    assert (
+        plugin_module._managed_material_value(FakeStack("Polymaker"), "material_print_temperature") == "220"
+    )
 
 
 def test_apply_is_idempotent_and_rollback_restores_original(tmp_path: Path, monkeypatch: object) -> None:
@@ -553,7 +551,7 @@ def test_apply_is_idempotent_and_rollback_restores_original(tmp_path: Path, monk
     manifest = json.loads((version / ".filament-manager" / "manifest.json").read_text())
     assert manifest["library_checksum"] == "a" * 64
     assert manifest["schema_version"] == 4
-    assert manifest["renderer_revision"] == 20
+    assert manifest["renderer_revision"] == 23
     assert set(manifest["machine_files"]) == {"machine_instances/flsun-v400.global.cfg"}
     managed_machine = machine_path.read_text(encoding="utf-8")
     assert "FILAMENT_MANAGER_START_PRINT" in managed_machine
@@ -617,7 +615,7 @@ def test_apply_is_idempotent_and_rollback_restores_original(tmp_path: Path, monk
     )
     assert upgraded["status"] == "installed"
     upgraded_manifest = json.loads((version / ".filament-manager" / "manifest.json").read_text())
-    assert upgraded_manifest["renderer_revision"] == 20
+    assert upgraded_manifest["renderer_revision"] == 23
 
     assert rollback(deployment_id) == ["Cura 5.10"]
     assert machine_path.read_bytes() == original_machine
@@ -806,6 +804,7 @@ def test_reports_managed_material_edits_by_guid_without_treating_them_as_new(
     assert report["material_guid"] == "00000000-0000-4000-8000-000000000001"
     assert report["content_checksum"]
     assert report["settings"]["material_print_temperature"] == "225"
+    assert report["edited_settings"] == {}
 
 
 def test_reports_and_acknowledges_plugin_managed_material_edits(tmp_path: Path, monkeypatch: object) -> None:
@@ -831,6 +830,11 @@ def test_reports_and_acknowledges_plugin_managed_material_edits(tmp_path: Path, 
             {
                 "schema_version": 1,
                 "materials": {"00000000-0000-4000-8000-000000000001": {"material_print_temperature": "228"}},
+                "edit_ids": {
+                    "00000000-0000-4000-8000-000000000001": {
+                        "material_print_temperature": "00000000-0000-4000-8000-000000000002"
+                    }
+                },
             }
         ),
         encoding="utf-8",
@@ -839,8 +843,10 @@ def test_reports_and_acknowledges_plugin_managed_material_edits(tmp_path: Path, 
     managed = discover_managed_materials([installation])
     receipts = managed_material_edit_receipts([installation])
 
-    assert managed[0].settings["material_print_temperature"] == "228"
+    assert managed[0].settings["material_print_temperature"] == "220"
     assert managed[0].settings["material_flow"] == "98.5"
+    assert managed[0].report()["edited_settings"] == {}
+    assert managed[0].report()["edit_ids"] == {}
     assert installation.installation_id in receipts
     acknowledge_managed_material_edits(receipts)
     assert not receipt_path.exists()

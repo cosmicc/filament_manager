@@ -56,6 +56,8 @@ CURA_MATERIAL_SETTINGS: tuple[CuraMaterialSetting, ...] = (
     _number("speed_infill", "Infill Speed", "mm/s", template_only=True),
     _number("retraction_retract_speed", "Retraction Retract Speed", "mm/s"),
     _number("retraction_amount", "Retraction Distance", "mm"),
+    _number("retraction_extrusion_window", "Minimum Extrusion Distance Window", "mm", editable=False),
+    _number("retraction_count_max", "Maximum Retraction Count", editable=False),
     _number("hole_xy_offset_max_diameter", "Hole Horizontal Expansion Max Diameter", "mm"),
     _number("cool_fan_speed_min", "Regular Fan Speed", "%"),
     _number("support_angle", "Support Overhang Angle", "°"),
@@ -156,6 +158,7 @@ CURA_TEMPLATE_ONLY_SETTING_KEYS = frozenset(
 # still written and enforced in Cura so a quality layer cannot silently disable
 # the operator's required acceleration behavior.
 CURA_ALWAYS_EMITTED_SETTING_VALUES: dict[str, object] = {
+    "retraction_count_max": 100,
     "acceleration_enabled": True,
     "acceleration_travel_enabled": True,
 }
@@ -308,6 +311,7 @@ def cura_settings_for_profile(profile: MaterialProfileValues) -> dict[str, objec
         "speed_ironing": _decimal(getattr(profile, "ironing_speed_mm_s", None)),
         "ironing_line_spacing": _decimal(getattr(profile, "ironing_line_spacing_mm", None)),
         "retraction_amount": _decimal(profile.retraction_distance_mm),
+        "retraction_extrusion_window": _decimal(profile.retraction_distance_mm),
         "retraction_prime_speed": _decimal(profile.retraction_prime_speed_mm_s),
         "retraction_retract_speed": _decimal(profile.retraction_speed_mm_s),
         "retraction_speed": _decimal(profile.retraction_speed_mm_s),

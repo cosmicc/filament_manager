@@ -39,18 +39,27 @@ def _settings() -> dict[str, object]:
     }
 
 
-def test_drying_guidance_is_template_only_and_rebases_without_customization() -> None:
-    """A filament cannot override drying guidance, even through crafted API settings."""
+def test_drying_guidance_inherits_and_preserves_individual_overrides() -> None:
+    """Care overrides survive template changes and clear on semantic reversion."""
 
-    base = {**_settings(), "drying_temp_c": "55"}
-    desired = {**base, "drying_temp_c": "120"}
-    assert "drying_temp_c" not in sparse_profile_overrides(base, desired)
-    assert resolve_profile_settings(base, {"drying_temp_c": "120"})["drying_temp_c"] == "55"
-    resolved, overrides = resolve_profile_settings_for_template_update(
-        {**base, "drying_temp_c": "65"}, desired, {"drying_temp_c": "120"}
-    )
-    assert resolved["drying_temp_c"] == "65"
-    assert "drying_temp_c" not in overrides
+    care = {"drying_temp_c": "55", "drying_time_hours": "6-8", "moisture_sensitivity": "high"}
+    base = {**_settings(), **care}
+    custom = {"drying_temp_c": "65", "drying_time_hours": "12+", "moisture_sensitivity": "low"}
+    desired = {**base, **custom}
+    overrides = sparse_profile_overrides(base, desired)
+    assert overrides == custom
+    assert override_setting_keys(overrides) == set(care)
+    new_base = {**base, "drying_temp_c": "60", "drying_time_hours": "4-6"}
+    resolved, retained = resolve_profile_settings_for_template_update(new_base, desired, overrides)
+    assert retained == custom
+    assert all(resolved[key] == value for key, value in custom.items())
+    inherited = resolve_profile_settings(new_base, {})
+    assert inherited["drying_temp_c"] == "60"
+    assert inherited["drying_time_hours"] == "4-6"
+    assert sparse_profile_overrides(base, {**base, "drying_temp_c": "55.000"}) == {}
+    cleared = sparse_profile_overrides(base, {**base, **dict.fromkeys(care)})
+    assert all(resolve_profile_settings(base, cleared)[key] is None for key in care)
+    assert base["drying_temp_c"] == "55"
 
 
 def test_sparse_overrides_ignore_equivalent_decimals_and_resolve_removals() -> None:

@@ -568,26 +568,12 @@ def discover_managed_materials(installations: list[CuraInstallation]) -> list[Cu
     materials: list[CuraMaterial] = []
     seen: set[tuple[str, uuid.UUID, str]] = set()
     for installation in installations:
-        pending_edits = _pending_managed_material_edits(installation)
         for path in sorted((installation.data_path / "materials").glob("*.xml.fdm_material"))[:500]:
             if not path.name.startswith("filament_manager_"):
                 continue
             material = _material_from_file(path, installation.installation_id)
             if material is None or material.material_guid is None or material.content_checksum is None:
                 continue
-            overlay = pending_edits.get(str(material.material_guid), {})
-            if overlay:
-                settings = {**material.settings, **overlay}
-                content_checksum = hashlib.sha256(
-                    json.dumps(
-                        {"material_guid": str(material.material_guid), "settings": settings},
-                        sort_keys=True,
-                        separators=(",", ":"),
-                    ).encode("utf-8")
-                ).hexdigest()
-                material = material.model_copy(
-                    update={"settings": settings, "content_checksum": content_checksum}
-                )
             assert material.material_guid is not None
             assert material.content_checksum is not None
             identity = (
@@ -606,45 +592,6 @@ def _managed_material_edits_path(installation: CuraInstallation) -> Path:
     """Return the agent-owned edit receipt path for one Cura installation."""
 
     return installation.data_path / MANAGED_MATERIAL_EDITS_PATH
-
-
-def _pending_managed_material_edits(
-    installation: CuraInstallation,
-) -> dict[str, dict[str, str | bool]]:
-    """Read one bounded, value-only edit receipt produced by the managed plugin."""
-
-    path = _managed_material_edits_path(installation)
-    try:
-        if path.is_symlink() or not path.is_file():
-            return {}
-        if path.stat().st_size > MANAGED_MATERIAL_EDITS_MAX_BYTES:
-            return {}
-        payload = json.loads(path.read_text(encoding="utf-8"))
-    except (OSError, TypeError, ValueError):
-        return {}
-    if not isinstance(payload, dict):
-        return {}
-    materials = payload.get("materials")
-    if payload.get("schema_version") != 1 or not isinstance(materials, dict):
-        return {}
-    parsed: dict[str, dict[str, str | bool]] = {}
-    for guid, raw_settings in list(materials.items())[:100]:
-        try:
-            normalized_guid = str(uuid.UUID(str(guid)))
-        except ValueError:
-            continue
-        if not isinstance(raw_settings, dict):
-            continue
-        settings: dict[str, str | bool] = {}
-        for key, value in list(raw_settings.items())[: len(MATERIAL_SETTING_KEYS)]:
-            if key not in MATERIAL_SETTING_KEYS or not isinstance(value, (str, bool)):
-                continue
-            if isinstance(value, str) and (len(value) > 500 or "\n" in value or "\r" in value):
-                continue
-            settings[key] = value
-        if settings:
-            parsed[normalized_guid] = settings
-    return parsed
 
 
 def managed_material_edit_receipts(

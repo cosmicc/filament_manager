@@ -2,13 +2,14 @@
 
 import asyncio
 import unicodedata
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from uuid import UUID
 
 from fastapi import APIRouter, Request, status
 from sqlalchemy import func, select
 from sqlalchemy.orm import joinedload, selectinload
 
+from filament_manager.api.printer_safety import require_idle_printer
 from filament_manager.clients.google_sheets import GoogleSheetsClient, GoogleSheetsError
 from filament_manager.clients.moonraker import MoonrakerClient, MoonrakerError
 from filament_manager.clients.spoolman import SpoolmanClient, SpoolmanError
@@ -384,11 +385,27 @@ async def dashboard(_: Viewer, session: DatabaseSession) -> DashboardResponse:
 
 
 @router.get("/printers", response_model=list[PrinterResponse])
-async def list_printers(_: Viewer, session: DatabaseSession) -> list[Printer]:
-    """List configured canonical printer state."""
+async def list_printers(_: Viewer, session: DatabaseSession) -> list[PrinterResponse]:
+    """Expose a recent-capture UI interlock without additional printer polling."""
 
     result = await session.execute(select(Printer).order_by(Printer.name))
-    return list(result.scalars())
+    printers = list(result.scalars())
+    # Advisory only: every mutation independently verifies live printer safety.
+    freshness = max(60, get_settings().sync.moonraker_print_interval_seconds * 3)
+    locked = set(
+        await session.scalars(
+            select(PrintJob.printer_id).where(
+                PrintJob.status == PrintJobStatus.IN_PROGRESS,
+                PrintJob.updated_at >= datetime.now(UTC) - timedelta(seconds=freshness),
+            )
+        )
+    )
+    return [
+        PrinterResponse.model_validate(printer).model_copy(
+            update={"configuration_locked": printer.id in locked}
+        )
+        for printer in printers
+    ]
 
 
 @router.patch("/printers/{printer_id}", response_model=PrinterResponse)
@@ -414,6 +431,8 @@ async def update_printer(
             "physical_nozzle_managed",
             "Record nozzle changes through the physical nozzle inventory",
         )
+    if {"nozzle_diameter_mm", "nozzle_material"}.intersection(payload.model_fields_set):
+        await require_idle_printer(printer.printer_code, get_settings())
     before: dict[str, object] = {
         "name": printer.name,
         "manufacturer": printer.manufacturer,

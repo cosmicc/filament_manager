@@ -15,6 +15,7 @@ from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.orm import joinedload
 from sqlalchemy.sql.elements import ColumnElement
 
+from filament_manager.api.printer_safety import require_idle_printer
 from filament_manager.config import get_settings
 from filament_manager.domain.colors import (
     normalize_color_name,
@@ -130,6 +131,7 @@ async def request_active_spool_unload(
     printer = await session.scalar(select(Printer).where(Printer.printer_code == configured_code))
     if printer is None:
         raise ApiError(status.HTTP_409_CONFLICT, "printer_not_configured", "Printer is not ready")
+    await require_idle_printer(printer.printer_code, get_settings())
     spool = await session.scalar(select(Spool).where(Spool.active_printer_id == printer.id))
     if spool is None:
         raise ApiError(status.HTTP_409_CONFLICT, "no_active_spool", "No spool is physically loaded")
@@ -2048,6 +2050,7 @@ async def request_spool_load(
             "printer_not_configured",
             "The configured Moonraker printer is not ready",
         )
+    await require_idle_printer(printer.printer_code, get_settings())
     try:
         target = await spool_change_target(session, spool=spool, printer=printer)
     except SpoolPreflightError as exc:

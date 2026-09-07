@@ -38,9 +38,9 @@ const coreFields: Array<{
   { key: 'bed_temp_c', label: 'Build plate temperature', unit: '°C', required: true, precision: 0 },
   { key: 'initial_bed_temp_c', label: 'Initial layer build plate temperature', unit: '°C', required: true, precision: 0 },
   { key: 'chamber_temp_c', label: 'Build volume temperature', unit: '°C', precision: 0 },
-  { key: 'drying_temp_c', label: 'Filament drying temperature', unit: '°C', precision: 0, templateOnly: true },
-  { key: 'drying_time_hours', label: 'Filament drying time', unit: 'hours', templateOnly: true, options: ['4-6', '6', '6-8', '4-8', '8-12', '10-12', '12', '12+'] },
-  { key: 'moisture_sensitivity', label: 'Filament moisture sensitivity', templateOnly: true, options: ['low', 'low-moderate', 'moderate', 'high-moderate', 'high', 'very high', 'extremely high'] },
+  { key: 'drying_temp_c', label: 'Filament drying temperature', unit: '°C', precision: 0 },
+  { key: 'drying_time_hours', label: 'Filament drying time', unit: 'hours', options: ['4-6', '6', '6-8', '4-8', '8-12', '10-12', '12', '12+'] },
+  { key: 'moisture_sensitivity', label: 'Filament moisture sensitivity', options: ['low', 'low-moderate', 'moderate', 'high-moderate', 'high', 'very high', 'extremely high'] },
   { key: 'flow_percent', label: 'Flow', unit: '%', required: true, defaultValue: '100', precision: 0 },
   { key: 'print_speed_mm_s', label: 'Print speed', unit: 'mm/s', precision: 0, templateOnly: true },
   { key: 'outer_wall_speed_mm_s', label: 'Outer wall speed', unit: 'mm/s', precision: 0, templateOnly: true },
@@ -50,7 +50,7 @@ const coreFields: Array<{
   { key: 'initial_layer_speed_mm_s', label: 'Initial layer speed', unit: 'mm/s', precision: 0, templateOnly: true },
   { key: 'travel_speed_mm_s', label: 'Travel speed', unit: 'mm/s', precision: 0, templateOnly: true },
   { key: 'support_speed_mm_s', label: 'Support speed', unit: 'mm/s', precision: 0, templateOnly: true },
-  { key: 'retraction_distance_mm', label: 'Retraction distance', unit: 'mm', precision: 1 },
+  { key: 'retraction_distance_mm', label: 'Retraction distance', unit: 'mm', precision: 2 },
   { key: 'retraction_speed_mm_s', label: 'Retraction retract speed', unit: 'mm/s', precision: 0 },
   { key: 'retraction_prime_speed_mm_s', label: 'Retraction prime speed', unit: 'mm/s', precision: 0 },
   { key: 'cooling_min_percent', label: 'Regular fan speed', unit: '%', required: true, defaultValue: '0', precision: 0 },
@@ -250,6 +250,7 @@ export function MaterialSettingsEditor({
   const [resetKeys, setResetKeys] = useState<Set<string>>(() => new Set())
   const [liveOwnership, setLiveOwnership] = useState<Map<string, boolean>>(() => new Map())
   const [liveValuePresence, setLiveValuePresence] = useState<Map<string, boolean>>(() => new Map())
+  const [retractionPreview, setRetractionPreview] = useState<string | null>(null)
   const customized = (key: string) => liveOwnership.get(key) ?? (overrideKeys.includes(key) && !resetKeys.has(key))
   const effectiveValue = (key: keyof MaterialSettings) => settings?.[key] ?? baseSettings?.[key]
   const effectiveExtensionValue = (key: string) => settings?.cura_extensions[key] ?? baseSettings?.cura_extensions[key]
@@ -275,6 +276,7 @@ export function MaterialSettingsEditor({
     return String(value ?? '') === String(baseValue ?? '')
   }
   const markOwnership = (key: string, value: string | boolean, baseValue: string | number | boolean | null | undefined) => {
+    if (key === 'retraction_distance_mm') setRetractionPreview(String(value))
     if (!baseSettings) return
     setLiveOwnership((current) => new Map(current).set(key, !equivalent(value, baseValue)))
   }
@@ -324,6 +326,7 @@ export function MaterialSettingsEditor({
     if (value == null || value === '') return 'Not set'
     if (typeof value === 'boolean') return value ? 'Enabled' : 'Disabled'
     const coreField = coreFields.find((field) => field.key === key)
+    if (coreField?.options) return String(value)
     const extension = extensionCatalog.find((item) => item.key === key)
     return compactNumber(value, coreField?.precision ?? (extension ? extensionPrecision(extension) : 1))
   }
@@ -370,7 +373,7 @@ export function MaterialSettingsEditor({
     {
       id: 'temperature',
       title: 'Temperatures',
-      description: 'Print temperatures used by Cura, plus template-only filament drying guidance. Drying guidance never controls a heater.',
+      description: 'Print temperatures used by Cura, plus inherited or customized filament drying guidance. Drying guidance never controls a heater.',
       keys: ['extruder_temp_c', 'bed_temp_c', 'initial_bed_temp_c', 'chamber_temp_c', 'drying_temp_c', 'drying_time_hours', 'moisture_sensitivity'],
     },
     {
@@ -464,13 +467,17 @@ export function MaterialSettingsEditor({
       {visibleGroups.map((group) => (
         <EditorSection key={group.title} title={group.title} description={group.description}>
           <div className="form-grid">
+            {group.id === 'retraction' && scope === 'template' ? <>
+              <label>Minimum Extrusion Distance Window (mm)<input readOnly value={retractionPreview ?? String(effectiveValue('retraction_distance_mm') ?? '')} placeholder="Not set" /><small>Calculated from Retraction Distance.</small></label>
+              <label>Maximum Retraction Count<input readOnly value="100" /><small>Fixed value.</small></label>
+            </> : null}
             {coreFields.filter((field) => (
               group.keys.includes(field.key) && (scope === 'template' || !field.templateOnly)
             )).map((field) => (
               <div className={`setting-field${customized(field.key) ? ' setting-field--customized' : ''}${errorsFor(field.key).length ? ' setting-field--invalid' : ''}`} key={field.key}>
                 <label>
                   <span>{field.label}{field.unit ? ` (${field.unit})` : ''}{field.templateOnly ? <small className="setting-scope">Template only</small> : null}</span>
-                  {field.options ? <select name={field.key} defaultValue={String(effectiveValue(field.key) ?? '')} aria-invalid={errorsFor(field.key).length ? true : undefined} aria-describedby={errorsFor(field.key).length ? errorId(field.key) : undefined} onChange={(event) => markValuePresence(field.key, event.currentTarget.value)}>
+                  {field.options ? <select name={field.key} defaultValue={String(effectiveValue(field.key) ?? '')} aria-invalid={errorsFor(field.key).length ? true : undefined} aria-describedby={errorsFor(field.key).length ? errorId(field.key) : undefined} onChange={(event) => { markOwnership(field.key, event.currentTarget.value, baseSettings?.[field.key] as string | number | boolean | null | undefined); markValuePresence(field.key, event.currentTarget.value) }}>
                     <option value="">Not set</option>
                     {field.options.map((value) => <option key={value} value={value}>{value.charAt(0).toUpperCase() + value.slice(1)}</option>)}
                   </select> : <input

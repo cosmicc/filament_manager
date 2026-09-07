@@ -4,6 +4,7 @@ from collections.abc import AsyncIterator
 from datetime import UTC, datetime
 from decimal import Decimal
 from pathlib import Path
+from unittest.mock import AsyncMock
 
 import httpx
 import pytest
@@ -12,6 +13,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_asyn
 from testcontainers.community.postgres import PostgresContainer
 
 from filament_manager.api import dependencies
+from filament_manager.clients.moonraker import MoonrakerBedMeshState, MoonrakerClient
 from filament_manager.config import Settings
 from filament_manager.models import Base
 from filament_manager.models.auth import User
@@ -114,6 +116,7 @@ async def test_physical_nozzle_side_b_and_distinct_completed_print_counts(
             )
             spool_one = Spool(
                 spool_code="V022-ONE",
+                spoolman_id=17,
                 filament_product_id=product.id,
                 nominal_net_mass_g=Decimal("1000"),
                 tare_mass_g=Decimal("200"),
@@ -154,6 +157,8 @@ async def test_physical_nozzle_side_b_and_distinct_completed_print_counts(
         from filament_manager import config as config_module
         from filament_manager import main
         from filament_manager.api.routes import diagnostics as diagnostic_routes
+        from filament_manager.api.routes import inventory as inventory_routes
+        from filament_manager.api.routes import plates as plate_routes
         from filament_manager.services import database_backups
 
         async def recovery_validation(_: AsyncSession) -> dict[str, object]:
@@ -214,6 +219,8 @@ async def test_physical_nozzle_side_b_and_distinct_completed_print_counts(
 
         monkeypatch.setattr(config_module, "get_settings", lambda: settings)
         monkeypatch.setattr(main, "get_settings", lambda: settings)
+        monkeypatch.setattr(inventory_routes, "get_settings", lambda: settings)
+        monkeypatch.setattr(plate_routes, "get_settings", lambda: settings)
         monkeypatch.setattr(events, "get_settings", lambda: settings)
         monkeypatch.setattr(database_backups, "get_settings", lambda: settings)
         monkeypatch.setattr(
@@ -225,6 +232,15 @@ async def test_physical_nozzle_side_b_and_distinct_completed_print_counts(
         monkeypatch.setattr(diagnostic_routes, "operational_overview", diagnostic_overview)
         monkeypatch.setattr(diagnostic_routes, "version_status", version_check)
         application = main.create_app()
+        monkeypatch.setattr(
+            MoonrakerClient,
+            "bed_mesh_state",
+            AsyncMock(
+                return_value=MoonrakerBedMeshState(
+                    profile_names=("P1",), active_profile="P1", print_state="standby"
+                )
+            ),
+        )
         application.dependency_overrides[dependencies.session_dependency] = session_override
         application.dependency_overrides[dependencies.current_user] = user_override
 
@@ -242,12 +258,60 @@ async def test_physical_nozzle_side_b_and_distinct_completed_print_counts(
             )
             assert created_nozzle.status_code == 201, created_nozzle.text
             nozzle_id = created_nozzle.json()["id"]
+            for print_state in ("printing", "paused"):
+                monkeypatch.setattr(
+                    MoonrakerClient,
+                    "bed_mesh_state",
+                    AsyncMock(return_value=MoonrakerBedMeshState(("P1",), "P1", print_state=print_state)),
+                )
+                for path, body in (
+                    (f"/api/v1/nozzles/{nozzle_id}/install", {"printer_id": str(printer_id)}),
+                    (f"/api/v1/spools/{spool_one_id}/set-active", {}),
+                    ("/api/v1/printer-context/active-spool/clear", {}),
+                    (
+                        f"/api/v1/build-plates/{plate_id}/select",
+                        {
+                            "printer_id": str(printer_id),
+                            "surface_id": str(side_a_id),
+                        },
+                    ),
+                ):
+                    blocked = await client.post(path, json=body)
+                    assert blocked.status_code == 409, blocked.text
+                    assert blocked.json()["code"] == "printer_busy"
+            monkeypatch.setattr(
+                MoonrakerClient,
+                "bed_mesh_state",
+                AsyncMock(return_value=MoonrakerBedMeshState(("P1",), "P1", print_state="standby")),
+            )
             installed = await client.post(
                 f"/api/v1/nozzles/{nozzle_id}/install",
                 json={"printer_id": str(printer_id)},
             )
             assert installed.status_code == 200, installed.text
             assert installed.json()["installed_printer_id"] == str(printer_id)
+            monkeypatch.setattr(
+                MoonrakerClient,
+                "bed_mesh_state",
+                AsyncMock(return_value=MoonrakerBedMeshState(("P1",), "P1", print_state="paused")),
+            )
+            blocked = await client.post(
+                f"/api/v1/nozzles/{nozzle_id}/remove", json={"printer_id": str(printer_id)}
+            )
+            assert blocked.status_code == 409
+            blocked = await client.patch(
+                f"/api/v1/nozzles/{nozzle_id}",
+                json={
+                    "expected_version": installed.json()["record_version"],
+                    "diameter_mm": "0.6",
+                },
+            )
+            assert blocked.status_code == 409
+            monkeypatch.setattr(
+                MoonrakerClient,
+                "bed_mesh_state",
+                AsyncMock(return_value=MoonrakerBedMeshState(("P1",), "P1", print_state="standby")),
+            )
             renamed_nozzle = await client.patch(
                 f"/api/v1/nozzles/{nozzle_id}",
                 json={

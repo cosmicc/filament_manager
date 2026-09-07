@@ -355,6 +355,18 @@ async def test_moonraker_sends_bounded_catalog_and_physical_change_macro() -> No
     route = respx.post("http://moonraker.test:7125/printer/gcode/script").mock(
         return_value=httpx.Response(200, json={"result": "ok"})
     )
+    respx.post("http://moonraker.test:7125/printer/objects/query").mock(
+        return_value=httpx.Response(
+            200,
+            json={
+                "result": {
+                    "status": {
+                        "print_stats": {"state": "standby", "filename": ""},
+                    }
+                }
+            },
+        )
+    )
     materials = {"11111111-2222-3333-4444-555555555555": [[17, "FM-001-PLA-Blue"]]}
     temperatures = {"17": "215.0"}
     catalog = SpoolPreflightCatalog(

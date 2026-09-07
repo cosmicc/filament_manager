@@ -761,7 +761,15 @@ class MoonrakerClient:
     async def request_spool_unload(self) -> dict[str, Any]:
         """Start the guarded physical unload workflow without selecting a replacement."""
 
+        await self._require_idle_spool_request()
         return await self._post("/printer/gcode/script", {"script": "FILAMENT_MANAGER_UNLOAD_SPOOL"})
+
+    async def _require_idle_spool_request(self) -> None:
+        """Recheck queued app actions; the macro repeats the guard at execution time."""
+
+        live = await self.print_state()
+        if live.state not in {"standby", "complete", "cancelled", "error"}:
+            raise MoonrakerError("Ordinary spool changes require an idle printer; use M600 during a print")
 
     async def clear_build_plate(self) -> dict[str, Any]:
         """Clear the loaded mesh so state reconciliation can clear active plate context."""
@@ -835,6 +843,7 @@ class MoonrakerClient:
             raise ValueError("temperature_c is outside the supported range")
         if SPOOL_PROMPT_LABEL_PATTERN.fullmatch(prompt_label) is None:
             raise ValueError("prompt_label contains unsupported characters")
+        await self._require_idle_spool_request()
         script = (
             f"FILAMENT_MANAGER_CHANGE_SPOOL ID={spoolman_id} "
             f"TEMP={format(temperature_c, 'f')} LABEL={prompt_label}"

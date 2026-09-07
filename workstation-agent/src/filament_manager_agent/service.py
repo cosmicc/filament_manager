@@ -135,7 +135,8 @@ def heartbeat_payload(
         "capabilities": capabilities,
         "cura_installations": installation_reports,
         "cura_materials": [source.report() for source in import_sources],
-        "cura_managed_materials": [material.report() for material in managed_materials],
+        # Managed settings are outbound-only; never upload local edits.
+        "cura_managed_materials": [],
         "last_error": last_error,
     }
 

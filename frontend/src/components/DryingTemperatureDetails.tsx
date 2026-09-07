@@ -3,7 +3,7 @@ import { apiFetch } from '../api/client'
 import type { MaterialProfile } from '../api/types'
 import { compactNumber } from '../lib/format'
 
-/** Read-only template guidance; retain distinct settings scopes instead of guessing. */
+/** Effective filament guidance; retain distinct settings scopes instead of guessing. */
 export function DryingTemperatureDetails({ filamentId }: { filamentId: string }) {
   const profiles = useQuery({ queryKey: ['profiles'], queryFn: () => apiFetch<MaterialProfile[]>('/profiles') })
   const scoped = (profiles.data ?? []).filter((profile) => profile.filament_product_id === filamentId)
@@ -17,6 +17,5 @@ export function DryingTemperatureDetails({ filamentId }: { filamentId: string })
       {profile[key] == null ? 'Not set' : key === 'drying_temp_c' ? `${compactNumber(profile[key], 0)} °C` : key === 'drying_time_hours' ? `${profile[key]} hours` : String(profile[key]).replace(/^./, (letter) => letter.toUpperCase())}
       {scoped.length > 1 ? ` · ${profile.base_template_name ?? 'Template'} · ${compactNumber(profile.nozzle_diameter_mm, 1)} mm nozzle` : ''}
     </div>)}
-    <small>Set in the linked template only.</small>
   </dd></div>)}</>
 }

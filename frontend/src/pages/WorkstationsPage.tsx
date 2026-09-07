@@ -1,9 +1,8 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Check, Clipboard, DatabaseBackup, MonitorCog, Power, PowerOff, RefreshCw, ShieldCheck } from 'lucide-react'
-import { useMemo, useState } from 'react'
+import { useState } from 'react'
 import { apiFetch } from '../api/client'
-import type { CuraMaterialReport, CuraMaterialSettingsSyncReport, MaterialTemplate, Printer, WorkstationAgent, WorkstationPairingCode } from '../api/types'
-import { EditorSection } from '../components/EditorSection'
+import type { CuraDeployment, CuraMaterialSettingsSyncReport, WorkstationAgent, WorkstationPairingCode } from '../api/types'
 import { CuraRecoveryModal } from '../components/CuraRecoveryModal'
 import { EmptyState } from '../components/EmptyState'
 import { LoadingState } from '../components/LoadingState'
@@ -15,19 +14,6 @@ import { compactNumber, dateTime } from '../lib/format'
 
 function platformLabel(platform: WorkstationAgent['platform']) {
   return platform === 'windows_11' ? 'Windows 11' : 'Arch Linux'
-}
-
-function sourceType(material: CuraMaterialReport) {
-  return material.source_kind === 'print_profile' ? 'Saved print profile' : 'Material profile'
-}
-
-function sourceDetails(material: CuraMaterialReport) {
-  if (material.source_kind === 'print_profile') {
-    return [material.machine_name, material.quality_type, `${Object.keys(material.settings).length} tracked settings`]
-      .filter(Boolean)
-      .join(' · ')
-  }
-  return `${material.brand} · ${material.material_type} · ${Object.keys(material.settings).length} tracked settings`
 }
 
 function recoveryLabel(status: string | undefined) {
@@ -76,14 +62,25 @@ export default function WorkstationsPage() {
   const queryClient = useQueryClient()
   const [pairing, setPairing] = useState<WorkstationPairingCode | null>(null)
   const [copied, setCopied] = useState(false)
-  const [mappings, setMappings] = useState<Record<string, string>>({})
   const [takeoverAgent, setTakeoverAgent] = useState<WorkstationAgent | null>(null)
-  const [takeoverStep, setTakeoverStep] = useState<'mapping' | 'review'>('mapping')
   const [recoveryAgent, setRecoveryAgent] = useState<WorkstationAgent | null>(null)
   const [message, setMessage] = useState('')
   const agents = useQuery({ queryKey: ['workstation-agents'], queryFn: () => apiFetch<WorkstationAgent[]>('/workstation-agents'), refetchInterval: 15_000 })
-  const templates = useQuery({ queryKey: ['material-templates'], queryFn: () => apiFetch<MaterialTemplate[]>('/profiles/templates?include_inactive=true'), refetchInterval: 15_000 })
-  const printers = useQuery({ queryKey: ['printers'], queryFn: () => apiFetch<Printer[]>('/printers') })
+  const [syncRequests, setSyncRequests] = useState<Record<string, string>>({})
+  const deployments = useQuery({ queryKey: ['cura-deployments'], queryFn: () => apiFetch<CuraDeployment[]>('/cura-deployments'), refetchInterval: (query) => Object.values(syncRequests).some((id) => {
+    const status = query.state.data?.find((item) => item.id === id)?.status
+    return !status || status === 'pending' || status === 'claimed'
+  }) ? 5000 : false, enabled: Object.keys(syncRequests).length > 0 })
+  const sync = useMutation({
+    mutationFn: (agent: WorkstationAgent) => apiFetch<CuraDeployment[]>(`/workstation-agents/${agent.id}/sync`, { method: 'POST' }),
+    onSuccess: (items, agent) => {
+      queryClient.setQueryData<CuraDeployment[]>(['cura-deployments'], (current = []) => [...items, ...current.filter((item) => !items.some((updated) => updated.id === item.id))])
+      setSyncRequests((current) => ({ ...current, [agent.id]: items[0].id }))
+      setMessage(`App settings queued for ${agent.display_name}. Close Cura and wait for Succeeded before reopening; an offline agent must reconnect first.`)
+      void queryClient.invalidateQueries({ queryKey: ['cura-deployments'] })
+    },
+    onError: (error: Error) => setMessage(error.message),
+  })
   const createPairing = useMutation({
     mutationFn: () => apiFetch<WorkstationPairingCode>('/workstation-agents/pairing-codes', { method: 'POST' }),
     onSuccess: (value) => { setPairing(value); setCopied(false) },
@@ -101,17 +98,12 @@ export default function WorkstationsPage() {
       body: JSON.stringify({
         reviewed_source_ids: [...new Set(agent.cura_materials.map((source) => source.source_id))],
         confirmed: true,
-        mappings: agent.cura_materials
-          .map((source) => ({ source_id: source.source_id, template_id: mappings[`${agent.id}:${source.source_id}`] }))
-          .filter((mapping) => Boolean(mapping.template_id)),
+        mappings: [],
       }),
     }),
-    onSuccess: async (_, agent) => {
-      const mappedCount = agent.cura_materials.filter((source) => mappings[`${agent.id}:${source.source_id}`]).length
-      setMessage(`Cura takeover completed with ${mappedCount} imported source${mappedCount === 1 ? '' : 's'}. Automatic synchronization is active.`)
+    onSuccess: async () => {
+      setMessage("App-owned Cura synchronization enabled. Close Cura and wait for synchronization before reopening.")
       setTakeoverAgent(null)
-      setTakeoverStep('mapping')
-      setMappings((current) => Object.fromEntries(Object.entries(current).filter(([key]) => !key.startsWith(`${agent.id}:`))))
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: ['workstation-agents'] }),
         queryClient.invalidateQueries({ queryKey: ['material-templates'] }),
@@ -121,16 +113,12 @@ export default function WorkstationsPage() {
     },
     onError: (error: Error) => setMessage(error.message),
   })
-  const activeTemplates = useMemo(() => (templates.data ?? []).filter((template) => template.active && template.revisions.length > 0), [templates.data])
   const currentTakeoverAgent = takeoverAgent
     ? agents.data?.find((agent) => agent.id === takeoverAgent.id) ?? takeoverAgent
     : null
-  const printerName = (printerId: string) => printers.data?.find((printer) => printer.id === printerId)?.name ?? 'Unknown printer'
-  const templateLabel = (template: MaterialTemplate) => `${template.name} · ${printerName(template.printer_id)} · ${compactNumber(template.nozzle_diameter_mm, 1)} mm`
   const openTakeover = (agent: WorkstationAgent) => {
     setMessage('')
     setTakeoverAgent(agent)
-    setTakeoverStep('mapping')
   }
   const copyPairing = async () => {
     if (!pairing) return
@@ -139,17 +127,18 @@ export default function WorkstationsPage() {
   }
 
   return <div>
-    <PageHeader eyebrow="Cura automation" title="Cura workstations" description="Keep managed materials synchronized and retain safe, versioned Cura printer and settings recovery points. Changes to known managed materials save directly; new materials are added in Filament Manager." actions={user?.role === 'administrator' ? <button className="button button--primary" onClick={() => createPairing.mutate()} disabled={createPairing.isPending}><ShieldCheck size={17} /> Add Cura workstation</button> : undefined} />
+    <PageHeader eyebrow="Cura automation" title="Cura workstations" description="Keep managed materials synchronized and retain safe, versioned Cura printer and settings recovery points. All tracked print settings are edited only in Filament Manager and sent one-way to Cura." actions={user?.role === 'administrator' ? <button className="button button--primary" onClick={() => createPairing.mutate()} disabled={createPairing.isPending}><ShieldCheck size={17} /> Add Cura workstation</button> : undefined} />
     {message && <div className="deployment-note" role="status">{message}</div>}
+    {deployments.error ? <div className="form-error" role="alert">Unable to confirm synchronization status: {deployments.error.message}</div> : null}
     {pairing && <section className="pairing-card card" aria-live="polite">
       <div><h2>Pairing code</h2><p>Valid until {dateTime(pairing.expires_at)}. It can enroll one workstation and is never shown again.</p></div>
       <div className="pairing-code"><code>{pairing.pairing_code}</code><button className="icon-button" onClick={() => void copyPairing()} aria-label="Copy pairing code">{copied ? <Check size={18} /> : <Clipboard size={18} />}</button></div>
       <p className="muted">On that workstation, install the agent and run <code>filament-manager-agent pair --server https://your-filament-manager.example --name &quot;Cura workstation&quot;</code>. Paste the code only at the hidden prompt.</p>
     </section>}
     {createPairing.error && <div className="form-error">{createPairing.error.message}</div>}
-    <section className="card diagnostic-actions cura-takeover-guide"><div><p className="eyebrow">One-time takeover</p><h2>Choose what becomes each template</h2><ol><li>Pair the workstation and wait for Cura discovery.</li><li>For each Cura source you want to keep, choose its existing Filament Manager template. Leave sources you do not want as Do not import.</li><li>Review all mappings together and confirm once.</li><li>The agent backs up and replaces the user material library, hides bundled materials, and starts automatic synchronization.</li></ol></div></section>
+    <section className="card diagnostic-actions cura-takeover-guide"><div><p className="eyebrow">App-owned settings</p><h2>Filament Manager → Cura</h2><p>Edit templates and filament settings here, then use Push app settings. Close Cura and wait for the sync to succeed before reopening. Offline agents receive the request on their next check-in. Cura changes are never imported.</p></div></section>
     <div className="section-heading"><h2>Paired workstations</h2><button className="icon-button" onClick={() => void agents.refetch()} aria-label="Refresh workstations"><RefreshCw size={17} /></button></div>
-    {agents.isLoading || templates.isLoading || printers.isLoading ? <LoadingState /> : !agents.data?.length ? <EmptyState icon={MonitorCog} title="No workstations paired" description="Create a one-time code, install the agent under your normal workstation account, and pair it with Filament Manager." /> : <div className="workstation-grid">{agents.data.map((agent) => {
+    {agents.isLoading ? <LoadingState /> : !agents.data?.length ? <EmptyState icon={MonitorCog} title="No workstations paired" description="Create a one-time code, install the agent under your normal workstation account, and pair it with Filament Manager." /> : <div className="workstation-grid">{agents.data.map((agent) => {
       return <article className="workstation-card card" key={agent.id}>
         <header><span className="workstation-card__icon"><MonitorCog size={22} /></span><div><h2>{agent.display_name}</h2><p>{platformLabel(agent.platform)} · {agent.hostname} · Agent {agent.agent_version}</p></div><StatusPill status={agent.enabled ? 'active' : 'disabled'} /></header>
         <dl className="definition-list"><div><dt>Cura installations</dt><dd>{agent.cura_installations.length}</dd></div><div><dt>Material library</dt><dd>{agent.cura_management_enabled ? 'Automatic synchronization active' : 'Awaiting one-time takeover'}</dd></div><div><dt>{agent.cura_management_enabled ? 'Managed material profiles' : 'Unmanaged material import sources'}</dt><dd>{String(agent.cura_management_enabled ? agent.capabilities.managed_material_count ?? 'Unknown' : agent.capabilities.unmanaged_material_count ?? 'Unknown')}</dd></div><div><dt>User-saved custom print profiles</dt><dd>{String(agent.capabilities.unmanaged_print_profile_count ?? 'Unknown')}</dd></div><div><dt>Agent ID</dt><dd>{agent.agent_code}</dd></div></dl>
@@ -174,41 +163,21 @@ export default function WorkstationsPage() {
           {agent.capabilities.cura_recovery_snapshots !== true ? <p className="warning-note">Upgrade this workstation agent to enable automatic printer and settings recovery.</p> : null}
           {user?.role === 'administrator' ? <button className="button" type="button" disabled={agent.capabilities.cura_recovery_snapshots !== true} onClick={() => setRecoveryAgent(agent)}><DatabaseBackup size={16} /> Recovery points</button> : null}
         </section>
-        {!agent.cura_management_enabled ? <section className="cura-preservation" aria-label={`Cura sources reported by ${agent.display_name}`}>
-          <div><h3>Import Cura profiles into templates</h3><p className="muted">Choose each Cura source from a list and map it to one existing template. Sources you leave unmapped will be discarded only after backup.</p></div>
-          <dl className="definition-list definition-list--compact"><div><dt>Selectable Cura sources</dt><dd>{agent.cura_materials.length}</dd></div><div><dt>Available templates</dt><dd>{activeTemplates.length}</dd></div></dl>
-          {!agent.cura_materials.length ? <p className="warning-note">No selectable Cura profiles have been reported yet. Upgrade or restart the workstation agent, keep Cura closed, then refresh this page before completing takeover.</p> : null}
-          {user?.role === 'administrator' ? <button className="button button--primary" type="button" disabled={!agent.enabled || !agent.cura_installations.length || takeover.isPending} onClick={() => openTakeover(agent)}>{agent.cura_materials.length ? 'Map Cura profiles' : 'Review empty takeover'}</button> : null}
-        </section> : <p className="success-note">Filament Manager owns this Cura material library. Direct saves in either application synchronize automatically.</p>}
+        {!agent.cura_management_enabled ? <section className="cura-preservation">
+          <h3>Enable app-owned Cura settings</h3><p>The agent backs up and replaces user materials with app values. No Cura settings will be imported.</p>
+          {user?.role === 'administrator' ? <button className="button button--primary" disabled={!agent.enabled || !agent.cura_installations.length || takeover.isPending} onClick={() => openTakeover(agent)}>Review takeover</button> : null}
+        </section> : <p className="success-note">Filament Manager owns all tracked settings. Changes made in Cura never update the app.</p>}
+        {agent.cura_management_enabled && user?.role === 'administrator' ? <div className="template-card__actions">
+          <button className="button button--primary" disabled={!agent.enabled || !agent.cura_installations.length || sync.isPending} onClick={() => sync.mutate(agent)}><RefreshCw size={16} />Push app settings</button>
+          {syncRequests[agent.id] ? <StatusPill status={deployments.data?.find((item) => item.id === syncRequests[agent.id])?.status ?? 'pending'} /> : null}
+        </div> : null}
         {user?.role === 'administrator' && <div className="template-card__actions"><button className="button" disabled={toggleAgent.isPending} onClick={() => toggleAgent.mutate(agent)}>{agent.enabled ? <PowerOff size={16} /> : <Power size={16} />}{agent.enabled ? 'Revoke agent' : 'Enable agent'}</button></div>}
       </article>
     })}</div>}
-    {currentTakeoverAgent ? <Modal title={takeoverStep === 'mapping' ? 'Map Cura profiles to templates' : 'Review Cura takeover'} description={takeoverStep === 'mapping' ? 'Select the destination template for every Cura profile you want to keep. Do not import is intentional and remains the default.' : 'This is the one confirmation for all source-to-template choices. The operation is atomic: either every mapping and synchronization state saves, or none do.'} onClose={() => setTakeoverAgent(null)} size="wide" footer={takeoverStep === 'mapping' ? <><button className="button" type="button" onClick={() => setTakeoverAgent(null)}>Cancel</button><button className="button button--primary" type="button" onClick={() => setTakeoverStep('review')}>Review takeover ({currentTakeoverAgent.cura_materials.filter((source) => mappings[`${currentTakeoverAgent.id}:${source.source_id}`]).length} mapped)</button></> : <><button className="button" type="button" onClick={() => setTakeoverStep('mapping')}>Back to mappings</button><button className="button button--primary" type="button" disabled={takeover.isPending} onClick={() => takeover.mutate(currentTakeoverAgent)}><ShieldCheck size={16} />{takeover.isPending ? 'Completing…' : 'Complete takeover'}</button></>}>
-      {takeoverStep === 'mapping' ? <>
-        <EditorSection title="Cura profiles" description="Only settings tracked by Filament Manager are imported. Each source and template can be selected once.">
-          {currentTakeoverAgent.cura_materials.length ? <div className="cura-material-list">{currentTakeoverAgent.cura_materials.map((source) => {
-            const key = `${currentTakeoverAgent.id}:${source.source_id}`
-            const selectedTemplate = mappings[key] ?? ''
-            const selectedTemplateIds = new Set(currentTakeoverAgent.cura_materials.map((item) => mappings[`${currentTakeoverAgent.id}:${item.source_id}`]).filter(Boolean))
-            return <article className="cura-material-item" key={`${source.installation_id}:${source.source_id}`}>
-              <div className="cura-material-choice"><span><strong>{source.name}</strong><small>{sourceType(source)} · {sourceDetails(source)}</small>{source.omitted_setting_count ? <small>{source.omitted_setting_count} Cura expression{source.omitted_setting_count === 1 ? '' : 's'} omitted safely</small> : null}</span></div>
-              <label>Import into template<select aria-label={`Template for ${source.name}`} value={selectedTemplate} onChange={(event) => setMappings((current) => ({ ...current, [key]: event.target.value }))}><option value="">Do not import</option>{activeTemplates.map((template) => <option key={template.id} value={template.id} disabled={template.id !== selectedTemplate && selectedTemplateIds.has(template.id)}>{templateLabel(template)}</option>)}</select></label>
-            </article>
-          })}</div> : <div className="warning-note"><strong>No Cura profiles are selectable.</strong> Upgrade or restart the workstation agent and wait for its next check-in. Complete an empty takeover only when Cura truly contains nothing you want to import.</div>}
-        </EditorSection>
-      </> : <>
-      <EditorSection title="Sources to import" description="Each selected source directly updates the current settings of its mapped template. Linked filament profiles inherit those changes immediately except for explicitly customized values.">
-        {currentTakeoverAgent.cura_materials.some((source) => mappings[`${currentTakeoverAgent.id}:${source.source_id}`]) ? <div className="comparison-table">{currentTakeoverAgent.cura_materials.filter((source) => mappings[`${currentTakeoverAgent.id}:${source.source_id}`]).map((source) => {
-          const template = activeTemplates.find((item) => item.id === mappings[`${currentTakeoverAgent.id}:${source.source_id}`])
-          return <div className="comparison-row" key={source.source_id}><div className="comparison-setting"><strong>{source.name}</strong><small>{sourceType(source)}</small></div><div className="comparison-value">{template ? templateLabel(template) : 'Template unavailable'}</div></div>
-        })}</div> : <p className="muted">No Cura sources will be imported.</p>}
-      </EditorSection>
-      <EditorSection title="Sources to discard" description="Unmapped sources are not added to Filament Manager and are removed from the managed Cura library after backup.">
-        <p>{currentTakeoverAgent.cura_materials.filter((source) => !mappings[`${currentTakeoverAgent.id}:${source.source_id}`]).length} of {currentTakeoverAgent.cura_materials.length} reported sources will not be imported.</p>
-      </EditorSection>
-      <div className="warning-note"><strong>Takeover changes Cura files.</strong> The workstation agent waits for Cura to close, backs up affected user files, replaces the library atomically, and hides bundled materials. Machine, quality, and start/end G-code configuration remain unchanged.</div>
+    {currentTakeoverAgent ? <Modal title="Review Cura takeover" description="The app is the sole source of tracked print settings." onClose={() => setTakeoverAgent(null)} footer={<><button className="button" onClick={() => setTakeoverAgent(null)}>Cancel</button><button className="button button--primary" disabled={takeover.isPending} onClick={() => takeover.mutate(currentTakeoverAgent)}>Complete takeover</button></>}>
+      <p>No Cura settings will be imported. Existing user materials are backed up and replaced; bundled materials are hidden. App-owned start/end G-code is installed, while unrelated Cura quality settings remain workstation-owned.</p>
+      <p>Close Cura before synchronization and wait for completion before reopening.</p>
       {takeover.error ? <p className="form-error" role="alert">{takeover.error.message}</p> : null}
-      </>}
     </Modal> : null}
     {recoveryAgent ? <CuraRecoveryModal agent={recoveryAgent} agents={agents.data ?? []} onClose={() => setRecoveryAgent(null)} onQueued={setMessage} /> : null}
   </div>

@@ -63,8 +63,8 @@ async def test_unresolved_and_invalid_template_identity_do_not_query_database() 
     session.execute.assert_not_awaited()
 
 
-def test_care_options_are_validated_and_remain_template_owned() -> None:
-    """Care strings survive normalization and cannot become profile overrides."""
+def test_care_options_are_validated_and_support_profile_overrides() -> None:
+    """Care strings retain closed-choice validation and may override defaults."""
 
     base = {
         "extruder_temp_c": "210",
@@ -81,5 +81,5 @@ def test_care_options_are_validated_and_remain_template_owned() -> None:
         with pytest.raises(ValidationError):
             MaterialSettingsInput.model_validate({**base, key: value})
     resolved = resolve_profile_settings(base, {"drying_time_hours": "12+", "moisture_sensitivity": "low"})
-    assert resolved["drying_time_hours"] == "6-8"
-    assert resolved["moisture_sensitivity"] == "high-moderate"
+    assert resolved["drying_time_hours"] == "12+"
+    assert resolved["moisture_sensitivity"] == "low"

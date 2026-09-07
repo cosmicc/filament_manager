@@ -83,7 +83,7 @@ export default function NozzlesPage() {
   const [view, setView] = useCollectionView('nozzles', 'cards')
   const [message, setMessage] = useState('')
   const nozzles = useQuery({ queryKey: ['nozzles'], queryFn: () => apiFetch<Nozzle[]>('/nozzles?include_retired=true') })
-  const printers = useQuery({ queryKey: ['printers'], queryFn: () => apiFetch<Printer[]>('/printers') })
+  const printers = useQuery({ queryKey: ['printers'], queryFn: () => apiFetch<Printer[]>('/printers'), refetchInterval: 15_000 })
   const selectedPrinterId = printerId || printers.data?.[0]?.id || ''
   const events = useQuery({ queryKey: ['nozzle-events', selected?.id], queryFn: () => apiFetch<NozzleLifecycleEvent[]>(`/nozzles/${selected?.id}/events`), enabled: Boolean(selected) })
   const refresh = async () => {
@@ -139,11 +139,12 @@ export default function NozzlesPage() {
       </dl>
       <div className="detail-actions">
         <button className="button" onClick={() => { setDetailsNozzle(null); setSelected(nozzle) }}><History size={16} /> History</button>
-        {canEdit ? <button className="button" onClick={() => { setDetailsNozzle(null); setEditing(nozzle) }}><Pencil size={16} /> Edit</button> : null}
+        {canEdit ? <button className="button" disabled={Boolean(nozzle.installed_printer_id && installedPrinter?.configuration_locked)} onClick={() => { setDetailsNozzle(null); setEditing(nozzle) }}><Pencil size={16} /> Edit</button> : null}
       </div>
       {canEdit && nozzle.status !== 'retired' ? <div className="inline-action-group">
-        {nozzle.installed_printer_id ? <button className="button" disabled={remove.isPending} onClick={() => remove.mutate(nozzle)}><Unplug size={16} /> Record removal</button> : <button className="button button--primary" disabled={install.isPending} onClick={() => install.mutate({ nozzle, printerId: nozzle.printer_id })}>Install on {assignedPrinter?.name ?? 'assigned printer'}</button>}
+        {nozzle.installed_printer_id ? <button className="button" disabled={remove.isPending || installedPrinter?.configuration_locked} onClick={() => remove.mutate(nozzle)}><Unplug size={16} /> Record removal</button> : <button className="button button--primary" disabled={install.isPending || assignedPrinter?.configuration_locked} onClick={() => install.mutate({ nozzle, printerId: nozzle.printer_id })}>Install on {assignedPrinter?.name ?? 'assigned printer'}</button>}
       </div> : null}
+      {assignedPrinter?.configuration_locked ? <p className="muted">Nozzle changes are locked while printing or paused.</p> : null}
       {canEdit && !nozzle.installed_printer_id ? <button className="text-button" disabled={retire.isPending} onClick={() => retire.mutate(nozzle)}>{nozzle.status === 'retired' ? 'Reactivate nozzle' : 'Retire nozzle'}</button> : null}
     </article>
   }

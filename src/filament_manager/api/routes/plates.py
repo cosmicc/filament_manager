@@ -12,7 +12,8 @@ from PIL import Image, ImageOps, UnidentifiedImageError
 from sqlalchemy import select, text
 from sqlalchemy.orm import selectinload
 
-from filament_manager.clients.moonraker import MoonrakerBedMeshState, MoonrakerClient, MoonrakerError
+from filament_manager.api.printer_safety import require_idle_printer
+from filament_manager.clients.moonraker import MoonrakerBedMeshState, MoonrakerError
 from filament_manager.config import get_settings
 from filament_manager.domain.build_plates import BuildPlateDiscoveryError, build_plate_sort_key
 from filament_manager.models.enums import PlateCondition, PlateStatus
@@ -46,24 +47,7 @@ async def _require_idle_plate_context(session: DatabaseSession, printer_id: UUID
     """Do not change captured physical plate identity while a print is active."""
 
     printer_code = await session.scalar(select(Printer.printer_code).where(Printer.id == printer_id))
-    configured = next((item for item in get_settings().moonraker.printers if item.id == printer_code), None)
-    if configured is None:
-        raise ApiError(status.HTTP_409_CONFLICT, "printer_not_configured", "Printer is not configured")
-    try:
-        live = await MoonrakerClient(configured).bed_mesh_state()
-    except MoonrakerError as exc:
-        raise ApiError(
-            status.HTTP_502_BAD_GATEWAY,
-            "printer_state_unavailable",
-            "Cannot confirm that the printer is idle; try again when Moonraker is available",
-        ) from exc
-    # A retained in-progress history row is not physical motion evidence after
-    # a restart. Do not rewrite that history to permit an inventory selection.
-    if live.calibrating or live.print_state not in {"standby", "complete", "cancelled", "error"}:
-        raise ApiError(
-            status.HTTP_409_CONFLICT, "printer_busy", "Build plate changes require an idle printer"
-        )
-    return live
+    return await require_idle_printer(printer_code, get_settings())
 
 
 async def _get_plate(session: DatabaseSession, plate_id: UUID) -> BuildPlate:

@@ -235,7 +235,14 @@ async def save_template_settings(
     for source in current_profiles.values():
         if source.base_template_revision_id not in template_revision_ids:
             continue
-        overrides = dict(source.setting_overrides or {})
+        old_base = await session.get(MaterialTemplateRevision, source.base_template_revision_id)
+        assert old_base is not None
+        # Compare ownership to the exact OLD base, never the replacement.
+        # Legacy redundant entries equal to that base are provably inherited.
+        overrides = sparse_profile_overrides(
+            old_base.settings,
+            resolve_profile_settings(old_base.settings, dict(source.setting_overrides or {})),
+        )
         effective_settings, overrides = resolve_profile_settings_for_template_update(
             validated,
             settings_snapshot_from_profile(source),

@@ -21,13 +21,36 @@ from filament_manager.domain.cura_material_settings import (
 )
 
 
+@pytest.mark.parametrize("distance", [None, "0", "0.65", "6.5"])
+def test_retraction_safeguards_are_derived_and_not_customizable(distance: str | None) -> None:
+    """Exact resolved retraction distance owns the window; count is immutable."""
+
+    profile = MaterialSettingsInput(
+        extruder_temp_c=210,
+        bed_temp_c=60,
+        flow_percent=100,
+        cooling_min_percent=0,
+        cooling_max_percent=100,
+        filament_density_g_cm3="1.24",
+        retraction_distance_mm=distance,
+    )
+    settings = cura_settings_for_profile(profile)
+    assert settings["retraction_count_max"] == 100
+    assert settings.get("retraction_extrusion_window") == settings.get("retraction_amount")
+    for key in ("retraction_count_max", "retraction_extrusion_window"):
+        assert key in CURA_MANAGED_SETTING_KEYS
+        assert key not in CURA_EDITABLE_SETTING_KEYS
+        with pytest.raises(ValidationError):
+            MaterialSettingsInput.model_validate({**profile.model_dump(), "cura_extensions": {key: "5"}})
+
+
 def test_operator_material_settings_catalog_is_exact_and_unique() -> None:
     """Retain the complete unique catalog, including template-only acceleration."""
 
     keys = [setting.key for setting in CURA_MATERIAL_SETTINGS]
 
-    assert len(keys) == 56
-    assert len(set(keys)) == 56
+    assert len(keys) == 58
+    assert len(set(keys)) == 58
     assert len(CURA_EDITABLE_SETTING_KEYS) == 50
     assert len(CURA_TYPED_SETTING_KEYS) == 26
     assert len(CURA_EXTENSION_SETTING_KEYS) == 26
@@ -38,6 +61,8 @@ def test_operator_material_settings_catalog_is_exact_and_unique() -> None:
         "material_type",
         "cool_fan_speed",
         "retraction_speed",
+        "retraction_extrusion_window",
+        "retraction_count_max",
     }
     assert {
         "acceleration_infill",

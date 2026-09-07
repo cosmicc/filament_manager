@@ -33,6 +33,7 @@ def printer_snapshot() -> dict[str, Any]:
         "print_stats": {"state": "standby"},
         "toolhead": {"estimated_print_time": 200.0},
         "manual_probe": {"is_active": False},
+        "pause_resume": {"is_paused": False},
         "gcode_macro START_PRINT": {"waiting_for_mesh": 0},
     }
     for section in MACROS.sections():
@@ -67,6 +68,39 @@ def test_all_reference_templates_compile_with_klipper_delimiters() -> None:
     for section in MACROS.sections():
         if MACROS.has_option(section, "gcode"):
             ENVIRONMENT.from_string(MACROS.get(section, "gcode"))
+
+
+@pytest.mark.parametrize("state", ["printing", "paused", "unknown"])
+@pytest.mark.parametrize(
+    "macro", ["FILAMENT_MANAGER_CHANGE_SPOOL", "FILAMENT_MANAGER_LOAD_TARGET", "UNLOAD_FILAMENT"]
+)
+def test_ordinary_spool_macros_refuse_active_or_unknown_prints(state: str, macro: str) -> None:
+    """Printer-side guards close the race after an app request was checked idle."""
+
+    printer = printer_snapshot()
+    printer["print_stats"]["state"] = state
+    printer["pause_resume"] = {"is_paused": state == "paused"}
+    spool = printer["gcode_macro FILAMENT_MANAGER_SPOOL_STATE"]
+    spool.update(initialized=1, phase="idle", loaded_spool_id=17, loaded_temp=210)
+    with pytest.raises(ValueError, match="M600"):
+        render(macro, printer, ID="18", TEMP="210")
+
+
+@pytest.mark.parametrize("state", ["printing", "paused"])
+def test_m600_remains_available_and_native_plate_load_is_blocked(state: str) -> None:
+    """Deliberate filament replacement is the exception, never plate selection."""
+
+    printer = printer_snapshot()
+    printer["print_stats"]["state"] = state
+    printer["pause_resume"] = {"is_paused": state == "paused"}
+    printer["idle_timeout"] = {"state": "Printing"}
+    printer["extruder"] = {"target": 210}
+    printer["gcode_macro FILAMENT_MANAGER_SPOOL_STATE"].update(
+        initialized=1, phase="idle", loaded_spool_id=17, loaded_temp=210
+    )
+    assert "_FILAMENT_MANAGER_BEGIN_MANUAL_CHANGE" in render("M600", printer)
+    with pytest.raises(ValueError, match="Cannot change build plate"):
+        render("BED_MESH_PROFILE", printer, LOAD="P4b")
 
 
 def test_startup_restores_exact_saved_side_without_a_prompt() -> None:

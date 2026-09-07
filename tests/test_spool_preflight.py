@@ -119,7 +119,7 @@ def test_macro_reference_compiles_and_preserves_existing_motion_macros() -> None
                 assert ast.literal_eval(value) != ""
 
     spool_state_section = "gcode_macro FILAMENT_MANAGER_SPOOL_STATE"
-    assert parser.get(spool_state_section, "variable_macro_version") == '"0.7.4"'
+    assert parser.get(spool_state_section, "variable_macro_version") == '"0.7.5"'
     assert parser.get(spool_state_section, "variable_resume_attempts") == "0"
     spool_state_gcode = parser.get(spool_state_section, "gcode")
     assert "state.macro_version" in spool_state_gcode

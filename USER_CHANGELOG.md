@@ -1,5 +1,27 @@
 # User Changelog
 
+## 0.7.5 - 09.07.2026
+
+### Added
+
+- Automatic retraction window matching and a fixed maximum retraction count of 100, shown read-only in templates.
+
+- **Push app settings** on Cura Workstations sends the latest app values. Close Cura and wait for synchronization to succeed before reopening.
+
+- Plate, nozzle, and active-spool changes are locked during printing and pauses; deliberate M600/runout filament replacement remains available.
+
+- Customize drying temperature, drying time, and moisture sensitivity in each filament's print settings, or use Revert to Template.
+
+### Changed
+
+- Care values still inherit from templates unless customized; custom values remain when the template changes.
+
+### Fixed
+
+- Cura can no longer change app print settings. Edit values in Filament Manager; app customizations and history remain intact. Update both server and workstation agent.
+
+- Removed the template-only message under filament and spool drying guidance.
+
 ## 0.7.4 - 09.07.2026
 
 Testing release.

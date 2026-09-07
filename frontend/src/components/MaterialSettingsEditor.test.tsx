@@ -36,6 +36,21 @@ const settings: MaterialSettings = {
   cura_extensions: {},
 }
 
+it('shows read-only retraction safeguards and updates the derived window live', () => {
+  const view = render(<form><MaterialSettingsEditor settings={{ ...settings, retraction_distance_mm: '0.65' }} catalog={[]} plates={[]} scope="template" /></form>)
+  const windowField = screen.getByLabelText(/Minimum Extrusion Distance Window/) as HTMLInputElement
+  const count = screen.getByLabelText(/Maximum Retraction Count/) as HTMLInputElement
+  expect(windowField.readOnly).toBe(true)
+  expect(windowField.value).toBe('0.65')
+  expect(count.readOnly).toBe(true)
+  expect(count.value).toBe('100')
+  fireEvent.change(screen.getByRole('spinbutton', { name: /Retraction distance/ }), { target: { value: '1.5' } })
+  expect(windowField.value).toBe('1.5')
+  expect(windowField.name).toBe('')
+  expect(count.name).toBe('')
+  view.unmount()
+})
+
 describe('MaterialSettingsEditor validation', () => {
   it('serializes fixed care dropdowns and supports copying a blank care value', () => {
     const rendered = render(<form><MaterialSettingsEditor settings={settings} catalog={[]} plates={[]} scope="template" copySources={[{ id: 'care-source', label: 'Template PETG', settings: { ...settings, drying_time_hours: '6-8' } }]} /></form>)
@@ -51,7 +66,7 @@ describe('MaterialSettingsEditor validation', () => {
     rendered.unmount()
   })
 
-  it('shows four print temperatures plus template-only drying guidance', () => {
+  it('shows four print temperatures plus drying guidance', () => {
     const rendered = render(<MaterialSettingsEditor settings={settings} catalog={[]} plates={[]} />)
 
     expect(screen.getByLabelText('Printing temperature (°C)')).toBeTruthy()
@@ -64,13 +79,27 @@ describe('MaterialSettingsEditor validation', () => {
     rendered.unmount()
   })
 
-  it('preserves drying temperature as hidden inherited data in a filament editor', () => {
-    const rendered = render(<form><MaterialSettingsEditor settings={{ ...settings, drying_temp_c: '65', drying_time_hours: '4-6', moisture_sensitivity: 'moderate' }} catalog={[]} plates={[]} scope="profile" /></form>)
-    expect(screen.queryByRole('spinbutton', { name: /^Filament drying temperature/ })).toBeNull()
-    expect(settingsFromForm(rendered.container.querySelector('form')!, [], 'profile').drying_temp_c).toBe('65')
-    expect(screen.queryByRole('combobox', { name: /^Filament drying time/ })).toBeNull()
-    expect(settingsFromForm(rendered.container.querySelector('form')!, [], 'profile').drying_time_hours).toBe('4-6')
-    expect(settingsFromForm(rendered.container.querySelector('form')!, [], 'profile').moisture_sensitivity).toBe('moderate')
+  it('edits and reverts all three filament care overrides', () => {
+    const base = { ...settings, drying_temp_c: '65', drying_time_hours: '4-6', moisture_sensitivity: 'moderate' } as MaterialSettings
+    const rendered = render(<form><MaterialSettingsEditor settings={base} baseSettings={base} catalog={[]} plates={[]} scope="profile" /></form>)
+    const controls = within(rendered.container)
+    const cases = [
+      ['Filament drying temperature', 'drying_temp_c', '75', '65'],
+      ['Filament drying time', 'drying_time_hours', '12+', '4-6'],
+      ['Filament moisture sensitivity', 'moisture_sensitivity', 'extremely high', 'moderate'],
+    ] as const
+    for (const [label, key, custom, inherited] of cases) {
+      const control = controls.getByRole(key === 'drying_temp_c' ? 'spinbutton' : 'combobox', { name: new RegExp(`^${label}`) })
+      const field = within(control.closest('.setting-field') as HTMLElement)
+      expect(field.getByText(`Inherited · Template: ${inherited}`)).toBeTruthy()
+      fireEvent.change(control, { target: { value: custom } })
+      expect(settingsFromForm(rendered.container.querySelector('form')!, [], 'profile')[key]).toBe(custom)
+      expect(field.getByText(`Customized · Template: ${inherited}`)).toBeTruthy()
+      fireEvent.click(field.getByRole('button', { name: 'Revert to Template' }))
+      expect(settingsFromForm(rendered.container.querySelector('form')!, [], 'profile')[key]).toBe(inherited)
+      expect(field.queryByRole('button', { name: 'Revert to Template' })).toBeNull()
+    }
+    expect(controls.queryByText('Set in the linked template only.')).toBeNull()
     rendered.unmount()
   })
 

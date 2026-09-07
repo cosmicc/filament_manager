@@ -1,5 +1,7 @@
 # Filament Manager
 
+Ordinary build-plate, nozzle, and active-spool changes are locked during printing and pauses. Use M600/runout handling for deliberate filament replacement. The 0.7.5 interlock update requires the matching Klipper macros and an idle firmware restart.
+
 Filament Manager is a self-hosted inventory and calibration application for physical filament spools, manual weight measurements, material profiles, build plates, and Klipper-based printers.
 
 PostgreSQL is the canonical data store. A distinct Spoolman service remains the printer-facing usage service, while Google Sheets is an optional read-only publication target.
@@ -17,7 +19,7 @@ PostgreSQL is the canonical data store. A distinct Spoolman service remains the 
 - Difference-only comparison of two to four current profiles/templates with printer/nozzle scope warnings and exact-profile print success rates
 - Spool entry with unused-spool tare inference, manufacturer-specific empty-weight suggestions, read-only total weight, automatic tare/remaining recalculation that preserves recorded usage, purchase costs, and immutable weigh-in history
 - A **Locations** browser with direct spool details, remembered **Location** dropdowns with **New Location**, plus template-derived material filters beside Filaments and Spools search
-- Template-only drying temperature, drying time, and moisture sensitivity, shown read-only in filament and spool details; template cards summarize drying temperature and time
+- Drying temperature, drying time, and moisture sensitivity inherit from templates and can be customized in each filament's print settings, with **Revert to Template**; filament/spool details show effective values and template cards summarize drying temperature and time
 - Print History compares saved managed print settings against the current original template, clearly separating today's differences from immutable at-print evidence
 - **New Color** beside the color picker and **New [Item]** dropdown actions; colors/fillers/finishes save with the filament and disappear when unused by all current/archived filaments. Filler defaults to **None**, finish to **Standard**. Manufacturers/locations save immediately; unspecified manufacturers use **Unknown**.
 - Manufacturer cleanup preserves separate filaments with matching names, including their spools and print history.
@@ -33,7 +35,7 @@ PostgreSQL is the canonical data store. A distinct Spoolman service remains the 
 - A 10-second live Dashboard snapshot led by the full-width printer status card with three inventory value cards directly beneath it, plus safe Moonraker/Klipper availability, active spool and plate, print state and expanded progress, compact in-print nozzle/bed/chamber temperatures, current thumbnail, elapsed/estimated time, and filament use and cost so far
 - Seven-step calibration workflow with X/Y/Z, hole, shaft, wall/flow, material-shrinkage, suggested Cura settings, direct filament-profile application, confirmed linked-template application, and safe in-progress deletion
 - Uploaded, sanitized build-plate pictures, automatic mesh-calibration tracking, plate/side activity dates, configurable mesh reminders, and a persistent color-coded operator activity/notification center with outside-click dismissal
-- Outbound-only Cura workstation agents with interactive Windows pairing, per-user PATH/startup registration, clearly identified fresh-install/upgrade paths and uninstallers, stable managed material identities with specified filler- and finish-qualified product labels that omit blank or `None` values, safe legacy extruder-stack repair, automatic managed-material start/end print boundaries with distinct initial and regular bed temperatures, automatic required Material Settings enablement without removing unrelated Cura choices, bidirectional in-Cura managed-value saving without polluting Cura-only quality profiles, exact expected/exposed verification, required-plugin version/readiness status, currency-safe product cost estimates, recurring exact linked-extruder nozzle verification and alignment, authoritative synchronization, fifteen rotating automatic Cura recovery points plus explicitly retained named points—listed before separate historical request failures and reusable across workstations with an exact Cura-version match and explicit confirmation—on Arch Linux and Windows 11
+- Outbound-only Cura workstation agents with interactive Windows pairing, per-user PATH/startup registration, clearly identified fresh-install/upgrade paths and uninstallers, stable managed material identities with specified filler- and finish-qualified product labels that omit blank or `None` values, safe legacy extruder-stack repair, automatic managed-material start/end print boundaries with distinct initial and regular bed temperatures, automatic required Material Settings enablement without removing unrelated Cura choices, one-way app-owned print settings and a Push app settings control without polluting Cura-only quality profiles, exact expected/exposed verification, required-plugin version/readiness status, currency-safe product cost estimates, recurring exact linked-extruder nozzle verification and alignment, authoritative synchronization, fifteen rotating automatic Cura recovery points plus explicitly retained named points—listed before separate historical request failures and reusable across workstations with an exact Cura-version match and explicit confirmation—on Arch Linux and Windows 11
 - Three light and nine dark browser-local color profiles under Settings, with the running version in the application shell
 - Health, readiness, and Prometheus metrics endpoints
 - Optional privacy-sanitized Bugsnag browser/server/worker error reporting and browser performance monitoring, disabled by default
@@ -41,6 +43,8 @@ PostgreSQL is the canonical data store. A distinct Spoolman service remains the 
 - Configurable compressed canonical PostgreSQL snapshots with ten-backup automatic retention by default, PostgreSQL 18 client compatibility, live-print deferral with stale interrupted-print recovery, bounded safe failure guidance and backoff, trusted ZIP download/import, and a confirmed stopped-service catastrophic restore workflow
 
 For automatic heightmap restoration and the 0.7.4 printer macro upgrade, see [Build plate setup](docs/BUILD_PLATE_SETUP.md).
+
+For the 0.7.5 one-way Cura update, upgrade the server first and then the workstation agent. Edit tracked settings in the app only. On Cura Workstations, select **Push app settings**, keep Cura closed, and wait for **Succeeded** before reopening. Offline agents receive the request on their next check-in. Existing app overrides are preserved.
 
 ## Start locally
 

@@ -1,6 +1,7 @@
 """PostgreSQL-backed atomic Cura takeover workflow tests."""
 
 from collections.abc import AsyncIterator
+from datetime import UTC, datetime
 from decimal import Decimal
 
 import httpx
@@ -300,21 +301,54 @@ async def test_atomic_cura_source_mapping_completes_takeover_and_preserves_overr
                     "mappings": [{"source_id": "b" * 64, "template_id": template["id"]}],
                 },
             )
+            assert takeover.status_code == 409
+            assert takeover.json()["code"] == "cura_import_disabled"
+            takeover = await client.post(
+                f"/api/v1/workstation-agents/{agent_id}/cura-takeover",
+                json={"reviewed_source_ids": ["b" * 64, "c" * 64], "confirmed": True, "mappings": []},
+            )
             assert takeover.status_code == 200, takeover.text
+            async with factory() as session:
+                stale = CuraDeployment(
+                    agent_id=agent_id,
+                    requested_by=administrator_id,
+                    profile_checksum="e" * 64,
+                    idempotency_key="obsolete-test-library",
+                    payload={"schema_version": 3, "hide_bundled_materials": True},
+                    status=CuraDeploymentStatus.PENDING,
+                    next_attempt_at=datetime.now(UTC),
+                    created_at=datetime.now(UTC),
+                    updated_at=datetime.now(UTC),
+                )
+                session.add(stale)
+                await session.commit()
+                stale_id = stale.id
+            pushed = await client.post(f"/api/v1/workstation-agents/{agent_id}/sync")
+            assert pushed.status_code == 202, pushed.text
+            repeated_push = await client.post(f"/api/v1/workstation-agents/{agent_id}/sync")
+            assert repeated_push.json()[0]["id"] == pushed.json()[0]["id"]
+            assert pushed.json()[0]["status"] == "pending"
+            async with factory() as session:
+                stale = await session.get(CuraDeployment, stale_id)
+                assert stale.status == CuraDeploymentStatus.CANCELLED
+            application.dependency_overrides[dependencies.current_user] = lambda: User(role=UserRole.VIEWER)
+            denied = await client.post(f"/api/v1/workstation-agents/{agent_id}/sync")
+            assert denied.status_code == 403
+            application.dependency_overrides[dependencies.current_user] = user_override
             assert takeover.json()["cura_management_enabled"] is True
 
             current_template = await client.get("/api/v1/profiles/templates?include_inactive=true")
             template_settings = next(
                 item for item in current_template.json() if item["id"] == template["id"]
             )["revisions"][0]["settings"]
-            assert template_settings["print_speed_mm_s"] == "85"
-            assert template_settings["flow_percent"] == "98.5"
+            assert template_settings["print_speed_mm_s"] == "60"
+            assert template_settings["flow_percent"] == "100"
             current_profiles = await client.get("/api/v1/profiles")
             inherited = next(
                 item for item in current_profiles.json() if item["filament_product_id"] == product_id
             )
             assert inherited["status"] == "published"
-            assert Decimal(inherited["print_speed_mm_s"]) == Decimal("85")
+            assert Decimal(inherited["print_speed_mm_s"]) == Decimal("60")
             assert Decimal(inherited["flow_percent"]) == Decimal("97")
             assert set(inherited["override_keys"]) == {"flow_percent"}
 
@@ -331,12 +365,10 @@ async def test_atomic_cura_source_mapping_completes_takeover_and_preserves_overr
 
         async with factory() as session:
             mapping = await session.scalar(select(CuraTakeoverMapping))
-            assert mapping is not None
-            assert mapping.source_id == "b" * 64
-            assert str(mapping.template_id) == template["id"]
-            assert await session.scalar(select(func.count(CuraTakeoverMapping.id))) == 1
-            assert await session.scalar(select(func.count(MaterialProfile.id))) == 3
-            deployment = await session.scalar(select(CuraDeployment))
+            assert mapping is None
+            assert await session.scalar(select(func.count(CuraTakeoverMapping.id))) == 0
+            assert await session.scalar(select(func.count(MaterialProfile.id))) == 2
+            deployment = await session.scalar(select(CuraDeployment).where(CuraDeployment.id != stale_id))
             assert deployment is not None
             assert deployment.status == CuraDeploymentStatus.PENDING
 

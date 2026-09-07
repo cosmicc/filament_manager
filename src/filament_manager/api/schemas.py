@@ -875,6 +875,7 @@ class PrinterResponse(ApiModel):
     """Useful canonical printer metadata with connection details excluded."""
 
     id: UUID
+    configuration_locked: bool = False
     printer_code: str
     name: str
     nozzle_diameter_mm: Decimal
@@ -1209,6 +1210,23 @@ class CuraManagedMaterialReport(CuraMaterialReport):
 
     material_guid: UUID
     content_checksum: str = Field(pattern=r"^[0-9a-f]{64}$")
+    edited_settings: dict[str, str | bool] = Field(default_factory=dict)
+    edit_ids: dict[str, UUID] = Field(default_factory=dict, max_length=len(CURA_MATERIAL_SETTINGS))
+
+    @model_validator(mode="after")
+    def validate_edit_ids(self) -> "CuraManagedMaterialReport":
+        """Identities may refer only to the bounded explicit edit set."""
+
+        if not self.edit_ids.keys() <= self.edited_settings.keys():
+            raise ValueError("Cura edit identities require matching edited settings")
+        return self
+
+    @field_validator("edited_settings")
+    @classmethod
+    def validate_edited_settings(cls, value: dict[str, str | bool]) -> dict[str, str | bool]:
+        """Validate explicit plugin edits separately from the deployed snapshot."""
+
+        return cls.validate_settings(value)
 
 
 class WorkstationPairingCodeResponse(ApiModel):

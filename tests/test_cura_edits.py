@@ -1,58 +1,38 @@
 """Managed Cura edit scope tests."""
 
-from filament_manager.services.cura_edits import merge_editable_cura_settings
+from uuid import uuid4
+
+import pytest
+from pydantic import ValidationError
+
+from filament_manager.api.schemas import CuraManagedMaterialReport
 
 
-def test_product_cura_edits_preserve_template_only_and_derived_values() -> None:
-    """A product material cannot turn template or derived values into overrides."""
+@pytest.mark.parametrize(
+    "extra",
+    [
+        {"edited_settings": {"machine_start_gcode": "G28"}},
+        {"edited_settings": {"material_flow": "1" * 501}},
+        {"edited_settings": {"material_flow": "95\n100"}},
+        {"edit_ids": {"material_flow": str(uuid4())}},
+        {"edited_settings": {"material_flow": "95"}, "edit_ids": {"material_flow": "invalid"}},
+    ],
+)
+def test_explicit_edit_evidence_is_bounded_and_allowlisted(extra: dict[str, object]) -> None:
+    """New provenance fields never bypass the material setting input boundary."""
 
-    expected = {
-        "material_print_temperature": "220",
-        "speed_print": "100",
-        "acceleration_enabled": True,
-        "cool_fan_speed": "80",
-    }
-
-    merged = merge_editable_cura_settings(
-        expected,
-        {
-            "material_print_temperature": "225",
-            "speed_print": "150",
-            "acceleration_enabled": False,
-            "cool_fan_speed": "40",
-        },
-        source_kind="product",
-    )
-
-    assert merged == {
-        "material_print_temperature": "225",
-        "speed_print": "100",
-        "acceleration_enabled": True,
-        "cool_fan_speed": "80",
-    }
-
-
-def test_template_cura_edits_accept_template_only_but_preserve_derived_values() -> None:
-    """A Template material owns template controls but not forced or alias controls."""
-
-    expected = {
-        "speed_print": "100",
-        "acceleration_enabled": True,
-        "cool_fan_speed": "80",
-    }
-
-    merged = merge_editable_cura_settings(
-        expected,
-        {
-            "speed_print": "150",
-            "acceleration_enabled": False,
-            "cool_fan_speed": "40",
-        },
-        source_kind="template",
-    )
-
-    assert merged == {
-        "speed_print": "150",
-        "acceleration_enabled": True,
-        "cool_fan_speed": "80",
-    }
+    with pytest.raises(ValidationError):
+        CuraManagedMaterialReport.model_validate(
+            {
+                "source_id": "a" * 64,
+                "installation_id": "test",
+                "name": "PLA",
+                "brand": "Unknown",
+                "material_type": "PLA",
+                "color_name": "Black",
+                "material_guid": str(uuid4()),
+                "content_checksum": "b" * 64,
+                "settings": {},
+                **extra,
+            }
+        )

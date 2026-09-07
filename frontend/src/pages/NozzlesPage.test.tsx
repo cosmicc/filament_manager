@@ -19,6 +19,20 @@ const nozzle = {
 }
 
 describe('NozzlesPage', () => {
+  it('locks installation and removal during a captured print', async () => {
+    apiFetchMock.mockImplementation((path: string) => {
+      if (path === '/nozzles?include_retired=true') return Promise.resolve([nozzle])
+      if (path === '/printers') return Promise.resolve([{ id: 'printer-id', name: 'Workshop Printer', configuration_locked: true }])
+      return Promise.reject(new Error(`Unexpected API path: ${path}`))
+    })
+    const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+    render(<QueryClientProvider client={queryClient}><NozzlesPage /></QueryClientProvider>)
+    await screen.findByRole('heading', { name: '0.6 mm Hardened steel' })
+    fireEvent.change(screen.getByLabelText('Nozzles view'), { target: { value: 'detailed' } })
+    expect((screen.getByRole('button', { name: 'Record removal' }) as HTMLButtonElement).disabled).toBe(true)
+    expect((screen.getByRole('button', { name: 'Edit' }) as HTMLButtonElement).disabled).toBe(true)
+    expect(screen.getByText('Nozzle changes are locked while printing or paused.')).toBeTruthy()
+  })
   afterEach(() => {
     cleanup()
     apiFetchMock.mockReset()

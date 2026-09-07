@@ -1,5 +1,31 @@
 # Changelog
 
+## 0.7.5 - 09.07.2026
+
+Testing release. Upgrade web/worker and workstation agents, close Cura for synchronization, and replace the Klipper macro reference followed by an idle FIRMWARE_RESTART. Live printer/Cura validation remains an operator check.
+
+### Added
+
+- Read-only retraction safeguards: Minimum Extrusion Distance Window follows each resolved Retraction Distance, and Maximum Retraction Count is always 100. The Cura catalog now exposes 56 non-metadata keys; renderer revision 23 refreshes the enforcement plugin.
+
+- Per-workstation **Push app settings** queues the complete latest library, with status and closed-Cura/offline guidance.
+
+- Live idle-state interlocks for ordinary plate/nozzle/spool changes, including installed-nozzle edits and queued spool delivery. Existing printer-list polling exposes a fresh-capture UI lock without extra Moonraker requests.
+
+- Filament-level overrides for drying temperature, drying time, and moisture sensitivity using the existing settings editor and Revert to Template controls.
+
+### Changed
+
+- Care guidance inherits from templates by default; custom values survive template changes. Existing history remains unchanged, and no schema migration is required. Care guidance never becomes Cura settings or heater commands.
+
+### Fixed
+
+- Make tracked print settings app-owned and outbound-only. Ignore legacy Cura edits and pending receipts, reject Cura import routes and takeover mappings, and enforce app-deployed values inside Cura. Normalize redundant old-base overrides before inheritance updates while preserving genuine customizations and history. Upgrade server and agent; renderer revision 23 refreshes the plugin while Cura is closed. No schema migration or automatic reset of existing overrides.
+
+- Block ordinary load/unload and public native mesh changes during printing/pauses while preserving explicit M600/runout and preflight. Replace the included macro reference and restart firmware while idle when this update is deployed; no live printer test has been performed.
+
+- Removed obsolete template-only helper text from filament/spool care details; fixed text formatting for inherited care dropdown values.
+
 ## 0.7.4 - 09.07.2026
 
 Testing release.

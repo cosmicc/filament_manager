@@ -1,4 +1,4 @@
-"""Template-only descriptive filament care choices, never printer commands."""
+"""Inheritable descriptive filament care choices, never printer commands."""
 
 from typing import Literal
 

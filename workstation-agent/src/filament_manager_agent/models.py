@@ -85,6 +85,8 @@ class CuraMaterial(BaseModel):
     omitted_setting_count: int = Field(default=0, ge=0)
     material_guid: UUID | None = None
     content_checksum: str | None = Field(default=None, pattern=r"^[0-9a-f]{64}$")
+    edited_settings: dict[str, str | bool] = Field(default_factory=dict)
+    edit_ids: dict[str, UUID] = Field(default_factory=dict)
 
     def report(self) -> dict[str, object]:
         """Return bounded semantic data without exposing the local source path."""

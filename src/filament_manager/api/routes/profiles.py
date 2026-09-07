@@ -1762,33 +1762,13 @@ async def _reported_cura_material(
     agent_id: UUID,
     source_id: str,
 ) -> tuple[WorkstationAgent, dict[str, object], dict[str, object]]:
-    """Load one still-reported sanitized Cura import source from an enabled agent."""
+    """Reject retired inbound Cura imports, including compatibility endpoints."""
 
-    agent = await session.get(WorkstationAgent, agent_id)
-    if agent is None or not agent.enabled:
-        raise ApiError(
-            status.HTTP_422_UNPROCESSABLE_ENTITY,
-            "workstation_unavailable",
-            "Workstation is unavailable",
-        )
-    candidate = next(
-        (material for material in agent.cura_materials if material.get("source_id") == source_id),
-        None,
+    raise ApiError(
+        status.HTTP_409_CONFLICT,
+        "cura_import_disabled",
+        "Print settings are managed only in Filament Manager; Cura imports are disabled",
     )
-    if candidate is None:
-        raise ApiError(
-            status.HTTP_404_NOT_FOUND,
-            "cura_material_unknown",
-            "Cura import source was not found on the selected workstation",
-        )
-    settings = candidate.get("settings")
-    if not isinstance(settings, dict):
-        raise ApiError(
-            status.HTTP_422_UNPROCESSABLE_ENTITY,
-            "cura_material_invalid",
-            "Cura import source settings are invalid",
-        )
-    return agent, candidate, settings
 
 
 @router.post(

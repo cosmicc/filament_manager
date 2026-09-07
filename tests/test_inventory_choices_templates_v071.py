@@ -175,6 +175,8 @@ async def test_choices_search_and_template_correction(
                 **templates[0]["revisions"][0]["settings"],
                 "extruder_temp_c": "218",
                 "drying_temp_c": "110",
+                "drying_time_hours": "12+",
+                "moisture_sensitivity": "extremely high",
             }
             result = await client.put(
                 f"/api/v1/profiles/{profile['id']}/settings",
@@ -185,8 +187,11 @@ async def test_choices_search_and_template_correction(
             )
             assert result.status_code == 200, result.text
             source = result.json()
-            assert Decimal(source["drying_temp_c"]) == 60
-            assert "drying_temp_c" not in source["override_keys"]
+            assert Decimal(source["drying_temp_c"]) == 110
+            assert source["drying_time_hours"] == "12+"
+            assert source["moisture_sensitivity"] == "extremely high"
+            care_keys = {"drying_temp_c", "drying_time_hours", "moisture_sensitivity"}
+            assert care_keys <= set(source["override_keys"])
             assert not any("drying" in key for key in source["cura_settings"])
             payload = {
                 "expected_profile_version": source["record_version"],
@@ -241,7 +246,9 @@ async def test_choices_search_and_template_correction(
             changed = result.json()
             assert Decimal(changed["extruder_temp_c"]) == 218
             assert Decimal(changed["bed_temp_c"]) == 45
-            assert Decimal(changed["drying_temp_c"]) == 45
+            assert Decimal(changed["drying_temp_c"]) == 110
+            assert changed["drying_time_hours"] == "12+"
+            assert changed["moisture_sensitivity"] == "extremely high"
             assert "extruder_temp_c" in changed["override_keys"]
             assert "bed_temp_c" not in changed["override_keys"]
             assert changed["base_template_id"] == templates[1]["id"]
@@ -255,11 +262,29 @@ async def test_choices_search_and_template_correction(
                     templates[0]["revisions"][0]["id"]
                 )
                 assert old.bed_temp_c == 60 and old.extruder_temp_c == 218
+                assert old.drying_temp_c == 110
+                assert old.drying_time_hours == "12+"
+                assert old.moisture_sensitivity == "extremely high"
                 assert len(list(await session.scalars(select(MaterialProfile)))) == (
                     5 if multiple_scopes else 3
                 )
             active = (await client.get("/api/v1/profiles")).json()
             assert all(item["base_template_name"] == "Template TPU" for item in active)
+            # Reverting care values clears only those overrides in the new snapshot.
+            reverted_settings = {**custom_settings, **templates[1]["revisions"][0]["settings"]}
+            reverted_settings["extruder_temp_c"] = "218"
+            result = await client.put(
+                f"/api/v1/profiles/{changed['id']}/settings",
+                json={
+                    "expected_profile_version": changed["record_version"],
+                    "settings": reverted_settings,
+                },
+            )
+            assert result.status_code == 200, result.text
+            reverted = result.json()
+            assert not care_keys.intersection(reverted["override_keys"])
+            assert Decimal(reverted["drying_temp_c"]) == 45
+            assert "extruder_temp_c" in reverted["override_keys"]
             user.role = UserRole.VIEWER
             assert (
                 await client.post("/api/v1/filament-attributes", json={"kind": "finish", "name": "Denied"})

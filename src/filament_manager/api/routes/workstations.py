@@ -15,7 +15,6 @@ from fastapi import APIRouter, Request, Response, status
 from sqlalchemy import delete, or_, select, update
 
 from filament_manager.config import get_settings
-from filament_manager.domain.cura_import import material_settings_from_cura, merge_cura_settings
 from filament_manager.domain.cura_recovery import (
     AUTOMATIC_RECOVERY_HISTORY_LIMIT,
     RECOVERY_LIST_LIMIT,
@@ -26,15 +25,12 @@ from filament_manager.domain.cura_recovery import (
 from filament_manager.models.enums import CuraDeploymentStatus, ProfileStatus
 from filament_manager.models.inventory import (
     MaterialProfile,
-    MaterialTemplate,
-    MaterialTemplateRevision,
     Printer,
 )
 from filament_manager.models.workstations import (
     CuraDeployment,
     CuraRecoveryRestore,
     CuraRecoverySnapshot,
-    CuraTakeoverMapping,
     WorkstationAgent,
     WorkstationPairingCode,
 )
@@ -43,11 +39,9 @@ from filament_manager.services.cura_edits import import_managed_cura_edits
 from filament_manager.services.cura_library import (
     build_cura_library,
     queue_cura_library,
-    settings_from_template,
 )
 from filament_manager.services.cura_nozzles import queue_cura_nozzle_update
 from filament_manager.services.events import add_audit_event
-from filament_manager.services.material_settings import save_template_settings
 
 from ..dependencies import Administrator, CurrentWorkstationAgent, DatabaseSession, Operator, Viewer
 from ..errors import ApiError
@@ -67,7 +61,6 @@ from ..schemas import (
     CuraRecoverySnapshotUpload,
     CuraRecoverySnapshotUploadResponse,
     CuraTakeoverRequest,
-    MaterialSettingsInput,
     WorkstationAgentResponse,
     WorkstationAgentUpdate,
     WorkstationHeartbeat,
@@ -1119,7 +1112,7 @@ async def complete_cura_takeover(
     administrator: Administrator,
     session: DatabaseSession,
 ) -> WorkstationAgentResponse:
-    """Atomically map selected Cura sources, then enable authoritative sync."""
+    """Confirm outbound-only takeover without importing Cura settings."""
 
     if not payload.confirmed:
         raise ApiError(
@@ -1158,123 +1151,13 @@ async def complete_cura_takeover(
             "cura_source_catalog_changed",
             "The reported Cura profiles changed; reopen the mapping review and try again",
         )
-    requested_source_ids = {mapping.source_id for mapping in payload.mappings}
-    unknown_sources = sorted(requested_source_ids - reported_sources.keys())
-    if unknown_sources:
-        raise ApiError(
-            status.HTTP_422_UNPROCESSABLE_ENTITY,
-            "cura_source_unavailable",
-            "A selected Cura source is no longer reported; refresh and review the mappings",
-        )
-
-    template_ids = {mapping.template_id for mapping in payload.mappings}
-    templates = list(
-        await session.scalars(
-            select(MaterialTemplate)
-            .where(MaterialTemplate.id.in_(template_ids))
-            .order_by(MaterialTemplate.id)
-            .with_for_update()
-        )
-    )
-    templates_by_id = {template.id: template for template in templates}
-    if len(templates_by_id) != len(template_ids) or any(not template.active for template in templates):
-        raise ApiError(
-            status.HTTP_422_UNPROCESSABLE_ENTITY,
-            "material_template_unavailable",
-            "Every mapping must target an active material template",
-        )
-    duplicate_mapping = (
-        await session.scalar(
-            select(CuraTakeoverMapping.id).where(
-                CuraTakeoverMapping.agent_id == agent.id,
-                (
-                    CuraTakeoverMapping.source_id.in_(requested_source_ids)
-                    | CuraTakeoverMapping.template_id.in_(template_ids)
-                ),
-            )
-        )
-        if payload.mappings
-        else None
-    )
-    if duplicate_mapping is not None:
+    if payload.mappings:
         raise ApiError(
             status.HTTP_409_CONFLICT,
-            "cura_source_mapping_exists",
-            "A selected source or template was already used for this workstation takeover",
+            "cura_import_disabled",
+            "Print settings are managed only in Filament Manager; Cura imports are disabled",
         )
-
     applied: list[dict[str, object]] = []
-    for mapping in payload.mappings:
-        template = templates_by_id[mapping.template_id]
-        current_revision = await session.scalar(
-            select(MaterialTemplateRevision)
-            .where(
-                MaterialTemplateRevision.material_template_id == template.id,
-                MaterialTemplateRevision.status == ProfileStatus.PUBLISHED,
-            )
-            .order_by(MaterialTemplateRevision.version.desc())
-            .limit(1)
-        )
-        if current_revision is None:
-            raise ApiError(
-                status.HTTP_409_CONFLICT,
-                "material_template_settings_unavailable",
-                "Every selected template must have current settings",
-            )
-        source = reported_sources[mapping.source_id]
-        source_settings = source.get("settings")
-        if not isinstance(source_settings, dict):
-            raise ApiError(
-                status.HTTP_422_UNPROCESSABLE_ENTITY,
-                "cura_source_invalid",
-                "A selected Cura source has invalid settings",
-            )
-        try:
-            current_settings = MaterialSettingsInput.model_validate(current_revision.settings)
-            merged_cura = merge_cura_settings(
-                settings_from_template(current_revision.settings),
-                source_settings,
-            )
-            imported_settings = MaterialSettingsInput.model_validate(
-                material_settings_from_cura(
-                    merged_cura,
-                    filament_density_g_cm3=current_settings.filament_density_g_cm3,
-                    preferred_build_plate_surface_id=(current_settings.preferred_build_plate_surface_id),
-                )
-            )
-        except ValueError as exc:
-            raise ApiError(
-                status.HTTP_422_UNPROCESSABLE_ENTITY,
-                "cura_source_invalid",
-                str(exc),
-            ) from exc
-        revision, inherited_profiles = await save_template_settings(
-            session,
-            template=template,
-            settings=imported_settings.model_dump(mode="json"),
-        )
-        source_kind = str(source.get("source_kind") or "material")
-        source_name = str(source.get("name") or "Unnamed Cura source").strip()
-        session.add(
-            CuraTakeoverMapping(
-                agent_id=agent.id,
-                source_id=mapping.source_id,
-                source_kind=source_kind,
-                source_name=source_name,
-                template_id=template.id,
-                applied_template_revision_id=revision.id,
-                created_by=administrator.id,
-                created_at=datetime.now(UTC),
-            )
-        )
-        applied.append(
-            {
-                "source_id": mapping.source_id,
-                "template_id": str(template.id),
-                "settings_snapshot_id": str(revision.id),
-                "linked_profiles_updated": len(inherited_profiles),
-            }
-        )
 
     agent.cura_management_enabled = True
     agent.record_version += 1
@@ -1440,6 +1323,69 @@ async def create_cura_deployments(
     )
     await session.commit()
     return [CuraDeploymentResponse.model_validate(item) for item in deployments]
+
+
+@router.post(
+    "/workstation-agents/{agent_id}/sync",
+    response_model=list[CuraDeploymentResponse],
+    status_code=status.HTTP_202_ACCEPTED,
+)
+async def sync_workstation_settings(
+    agent_id: UUID,
+    request: Request,
+    administrator: Administrator,
+    session: DatabaseSession,
+) -> list[CuraDeploymentResponse]:
+    """Queue the latest full app library without bypassing closed-Cura safety."""
+
+    agent = await session.scalar(
+        select(WorkstationAgent).where(WorkstationAgent.id == agent_id).with_for_update()
+    )
+    if agent is None:
+        raise ApiError(404, "workstation_unknown", "Workstation not found")
+    if not agent.enabled or not agent.cura_management_enabled:
+        raise ApiError(409, "workstation_unavailable", "Enable this workstation and complete takeover first")
+    if not agent.cura_installations:
+        raise ApiError(409, "cura_installation_unavailable", "Wait for a reported Cura installation")
+    try:
+        deployments = await queue_cura_library(session, [agent], requested_by=administrator.id, force=True)
+    except ValueError as error:
+        raise ApiError(
+            409, "cura_library_empty", "Save app template settings before synchronization"
+        ) from error
+    for deployment in deployments:
+        if deployment.status == CuraDeploymentStatus.PENDING:
+            deployment.next_attempt_at = datetime.now(UTC)
+    # A manual refresh supersedes only unclaimed older library snapshots.
+    # Never cancel nozzle/recovery work or a transaction already on an agent.
+    queued = await session.scalars(
+        select(CuraDeployment)
+        .where(
+            CuraDeployment.agent_id == agent.id,
+            CuraDeployment.status == CuraDeploymentStatus.PENDING,
+            CuraDeployment.profile_checksum != deployments[0].profile_checksum,
+        )
+        .with_for_update()
+    )
+    for older in queued:
+        if older.payload.get("schema_version") == 3 and older.payload.get("hide_bundled_materials") is True:
+            older.status = CuraDeploymentStatus.CANCELLED
+            older.completed_at = datetime.now(UTC)
+            older.updated_at = older.completed_at
+    add_audit_event(
+        session,
+        actor_id=administrator.id,
+        source="web",
+        action="workstation.settings.sync",
+        object_type="workstation_agent",
+        object_id=agent.id,
+        before=None,
+        after={"deployment_ids": [str(item.id) for item in deployments]},
+        correlation_id=request.state.correlation_id,
+    )
+    result = [CuraDeploymentResponse.model_validate(item) for item in deployments]
+    await session.commit()
+    return result
 
 
 @router.get("/cura-deployments", response_model=list[CuraDeploymentResponse])

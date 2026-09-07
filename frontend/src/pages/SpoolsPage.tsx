@@ -1036,7 +1036,8 @@ export default function SpoolsPage() {
                     {canEdit && selected.active_printer_id ? (
                       <button
                         className="button"
-                        disabled={requestUnload.isPending}
+                        disabled={requestUnload.isPending || printers.data?.some((printer) => printer.configuration_locked)}
+                        title="Available only while idle; use M600 for an in-print replacement"
                         onClick={() => requestUnload.mutate()}
                       >
                         <PackageMinus size={17} /> Unload and clear active spool
@@ -1047,6 +1048,7 @@ export default function SpoolsPage() {
                         className="button"
                         disabled={
                           !selected.spoolman_id ||
+                          printers.data?.some((printer) => printer.configuration_locked) ||
                           requestLoad.isPending ||
                           Boolean(selected.active_printer_id)
                         }

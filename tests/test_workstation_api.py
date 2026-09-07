@@ -480,6 +480,15 @@ async def test_pair_queue_claim_and_complete_workstation_deployment(
                             "color_name": "Black",
                             "material_guid": cura_material_guid("product", profile_id),
                             "content_checksum": "d" * 64,
+                            "edited_settings": {
+                                "material_print_temperature": "225",
+                                "material_bed_temperature": "70",
+                                "material_flow": "98",
+                                "cool_fan_enabled": True,
+                                "cool_fan_speed_min": "20",
+                                "cool_fan_speed_max": "70",
+                                "klipper_pressure_advance_factor": "0.035",
+                            },
                             "settings": {
                                 "material_print_temperature": "225",
                                 "material_bed_temperature": "70",
@@ -534,33 +543,26 @@ async def test_pair_queue_claim_and_complete_workstation_deployment(
             }
             deployment = await session.get(CuraDeployment, deployment_id)
             assert deployment is not None
-            assert deployment.status == CuraDeploymentStatus.SUCCEEDED
+            assert deployment.status == CuraDeploymentStatus.PENDING
             obsolete_failed = await session.get(CuraDeployment, obsolete_failed_id)
             assert obsolete_failed is not None
             assert obsolete_failed.status == CuraDeploymentStatus.CANCELLED
-            queued_current_library = await session.scalar(
-                select(CuraDeployment)
-                .where(CuraDeployment.id != deployment_id)
-                .order_by(CuraDeployment.created_at.desc())
-                .limit(1)
-            )
-            assert queued_current_library is not None
-            assert queued_current_library.status == CuraDeploymentStatus.PENDING
+            # Drift requeues the same canonical library, not a Cura-edited one.
+            assert deployment.payload == claimed.json()["payload"]
             current_profile = await session.scalar(
                 select(MaterialProfile)
                 .where(MaterialProfile.filament_product_id == profile.filament_product_id)
                 .order_by(MaterialProfile.version.desc())
                 .limit(1)
             )
-            assert current_profile is not None and current_profile.version == 2
+            assert current_profile is not None and current_profile.version == 1
             assert current_profile.status == ProfileStatus.PUBLISHED
-            assert current_profile.extruder_temp_c == Decimal("225.00000")
+            assert current_profile.extruder_temp_c == Decimal("220.00000")
             assert current_profile.base_template_revision_id == template_revision.id
             receipt = await session.scalar(select(CuraManagedEditReceipt))
-            assert receipt is not None
-            assert receipt.content_checksum != "d" * 64
-            assert await session.scalar(select(func.count(CuraManagedEditReceipt.id))) == 1
-            assert await session.scalar(select(func.count(AuditEvent.id))) == 5
+            assert receipt is None
+            assert await session.scalar(select(func.count(CuraManagedEditReceipt.id))) == 0
+            assert await session.scalar(select(func.count(AuditEvent.id))) == 4
 
         await engine.dispose()
 
