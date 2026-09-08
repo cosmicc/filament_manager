@@ -13,7 +13,7 @@ from filament_manager.config import get_settings
 from filament_manager.models.enums import PrintJobStatus
 from filament_manager.models.google import GoogleConnection
 from filament_manager.models.printing import PrintJob
-from filament_manager.services.google_connection import access_token, connection
+from filament_manager.services.google_connection import GOOGLE_LOCK, access_token, connection
 from filament_manager.services.google_workbook import fingerprint, snapshot
 
 
@@ -39,7 +39,12 @@ async def publish(session: AsyncSession, *, force: bool = False) -> None:
     )
     if active:
         return
-    record = await connection(session, lock=True)
+    acquired = await session.scalar(text("SELECT pg_try_advisory_xact_lock(:key)"), {"key": GOOGLE_LOCK})
+    if not acquired:
+        # Do not occupy another worker waiting behind a large upload. The
+        # periodic complete comparison catches changes made during this pass.
+        return
+    record = await connection(session)
     # Recheck after the lock: a concurrent disconnect must stop publication.
     if not record.refresh_token and not settings.google.enabled:
         return

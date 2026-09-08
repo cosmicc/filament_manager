@@ -298,6 +298,17 @@ async def test_google_oauth_api_and_complete_snapshot(monkeypatch: pytest.Monkey
 
             monkeypatch.setattr(GoogleWorkbookClient, "find_or_create", create)
             monkeypatch.setattr(GoogleWorkbookClient, "publish", write)
+            async with factory() as busy:
+                await google_connection.connection(busy, lock=True)
+                async with factory() as contender:
+                    # A concurrent publisher skips rather than blocking the
+                    # worker needed for printer monitoring and physical gates.
+                    import asyncio
+
+                    await asyncio.wait_for(google_publication.publish(contender), timeout=1)
+                    await contender.rollback()
+                await busy.rollback()
+            assert published == []
             async with factory() as session:
                 await google_publication.publish(session)
                 await google_publication.publish(session)

@@ -15,6 +15,7 @@ Testing release. Upgrade web and worker together; migration `d8e9f012a3b4` adds 
 
 - Google publication now coalesces changes with periodic complete content comparison and manual forced refresh, waits during printing without new printer traffic, shares persisted retry backoff, and stages data before atomic replacement into stable sheet IDs. Unrelated sheets are retained; legacy service-account configuration remains supported.
 - Large publications are paced below Google's per-user request quota and bounded by both serialized content size and cell count; an oversized export retains the previous complete workbook instead of truncating records.
+- Concurrent Google jobs skip a busy publication lock instead of occupying another worker needed for printer monitoring.
 - Added deployment variables and setup/upgrade/security documentation. The published workbook is a view, not a credential export or database backup.
 
 ### Fixed
