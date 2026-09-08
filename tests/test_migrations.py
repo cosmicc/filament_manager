@@ -106,7 +106,7 @@ def test_unknown_manufacturer_upgrade_preserves_archived_filaments_and_snapshots
             with pytest.raises(RuntimeError, match="legacy filament identity rule"):
                 command.downgrade(config, "b6c7d8e9f012")
             with engine.connect() as connection:
-                assert connection.scalar(text("SELECT version_num FROM alembic_version")) == "c7d8e9f012a3"
+                assert connection.scalar(text("SELECT version_num FROM alembic_version")) == "d8e9f012a3b4"
         else:
             command.downgrade(config, "b6c7d8e9f012")
             assert "uq_filament_product_identity" in {
@@ -745,7 +745,7 @@ def test_previous_schema_automatically_upgrades_to_metadata_head(
 
         upgrade_database(DatabaseConfig(url=database_url))
         with engine.connect() as connection:
-            assert connection.scalar(text("SELECT version_num FROM alembic_version")) == "c7d8e9f012a3"
+            assert connection.scalar(text("SELECT version_num FROM alembic_version")) == "d8e9f012a3b4"
             assert (
                 connection.scalar(
                     text(

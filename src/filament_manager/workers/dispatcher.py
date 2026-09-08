@@ -14,7 +14,6 @@ from sqlalchemy import and_, or_, select, text, update
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import joinedload
 
-from filament_manager.clients.google_sheets import GoogleSheetsClient
 from filament_manager.clients.moonraker import (
     MoonrakerClient,
     MoonrakerError,
@@ -481,73 +480,6 @@ async def _project_spool(
         remote_payload=remote,
         version=spool.record_version,
     )
-
-
-async def _publish_inventory(session: AsyncSession) -> None:
-    settings = get_settings()
-    if not settings.google.enabled:
-        return
-    assert settings.google.spreadsheet_id
-    result = await session.execute(
-        select(Spool)
-        .options(joinedload(Spool.filament_product).joinedload(FilamentProduct.vendor))
-        .order_by(Spool.spool_code)
-    )
-    rows: list[list[object]] = [
-        [
-            "Spool ID",
-            "Inventory Status",
-            "Material Type",
-            "Filler / Reinforcement",
-            "Finish / Effect",
-            "Color",
-            "Manufacturer",
-            "Product / Grade / Hardness",
-            "Diameter (mm)",
-            "Density (g/cm³)",
-            "Nominal Weight (g)",
-            "Tare (g)",
-            "Remaining Filament (g)",
-            "Location",
-            "Spoolman ID",
-            "Record UUID",
-            "Record Version",
-            "Updated At",
-            "Published At",
-        ]
-    ]
-    published_at = datetime.now(UTC).isoformat()
-    for spool in result.unique().scalars():
-        product = spool.filament_product
-        rows.append(
-            [
-                spool.spool_code,
-                spool.status.value,
-                product.material_type,
-                product.filler or "",
-                product.finish or "",
-                product.color_name,
-                product.vendor.name if product.vendor else "",
-                product.product_name or "",
-                float(product.diameter_mm),
-                float(product.density_g_cm3),
-                float(spool.nominal_net_mass_g),
-                float(spool.tare_mass_g),
-                float(spool.remaining_mass_effective_g),
-                spool.location or "",
-                spool.spoolman_id or "",
-                str(spool.id),
-                spool.record_version,
-                spool.updated_at.isoformat(),
-                published_at,
-            ]
-        )
-    client = GoogleSheetsClient(
-        settings.google.spreadsheet_id,
-        settings.google.service_account_file,
-        settings.google.resolved_service_account_info(),
-    )
-    await client.write_values("Inventory!A1:S", rows)
 
 
 async def _converge_spoolman(
@@ -1377,7 +1309,9 @@ async def dispatch_job(session: AsyncSession, job: OutboxJob) -> None:
             raise LookupError("Spool unload references an unconfigured printer")
         await MoonrakerClient(unload_config).request_spool_unload()
     elif job.job_type.startswith("google."):
-        await _publish_inventory(session)
+        from filament_manager.services.google_publication import publish
+
+        await publish(session, force=job.job_type == "google.rebuild.full")
     else:
         raise ValueError(f"Unsupported outbox job type: {job.job_type}")
 

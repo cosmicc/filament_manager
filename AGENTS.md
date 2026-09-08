@@ -10,7 +10,7 @@ The product name is **Filament Manager**. Do not introduce the former project na
 
 1. The `filament_manager` PostgreSQL database is canonical.
 2. Standalone Spoolman is the printer-facing operational projection and usage service.
-3. Google Sheets is a one-way, read-only publication target.
+3. Google Sheets is a one-way, read-only publication target. Settings owns OAuth connection and Sync now; Diagnostics retains operational health. Use only `drive.file`, session-bound single-use PKCE, strict session cookies, and encrypted offline grants with a deployment-held Fernet key. Publish explicitly allowlisted business data, including archived records and immutable settings/history, never account/security/connection data or binaries. Coalesce through the worker plus complete periodic content comparison, defer while printing without extra printer queries, and stage values before atomic replacement into stable managed tab IDs. Preserve unrelated sheets and never import sheet edits. Follow `skills/google-publication.md` and `docs/GOOGLE_SHEETS.md`.
 4. The supplied workbook is an initial-import fixture only.
 5. Filament Manager integrates with Spoolman through its supported REST API and periodic reconciliation; direct database access is prohibited.
 6. The default production deployment uses the root `docker-stack.yml` to run Spoolman and Filament Manager together while keeping their remote PostgreSQL databases, roles, credentials, migrations, and backups separate. The independent stack files under `docker/` remain available when operational isolation is required.

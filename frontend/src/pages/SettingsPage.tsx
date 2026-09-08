@@ -15,6 +15,7 @@ import {
 } from 'lucide-react'
 import { type ChangeEvent, type FormEvent, useMemo, useState } from 'react'
 import { apiFetch } from '../api/client'
+import { GoogleIntegrationPanel } from '../components/GoogleIntegrationPanel'
 import type {
   Device,
   OperationalSettings,
@@ -309,6 +310,7 @@ export default function SettingsPage() {
         <WorkbookImportPanel administrator={administrator} />
 
         <OperationalPolicyPanel administrator={administrator} />
+        {administrator && <GoogleIntegrationPanel />}
 
         <article className="card settings-section settings-section--wide">
           <header className="card__header">

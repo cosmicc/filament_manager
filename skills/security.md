@@ -1,5 +1,7 @@
 # Security and Authentication Skill
 
+- Google OAuth uses only app-created-file access, hashed single-use session-bound state, PKCE and encrypted offline grants. Keep strict cookies, scrub callback queries before telemetry, and exclude raw access logs. Follow `skills/google-publication.md`; never export the private connection table or application/account/security configuration.
+
 - Discard all legacy managed setting reports, including explicit edited settings and event IDs. Reject legacy Cura template/profile import requests and takeover mappings. The app is the only authority for tracked settings; authenticated heartbeat acceptance never authorizes inbound edits.
 
 - Filament Manager supports exactly one active local Administrator account. Legacy role values remain only for database compatibility and must not be exposed as an account-management workflow.

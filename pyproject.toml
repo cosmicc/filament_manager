@@ -4,12 +4,13 @@ build-backend = "hatchling.build"
 
 [project]
 name = "filament-manager"
-version = "0.7.8"
+version = "0.7.9"
 description = "Self-hosted filament inventory, calibration, and printer integration"
 readme = "README.md"
 requires-python = ">=3.12"
 license = { text = "Proprietary" }
 dependencies = [
+  "cryptography>=46,<51",
   "alembic>=1.16,<2",
   "argon2-cffi>=25.1,<26",
   "bugsnag>=4.9,<5",

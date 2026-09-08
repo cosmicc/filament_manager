@@ -1,5 +1,11 @@
 # 05 - Read-Only Google Sheet Publication
 
+## Implemented contract (0.7.9)
+
+Settings now provides Google OAuth connection, disconnect and Sync now. The worker creates a native Filament Manager workbook with 24 linked/filterable tabs, including archived business records and immutable print/profile/template settings. See [Google setup and workbook behavior](../GOOGLE_SHEETS.md) and [agent workflow](../../skills/google-publication.md) for the authoritative current contract.
+
+Publishing uses explicit business-column allowlists, encrypted offline access, complete periodic content comparison, print deferral, shared retries and staged atomic replacement into stable tab IDs. It does not export credentials or binaries. Owner edits are warned and overwritten on changed or forced publication; continuous human-edit detection and the older configurable pause policy below remain design proposals, not implemented capabilities. The original Inventory tab is retained but superseded by Spools. The remainder of this document records the original design proposal where it differs from the current contract.
+
 ## Purpose
 
 Provide a convenient Google Drive view of current filament, profile, plate, and calibration information without making the Sheet authoritative.

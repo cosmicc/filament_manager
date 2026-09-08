@@ -865,3 +865,6 @@ textarea { resize: vertical; }
   .user-row { grid-template-columns: 36px 1fr auto; }
   .you-label { grid-column: 2; }
 }
+.google-redirect { display: inline-block; max-width: 100%; overflow-wrap: anywhere; }
+.google-integration { display: grid; gap: var(--space-3); }
+.google-integration .card__header, .google-integration .plate-facts, .google-integration .detail-actions { margin: 0; }

@@ -1,5 +1,7 @@
 # Deployment and Operations Skill
 
+- Version 0.7.9 adds Settings-based Google OAuth and the private connection-state migration `d8e9f012a3b4`. Deploy the same OAuth client and persistent Fernet key to web/worker, keep the legacy `GOOGLE_ENABLED` switch false for OAuth, and follow `docs/GOOGLE_SHEETS.md`. No new printer macros or Cura renderer change is required from 0.7.8. Offline grants in database backups remain encrypted; restoring may restore a connection, so review it before resuming publication.
+
 - Version 0.7.8 AutoTowers correction: renderer revision 26 installs managed plugin 2.2.2 through the usual closed-Cura agent deployment. Reopen Cura and re-slice/export speed towers after installation; existing printer files and already post-processed scene G-code are not repaired. Do not change the inspection policy, deploy printer macros, or imply server-only updates install this fix. No database migration is required. Validate the actual optional upstream speed-processor contract before expanding the supported version/signature.
 
 - Version 0.7.7 fixes Cura runtime scalar types. Upgrade web/worker and workstation agents; renderer revision 25 replaces plugin 2.2.1 while Cura is closed even if canonical settings are unchanged. Use **Push app settings**, wait for **Succeeded**, and reopen Cura before testing slicing. Do not imply a server-only upgrade updates the workstation plugin. No database migration or new Klipper macro installation is required from 0.7.6; the macro reference remains version 0.7.6.

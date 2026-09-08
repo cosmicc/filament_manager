@@ -1,6 +1,7 @@
 import * as React from 'react'
 import { createRoot } from 'react-dom/client'
 import { ApplicationFailure } from './components/ApplicationFailure'
+import { completeGoogleCallback } from './googleCallback'
 import { initializeBrowserTelemetry, notifyBrowserError } from './telemetry'
 import './styles/tokens.css'
 import './styles/global.css'
@@ -11,6 +12,7 @@ const root = createRoot(rootElement)
 
 async function bootstrap(): Promise<void> {
   try {
+    await completeGoogleCallback()
     const [ErrorBoundary, { Application }] = await Promise.all([
       initializeBrowserTelemetry(React),
       import('./Application'),

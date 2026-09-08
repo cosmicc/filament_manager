@@ -1,5 +1,23 @@
 # User Changelog
 
+## 0.7.9 - 09.07.2026
+
+Testing release. Upgrade the app and worker, then follow the Google setup guide linked in Settings. No new Klipper macros are needed from 0.7.8.
+
+### Added
+
+- Connect Google and Sync now in Settings, creating a Filament Manager spreadsheet in your Drive.
+- Linked, filterable tables for inventory, settings, templates, calibration, build plates, nozzles and print history, including archived records and the settings captured for each print.
+- A workbook Dashboard with counts, remaining filament and a material chart, coordinated colors and easy navigation.
+
+### Changed
+
+- App changes publish automatically in grouped background updates. Publishing waits during prints; the app remains the only source of truth.
+
+### Fixed
+
+- Google setup is available again, and publication includes much more than the old spool inventory tab. Sync errors are shown without exposing credentials.
+
 ## 0.7.8 - 09.07.2026
 
 Testing release. Upgrade the app and workstation agent; close Cura, use **Push app settings**, wait for **Succeeded**, then reopen Cura and re-slice/upload the tower.

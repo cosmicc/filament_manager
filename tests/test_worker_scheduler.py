@@ -17,6 +17,8 @@ async def test_scheduler_does_not_queue_overlapping_reconciliation(
 ) -> None:
     """A slow or retrying full sweep must not accumulate one job per minute."""
 
+    monkeypatch.setattr(scheduler, "publication_enabled", AsyncMock(return_value=False))
+
     session = SimpleNamespace(
         scalar=AsyncMock(side_effect=[True, uuid4(), uuid4(), uuid4(), uuid4(), uuid4()]),
         commit=AsyncMock(),
@@ -44,6 +46,8 @@ async def test_scheduler_keeps_failure_actionable_until_replacement_succeeds(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """Scheduling a replacement does not hide a recurring failure before recovery."""
+
+    monkeypatch.setattr(scheduler, "publication_enabled", AsyncMock(return_value=False))
 
     session = SimpleNamespace(
         scalar=AsyncMock(

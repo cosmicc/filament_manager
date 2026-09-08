@@ -6,6 +6,7 @@ from .routes import (
     auth,
     calibrations,
     diagnostics,
+    google,
     imports,
     inventory,
     notifications,
@@ -19,6 +20,7 @@ from .routes import (
 
 api_router = APIRouter(prefix="/api/v1")
 api_router.include_router(auth.router)
+api_router.include_router(google.router)
 api_router.include_router(imports.router)
 api_router.include_router(inventory.router)
 api_router.include_router(plates.router)

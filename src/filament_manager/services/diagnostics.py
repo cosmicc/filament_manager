@@ -15,6 +15,7 @@ from filament_manager.clients.spoolman import SpoolmanClient, SpoolmanError
 from filament_manager.config import PrinterConfig, get_settings
 from filament_manager.domain.cura_material_settings import CURA_MANAGED_SETTING_KEYS
 from filament_manager.models.enums import CuraDeploymentStatus, JobStatus, NotificationSeverity
+from filament_manager.models.google import GoogleConnection
 from filament_manager.models.inventory import (
     FilamentProduct,
     Printer,
@@ -32,8 +33,9 @@ from filament_manager.models.operations import (
 from filament_manager.models.workstations import CuraDeployment, CuraRecoveryRestore, WorkstationAgent
 from filament_manager.services.cura_library import build_cura_library, queue_cura_library
 from filament_manager.services.events import add_audit_event, add_outbox_job
+from filament_manager.services.google_publication import publication_enabled
 
-EXPECTED_SCHEMA_VERSION = "c7d8e9f012a3"
+EXPECTED_SCHEMA_VERSION = "d8e9f012a3b4"
 SYSTEM_AGGREGATE_ID = UUID("00000000-0000-0000-0000-000000000001")
 
 DATABASE_ERROR_CLASSES = {
@@ -239,7 +241,10 @@ def diagnostics_text(overview: dict[str, object]) -> str:
     return "\n".join(lines) + "\n"
 
 
-async def _connection_checks(checked_at: datetime) -> list[dict[str, object]]:
+async def _connection_checks(
+    checked_at: datetime,
+    google_record: GoogleConnection | None = None,
+) -> list[dict[str, object]]:
     """Check configured APIs concurrently while retaining sanitized failures only."""
 
     settings = get_settings()
@@ -287,6 +292,15 @@ async def _connection_checks(checked_at: datetime) -> list[dict[str, object]]:
             )
 
     async def google() -> dict[str, object]:
+        if google_record and google_record.refresh_token:
+            return _check(
+                "google.connection",
+                "Google Sheets",
+                "connection",
+                "error" if google_record.last_error else "healthy",
+                google_record.last_error or "Connected; publication status is available in Settings",
+                checked_at,
+            )
         if not settings.google.enabled:
             return _check(
                 "google.connection",
@@ -331,7 +345,7 @@ async def operational_overview(session: AsyncSession, *, error_days: int = 1) ->
 
     checked_at = datetime.now(UTC)
     error_cutoff = checked_at - timedelta(days=error_days)
-    checks = await _connection_checks(checked_at)
+    checks = await _connection_checks(checked_at, await session.get(GoogleConnection, 1))
     schema_result = await session.execute(text("SELECT version_num FROM alembic_version LIMIT 1"))
     schema_version = schema_result.scalar_one_or_none()
     checks.append(
@@ -926,7 +940,6 @@ async def queue_projection_rebuild(
 ) -> dict[str, object]:
     """Queue supported projection reconstruction without changing canonical records."""
 
-    settings = get_settings()
     now = datetime.now(UTC)
     # Outbox aggregate versions are signed 32-bit integers. The request hash
     # preserves idempotency uniqueness without overflowing that contract.
@@ -942,7 +955,7 @@ async def queue_projection_rebuild(
         aggregate_version=version,
         payload={"requested_at": now.isoformat()},
     )
-    if settings.google.enabled:
+    if await publication_enabled(session):
         add_outbox_job(
             session,
             job_type="google.rebuild.full",

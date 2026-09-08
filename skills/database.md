@@ -1,5 +1,7 @@
 # Database and Migration Skill
 
+- Google publication stores encrypted connection state in a separate singleton and reads explicitly allowlisted business columns under repeatable-read without business row locks. See `skills/google-publication.md`; never include private connection state in Sheets exports.
+
 - Managed Cura edit receipts and takeover mappings are legacy history only. Never create canonical profile/template revisions from Cura reports or imports. Current values remain app-owned, with redundant overrides normalized against the exact old template before propagation. Do not rewrite historical evidence or automatically reset ambiguous older overrides.
 
 - Migration `c7d8e9f012a3` merges missing/unspecified manufacturer assignments into one Unknown identity, including archived products, audits reassignment, and queues metadata convergence. Never rewrite captured print/profile snapshots. Deleted placeholder identities require a backup to recover. New missing manufacturer assignments resolve Unknown; keep Unknown out of manufacturer tare pooling.

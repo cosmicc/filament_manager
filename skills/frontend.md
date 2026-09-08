@@ -1,5 +1,7 @@
 # Frontend Design and Accessibility Skill
 
+- Google setup belongs in Settings. Use `GoogleIntegrationPanel` for readiness, Connect Google, queued Sync now, last publication, sanitized failures, workbook link and confirmed disconnect. Complete the callback before telemetry without storing codes or states, and preserve strict cookies. See `skills/google-publication.md`.
+
 ## Editable dropdowns and template changes
 
 - Template Retraction shows read-only Minimum Extrusion Distance Window (live Retraction Distance) and Maximum Retraction Count (100). Do not submit derived controls or allow them into filament overrides.

@@ -16,6 +16,7 @@ from filament_manager.clients.spoolman import SpoolmanClient, SpoolmanError
 from filament_manager.config import PrinterConfig, get_settings
 from filament_manager.models.auth import User
 from filament_manager.models.enums import JobStatus, PrintJobStatus, SpoolStatus
+from filament_manager.models.google import GoogleConnection
 from filament_manager.models.inventory import (
     BuildPlate,
     BuildPlateSurface,
@@ -118,7 +119,7 @@ async def update_operational_settings(
     )
 
 
-async def _integration_statuses() -> list[IntegrationStatus]:
+async def _integration_statuses(google_record: GoogleConnection | None = None) -> list[IntegrationStatus]:
     settings = get_settings()
     checked_at = datetime.now(UTC)
 
@@ -157,6 +158,13 @@ async def _integration_statuses() -> list[IntegrationStatus]:
             )
 
     async def google_status() -> IntegrationStatus:
+        if google_record and google_record.refresh_token:
+            return IntegrationStatus(
+                service="Google Sheets",
+                status="unavailable" if google_record.last_error else "connected",
+                detail=google_record.last_error or "Connected; publication status is available in Settings",
+                checked_at=checked_at,
+            )
         if not settings.google.enabled:
             return IntegrationStatus(
                 service="Google Sheets",
@@ -553,10 +561,10 @@ async def seed_configured_resources(
 
 
 @router.get("/integrations/status", response_model=list[IntegrationStatus])
-async def integration_status(_: Viewer) -> list[IntegrationStatus]:
+async def integration_status(_: Viewer, session: DatabaseSession) -> list[IntegrationStatus]:
     """Check configured external APIs without exposing their URLs or secrets."""
 
-    return await _integration_statuses()
+    return await _integration_statuses(await session.get(GoogleConnection, 1))
 
 
 async def _queue_system_job(

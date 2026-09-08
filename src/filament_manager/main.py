@@ -208,6 +208,13 @@ def create_app() -> FastAPI:
         response.headers["X-Request-ID"] = correlation_id
         response.headers["X-Content-Type-Options"] = "nosniff"
         response.headers["Referrer-Policy"] = "same-origin"
+        if request.url.path in {
+            "/google/callback",
+            "/api/v1/settings/google/complete",
+            "/api/v1/settings/google/connect",
+        }:
+            response.headers["Cache-Control"] = "no-store"
+            response.headers["Referrer-Policy"] = "no-referrer"
         response.headers["Permissions-Policy"] = "camera=(self), microphone=(), geolocation=()"
         response.headers["Content-Security-Policy"] = _content_security_policy(settings)
         return response
@@ -291,4 +298,5 @@ def run() -> None:
         host="0.0.0.0",  # noqa: S104
         port=8080,
         proxy_headers=False,
+        access_log=False,  # Structured request logs omit OAuth query strings and other credentials.
     )

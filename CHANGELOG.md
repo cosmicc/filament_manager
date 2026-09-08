@@ -1,5 +1,27 @@
 # Changelog
 
+## 0.7.9 - 09.07.2026
+
+Testing release. Upgrade web and worker together; migration `d8e9f012a3b4` adds private Google connection state. Google OAuth requires one-time deployment setup and account consent; see `docs/GOOGLE_SHEETS.md`. No new Klipper macros or Cura renderer changes are required from 0.7.8.
+
+### Added
+
+- Google integration in Settings with Connect Google, reconnect, confirmed disconnect, Sync now, last publication, sanitized errors, and a direct workbook link.
+- Native Filament Manager workbook creation in personal Drive using least-privilege `drive.file` access, session-bound single-use OAuth state and PKCE, encrypted offline grants, and environment-held client credentials/encryption key.
+- Complete allowlisted business publication including archived inventory, templates and profile revisions, sparse overrides, build plates/sides, nozzles/events, manufacturers/colors/locations, measurements/usage, calibration, print history/segments/assessments, and flattened settings/evidence.
+- Workshop Navy workbook styling, filters, frozen headers, cross-record links, hidden technical IDs, alternating rows, edit warnings and an inventory material chart.
+
+### Changed
+
+- Google publication now coalesces changes with periodic complete content comparison and manual forced refresh, waits during printing without new printer traffic, shares persisted retry backoff, and stages data before atomic replacement into stable sheet IDs. Unrelated sheets are retained; legacy service-account configuration remains supported.
+- Added deployment variables and setup/upgrade/security documentation. The published workbook is a view, not a credential export or database backup.
+
+### Fixed
+
+- Restored access to Google setup after removal of the old Integrations page.
+- Replaced the inventory-only writer with complete current/archived/history projection, removal of obsolete rows, formula-safe literal values, and recoverable app-owned workbook creation. Google failures never modify canonical business records.
+- OAuth return queries are removed before browser telemetry; production request logs omit query strings and callback responses disable caching/referrers.
+
 ## 0.7.8 - 09.07.2026
 
 Testing release. Upgrade the app and workstation agent, synchronize with Cura closed, then reopen Cura and re-slice/export the tower. Existing uploaded files are not repaired. No database migration or Klipper macro replacement is required from 0.7.7.

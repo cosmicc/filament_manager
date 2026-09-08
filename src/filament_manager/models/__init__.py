@@ -3,6 +3,7 @@
 from .auth import User, UserSession
 from .base import Base
 from .calibration import CalibrationSession, CalibrationStep
+from .google import GoogleConnection
 from .inventory import (
     BuildPlate,
     BuildPlateSurface,
@@ -65,6 +66,7 @@ __all__ = [
     "FilamentAttributeChoice",
     "FilamentColor",
     "FilamentProduct",
+    "GoogleConnection",
     "ImportRun",
     "MaterialProfile",
     "MaterialTemplate",

@@ -141,7 +141,7 @@ For initial testing, `ghcr.io/cosmicc/filament-manager:latest` tracks the newest
 
 Keep `SPOOLMAN_RECONCILE_INTERVAL_MINUTES=1` so immediate event-driven projections have a frequent complete-rebuild safety net. `MOONRAKER_STATE_INTERVAL_SECONDS=10` aligns the active spool and build-plate side automatically while the printer is idle, `MOONRAKER_PRINT_INTERVAL_SECONDS=10` captures one combined live print/preflight snapshot, and `MOONRAKER_INFO_INTERVAL_SECONDS=300` refreshes sanitized printer details while idle. State, mesh, catalog, and information reads are deferred during an active print. `SYNC_OUTBOX_WORKERS=2` runs two fair dispatchers, and `SYNC_OUTBOX_LOCK_TIMEOUT_SECONDS=300` allows work abandoned by a terminated worker to be reclaimed without racing a normal bounded API request.
 
-When Google publication is enabled, set `GOOGLE_ENABLED=true`, `GOOGLE_SPREADSHEET_ID`, and `GOOGLE_SERVICE_ACCOUNT_JSON`. The JSON must be compact and one line. When sourcing `.env` in a shell, surround the complete JSON value with single quotes.
+For Google sign-in under Settings, follow [Google Sheets setup](docs/GOOGLE_SHEETS.md): set `GOOGLE_OAUTH_CLIENT_ID`, `GOOGLE_OAUTH_CLIENT_SECRET`, and a persistent `GOOGLE_TOKEN_ENCRYPTION_KEY`; leave `GOOGLE_ENABLED=false` for OAuth mode. Redeploy web and worker together, then connect your account. The separate legacy service-account mode uses `GOOGLE_ENABLED=true`, `GOOGLE_SPREADSHEET_ID`, and `GOOGLE_SERVICE_ACCOUNT_JSON`. That JSON must be compact and one line; when sourcing `.env` in a shell, surround it with single quotes.
 
 Optional Bugsnag monitoring is disabled by default. To enable sanitized browser, FastAPI, and worker error reports, set:
 

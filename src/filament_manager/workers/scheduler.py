@@ -10,6 +10,7 @@ from filament_manager.config import get_settings
 from filament_manager.models.enums import JobStatus
 from filament_manager.models.operations import OutboxJob
 from filament_manager.services.events import add_outbox_job
+from filament_manager.services.google_publication import publication_enabled
 
 SCHEDULER_LOCK_KEY = 0x464D53594E43
 SYSTEM_AGGREGATE_ID = UUID("00000000-0000-0000-0000-000000000001")
@@ -47,7 +48,7 @@ async def schedule_periodic_jobs(session: AsyncSession) -> int:
         ),
         ("notifications.evaluate", 60),
     ]
-    if settings.google.enabled:
+    if await publication_enabled(session):
         schedules.append(("google.publish.pending", settings.google.publish_interval_seconds))
 
     created = 0

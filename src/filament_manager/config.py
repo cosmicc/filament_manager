@@ -116,6 +116,9 @@ class GoogleConfig(BaseModel):
     """Read-only Google Sheet publication settings."""
 
     enabled: bool = False
+    oauth_client_id: str | None = None
+    oauth_client_secret: SecretStr | None = None
+    token_encryption_key: SecretStr | None = None
     spreadsheet_id: str | None = None
     service_account_file: Path | None = None
     service_account_json: SecretStr | None = None
@@ -382,6 +385,9 @@ def _deployment_environment_config() -> dict[str, Any]:
         google["spreadsheet_id"] = spreadsheet_id
     if service_account_json := os.environ.get("FILAMENT_MANAGER_GOOGLE_SERVICE_ACCOUNT_JSON"):
         google["service_account_json"] = service_account_json
+    for field in ("oauth_client_id", "oauth_client_secret", "token_encryption_key"):
+        if value := os.environ.get(f"FILAMENT_MANAGER_GOOGLE_{field.upper()}"):
+            google[field] = value
 
     return {
         "app": {
@@ -482,6 +488,9 @@ def _apply_credential_environment(raw: dict[str, Any]) -> None:
             printer["api_key"] = moonraker_api_key
 
     google_service_account_json = os.environ.get("FILAMENT_MANAGER_GOOGLE_SERVICE_ACCOUNT_JSON")
+    for field in ("oauth_client_id", "oauth_client_secret", "token_encryption_key"):
+        if value := os.environ.get(f"FILAMENT_MANAGER_GOOGLE_{field.upper()}"):
+            raw.setdefault("google", {})[field] = value
     if google_service_account_json:
         google = raw.setdefault("google", {})
         if not isinstance(google, dict):

@@ -8,6 +8,7 @@ PostgreSQL is the canonical data store. A distinct Spoolman service remains the 
 
 ## Current capabilities
 
+- Google sign-in and **Sync now** under Settings, with automatic one-way publication of inventory, settings, calibration and print history to a linked, filterable **Filament Manager** spreadsheet. See [Google setup](docs/GOOGLE_SHEETS.md).
 - Cura-side AutoTowers retraction-speed base correction that preserves the actual test sections; see [calibration tower guidance](docs/CURA_WORKSTATION_AGENT.md#autotowers-retraction-speed-towers).
 - Automatically contrasting print thumbnails in History and the Dashboard, including display-only enhancement of dark opaque previews without changing stored images
 - Compact dashboard actions, non-archived spool totals by material type, and distinct named inventory colors
@@ -48,6 +49,8 @@ For automatic heightmap restoration and the 0.7.4 printer macro upgrade, see [Bu
 Version 0.7.8 fixes AutoTowers retraction-speed base commands and retains the Cura red-settings fix. Upgrade the server/worker and workstation agent, close Cura, then select **Push app settings** on Cura Workstations and wait for **Succeeded** before reopening. Re-slice and upload the tower again; existing files are not repaired. No new Klipper macros are required from 0.7.7. See [Cura troubleshooting](docs/CURA_WORKSTATION_AGENT.md#autotowers-retraction-speed-towers).
 
 ## Start locally
+
+Version 0.7.9 adds Google integration setup in Settings. Upgrade web and worker together; the connection-state migration runs automatically. Google setup requires an OAuth client and a persistent encryption key. No new Klipper macros or Cura plugin changes are required from 0.7.8.
 
 See [INSTALL.md](INSTALL.md) for prerequisites, deployment variables, automatic database upgrades, first-login credentials, and Docker Compose instructions.
 
