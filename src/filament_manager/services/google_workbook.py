@@ -168,6 +168,7 @@ EXPORTS = (
     ),
 )
 MAX_CELLS = 2_000_000  # Leave room for the last good and staged generations.
+MAX_CONTENT_BYTES = 32 * 1024 * 1024  # Bound worker memory as well as Google's grid size.
 SECRET_KEY = re.compile(
     r"password|secret|token|credential|api.?key|authorization|cookie|url|uri$|host|path|directory", re.I
 )
@@ -227,6 +228,7 @@ async def snapshot(session: AsyncSession) -> list[WorkbookTab]:
     tabs: list[WorkbookTab] = []
     details = WorkbookTab("Settings and Evidence", ["source_tab", "record_id", "field", "setting", "value"])
     cells = 0
+    content_bytes = 0
     for title, name, declared in EXPORTS:
         table = Base.metadata.tables[name]
         fields = ["id", *declared.split()]
@@ -239,14 +241,17 @@ async def snapshot(session: AsyncSession) -> list[WorkbookTab]:
                 if isinstance(value, (dict, list)):
                     entries = flatten(value)
                     for key, item in entries:
-                        details.rows.append([title, str(record.id), name, key, item])
+                        detail_row = [title, str(record.id), name, key, item]
+                        details.rows.append(detail_row)
+                        content_bytes += len(json.dumps(detail_row, ensure_ascii=False).encode())
                     cells += len(entries) * 5
                     row.append(f"{len(entries)} values — Settings and Evidence")
                 else:
                     row.append(scalar(value))
             tab.rows.append(row)
             cells += len(fields)
-            if cells > MAX_CELLS:
+            content_bytes += len(json.dumps(row, ensure_ascii=False).encode())
+            if cells > MAX_CELLS or content_bytes > MAX_CONTENT_BYTES:
                 raise GoogleSheetsError(
                     "Inventory exceeds the safe workbook size. The last complete publication is retained."
                 )

@@ -1,8 +1,10 @@
 """Bounded Google REST publication with stable tabs and atomic staged replacement."""
 
+import asyncio
 import json
 import re
 import secrets
+import time
 from collections import Counter
 from datetime import UTC, datetime
 from typing import Any
@@ -28,11 +30,18 @@ class GoogleWorkbookClient:
     def __init__(self, token: str, publication_key: str) -> None:
         self.token = token
         self.publication_key = publication_key
+        self._last_request_at = 0.0
 
     async def request(self, method: str, url: str, **kwargs: Any) -> dict[str, Any]:
         """Bound requests; provider bodies are neither logged nor retained."""
         if not url.startswith((SHEETS, DRIVE)):
             raise GoogleSheetsError("Google request destination is invalid.")
+        # Stay below Google's per-user minute quota even for a large snapshot.
+        # One publisher holds the database lock; this wait blocks no event loop.
+        delay = max(0.0, 1.25 - (time.monotonic() - self._last_request_at))
+        if delay:
+            await asyncio.sleep(delay)
+        self._last_request_at = time.monotonic()
         try:
             async with httpx.AsyncClient(timeout=60, follow_redirects=False) as client:
                 response = await client.request(

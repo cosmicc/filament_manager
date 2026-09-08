@@ -8,12 +8,14 @@ from urllib.parse import parse_qs, urlsplit
 
 import httpx
 import pytest
+import respx
 from cryptography.fernet import Fernet
 from googleapiclient.discovery_cache import get_static_doc
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 from test_api_integration import integration_settings
 from testcontainers.community.postgres import PostgresContainer
 
+from filament_manager.clients import google_workbook as google_http
 from filament_manager.clients.google_sheets import GoogleSheetsError
 from filament_manager.clients.google_workbook import GoogleWorkbookClient
 from filament_manager.models import Base
@@ -23,6 +25,7 @@ from filament_manager.models.google import GoogleConnection
 from filament_manager.models.inventory import FilamentProduct
 from filament_manager.security import hash_token
 from filament_manager.services import google_connection, google_publication
+from filament_manager.services import google_workbook as google_export
 from filament_manager.services.google_workbook import (
     EXPORTS,
     WorkbookTab,
@@ -73,6 +76,28 @@ def test_export_contract_and_inert_values() -> None:
         ("nested.host", "[excluded: security or connection field]"),
         ("retraction", 2),
     ]
+
+
+@pytest.mark.asyncio
+async def test_google_request_pacing_and_sanitized_denial(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Apply quota headroom between requests and never expose Google's error body."""
+    waits: list[float] = []
+
+    async def wait(delay: float) -> None:
+        waits.append(delay)
+
+    monkeypatch.setattr(google_http.asyncio, "sleep", wait)
+    client = GoogleWorkbookClient("test-access", "00000000-0000-0000-0000-000000000001")
+    endpoint = google_http.SHEETS + "/sheet-id"
+    with respx.mock() as router:
+        route = router.get(endpoint).respond(200, json={})
+        await client.request("GET", endpoint)
+        await client.request("GET", endpoint)
+        assert waits and 0 < waits[0] <= 1.25
+        route.respond(403, json={"error": "private-provider-body"})
+        with pytest.raises(GoogleSheetsError, match="Google access was denied") as failure:
+            await client.request("GET", endpoint)
+        assert "private-provider-body" not in str(failure.value)
 
 
 @pytest.mark.asyncio
@@ -254,6 +279,10 @@ async def test_google_oauth_api_and_complete_snapshot(monkeypatch: pytest.Monkey
                 filament = next(tab for tab in tables if tab.title == "Filaments")
                 assert filament.rows[0][1] == "PLA · Black"
                 old_digest = fingerprint(tables)
+                with monkeypatch.context() as bounded:
+                    bounded.setattr(google_export, "MAX_CONTENT_BYTES", 1)
+                    with pytest.raises(GoogleSheetsError, match="safe workbook size"):
+                        await snapshot(session)
                 await session.delete(await session.get(FilamentProduct, product_id))
                 await session.commit()
                 assert fingerprint(await snapshot(session)) != old_digest
