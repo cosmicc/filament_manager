@@ -1,5 +1,30 @@
 # User Changelog
 
+## 0.8.0 - 09.08.2026
+
+Testing release. Multi-hotend loading requires reviewed printer macros and explicit routine verification in printer settings.
+
+### Added
+
+- Guided Google setup in Settings, app-managed printer connections, heated-chamber and temperature-limit details.
+- Dashboard printer switching, an all-printers overview, and Sync to Cura.
+- Optional printer-macro support for acknowledging print removal and displaying the idle power-off countdown.
+- Separate loaded spools for independent hotends, automatic permanent spool codes, remaining-filament bars in Locations, and a Cancel/Override warning before a print with insufficient filament.
+
+### Changed
+
+- Dashboard printer context stays together and inventory totals move to the bottom.
+- Density appears beside template diameter; Ironing follows Dimensional compensation in template and filament settings.
+- Filament list names are bold above their smaller manufacturer name. Confirmed printer power-off is shown separately from printer errors.
+
+### Fixed
+
+- The supplied QQ-S macro file now remembers the original pause position, parks safely, and returns above the print before lowering and resuming. User, runout and slicer pauses share this behavior, with safety exceptions near maximum height and before homing.
+
+- Printer actions stay with the selected printer instead of silently using the first one.
+- A spool must be unloaded from its current printer before it can be loaded on another.
+- The separately prepared custom macro update corrects the automatic countdown while retaining the 60-minute reset.
+
 ## 0.7.9 - 09.07.2026
 
 Testing release. Upgrade the app and worker, then follow the Google setup guide linked in Settings. No new Klipper macros are needed from 0.7.8.

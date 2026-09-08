@@ -107,6 +107,9 @@ def print_cost_summary(job: PrintJob) -> dict[str, object]:
 
     predicted_cost: Decimal | None = None
     predicted_basis = snapshot_cost_basis(job.state_snapshot)
+    printer = job.state_snapshot.get("printer")
+    if isinstance(printer, dict) and printer.get("extruder_count", 1) != 1:
+        predicted_basis = None
     if not currency_conflict and job.predicted_filament_weight_g is not None and predicted_basis is not None:
         predicted_rate, predicted_currency = predicted_basis
         if currency is None or predicted_currency == currency:

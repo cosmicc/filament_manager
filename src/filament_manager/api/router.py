@@ -13,6 +13,7 @@ from .routes import (
     nozzles,
     operations,
     plates,
+    printer_connections,
     printing,
     profiles,
     workstations,
@@ -31,4 +32,5 @@ api_router.include_router(printing.router)
 api_router.include_router(notifications.router)
 api_router.include_router(nozzles.router)
 api_router.include_router(operations.router)
+api_router.include_router(printer_connections.router)
 api_router.include_router(workstations.router)

@@ -77,6 +77,9 @@ class DashboardSession:
     async def scalar(self, _statement: object) -> None:
         return None
 
+    async def scalars(self, _statement: object) -> list[object]:
+        return []
+
 
 def test_discovery_accepts_exact_plate_side_codes_in_natural_order() -> None:
     """Discovery groups suffixed Side B meshes and sorts each side naturally."""
@@ -298,7 +301,7 @@ async def test_moonraker_reads_persistent_physical_spool_state() -> None:
         b'{"objects":{"gcode_macro FILAMENT_MANAGER_SPOOL_STATE":'
         b'["restored","initialized","phase","loaded_spool_id","catalog_revision",'
         b'"material_guid","start_bed_temp","start_extruder_temp","start_chamber_temp",'
-        b'"inspection_policy","start_pending"]}}'
+        b'"inspection_policy","start_pending","weight_sequence","weight_overridden","loaded_spools","loaded_tool"]}}'
     )
 
 
@@ -510,7 +513,7 @@ async def test_moonraker_operational_state_reports_progress_and_temperatures() -
     assert state.chamber_target_c is None
     assert json.loads(query_route.calls.last.request.content) == {
         "objects": {
-            "print_stats": ["filename", "state"],
+            "print_stats": ["filename", "state", "total_duration"],
             "extruder": ["temperature", "target"],
             "heater_bed": ["temperature", "target"],
             "virtual_sdcard": ["progress"],
@@ -526,6 +529,9 @@ async def test_moonraker_operational_state_keeps_klipper_startup_visible() -> No
 
     respx.get("http://moonraker.test:7125/printer/info").mock(
         return_value=httpx.Response(200, json={"result": {"state": "startup"}})
+    )
+    respx.get("http://moonraker.test:7125/machine/device_power/device", params={"device": "printer"}).mock(
+        return_value=httpx.Response(404)
     )
 
     state = await MoonrakerClient(printer_config()).operational_state()

@@ -53,6 +53,7 @@ from filament_manager.models.inventory import (
 from filament_manager.models.operations import ApplicationSetting
 from filament_manager.models.printing import PrintJob, PrintMaterialSegment
 from filament_manager.services.events import add_audit_event, add_outbox_job
+from filament_manager.services.moonraker_sync import synchronize_loaded_hotends
 from filament_manager.services.print_thumbnails import sanitize_print_thumbnail
 
 MAX_INITIAL_HISTORY_JOBS = 10_000
@@ -332,6 +333,7 @@ async def _state_snapshot(
             "name": printer.name,
             "nozzle_diameter_mm": format(printer.nozzle_diameter_mm, "f"),
             "nozzle_material": printer.nozzle_material,
+            "extruder_count": printer.extruder_count,
         },
         "nozzle": (
             {
@@ -448,6 +450,12 @@ async def _print_settings_snapshot(
 
 def _actual_weight_g(length_mm: Decimal | None, snapshot: dict[str, object]) -> Decimal | None:
     if length_mm is None:
+        return None
+    printer = snapshot.get("printer")
+    if isinstance(printer, dict) and printer.get("extruder_count", 1) != 1:
+        # The aggregate Klipper counter cannot attribute rapid tool changes
+        # between polls. Spoolman's per-tool-boundary usage remains authoritative;
+        # never debit that entire aggregate against one sampled spool.
         return None
     filament = snapshot.get("filament")
     if not isinstance(filament, dict):
@@ -758,6 +766,16 @@ async def synchronize_live_print(
     )
     if job is not None and job.status == observed_status and observed_status in terminal_statuses:
         return job
+    if printer.extruder_count > 1 and preflight_state is not None:
+        if (
+            preflight_state.loaded_spools is None
+            or not preflight_state.initialized
+            or not preflight_state.restored
+        ):
+            raise ValueError("Multi-hotend print capture requires initialized physical spool maps")
+        await synchronize_loaded_hotends(
+            session, printer=printer, slots=preflight_state.loaded_spools, correlation_id=correlation_id
+        )
     spoolman_id = preflight_state.loaded_spool_id if preflight_state else None
     spool, product = await _loaded_spool(session, spoolman_id)
     material_guid = preflight_state.material_guid if preflight_state else ""
@@ -1062,6 +1080,73 @@ async def synchronize_live_print(
         preflight_state=preflight_state,
         job=job,
     )
+    if (
+        preflight_state is not None
+        and preflight_state.phase == "checking_weight"
+        and preflight_state.loaded_spool_id
+    ):
+        # Re-read current canonical mass after any preflight spool replacement.
+        # Keep this independent from the optional settings-mismatch policy.
+        weight_spool, weight_product = await _loaded_spool(session, preflight_state.loaded_spool_id)
+        required = job.predicted_filament_weight_g
+        if required is None and weight_product is not None:
+            required = _actual_weight_g(
+                job.predicted_filament_length_mm,
+                {
+                    "filament": {
+                        "density_g_cm3": str(weight_product.density_g_cm3),
+                        "diameter_mm": str(weight_product.diameter_mm),
+                    }
+                },
+            )
+        remaining = weight_spool.remaining_mass_effective_g if weight_spool is not None else None
+        evidence: dict[str, object] = {
+            "sequence": preflight_state.weight_sequence,
+            "spool_id": str(weight_spool.id) if weight_spool is not None else None,
+            "required_g": str(required) if required is not None else None,
+            "remaining_g": str(remaining) if remaining is not None else None,
+            "override": False,
+        }
+        if job.inspection.get("filament_check") != evidence:
+            job.inspection = {**job.inspection, "filament_check": evidence}
+            add_audit_event(
+                session,
+                actor_id=None,
+                source="moonraker",
+                action="print.filament_check",
+                object_type="print_job",
+                object_id=job.id,
+                before=None,
+                after=evidence,
+                correlation_id=correlation_id,
+            )
+            await session.commit()
+        await client.submit_filament_check(
+            spoolman_id=preflight_state.loaded_spool_id,
+            sequence=preflight_state.weight_sequence,
+            required_g=required,
+            remaining_g=remaining,
+        )
+    elif preflight_state is not None and preflight_state.weight_overridden:
+        override_evidence = job.inspection.get("filament_check")
+        if (
+            isinstance(override_evidence, dict)
+            and override_evidence.get("sequence") == preflight_state.weight_sequence
+            and not override_evidence.get("override")
+        ):
+            job.inspection = {**job.inspection, "filament_check": {**override_evidence, "override": True}}
+            add_audit_event(
+                session,
+                actor_id=None,
+                source="moonraker",
+                action="print.filament_override",
+                object_type="print_job",
+                object_id=job.id,
+                before=None,
+                after={"sequence": preflight_state.weight_sequence},
+                correlation_id=correlation_id,
+            )
+            await session.commit()
     return job
 
 

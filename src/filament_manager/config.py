@@ -87,6 +87,7 @@ class PrinterConfig(BaseModel):
     api_key_file: Path | None = None
     api_key: SecretStr | None = None
     nozzle_diameter_mm: float = Field(gt=0)
+    power_device: str = Field(default="printer", max_length=160, pattern=r"^[A-Za-z0-9_. -]*$")
 
     @model_validator(mode="after")
     def require_one_api_key_source(self) -> "PrinterConfig":

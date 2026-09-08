@@ -33,6 +33,7 @@ from filament_manager.config import get_settings
 from filament_manager.models.enums import PrintJobStatus
 from filament_manager.models.operations import ApplicationSetting
 from filament_manager.models.printing import PrintJob
+from filament_manager.services.printer_connections import configured_printers
 
 BACKUP_POLICY_KEY = "database_backup"
 BACKUP_ARCHIVE_SCHEMA_VERSION = 1
@@ -748,7 +749,10 @@ async def backup_has_active_print(session: AsyncSession) -> bool:
     # smallest supported Moonraker query before allowing a dump. Fail closed
     # if confirmation is unavailable, because motion may still be occurring.
     results = await asyncio.gather(
-        *(MoonrakerClient(printer).print_state() for printer in get_settings().moonraker.printers),
+        *(
+            MoonrakerClient(printer).print_state()
+            for printer in (await configured_printers(session, get_settings()))
+        ),
         return_exceptions=True,
     )
     for result in results:

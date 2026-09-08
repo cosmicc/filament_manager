@@ -22,6 +22,7 @@ from filament_manager.clients.moonraker import (
 )
 from filament_manager.clients.spoolman import SpoolmanClient, SpoolmanNotFoundError
 from filament_manager.config import PrinterConfig, get_settings
+from filament_manager.domain.extruders import extruder_name
 from filament_manager.domain.spoolman import decode_text_extra_field
 from filament_manager.models.enums import JobStatus, PrintJobStatus, SpoolStatus
 from filament_manager.models.inventory import (
@@ -39,6 +40,7 @@ from filament_manager.services.events import add_audit_event, add_outbox_job
 from filament_manager.services.filament_defaults import spoolman_filament_defaults
 from filament_manager.services.moonraker_sync import (
     synchronize_active_spool,
+    synchronize_loaded_hotends,
     synchronize_printer_information,
 )
 from filament_manager.services.notifications import evaluate_operator_notifications
@@ -47,6 +49,7 @@ from filament_manager.services.print_history import (
     synchronize_live_print,
     synchronize_print_history,
 )
+from filament_manager.services.printer_connections import configured_printers
 from filament_manager.services.seed import seed_configured_system
 from filament_manager.services.spool_preflight import (
     build_spool_preflight_catalog,
@@ -347,7 +350,7 @@ async def _project_filament(
     await _lock_projection(session, "spoolman", "filament_product", product.id)
     state = await _projection(session, "spoolman", "filament_product", product.id)
     if defaults is None:
-        configured = get_settings().moonraker.printers
+        configured = await configured_printers(session, get_settings())
         defaults = (
             await spoolman_filament_defaults(
                 session,
@@ -526,7 +529,7 @@ async def _converge_spoolman(
         select(FilamentProduct).options(joinedload(FilamentProduct.vendor)).order_by(FilamentProduct.id)
     )
     products = list(product_result.unique().scalars())
-    configured = get_settings().moonraker.printers
+    configured = await configured_printers(session, get_settings())
     defaults = await spoolman_filament_defaults(
         session,
         products,
@@ -732,12 +735,13 @@ async def _configured_printer_bindings(
     await session.commit()
     if seeded["printers"] or seeded["plates"] or seeded["templates"]:
         logger.info("configured_system_seeded", **seeded)
+    connections = await configured_printers(session, settings)
     result = await session.execute(
-        select(Printer).where(Printer.printer_code.in_([item.id for item in settings.moonraker.printers]))
+        select(Printer).where(Printer.printer_code.in_([item.id for item in connections]))
     )
     printers = {printer.printer_code: printer for printer in result.scalars()}
     bindings: list[tuple[Printer, PrinterConfig]] = []
-    for configured in settings.moonraker.printers:
+    for configured in connections:
         printer = printers.get(configured.id)
         if printer is None:
             raise LookupError(f"Configured printer {configured.id} was not seeded")
@@ -764,7 +768,11 @@ async def _canonical_print_is_active(session: AsyncSession, printer_id: UUID) ->
         return True
     printer = await session.get(Printer, printer_id)
     configured = next(
-        (item for item in get_settings().moonraker.printers if printer and item.id == printer.printer_code),
+        (
+            item
+            for item in (await configured_printers(session, get_settings()))
+            if printer and item.id == printer.printer_code
+        ),
         None,
     )
     if configured is None:
@@ -908,12 +916,31 @@ async def _reconcile_moonraker_state(session: AsyncSession, job: OutboxJob) -> N
                         error=str(exc),
                     )
             if not preflight_is_restoring:
+                if printer.extruder_count > 1:
+                    if (
+                        isinstance(preflight_result, BaseException)
+                        or preflight_result is None
+                        or preflight_result.loaded_spools is None
+                    ):
+                        raise ValueError("Multi-hotend printers require the current per-hotend spool macros")
+                    await synchronize_loaded_hotends(
+                        session,
+                        printer=printer,
+                        slots=preflight_result.loaded_spools,
+                        correlation_id=correlation_id,
+                    )
+                    await session.commit()
                 active_sync = await synchronize_active_spool(
                     session,
                     printer_id=printer.id,
                     spoolman_id=effective_active_spool_id,
                     actor_id=None,
                     correlation_id=correlation_id,
+                    extruder=preflight_result.loaded_tool
+                    if printer.extruder_count > 1
+                    and preflight_result is not None
+                    and not isinstance(preflight_result, BaseException)
+                    else "extruder",
                 )
                 logger.info(
                     "moonraker_active_spool_synchronized",
@@ -1227,8 +1254,16 @@ async def dispatch_job(session: AsyncSession, job: OutboxJob) -> None:
         spool = await session.get(Spool, job.aggregate_id)
         if spool is None:
             raise LookupError("Spool change request references a missing spool")
-        configured_printer = await session.scalar(
-            select(Printer).where(Printer.printer_code == settings.moonraker.printers[0].id)
+        connections = await configured_printers(session, settings)
+        target_id = job.payload.get("printer_id")
+        configured_printer = (
+            await session.get(Printer, UUID(str(target_id)))
+            if target_id
+            else (
+                await session.scalar(select(Printer).where(Printer.printer_code == connections[0].id))
+                if len(connections) == 1
+                else None
+            )
         )
         if configured_printer is None:
             raise LookupError("Configured Moonraker printer is not ready")
@@ -1237,10 +1272,22 @@ async def dispatch_job(session: AsyncSession, job: OutboxJob) -> None:
             spool=spool,
             printer=configured_printer,
         )
-        await MoonrakerClient(settings.moonraker.printers[0]).request_spool_change(
+        connection = next((item for item in connections if item.id == configured_printer.printer_code), None)
+        if connection is None:
+            raise LookupError("Spool change references an unconfigured printer")
+        selected_slot = extruder_name(job.payload.get("extruder"), configured_printer.extruder_count)
+        if configured_printer.extruder_count > 1 and not configured_printer.tool_routines_verified:
+            raise ValueError("Selected-hotend physical routines have not been verified")
+        if spool.active_printer_id == configured_printer.id and spool.active_extruder not in (
+            None,
+            selected_slot,
+        ):
+            raise ValueError("Spool is already loaded on another hotend")
+        await MoonrakerClient(connection).request_spool_change(
             spoolman_id=target.spoolman_id,
             temperature_c=target.temperature_c,
             prompt_label=target.prompt_label,
+            **({"extruder": selected_slot} if configured_printer.extruder_count > 1 else {}),
         )
     elif job.job_type == "moonraker.build_plate.select":
         printer_id = UUID(str(job.payload["printer_id"]))
@@ -1265,9 +1312,15 @@ async def dispatch_job(session: AsyncSession, job: OutboxJob) -> None:
         if surface is None or surface.surface_code != job.payload["plate_code"]:
             return
         select_config = next(
-            (item for item in settings.moonraker.printers if printer and item.id == printer.printer_code),
-            settings.moonraker.printers[0],
+            (
+                item
+                for item in (await configured_printers(session, settings))
+                if printer and item.id == printer.printer_code
+            ),
+            None,
         )
+        if select_config is None:
+            raise LookupError("Build-plate selection references an unconfigured printer")
         await MoonrakerClient(select_config).select_build_plate(str(job.payload["plate_code"]))
     elif job.job_type == "moonraker.build_plate.clear":
         printer = await session.get(Printer, UUID(str(job.payload["printer_id"])), with_for_update=True)
@@ -1287,7 +1340,11 @@ async def dispatch_job(session: AsyncSession, job: OutboxJob) -> None:
         if newer_request is not None:
             return
         clear_config = next(
-            (item for item in settings.moonraker.printers if item.id == printer.printer_code),
+            (
+                item
+                for item in (await configured_printers(session, settings))
+                if item.id == printer.printer_code
+            ),
             None,
         )
         if clear_config is None:
@@ -1302,12 +1359,21 @@ async def dispatch_job(session: AsyncSession, job: OutboxJob) -> None:
         if printer is None:
             raise LookupError("Spool unload references a missing printer")
         unload_config = next(
-            (item for item in settings.moonraker.printers if item.id == printer.printer_code),
+            (
+                item
+                for item in (await configured_printers(session, settings))
+                if item.id == printer.printer_code
+            ),
             None,
         )
         if unload_config is None:
             raise LookupError("Spool unload references an unconfigured printer")
-        await MoonrakerClient(unload_config).request_spool_unload()
+        selected_slot = extruder_name(job.payload.get("extruder"), printer.extruder_count)
+        if printer.extruder_count > 1 and not printer.tool_routines_verified:
+            raise ValueError("Selected-hotend physical routines have not been verified")
+        await MoonrakerClient(unload_config).request_spool_unload(
+            **({"extruder": selected_slot} if printer.extruder_count > 1 else {})
+        )
     elif job.job_type.startswith("google."):
         from filament_manager.services.google_publication import publish
 

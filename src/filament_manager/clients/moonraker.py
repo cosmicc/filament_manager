@@ -6,7 +6,7 @@ import posixpath
 import re
 from dataclasses import dataclass
 from datetime import UTC, datetime
-from decimal import Decimal
+from decimal import Decimal, InvalidOperation
 from typing import Any
 from urllib.parse import quote
 
@@ -14,6 +14,7 @@ import httpx
 
 from filament_manager.config import PrinterConfig
 from filament_manager.domain.build_plates import is_build_plate_surface_code
+from filament_manager.domain.extruders import EXTRUDERS, tool_number
 from filament_manager.domain.spool_preflight import (
     SpoolPreflightCatalog,
     validate_catalog_revision,
@@ -65,6 +66,10 @@ class MoonrakerSpoolPreflightState:
     start_chamber_temp: Decimal
     inspection_policy: str
     start_pending: bool
+    weight_sequence: int = 0
+    weight_overridden: bool = False
+    loaded_spools: dict[str, int | None] | None = None
+    loaded_tool: str = "extruder"
 
 
 @dataclass(frozen=True, slots=True)
@@ -93,6 +98,11 @@ class MoonrakerOperationalState:
     bed_target_c: Decimal | None
     chamber_temperature_c: Decimal | None
     chamber_target_c: Decimal | None
+    completion_acknowledged: bool = False
+    idle_state: str | None = None
+    idle_timeout_seconds: Decimal | None = None
+    power_off_remaining_seconds: Decimal | None = None
+    power_state: str | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -129,6 +139,10 @@ SPOOL_PREFLIGHT_FIELDS = [
     "start_chamber_temp",
     "inspection_policy",
     "start_pending",
+    "weight_sequence",
+    "weight_overridden",
+    "loaded_spools",
+    "loaded_tool",
 ]
 PRINT_STATE_FIELDS = [
     "filename",
@@ -151,6 +165,8 @@ SPOOL_PREFLIGHT_PHASES = {
     "spoolman_select",
     "error",
     "inspecting",
+    "checking_weight",
+    "insufficient_filament",
 }
 
 
@@ -161,6 +177,7 @@ class MoonrakerClient:
         self.base_url = str(printer.base_url).rstrip("/")
         self.timeout = timeout
         self.api_key = printer.resolved_api_key()
+        self.power_device = printer.power_device
 
     def _headers(self) -> dict[str, str]:
         return {"X-Api-Key": self.api_key} if self.api_key else {}
@@ -253,16 +270,38 @@ class MoonrakerClient:
             raise MoonrakerError(f"Moonraker returned an invalid {label}")
         return parsed
 
+    async def printer_power_state(self) -> str | None:
+        """Read only the configured switch; failed reads never imply power off."""
+
+        if not self.power_device:
+            return None
+        try:
+            payload = await self._get("/machine/device_power/device", params={"device": self.power_device})
+        except MoonrakerError:
+            return None
+        result = payload.get("result")
+        value = result.get(self.power_device) if isinstance(result, dict) else None
+        return value if value in ("on", "off", "init", "error") else None
+
     async def operational_state(self) -> MoonrakerOperationalState:
         """Read live Klipper, print-progress, and heater state from documented objects."""
 
-        printer_payload = await self._get("/printer/info")
+        power_state = None
+        try:
+            printer_payload = await self._get("/printer/info")
+        except MoonrakerError:
+            power_state = await self.printer_power_state()
+            if power_state != "off":
+                raise
+            printer_payload = {"result": {"state": "shutdown"}}
         printer_info = printer_payload.get("result")
         klipper_state = printer_info.get("state") if isinstance(printer_info, dict) else None
         if klipper_state not in {"ready", "startup", "shutdown", "error"}:
             raise MoonrakerError("Moonraker returned an invalid Klipper state")
         if klipper_state != "ready":
+            power_state = power_state or await self.printer_power_state()
             return MoonrakerOperationalState(
+                power_state=power_state,
                 klipper_state=klipper_state,
                 print_state=None,
                 filename=None,
@@ -286,11 +325,22 @@ class MoonrakerClient:
             raise MoonrakerError("Moonraker did not expose required dashboard objects")
 
         query: dict[str, list[str]] = {
-            "print_stats": ["filename", "state"],
+            "print_stats": ["filename", "state", "total_duration"],
             "extruder": ["temperature", "target"],
         }
+        for name in EXTRUDERS[1:]:
+            if name in available_objects:
+                query[name] = ["temperature", "target"]
         if "heater_bed" in available_objects:
             query["heater_bed"] = ["temperature", "target"]
+        for name, fields in {
+            "idle_timeout": ["state", "idle_timeout"],
+            "toolhead": ["estimated_print_time", "extruder"],
+            "gcode_macro FILAMENT_MANAGER_PRINT_COMPLETE": ["acknowledged", "acknowledged_duration"],
+            "gcode_macro _POWER_OFF_TIMER_STATE": ["active", "deadline"],
+        }.items():
+            if name in available_objects:
+                query[name] = fields
         if "virtual_sdcard" in available_objects:
             query["virtual_sdcard"] = ["progress"]
         elif "display_status" in available_objects:
@@ -364,9 +414,46 @@ class MoonrakerClient:
             )
             return current, target
 
-        nozzle_temperature, nozzle_target = temperatures("extruder")
+        toolhead = status.get("toolhead", {})
+        active_extruder = toolhead.get("extruder", "extruder") if isinstance(toolhead, dict) else "extruder"
+        nozzle_temperature, nozzle_target = temperatures(
+            active_extruder if active_extruder in EXTRUDERS else None
+        )
         bed_temperature, bed_target = temperatures("heater_bed")
         chamber_temperature, chamber_target = temperatures(chamber_object)
+        # Optional macro receipts enrich presentation only. Invalid metadata must
+        # never hide otherwise usable telemetry or rewrite canonical print history.
+        idle = status.get("idle_timeout", {})
+        idle_state = idle.get("state") if isinstance(idle, dict) else None
+        if idle_state not in {"Idle", "Ready", "Printing"}:
+            idle_state = None
+        idle_seconds = self._optional_nonnegative_number(
+            idle.get("idle_timeout") if isinstance(idle, dict) else None
+        )
+        acknowledgement = status.get("gcode_macro FILAMENT_MANAGER_PRINT_COMPLETE", {})
+        total_duration = self._optional_nonnegative_number(print_stats.get("total_duration"))
+        acknowledged = bool(
+            print_state == "complete"
+            and isinstance(acknowledgement, dict)
+            and acknowledgement.get("acknowledged") == 1
+            and total_duration is not None
+            and self._optional_nonnegative_number(acknowledgement.get("acknowledged_duration"))
+            == total_duration
+        )
+        timer = status.get("gcode_macro _POWER_OFF_TIMER_STATE", {})
+        clock = status.get("toolhead", {})
+        remaining = None
+        if (
+            isinstance(timer, dict)
+            and isinstance(clock, dict)
+            and timer.get("active") == 1
+            and idle_state == "Idle"
+            and print_state not in {"printing", "paused"}
+        ):
+            deadline = self._optional_nonnegative_number(timer.get("deadline"))
+            now = self._optional_nonnegative_number(clock.get("estimated_print_time"))
+            if deadline is not None and now is not None and 0 <= deadline - now <= 3600:
+                remaining = deadline - now
         return MoonrakerOperationalState(
             klipper_state=klipper_state,
             print_state=print_state,
@@ -378,7 +465,22 @@ class MoonrakerClient:
             bed_target_c=bed_target,
             chamber_temperature_c=chamber_temperature,
             chamber_target_c=chamber_target,
+            completion_acknowledged=acknowledged,
+            idle_state=idle_state,
+            idle_timeout_seconds=idle_seconds,
+            power_off_remaining_seconds=remaining,
         )
+
+    @staticmethod
+    def _optional_nonnegative_number(value: object) -> Decimal | None:
+        """Fail safely for optional bounded macro clock/idle fields."""
+        if type(value) not in {int, float, str, Decimal}:
+            return None
+        try:
+            number = Decimal(str(value))
+        except (ValueError, InvalidOperation):
+            return None
+        return number if number.is_finite() and 0 <= number <= Decimal("1e12") else None
 
     async def set_active_spool(self, spoolman_id: int | None) -> dict[str, Any]:
         """Use Moonraker's supported active-spool integration endpoint."""
@@ -434,6 +536,38 @@ class MoonrakerClient:
         start_chamber_temp = macro_state.get("start_chamber_temp", 0)
         inspection_policy = macro_state.get("inspection_policy", "warn")
         start_pending = macro_state.get("start_pending", 0)
+        weight_sequence = macro_state.get("weight_sequence", 0)
+        weight_overridden = macro_state.get("weight_overridden", 0)
+        if not isinstance(weight_overridden, (bool, int)) or weight_overridden not in (0, 1):
+            raise MoonrakerError("Moonraker returned an invalid filament override receipt")
+        raw_slots = macro_state.get("loaded_spools")
+        loaded_tool = macro_state.get("loaded_tool", "extruder")
+        if loaded_tool not in EXTRUDERS:
+            raise MoonrakerError("Moonraker returned an invalid loaded hotend")
+        slots: dict[str, int | None] | None = None
+        if raw_slots is not None:
+            if not isinstance(raw_slots, dict) or len(raw_slots) > 16:
+                raise MoonrakerError("Moonraker returned invalid hotend spool state")
+            slots = {}
+            for name, spool_id in raw_slots.items():
+                if (
+                    name not in EXTRUDERS
+                    or isinstance(spool_id, bool)
+                    or not isinstance(spool_id, int)
+                    or spool_id == 0
+                    or spool_id < -1
+                ):
+                    raise MoonrakerError("Moonraker returned invalid hotend spool identity")
+                slots[name] = spool_id if spool_id > 0 else None
+            positive = [value for value in slots.values() if value is not None]
+            if len(positive) != len(set(positive)):
+                raise MoonrakerError("One spool cannot be loaded on multiple hotends")
+        if (
+            isinstance(weight_sequence, bool)
+            or not isinstance(weight_sequence, int)
+            or not 0 <= weight_sequence <= 2**53
+        ):
+            raise MoonrakerError("Moonraker returned an invalid weight-check sequence")
         if restored not in (0, 1, False, True):
             raise MoonrakerError("Moonraker returned an invalid spool-preflight restored flag")
         if initialized not in (0, 1, False, True):
@@ -444,6 +578,12 @@ class MoonrakerClient:
             raise MoonrakerError("Moonraker returned an invalid physically loaded spool ID")
         if loaded_spool_id == 0 or loaded_spool_id < -1:
             raise MoonrakerError("Moonraker returned an invalid physically loaded spool ID")
+        if (
+            slots is not None
+            and initialized
+            and slots.get(loaded_tool) != (loaded_spool_id if loaded_spool_id > 0 else None)
+        ):
+            raise MoonrakerError("Loaded hotend and physical spool map disagree")
         if not isinstance(revision, str):
             raise MoonrakerError("Moonraker returned an invalid spool catalog revision")
         if not isinstance(material_guid, str) or len(material_guid) > 96:
@@ -477,6 +617,32 @@ class MoonrakerClient:
             start_chamber_temp=temperatures[2],
             inspection_policy=inspection_policy,
             start_pending=bool(start_pending),
+            weight_sequence=weight_sequence,
+            weight_overridden=bool(weight_overridden),
+            loaded_spools=slots,
+            loaded_tool=loaded_tool,
+        )
+
+    async def submit_filament_check(
+        self, *, spoolman_id: int, sequence: int, required_g: Decimal | None, remaining_g: Decimal | None
+    ) -> dict[str, Any]:
+        """Answer only the exact paused preflight; never resume a print directly."""
+
+        if spoolman_id <= 0 or not 0 <= sequence <= 2**53:
+            raise ValueError("Invalid filament check identity")
+        values = []
+        for value in (required_g, remaining_g):
+            if value is not None and (not value.is_finite() or not 0 <= value <= Decimal("1000000000")):
+                value = None
+            values.append(format(value, "f") if value is not None else "-1")
+        return await self._post(
+            "/printer/gcode/script",
+            {
+                "script": (
+                    f"FILAMENT_MANAGER_FILAMENT_CHECK ID={spoolman_id} SEQUENCE={sequence} "
+                    f"REQUIRED={values[0]} REMAINING={values[1]}"
+                )
+            },
         )
 
     async def print_state(self) -> MoonrakerPrintState:
@@ -758,11 +924,16 @@ class MoonrakerClient:
             {"script": f"FILAMENT_MANAGER_GCODE_INSPECTION PASS={1 if passed else 0}"},
         )
 
-    async def request_spool_unload(self) -> dict[str, Any]:
+    async def request_spool_unload(self, *, extruder: str | None = None) -> dict[str, Any]:
         """Start the guarded physical unload workflow without selecting a replacement."""
 
         await self._require_idle_spool_request()
-        return await self._post("/printer/gcode/script", {"script": "FILAMENT_MANAGER_UNLOAD_SPOOL"})
+        script = (
+            "FILAMENT_MANAGER_UNLOAD_SPOOL"
+            if extruder is None
+            else f"FILAMENT_MANAGER_TOOL_UNLOAD TOOL={tool_number(extruder)}"
+        )
+        return await self._post("/printer/gcode/script", {"script": script})
 
     async def _require_idle_spool_request(self) -> None:
         """Recheck queued app actions; the macro repeats the guard at execution time."""
@@ -833,7 +1004,7 @@ class MoonrakerClient:
         return await self._post("/printer/gcode/script", {"script": script})
 
     async def request_spool_change(
-        self, *, spoolman_id: int, temperature_c: Decimal, prompt_label: str
+        self, *, spoolman_id: int, temperature_c: Decimal, prompt_label: str, extruder: str | None = None
     ) -> dict[str, Any]:
         """Ask Klipper to perform a physical, confirmed spool change."""
 
@@ -848,6 +1019,10 @@ class MoonrakerClient:
             f"FILAMENT_MANAGER_CHANGE_SPOOL ID={spoolman_id} "
             f"TEMP={format(temperature_c, 'f')} LABEL={prompt_label}"
         )
+        if extruder is not None:
+            script = script.replace(
+                "FILAMENT_MANAGER_CHANGE_SPOOL", f"FILAMENT_MANAGER_TOOL_LOAD TOOL={tool_number(extruder)}", 1
+            )
         return await self._post("/printer/gcode/script", {"script": script})
 
     async def request_spoolman_target(

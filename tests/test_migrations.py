@@ -8,7 +8,7 @@ from uuid import uuid4
 import pytest
 from alembic import command
 from alembic.config import Config
-from sqlalchemy import BigInteger, create_engine, inspect, text
+from sqlalchemy import BigInteger, MetaData, Table, create_engine, inspect, text
 from sqlalchemy import select as sa_select
 from sqlalchemy.orm import Session
 from testcontainers.community.postgres import PostgresContainer
@@ -22,6 +22,26 @@ from filament_manager.models.inventory import (
     Spool,
 )
 from filament_manager.startup import upgrade_database
+
+
+def insert_legacy_record(session: Session, record: object) -> None:
+    """Seed only columns present at the migration under test, with mapped defaults.
+
+    Current ORM INSERTs include newer columns and cannot seed an older schema.
+    Keep the real historical schema intact instead of adding test-only columns.
+    """
+    mapped = record.__table__
+    table = Table(mapped.name, MetaData(), autoload_with=session.connection())
+    for column in table.columns:
+        if column.name in mapped.c:
+            column.default = mapped.c[column.name].default
+            column.type = mapped.c[column.name].type
+    values = {
+        column.name: getattr(record, column.name)
+        for column in table.columns
+        if getattr(record, column.name, None) is not None
+    }
+    record.id = session.scalar(table.insert().values(**values).returning(table.c.id))
 
 
 @pytest.mark.integration
@@ -67,7 +87,7 @@ def test_unknown_manufacturer_upgrade_preserves_archived_filaments_and_snapshots
                 moonraker_base_url="http://test.invalid",
                 nozzle_diameter_mm=Decimal("0.4"),
             )
-            session.add(printer)
+            insert_legacy_record(session, printer)
             session.flush()
             snapshot = {"vendor_name": "Unspecified manufacturer", "filament_diameter_mm": "1.75000"}
             spools = [
@@ -81,7 +101,8 @@ def test_unknown_manufacturer_upgrade_preserves_archived_filaments_and_snapshots
                 )
                 for index, product in enumerate(products)
             ]
-            session.add_all(spools)
+            for spool in spools:
+                insert_legacy_record(session, spool)
             session.flush()
             jobs = [
                 PrintJob(
@@ -102,11 +123,17 @@ def test_unknown_manufacturer_upgrade_preserves_archived_filaments_and_snapshots
             ]
         command.upgrade(config, "head")
         command.check(config)
+        with engine.connect() as connection:
+            with pytest.raises(Exception, match="Spool codes are immutable"):
+                connection.execute(
+                    text("UPDATE spools SET spool_code = 'RENAMED' WHERE id = :id"), {"id": links[0][1]}
+                )
+            connection.rollback()
         if collision:
             with pytest.raises(RuntimeError, match="legacy filament identity rule"):
                 command.downgrade(config, "b6c7d8e9f012")
             with engine.connect() as connection:
-                assert connection.scalar(text("SELECT version_num FROM alembic_version")) == "d8e9f012a3b4"
+                assert connection.scalar(text("SELECT version_num FROM alembic_version")) == "e9f012a3b4c5"
         else:
             command.downgrade(config, "b6c7d8e9f012")
             assert "uq_filament_product_identity" in {
@@ -355,7 +382,8 @@ def test_modifier_catalog_backfills_only_blanks(monkeypatch: pytest.MonkeyPatch)
             blank_id, populated_id = (product.id for product in products)
             labels = ["Bucket %_12", "Bucket %_12", "bucket %_12", "Archived shelf", None]
             for index, label in enumerate(labels):
-                session.add(
+                insert_legacy_record(
+                    session,
                     Spool(
                         spool_code=f"MIGRATION-{index}",
                         filament_product_id=blank_id,
@@ -365,7 +393,7 @@ def test_modifier_catalog_backfills_only_blanks(monkeypatch: pytest.MonkeyPatch)
                         remaining_mass_effective_g=Decimal("800"),
                         location=label,
                         archived=index == 3,
-                    )
+                    ),
                 )
             session.execute(
                 text("UPDATE filament_products SET filler = NULL, finish = :blank WHERE id = :id"),
@@ -745,7 +773,7 @@ def test_previous_schema_automatically_upgrades_to_metadata_head(
 
         upgrade_database(DatabaseConfig(url=database_url))
         with engine.connect() as connection:
-            assert connection.scalar(text("SELECT version_num FROM alembic_version")) == "d8e9f012a3b4"
+            assert connection.scalar(text("SELECT version_num FROM alembic_version")) == "e9f012a3b4c5"
             assert (
                 connection.scalar(
                     text(

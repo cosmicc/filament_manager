@@ -1,6 +1,6 @@
 /* This editor intentionally exports its form serializer and canonical typed-key set. */
 /* eslint-disable react-refresh/only-export-components */
-import { useId, useState } from 'react'
+import { useId, useState, type ReactNode } from 'react'
 import type { BuildPlate, CuraSettingCatalogItem, MaterialSettings } from '../api/types'
 import { compactNumber, inputNumber } from '../lib/format'
 import { EditorSection } from './EditorSection'
@@ -236,6 +236,7 @@ export function MaterialSettingsEditor({
   plates,
   copySources = [],
   scope = 'template',
+  renderIdentity,
 }: {
   settings?: MaterialSettings
   baseSettings?: MaterialSettings | null
@@ -245,6 +246,7 @@ export function MaterialSettingsEditor({
   plates: BuildPlate[]
   copySources?: MaterialSettingCopySource[]
   scope?: 'template' | 'profile'
+  renderIdentity?: (density: ReactNode) => ReactNode
 }) {
   const editorId = useId().replaceAll(':', '')
   const [resetKeys, setResetKeys] = useState<Set<string>>(() => new Set())
@@ -364,6 +366,36 @@ export function MaterialSettingsEditor({
       {customized(key) ? <button className="button button--small" type="button" onClick={(event) => resetControl(key, baseValue, event.currentTarget)}>Revert to Template</button> : null}
     </div>
   ) : null
+  const renderCoreFields = (keys: string[]) => (
+coreFields.filter((field) => (
+              keys.includes(field.key) && (scope === 'template' || !field.templateOnly)
+            )).map((field) => (
+              <div className={`setting-field${customized(field.key) ? ' setting-field--customized' : ''}${errorsFor(field.key).length ? ' setting-field--invalid' : ''}`} key={field.key}>
+                <label>
+                  <span>{field.label}{field.unit ? ` (${field.unit})` : ''}{field.templateOnly ? <small className="setting-scope">Template only</small> : null}</span>
+                  {field.options ? <select name={field.key} defaultValue={String(effectiveValue(field.key) ?? '')} aria-invalid={errorsFor(field.key).length ? true : undefined} aria-describedby={errorsFor(field.key).length ? errorId(field.key) : undefined} onChange={(event) => { markOwnership(field.key, event.currentTarget.value, baseSettings?.[field.key] as string | number | boolean | null | undefined); markValuePresence(field.key, event.currentTarget.value) }}>
+                    <option value="">Not set</option>
+                    {field.options.map((value) => <option key={value} value={value}>{value.charAt(0).toUpperCase() + value.slice(1)}</option>)}
+                  </select> : <input
+                    name={field.key}
+                    type="number"
+                    step={field.precision === 0 ? '1' : field.precision === 1 ? '0.1' : '0.01'}
+                    min={minimumForCoreField(field.key, field.precision ?? 1)}
+                    max={maximumForCoreField(field.key)}
+                    required={field.required}
+                    defaultValue={effectiveValue(field.key) == null ? field.defaultValue ?? '' : inputNumber(effectiveValue(field.key) as string | number | null, field.precision)}
+                    data-exact-value={effectiveValue(field.key) == null ? field.defaultValue ?? '' : String(effectiveValue(field.key))}
+                    aria-invalid={errorsFor(field.key).length ? true : undefined}
+                    aria-describedby={errorsFor(field.key).length ? errorId(field.key) : undefined}
+                    onChange={(event) => { event.currentTarget.dataset.changed = 'true'; markOwnership(field.key, event.currentTarget.value, baseSettings?.[field.key] as string | number | boolean | null | undefined); markValuePresence(field.key, event.currentTarget.value) }}
+                  />}
+                </label>
+                {copyControl(field.key, effectiveValue(field.key) ?? field.defaultValue, baseSettings?.[field.key] as string | number | boolean | null | undefined)}
+                {fieldErrors(field.key)}
+                {ownership(field.key, baseSettings?.[field.key] as string | number | boolean | null | undefined)}
+              </div>
+            ))
+  )
   const fieldGroups: Array<{
     id: MaterialSettingGroup
     title: string
@@ -401,12 +433,6 @@ export function MaterialSettingsEditor({
       keys: ['retraction_distance_mm', 'retraction_speed_mm_s', 'retraction_prime_speed_mm_s'],
     },
     {
-      id: 'ironing',
-      title: 'Ironing',
-      description: 'Material-specific top-surface ironing values. Cura quality profiles decide whether ironing is enabled.',
-      keys: ['ironing_flow_percent', 'ironing_speed_mm_s', 'ironing_line_spacing_mm'],
-    },
-    {
       id: 'cooling',
       title: 'Cooling',
       description: 'Fan behavior and minimum-layer cooling controls.',
@@ -425,10 +451,10 @@ export function MaterialSettingsEditor({
       keys: [],
     },
     {
-      id: 'filament',
-      title: 'Filament properties',
-      description: 'Physical material values used for calculations and Cura output.',
-      keys: ['filament_density_g_cm3'],
+      id: 'ironing',
+      title: 'Ironing',
+      description: 'Material-specific top-surface ironing values. Cura quality profiles decide whether ironing is enabled.',
+      keys: ['ironing_flow_percent', 'ironing_speed_mm_s', 'ironing_line_spacing_mm'],
     },
     {
       id: 'klipper',
@@ -453,6 +479,7 @@ export function MaterialSettingsEditor({
   ))
   return (
     <div className="editor-form">
+      {renderIdentity ? renderIdentity(renderCoreFields(["filament_density_g_cm3"])) : <div className="form-grid">{renderCoreFields(["filament_density_g_cm3"])}</div>}
       {scope === 'profile' ? <>
         {coreFields.filter((field) => field.templateOnly).map((field) => (
           <input
@@ -471,34 +498,7 @@ export function MaterialSettingsEditor({
               <label>Minimum Extrusion Distance Window (mm)<input readOnly value={retractionPreview ?? String(effectiveValue('retraction_distance_mm') ?? '')} placeholder="Not set" /><small>Calculated from Retraction Distance.</small></label>
               <label>Maximum Retraction Count<input readOnly value="100" /><small>Fixed value.</small></label>
             </> : null}
-            {coreFields.filter((field) => (
-              group.keys.includes(field.key) && (scope === 'template' || !field.templateOnly)
-            )).map((field) => (
-              <div className={`setting-field${customized(field.key) ? ' setting-field--customized' : ''}${errorsFor(field.key).length ? ' setting-field--invalid' : ''}`} key={field.key}>
-                <label>
-                  <span>{field.label}{field.unit ? ` (${field.unit})` : ''}{field.templateOnly ? <small className="setting-scope">Template only</small> : null}</span>
-                  {field.options ? <select name={field.key} defaultValue={String(effectiveValue(field.key) ?? '')} aria-invalid={errorsFor(field.key).length ? true : undefined} aria-describedby={errorsFor(field.key).length ? errorId(field.key) : undefined} onChange={(event) => { markOwnership(field.key, event.currentTarget.value, baseSettings?.[field.key] as string | number | boolean | null | undefined); markValuePresence(field.key, event.currentTarget.value) }}>
-                    <option value="">Not set</option>
-                    {field.options.map((value) => <option key={value} value={value}>{value.charAt(0).toUpperCase() + value.slice(1)}</option>)}
-                  </select> : <input
-                    name={field.key}
-                    type="number"
-                    step={field.precision === 0 ? '1' : field.precision === 1 ? '0.1' : '0.01'}
-                    min={minimumForCoreField(field.key, field.precision ?? 1)}
-                    max={maximumForCoreField(field.key)}
-                    required={field.required}
-                    defaultValue={effectiveValue(field.key) == null ? field.defaultValue ?? '' : inputNumber(effectiveValue(field.key) as string | number | null, field.precision)}
-                    data-exact-value={effectiveValue(field.key) == null ? field.defaultValue ?? '' : String(effectiveValue(field.key))}
-                    aria-invalid={errorsFor(field.key).length ? true : undefined}
-                    aria-describedby={errorsFor(field.key).length ? errorId(field.key) : undefined}
-                    onChange={(event) => { event.currentTarget.dataset.changed = 'true'; markOwnership(field.key, event.currentTarget.value, baseSettings?.[field.key] as string | number | boolean | null | undefined); markValuePresence(field.key, event.currentTarget.value) }}
-                  />}
-                </label>
-                {copyControl(field.key, effectiveValue(field.key) ?? field.defaultValue, baseSettings?.[field.key] as string | number | boolean | null | undefined)}
-                {fieldErrors(field.key)}
-                {ownership(field.key, baseSettings?.[field.key] as string | number | boolean | null | undefined)}
-              </div>
-            ))}
+            {renderCoreFields(group.keys)}
             {group.id === 'cooling' ? (
               <div className={`setting-field${customized('cooling_enabled') ? ' setting-field--customized' : ''}${errorsFor('cooling_enabled').length ? ' setting-field--invalid' : ''}`}>
                 <label className="check-row">

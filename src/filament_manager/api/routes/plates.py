@@ -12,7 +12,7 @@ from PIL import Image, ImageOps, UnidentifiedImageError
 from sqlalchemy import select, text
 from sqlalchemy.orm import selectinload
 
-from filament_manager.api.printer_safety import require_idle_printer
+from filament_manager.api.printer_safety import require_idle_printer, selected_printer
 from filament_manager.clients.moonraker import MoonrakerBedMeshState, MoonrakerError
 from filament_manager.config import get_settings
 from filament_manager.domain.build_plates import BuildPlateDiscoveryError, build_plate_sort_key
@@ -22,6 +22,7 @@ from filament_manager.services.build_plate_sync import BUILD_PLATE_SYNC_LOCK_KEY
 from filament_manager.services.events import add_audit_event, add_outbox_job
 from filament_manager.services.notifications import build_plate_maintenance_status
 from filament_manager.services.print_statistics import completed_surface_print_counts, last_build_plate_prints
+from filament_manager.services.printer_connections import configured_printers
 
 from ..dependencies import Administrator, DatabaseSession, Operator, Viewer
 from ..errors import ApiError
@@ -47,7 +48,7 @@ async def _require_idle_plate_context(session: DatabaseSession, printer_id: UUID
     """Do not change captured physical plate identity while a print is active."""
 
     printer_code = await session.scalar(select(Printer.printer_code).where(Printer.id == printer_id))
-    return await require_idle_printer(printer_code, get_settings())
+    return await require_idle_printer(printer_code, get_settings(), session)
 
 
 async def _get_plate(session: DatabaseSession, plate_id: UUID) -> BuildPlate:
@@ -199,12 +200,12 @@ async def clear_active_build_plate(
     request: Request,
     operator: Operator,
     session: DatabaseSession,
+    printer_id: UUID | None = None,
 ) -> dict[str, str]:
     """Queue mesh clearing; reconciliation clears canonical context after confirmation."""
 
-    configured_code = get_settings().moonraker.printers[0].id
-    printer = await session.scalar(select(Printer).where(Printer.printer_code == configured_code))
-    if printer is None or printer.active_plate_surface_id is None:
+    printer = await selected_printer(session, printer_id, get_settings())
+    if printer.active_plate_surface_id is None:
         raise ApiError(
             status.HTTP_409_CONFLICT,
             "no_active_build_plate",
@@ -254,7 +255,7 @@ async def synchronize_with_moonraker(
     await session.rollback()
 
     configured_printer = next(
-        (item for item in get_settings().moonraker.printers if item.id == printer_code),
+        (item for item in (await configured_printers(session, get_settings())) if item.id == printer_code),
         None,
     )
     if configured_printer is None:

@@ -3,6 +3,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Cloud, ExternalLink, RefreshCw } from 'lucide-react'
 import { actionableApiError, apiFetch } from '../api/client'
 import { Modal } from './Modal'
+import { GoogleSetupWizard } from './GoogleSetupWizard'
 
 interface GoogleStatus {
   ready: boolean
@@ -21,6 +22,7 @@ interface GoogleStatus {
 export function GoogleIntegrationPanel() {
   const cache = useQueryClient()
   const [confirmDisconnect, setConfirmDisconnect] = useState(false)
+  const [setup, setSetup] = useState(false)
   const query = useQuery({ queryKey: ['google-integration'], queryFn: () => apiFetch<GoogleStatus>('/settings/google'), refetchInterval: 10000 })
   const action = useMutation({
     mutationFn: async (operation: 'connect' | 'sync' | 'disconnect') => {
@@ -56,18 +58,20 @@ export function GoogleIntegrationPanel() {
         <ol>
           <li>Enable the Google Drive API and Google Sheets API in your Google Cloud project.</li>
           <li>Configure consent and create an OAuth client with type <strong>Web application</strong>. Add this exact authorized redirect URI:<br /><code className="google-redirect">{data.redirect_uri}</code></li>
-          <li>Set <code>GOOGLE_OAUTH_CLIENT_ID</code>, <code>GOOGLE_OAUTH_CLIENT_SECRET</code>, and <code>GOOGLE_TOKEN_ENCRYPTION_KEY</code> in your deployment, then redeploy web and worker. Use a generated Fernet key and keep it backed up securely.</li>
+          <li>Choose Guided setup to upload your Google credentials file securely. The app handles encryption and configuration.</li>
         </ol>
         <p>Use HTTPS. For an External consent screen, add your account as a test user; testing grants may expire after seven days. Use Production consent for ongoing synchronization.</p>
         <a className="text-link" href="https://github.com/cosmicc/filament_manager/blob/main/docs/GOOGLE_SHEETS.md" target="_blank" rel="noreferrer">Complete setup guide <ExternalLink size={14} /></a>
       </section>}
       <div className="detail-actions">
+        {!data.legacy && <button className="button" onClick={() => setSetup(true)}>Guided setup</button>}
         {!data.legacy && <button className="button button--primary" disabled={!data.ready || action.isPending} onClick={() => action.mutate('connect')}><Cloud size={16} />{data.connected ? 'Reconnect Google' : 'Connect Google'}</button>}
         <button className="button" disabled={!data.connected || action.isPending || (data.sync_requested && !data.last_error)} onClick={() => action.mutate('sync')}><RefreshCw size={16} />Sync now</button>
         {data.spreadsheet_url && <a className="button" href={data.spreadsheet_url} target="_blank" rel="noreferrer"><ExternalLink size={16} />Open spreadsheet</a>}
         {data.connected && !data.legacy && <button className="button" disabled={action.isPending} onClick={() => setConfirmDisconnect(true)}>Disconnect</button>}
       </div>
     </>}
+    {setup && data && <GoogleSetupWizard redirectUri={data.redirect_uri} connected={data.connected} onClose={() => setSetup(false)} onSaved={() => { setSetup(false); void cache.invalidateQueries({ queryKey: ['google-integration'] }) }} />}
     {confirmDisconnect && <Modal title="Disconnect Google?" onClose={() => setConfirmDisconnect(false)}>
       <p>Automatic publication stops and saved Google access is removed from this app. Your spreadsheet stays in Drive. You can also remove the app’s grant in your Google Account permissions.</p>
       <div className="detail-actions"><button className="button" onClick={() => setConfirmDisconnect(false)}>Cancel</button><button className="button button--primary" disabled={action.isPending} onClick={() => action.mutate('disconnect')}>Disconnect Google</button></div>

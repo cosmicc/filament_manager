@@ -9,6 +9,7 @@ from sqlalchemy import select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from filament_manager.clients.moonraker import MoonrakerPrinterInformation
+from filament_manager.domain.extruders import EXTRUDERS, extruder_name
 from filament_manager.models.inventory import Printer, Spool
 from filament_manager.services.events import add_audit_event
 
@@ -157,6 +158,30 @@ async def synchronize_printer_information(
     return printer
 
 
+async def synchronize_loaded_hotends(
+    session: AsyncSession, *, printer: Printer, slots: dict[str, int | None], correlation_id: str
+) -> None:
+    """Apply a complete validated physical map without adding printer requests."""
+
+    allowed = EXTRUDERS[: printer.extruder_count]
+    ids = [value for value in slots.values() if value is not None]
+    if any(name not in allowed for name in slots) or len(ids) != len(set(ids)):
+        raise ValueError("Invalid per-hotend physical spool map")
+    known = set(await session.scalars(select(Spool.spoolman_id).where(Spool.spoolman_id.in_(ids))))
+    if known != set(ids):
+        raise ValueError("Physical hotend map contains an unknown spool")
+    for slot in allowed:
+        await synchronize_active_spool(
+            session,
+            printer_id=printer.id,
+            spoolman_id=slots.get(slot),
+            actor_id=None,
+            correlation_id=correlation_id,
+            extruder=slot,
+            commit=False,
+        )
+
+
 async def synchronize_active_spool(
     session: AsyncSession,
     *,
@@ -165,6 +190,7 @@ async def synchronize_active_spool(
     actor_id: UUID | None,
     correlation_id: str,
     commit: bool = True,
+    extruder: str = "extruder",
 ) -> ActiveSpoolSyncResult:
     """Make canonical active-spool state match Moonraker's current Spoolman selection."""
 
@@ -175,15 +201,33 @@ async def synchronize_active_spool(
     printer = await session.scalar(select(Printer).where(Printer.id == printer_id).with_for_update())
     if printer is None:
         raise LookupError("Printer not found")
-    current_spools = list(
-        await session.scalars(
-            select(Spool).where(Spool.active_printer_id == printer.id).order_by(Spool.id).with_for_update()
-        )
-    )
+    extruder = extruder_name(extruder, printer.extruder_count)
     target = (
         await session.scalar(select(Spool).where(Spool.spoolman_id == spoolman_id).with_for_update())
         if spoolman_id is not None
         else None
+    )
+    # Lock and validate ownership before clearing any existing loaded spool. A
+    # stale printer catalog must never move physical inventory between printers.
+    if target is not None and target.active_printer_id not in (None, printer.id):
+        raise ValueError("Spool is already loaded on another printer; unload it there first")
+    if (
+        target is not None
+        and target.active_printer_id == printer.id
+        and target.active_extruder not in (None, extruder)
+    ):
+        raise ValueError("Spool is already loaded on another hotend; unload it there first")
+    current_spools = list(
+        await session.scalars(
+            select(Spool)
+            .where(
+                Spool.active_printer_id == printer.id,
+                (Spool.active_extruder == extruder)
+                | ((Spool.active_extruder.is_(None)) & (extruder == "extruder")),
+            )
+            .order_by(Spool.id)
+            .with_for_update()
+        )
     )
     previous_ids = [str(spool.id) for spool in current_spools]
     changed = any(spool.id != getattr(target, "id", None) for spool in current_spools)
@@ -191,9 +235,15 @@ async def synchronize_active_spool(
     for spool in current_spools:
         if target is None or spool.id != target.id:
             spool.active_printer_id = None
+            spool.active_extruder = None
             spool.record_version += 1
+    await session.flush()
     if target is not None and target.active_printer_id != printer.id:
         target.active_printer_id = printer.id
+        target.active_extruder = extruder
+        target.record_version += 1
+    elif target is not None and target.active_extruder is None:
+        target.active_extruder = extruder
         target.record_version += 1
     synchronized_at = datetime.now(UTC)
     if printer.status != "connected":
@@ -212,6 +262,7 @@ async def synchronize_active_spool(
             after={
                 "active_spool_id": str(target.id) if target is not None else None,
                 "spoolman_id": spoolman_id,
+                "extruder": extruder,
                 "spoolman_id_recognized": spoolman_id is None or target is not None,
             },
             correlation_id=correlation_id,

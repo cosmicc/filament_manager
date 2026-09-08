@@ -9,7 +9,7 @@ import { PageHeader } from '../components/PageHeader'
 import { StatusPill } from '../components/StatusPill'
 import { useRouter } from '../context/RouterContext'
 import { filamentSwatchStyle } from '../lib/colors'
-import { grams } from '../lib/format'
+import { grams, percent } from '../lib/format'
 import { materialIdentitySummary } from '../lib/materialIdentity'
 
 interface SpoolLocation {
@@ -68,7 +68,7 @@ export default function LocationsPage() {
         {spools.isError ? <p className="form-error" role="alert">Spools in this location could not be loaded.</p> : spools.isPending ? <LoadingState label="Loading location spools" /> : !spools.data?.items.length ? <p className="muted">No spools on this page. Choose Previous or another location.</p> : <div className="collection-grid collection-grid--cards">
           {spools.data.items.map((spool) => <button key={spool.id} className="collection-card collection-card--button" onClick={() => navigate(`/spools?spool_id=${encodeURIComponent(spool.id)}`)}>
             <header className="collection-card__header"><div className="table-identity"><span className="filament-swatch" style={filamentSwatchStyle(spool.color_mode, spool.color_hexes, spool.color_hex ?? '2F80A5')} /><span><strong>{spool.spool_code}</strong><small>{spool.vendor_name ?? 'Unknown'}</small></span></div><StatusPill status={spool.status} /></header>
-            <div className="collection-card__body"><h2 title={materialIdentitySummary(spool)}>{materialIdentitySummary(spool)}</h2><p>{grams(spool.remaining_mass_effective_g, 1)} filament remaining</p></div>
+            <div className="collection-card__body"><h2 title={materialIdentitySummary(spool)}>{materialIdentitySummary(spool)}</h2><div className="remaining-visual"><div className="remaining-visual__labels"><span>{grams(spool.remaining_mass_effective_g, 1)} remaining</span><strong>{percent(spool.remaining_percent)}</strong></div><div className="progress" role="meter" aria-label={`${spool.spool_code} filament remaining`} aria-valuemin={0} aria-valuemax={100} aria-valuenow={Math.min(100, Math.max(0, Number(spool.remaining_percent)))}><span style={{ width: `${Math.min(100, Math.max(0, Number(spool.remaining_percent)))}%` }} /></div></div></div>
             <span className="collection-card__link">Open spool details</span>
           </button>)}
         </div>}

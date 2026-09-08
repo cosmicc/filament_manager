@@ -22,6 +22,7 @@ from filament_manager.clients.google_sheets import GoogleSheetsError
 from filament_manager.config import Settings, get_settings
 from filament_manager.models.auth import UserSession
 from filament_manager.models.google import GoogleConnection
+from filament_manager.services.credentials import CredentialError, credential_cipher, decrypt_credential
 
 GOOGLE_LOCK = 0x464D474F4F47
 DRIVE_SCOPE = "https://www.googleapis.com/auth/drive.file"
@@ -35,16 +36,15 @@ def redirect_uri(settings: Settings) -> str:
 
 def encryption(settings: Settings) -> Fernet:
     """Validate the deployment key without exposing it in validation errors."""
-    key = settings.google.token_encryption_key
     try:
-        if key is None:
-            raise ValueError
-        return Fernet(key.get_secret_value().encode("ascii"))
-    except (ValueError, UnicodeError):
-        raise GoogleSheetsError("Configure a valid Google token encryption key.") from None
+        return credential_cipher(settings)
+    except CredentialError:
+        raise GoogleSheetsError(
+            "Complete guided Google setup or restore the private encryption key."
+        ) from None
 
 
-def oauth_ready(settings: Settings) -> bool:
+def oauth_ready(settings: Settings, record: GoogleConnection | None = None) -> bool:
     """Indicate readiness without returning any credential values."""
     origin = urlsplit(redirect_uri(settings))
     if origin.scheme != "https" and origin.hostname not in ("localhost", "127.0.0.1", "::1"):
@@ -53,7 +53,22 @@ def oauth_ready(settings: Settings) -> bool:
         encryption(settings)
     except GoogleSheetsError:
         return False
-    return bool(settings.google.oauth_client_id and settings.google.oauth_client_secret)
+    return bool(
+        (record and record.oauth_client_id and record.oauth_client_secret)
+        or (settings.google.oauth_client_id and settings.google.oauth_client_secret)
+    )
+
+
+def client_credentials(settings: Settings, record: GoogleConnection | None) -> tuple[str, str]:
+    """Prefer explicitly saved UI credentials; never return these to the browser."""
+    if record and record.oauth_client_id and record.oauth_client_secret:
+        try:
+            return record.oauth_client_id, decrypt_credential(settings, record.oauth_client_secret)
+        except CredentialError as exc:
+            raise GoogleSheetsError(str(exc)) from None
+    if settings.google.oauth_client_id and settings.google.oauth_client_secret:
+        return settings.google.oauth_client_id, settings.google.oauth_client_secret.get_secret_value()
+    raise GoogleSheetsError("Complete guided Google setup before connecting.")
 
 
 async def connection(session: AsyncSession, *, lock: bool = False) -> GoogleConnection:
@@ -73,9 +88,10 @@ async def connection(session: AsyncSession, *, lock: bool = False) -> GoogleConn
 async def begin_authorization(session: AsyncSession, session_hash: str) -> str:
     """Persist one ten-minute PKCE attempt bound to the current browser session."""
     settings = get_settings()
-    if not oauth_ready(settings) or settings.google.enabled:
-        raise GoogleSheetsError("Complete Google OAuth deployment setup before connecting.")
     record = await connection(session, lock=True)
+    if not oauth_ready(settings, record) or settings.google.enabled:
+        raise GoogleSheetsError("Complete Google OAuth deployment setup before connecting.")
+    client_id, _ = client_credentials(settings, record)
     state = secrets.token_urlsafe(32)
     verifier = secrets.token_urlsafe(64)
     record.state_hash = hashlib.sha256(state.encode()).hexdigest()
@@ -86,7 +102,7 @@ async def begin_authorization(session: AsyncSession, session_hash: str) -> str:
     await session.commit()
     return "https://accounts.google.com/o/oauth2/v2/auth?" + urlencode(
         {
-            "client_id": settings.google.oauth_client_id,
+            "client_id": client_id,
             "redirect_uri": redirect_uri(settings),
             "response_type": "code",
             "scope": DRIVE_SCOPE,
@@ -99,20 +115,18 @@ async def begin_authorization(session: AsyncSession, session_hash: str) -> str:
     )
 
 
-async def token_request(fields: dict[str, str]) -> dict[str, Any]:
+async def token_request(fields: dict[str, str], record: GoogleConnection | None = None) -> dict[str, Any]:
     """Exchange/refresh credentials with bounded time and sanitized failures."""
     settings = get_settings()
-    secret = settings.google.oauth_client_secret
-    if not settings.google.oauth_client_id or secret is None:
-        raise GoogleSheetsError("Google OAuth configuration is incomplete.")
+    client_id, secret = client_credentials(settings, record)
     try:
         async with httpx.AsyncClient(timeout=30, follow_redirects=False) as client:
             response = await client.post(
                 TOKEN_URL,
                 data={
                     **fields,
-                    "client_id": settings.google.oauth_client_id,
-                    "client_secret": secret.get_secret_value(),
+                    "client_id": client_id,
+                    "client_secret": secret,
                 },
             )
         if response.status_code != 200 or len(response.content) > 65536:
@@ -160,7 +174,8 @@ async def complete_authorization(
             "code_verifier": verifier,
             "redirect_uri": redirect_uri(settings),
             "grant_type": "authorization_code",
-        }
+        },
+        record,
     )
     token = body.get("refresh_token")
     if not isinstance(token, str) or not 1 <= len(token) <= 8192:
@@ -203,7 +218,7 @@ async def access_token(record: GoogleConnection) -> str:
         raise GoogleSheetsError(
             "Google credentials cannot be decrypted. Restore the key or reconnect."
         ) from None
-    body = await token_request({"refresh_token": refresh, "grant_type": "refresh_token"})
+    body = await token_request({"refresh_token": refresh, "grant_type": "refresh_token"}, record)
     token = body.get("access_token")
     if not isinstance(token, str) or not 1 <= len(token) <= 8192:
         raise GoogleSheetsError("Google access expired. Reconnect Google.")

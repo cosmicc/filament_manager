@@ -14,7 +14,7 @@ from testcontainers.core.container import DockerContainer
 
 from filament_manager.api.schemas import MaterialSettingsInput
 from filament_manager.clients.spoolman import SpoolmanClient
-from filament_manager.config import SpoolmanConfig
+from filament_manager.config import PrinterConfig, SpoolmanConfig
 from filament_manager.models import Base
 from filament_manager.models.enums import ProfileStatus, SpoolStatus
 from filament_manager.models.inventory import (
@@ -95,7 +95,19 @@ async def test_real_spoolman_names_and_metadata_preserve_usage(monkeypatch: pyte
     monkeypatch.setattr(
         dispatcher,
         "get_settings",
-        lambda: SimpleNamespace(moonraker=SimpleNamespace(printers=[SimpleNamespace(id="test")])),
+        lambda: SimpleNamespace(
+            moonraker=SimpleNamespace(
+                printers=[
+                    PrinterConfig(
+                        id="test",
+                        name="Test printer",
+                        base_url="http://printer.invalid",
+                        websocket_url="ws://printer.invalid/websocket",
+                        nozzle_diameter_mm=0.4,
+                    )
+                ]
+            )
+        ),
     )
     monkeypatch.setattr(
         events,

@@ -11,7 +11,7 @@ from sqlalchemy.orm import joinedload, selectinload
 
 from filament_manager.api.printer_safety import require_idle_printer
 from filament_manager.clients.google_sheets import GoogleSheetsClient, GoogleSheetsError
-from filament_manager.clients.moonraker import MoonrakerClient, MoonrakerError
+from filament_manager.clients.moonraker import MoonrakerClient, MoonrakerError, MoonrakerOperationalState
 from filament_manager.clients.spoolman import SpoolmanClient, SpoolmanError
 from filament_manager.config import PrinterConfig, get_settings
 from filament_manager.models.auth import User
@@ -19,7 +19,6 @@ from filament_manager.models.enums import JobStatus, PrintJobStatus, SpoolStatus
 from filament_manager.models.google import GoogleConnection
 from filament_manager.models.inventory import (
     BuildPlate,
-    BuildPlateSurface,
     FilamentProduct,
     Printer,
     Spool,
@@ -31,12 +30,13 @@ from filament_manager.services.moonraker_sync import (
     synchronize_printer_information as apply_printer_information,
 )
 from filament_manager.services.print_costs import print_cost_summary
+from filament_manager.services.printer_connections import configured_printers
 from filament_manager.services.seed import seed_configured_system
 
 from ..dependencies import Administrator, DatabaseSession, Operator, Viewer
 from ..errors import ApiError
 from ..schemas import (
-    BuildPlateSurfaceResponse,
+    DashboardPrinterContext,
     DashboardPrinterStateResponse,
     DashboardResponse,
     IntegrationStatus,
@@ -119,7 +119,9 @@ async def update_operational_settings(
     )
 
 
-async def _integration_statuses(google_record: GoogleConnection | None = None) -> list[IntegrationStatus]:
+async def _integration_statuses(
+    session: DatabaseSession, google_record: GoogleConnection | None = None
+) -> list[IntegrationStatus]:
     settings = get_settings()
     checked_at = datetime.now(UTC)
 
@@ -194,16 +196,22 @@ async def _integration_statuses(google_record: GoogleConnection | None = None) -
             )
 
     checks = [spoolman_status(), google_status()]
-    checks.extend(printer_status(printer) for printer in settings.moonraker.printers)
+    checks.extend(printer_status(printer) for printer in (await configured_printers(session, settings)))
     return list(await asyncio.gather(*checks))
 
 
-async def _dashboard_printer_state(session: DatabaseSession) -> DashboardPrinterStateResponse:
+async def _dashboard_printer_state(
+    session: DatabaseSession,
+    configured: PrinterConfig | None = None,
+    observed: MoonrakerOperationalState | MoonrakerError | None = None,
+) -> DashboardPrinterStateResponse:
     """Return live printer state without making dashboard inventory depend on Moonraker."""
 
     checked_at = datetime.now(UTC)
-    configured_printers = get_settings().moonraker.printers
-    if not configured_printers:
+    if configured is None:
+        connections = await configured_printers(session, get_settings())
+        configured = connections[0] if connections else None
+    if configured is None:
         return DashboardPrinterStateResponse(
             printer_name="Printer",
             connection_status="not_configured",
@@ -220,9 +228,10 @@ async def _dashboard_printer_state(session: DatabaseSession) -> DashboardPrinter
             chamber_target_c=None,
             checked_at=checked_at,
         )
-    configured = configured_printers[0]
     try:
-        state = await MoonrakerClient(configured, timeout=3).operational_state()
+        if isinstance(observed, MoonrakerError):
+            raise observed
+        state = observed or await MoonrakerClient(configured, timeout=3).operational_state()
     except MoonrakerError:
         return DashboardPrinterStateResponse(
             printer_name=configured.name,
@@ -241,7 +250,9 @@ async def _dashboard_printer_state(session: DatabaseSession) -> DashboardPrinter
             checked_at=checked_at,
         )
 
-    if state.klipper_state == "startup":
+    if state.power_state == "off":
+        operational_status = "powered_off"
+    elif state.klipper_state == "startup":
         operational_status = "starting"
     elif state.klipper_state in {"shutdown", "error"}:
         operational_status = "error"
@@ -256,6 +267,8 @@ async def _dashboard_printer_state(session: DatabaseSession) -> DashboardPrinter
             None: "idle",
         }[state.print_state]
     job: PrintJob | None = None
+    if state.print_state == "complete" and state.completion_acknowledged:
+        operational_status = "idle"
     if state.filename:
         printer = await session.scalar(select(Printer).where(Printer.printer_code == configured.id).limit(1))
         if printer is not None:
@@ -299,6 +312,9 @@ async def _dashboard_printer_state(session: DatabaseSession) -> DashboardPrinter
         predicted_filament_cost=costs.get("predicted_filament_cost"),
         cost_currency=costs.get("cost_currency"),
         cost_complete=bool(costs.get("cost_complete", False)),
+        idle_state=state.idle_state,
+        idle_timeout_seconds=state.idle_timeout_seconds,
+        power_off_remaining_seconds=state.power_off_remaining_seconds,
         checked_at=checked_at,
     )
 
@@ -344,37 +360,63 @@ async def dashboard(_: Viewer, session: DatabaseSession) -> DashboardResponse:
         )
         or 0
     )
+    connections = await configured_printers(session, get_settings())
+    printers = list(await session.scalars(select(Printer).order_by(Printer.name, Printer.id)))
     active_result = await session.execute(
         select(Spool)
         .where(Spool.active_printer_id.is_not(None), Spool.archived.is_(False))
         .options(joinedload(Spool.filament_product).joinedload(FilamentProduct.vendor))
-        .limit(1)
+        .order_by(Spool.active_extruder, Spool.spool_code)
     )
-    active_spool = active_result.unique().scalar_one_or_none()
-    printer = await session.scalar(select(Printer).where(Printer.active_plate_id.is_not(None)).limit(1))
-    plate = (
-        await session.scalar(
-            select(BuildPlate)
-            .where(BuildPlate.id == printer.active_plate_id)
-            .options(selectinload(BuildPlate.surfaces))
+    active_spools = [
+        await spool_response_with_statistics(session, spool) for spool in active_result.unique().scalars()
+    ]
+    # Parallelize only external I/O; an AsyncSession must never be used concurrently.
+    semaphore = asyncio.Semaphore(4)
+
+    async def observe(connection: PrinterConfig) -> MoonrakerOperationalState | MoonrakerError:
+        async with semaphore:
+            try:
+                return await MoonrakerClient(connection, timeout=3).operational_state()
+            except MoonrakerError as exc:
+                return exc
+
+    observations = await asyncio.gather(*(observe(connection) for connection in connections))
+    contexts: list[DashboardPrinterContext] = []
+    by_code = {printer.printer_code: printer for printer in printers}
+    for connection, observed in zip(connections, observations, strict=True):
+        printer = by_code.get(connection.id)
+        if printer is None:
+            continue
+        plate = (
+            await session.scalar(
+                select(BuildPlate)
+                .where(BuildPlate.id == printer.active_plate_id)
+                .options(selectinload(BuildPlate.surfaces))
+            )
+            if printer.active_plate_id
+            else None
         )
-        if printer
-        else None
-    )
-    plate_surface = (
-        await session.get(BuildPlateSurface, printer.active_plate_surface_id)
-        if printer and printer.active_plate_surface_id
-        else None
-    )
-    rendered_plate = await build_plate_response(session, plate) if plate else None
-    rendered_surface = (
-        next(
-            (surface for surface in rendered_plate.surfaces if surface.id == printer.active_plate_surface_id),
-            None,
+        rendered_plate = await build_plate_response(session, plate) if plate else None
+        contexts.append(
+            DashboardPrinterContext(
+                printer_id=printer.id,
+                active_spools=[spool for spool in active_spools if spool.active_printer_id == printer.id],
+                active_plate=rendered_plate,
+                active_plate_surface=next(
+                    (
+                        surface
+                        for surface in rendered_plate.surfaces
+                        if surface.id == printer.active_plate_surface_id
+                    ),
+                    None,
+                )
+                if rendered_plate
+                else None,
+                printer_state=await _dashboard_printer_state(session, connection, observed),
+            )
         )
-        if rendered_plate and printer
-        else None
-    )
+    first = contexts[0] if contexts else None
     return DashboardResponse(
         total_spools=total,
         material_spool_counts=dict(sorted(material_counts.items())),
@@ -382,13 +424,11 @@ async def dashboard(_: Viewer, session: DatabaseSession) -> DashboardResponse:
         needs_weighing=needs,
         low_spools=low,
         empty_spools=empty,
-        active_spool=(await spool_response_with_statistics(session, active_spool) if active_spool else None),
-        active_plate=rendered_plate,
-        active_plate_surface=(
-            rendered_surface
-            or (BuildPlateSurfaceResponse.model_validate(plate_surface) if plate_surface else None)
-        ),
-        printer_state=await _dashboard_printer_state(session),
+        active_spool=first.active_spools[0] if first and first.active_spools else None,
+        active_plate=first.active_plate if first else None,
+        active_plate_surface=first.active_plate_surface if first else None,
+        printer_state=first.printer_state if first else await _dashboard_printer_state(session),
+        printer_contexts=contexts,
     )
 
 
@@ -408,9 +448,19 @@ async def list_printers(_: Viewer, session: DatabaseSession) -> list[PrinterResp
             )
         )
     )
+    spools = await session.scalars(
+        select(Spool)
+        .where(Spool.active_printer_id.is_not(None), Spool.archived.is_(False))
+        .options(joinedload(Spool.filament_product).joinedload(FilamentProduct.vendor))
+        .order_by(Spool.active_extruder, Spool.spool_code)
+    )
+    rendered = [await spool_response_with_statistics(session, spool) for spool in spools.unique()]
     return [
         PrinterResponse.model_validate(printer).model_copy(
-            update={"configuration_locked": printer.id in locked}
+            update={
+                "configuration_locked": printer.id in locked,
+                "active_spools": [spool for spool in rendered if spool.active_printer_id == printer.id],
+            }
         )
         for printer in printers
     ]
@@ -440,7 +490,7 @@ async def update_printer(
             "Record nozzle changes through the physical nozzle inventory",
         )
     if {"nozzle_diameter_mm", "nozzle_material"}.intersection(payload.model_fields_set):
-        await require_idle_printer(printer.printer_code, get_settings())
+        await require_idle_printer(printer.printer_code, get_settings(), session)
     before: dict[str, object] = {
         "name": printer.name,
         "manufacturer": printer.manufacturer,
@@ -460,16 +510,48 @@ async def update_printer(
         "nozzle_material",
         "extruder_type",
         "notes",
+        "heated_chamber",
+        "max_extruder_temp_c",
+        "max_bed_temp_c",
+        "extruder_count",
+        "power_device",
+        "tool_routines_verified",
     ):
         if field in payload.model_fields_set:
             value = getattr(payload, field)
-            if field == "name" and value is None:
+            if (
+                field
+                in {"name", "heated_chamber", "extruder_count", "power_device", "tool_routines_verified"}
+                and value is None
+            ):
                 raise ApiError(
                     status.HTTP_422_UNPROCESSABLE_ENTITY,
                     "printer_name_required",
-                    "Printer name cannot be cleared",
+                    "Required printer values cannot be cleared",
                 )
-            setattr(printer, field, value.strip() or None if isinstance(value, str) else value)
+            if field == "tool_routines_verified" and value != printer.tool_routines_verified:
+                await require_idle_printer(printer.printer_code, get_settings(), session)
+            if field == "extruder_count" and value != printer.extruder_count:
+                await require_idle_printer(printer.printer_code, get_settings(), session)
+                occupied = list(
+                    await session.scalars(
+                        select(Spool.active_extruder).where(Spool.active_printer_id == printer.id)
+                    )
+                )
+                allowed = {"extruder" if i == 0 else f"extruder{i}" for i in range(value)}
+                if any(name and name not in allowed for name in occupied):
+                    raise ApiError(
+                        409,
+                        "extruder_loaded",
+                        "Unload spools from removed hotends before reducing the extruder count.",
+                    )
+            setattr(
+                printer,
+                field,
+                (value.strip() if field == "power_device" else value.strip() or None)
+                if isinstance(value, str)
+                else value,
+            )
     if payload.nozzle_diameter_mm is not None:
         printer.nozzle_diameter_mm = payload.nozzle_diameter_mm
     if payload.build_volume is not None:
@@ -483,7 +565,12 @@ async def update_printer(
         object_type="printer",
         object_id=printer.id,
         before=before,
-        after={"name": printer.name, "record_version": printer.record_version},
+        after={
+            "name": printer.name,
+            "record_version": printer.record_version,
+            "extruder_count": printer.extruder_count,
+            "tool_routines_verified": printer.tool_routines_verified,
+        },
         correlation_id=request.state.correlation_id,
     )
     await session.commit()
@@ -503,7 +590,11 @@ async def synchronize_printer_information(
     if printer is None:
         raise ApiError(status.HTTP_404_NOT_FOUND, "unknown_printer", "Printer not found")
     configured = next(
-        (item for item in get_settings().moonraker.printers if item.id == printer.printer_code),
+        (
+            item
+            for item in (await configured_printers(session, get_settings()))
+            if item.id == printer.printer_code
+        ),
         None,
     )
     if configured is None:
@@ -564,7 +655,7 @@ async def seed_configured_resources(
 async def integration_status(_: Viewer, session: DatabaseSession) -> list[IntegrationStatus]:
     """Check configured external APIs without exposing their URLs or secrets."""
 
-    return await _integration_statuses(await session.get(GoogleConnection, 1))
+    return await _integration_statuses(session, await session.get(GoogleConnection, 1))
 
 
 async def _queue_system_job(

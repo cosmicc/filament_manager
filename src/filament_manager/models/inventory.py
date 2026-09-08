@@ -158,6 +158,13 @@ class Spool(UUIDPrimaryKeyMixin, TimestampMixin, Base):
         CheckConstraint("tare_mass_g >= 0", name="tare_nonnegative"),
         CheckConstraint("remaining_mass_effective_g >= 0", name="remaining_nonnegative"),
         Index("ix_spools_status_archived", "status", "archived"),
+        Index(
+            "uq_spools_loaded_hotend",
+            "active_printer_id",
+            "active_extruder",
+            unique=True,
+            postgresql_where=text("active_printer_id IS NOT NULL AND active_extruder IS NOT NULL"),
+        ),
     )
 
     spool_code: Mapped[str] = mapped_column(String(64), nullable=False, unique=True)
@@ -188,6 +195,7 @@ class Spool(UUIDPrimaryKeyMixin, TimestampMixin, Base):
         Boolean, nullable=False, default=True, server_default=text("true")
     )
     active_printer_id: Mapped[UUID | None] = mapped_column(ForeignKey("printers.id"))
+    active_extruder: Mapped[str | None] = mapped_column(String(32))
     spoolman_id: Mapped[int | None] = mapped_column(Integer, unique=True)
     label_path: Mapped[str | None] = mapped_column(String(512))
     notes: Mapped[str | None] = mapped_column(Text)
@@ -263,6 +271,15 @@ class Printer(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     printer_code: Mapped[str] = mapped_column(String(64), nullable=False, unique=True)
     name: Mapped[str] = mapped_column(String(160), nullable=False)
     moonraker_base_url: Mapped[str] = mapped_column(String(512), nullable=False)
+    connection_managed: Mapped[bool] = mapped_column(Boolean, default=False, server_default=text("false"))
+    connection_enabled: Mapped[bool] = mapped_column(Boolean, default=True, server_default=text("true"))
+    encrypted_api_key: Mapped[str | None] = mapped_column(Text)
+    heated_chamber: Mapped[bool] = mapped_column(Boolean, default=False, server_default=text("false"))
+    max_extruder_temp_c: Mapped[Decimal | None] = mapped_column(MEASUREMENT)
+    max_bed_temp_c: Mapped[Decimal | None] = mapped_column(MEASUREMENT)
+    extruder_count: Mapped[int] = mapped_column(Integer, default=1, server_default="1")
+    power_device: Mapped[str] = mapped_column(String(160), default="printer", server_default="printer")
+    tool_routines_verified: Mapped[bool] = mapped_column(Boolean, default=False, server_default=text("false"))
     nozzle_diameter_mm: Mapped[Decimal] = mapped_column(MEASUREMENT, nullable=False)
     build_volume: Mapped[dict[str, object]] = mapped_column(JSONB, nullable=False, default=dict)
     manufacturer: Mapped[str | None] = mapped_column(String(160))

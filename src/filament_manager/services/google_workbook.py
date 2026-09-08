@@ -30,7 +30,7 @@ EXPORTS = (
         "remaining_mass_expected_g remaining_mass_measured_g remaining_mass_effective_g "
         "weight_confidence status purchase_source purchase_date purchase_cost currency "
         "first_used_at last_used_at last_measurement_at last_usage_event_at location "
-        "active_printer_id spoolman_id notes archived record_version created_at updated_at",
+        "active_printer_id active_extruder spoolman_id notes archived record_version created_at updated_at",
     ),
     (
         "Filaments",
@@ -85,7 +85,8 @@ EXPORTS = (
         "printers",
         "printer_code name nozzle_diameter_mm build_volume manufacturer model kinematics "
         "nozzle_material extruder_type klipper_version moonraker_version notes active_plate_id "
-        "active_plate_surface_id active_nozzle_id status record_version created_at updated_at",
+        "active_plate_surface_id active_nozzle_id heated_chamber max_extruder_temp_c "
+        "max_bed_temp_c extruder_count status record_version created_at updated_at",
     ),
     (
         "Nozzles",

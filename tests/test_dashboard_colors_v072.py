@@ -131,7 +131,7 @@ async def test_inventory_summary_and_post_use_color_correction(monkeypatch: pyte
         async def user_override() -> User:
             return user
 
-        async def unavailable_state(_: AsyncSession) -> DashboardPrinterStateResponse:
+        async def unavailable_state(_: AsyncSession, *args: object) -> DashboardPrinterStateResponse:
             return DashboardPrinterStateResponse(
                 printer_name="Test Printer",
                 connection_status="unavailable",

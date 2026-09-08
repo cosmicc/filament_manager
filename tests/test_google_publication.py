@@ -4,6 +4,7 @@ import json
 from collections.abc import AsyncIterator
 from datetime import UTC, datetime, timedelta
 from decimal import Decimal
+from pathlib import Path
 from urllib.parse import parse_qs, urlsplit
 
 import httpx
@@ -162,7 +163,10 @@ async def test_staged_atomic_workbook_and_failure(monkeypatch: pytest.MonkeyPatc
 
 @pytest.mark.integration
 @pytest.mark.asyncio
-async def test_google_oauth_api_and_complete_snapshot(monkeypatch: pytest.MonkeyPatch) -> None:
+@pytest.mark.parametrize("guided", [False, True])
+async def test_google_oauth_api_and_complete_snapshot(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, guided: bool
+) -> None:
     """Exercise auth/CSRF, encrypted tokens, replay, deletions and coalescing on PG."""
     from filament_manager import main
     from filament_manager.api import dependencies
@@ -171,7 +175,7 @@ async def test_google_oauth_api_and_complete_snapshot(monkeypatch: pytest.Monkey
 
     with PostgresContainer("postgres:17-alpine", driver="psycopg") as postgres:
         database_url = postgres.get_connection_url()
-        settings = integration_settings(database_url)
+        settings = integration_settings(database_url, tmp_path)
         settings.app.base_url = "https://testserver"  # type: ignore[assignment]
         settings.google = settings.google.model_copy(
             update={
@@ -183,6 +187,10 @@ async def test_google_oauth_api_and_complete_snapshot(monkeypatch: pytest.Monkey
 
         settings.google.oauth_client_secret = SecretStr("test-client-secret")
         settings.google.token_encryption_key = SecretStr(Fernet.generate_key().decode())
+        if guided:
+            settings.google.oauth_client_id = settings.google.oauth_client_secret = (
+                settings.google.token_encryption_key
+            ) = None
         engine = create_async_engine(database_url)
         factory = async_sessionmaker(engine, expire_on_commit=False)
         async with engine.begin() as db:
@@ -237,7 +245,7 @@ async def test_google_oauth_api_and_complete_snapshot(monkeypatch: pytest.Monkey
         app.dependency_overrides[dependencies.session_dependency] = sessions
         exchanges: list[dict[str, str]] = []
 
-        async def exchange(fields: dict[str, str]) -> dict[str, str]:
+        async def exchange(fields: dict[str, str], record: GoogleConnection | None = None) -> dict[str, str]:
             exchanges.append(fields)
             return {
                 "refresh_token": "private-refresh-value",
@@ -254,6 +262,32 @@ async def test_google_oauth_api_and_complete_snapshot(monkeypatch: pytest.Monkey
             client.cookies.set("fm_csrf", "csrf-test")
             assert (await client.post("/api/v1/settings/google/connect")).status_code == 403
             client.headers["X-CSRF-Token"] = "csrf-test"
+            if guided:
+                credentials = {
+                    "web": {
+                        "client_id": "test-client.apps.googleusercontent.com",
+                        "client_secret": "test-guided-secret",
+                        "redirect_uris": [google_connection.redirect_uri(settings)],
+                    }
+                }
+                invalid = await client.post(
+                    "/api/v1/settings/google/setup",
+                    json={"credentials_json": json.dumps({"installed": credentials["web"]})},
+                )
+                assert invalid.status_code == 422
+                saved = await client.post(
+                    "/api/v1/settings/google/setup", json={"credentials_json": json.dumps(credentials)}
+                )
+                assert saved.status_code == 200, saved.text
+                assert (tmp_path / "credentials/integration.key").stat().st_mode & 0o077 == 0
+                async with factory() as session:
+                    record = await session.get(GoogleConnection, 1)
+                    assert record and "test-guided-secret" not in record.oauth_client_secret
+                    assert google_connection.client_credentials(settings, record) == (
+                        credentials["web"]["client_id"],
+                        "test-guided-secret",
+                    )
+                    assert "test-guided-secret" not in str(await snapshot(session))
             started = await client.post("/api/v1/settings/google/connect")
             assert started.status_code == 200, started.text
             query = parse_qs(urlsplit(started.json()["authorization_url"]).query)

@@ -34,8 +34,9 @@ from filament_manager.models.workstations import CuraDeployment, CuraRecoveryRes
 from filament_manager.services.cura_library import build_cura_library, queue_cura_library
 from filament_manager.services.events import add_audit_event, add_outbox_job
 from filament_manager.services.google_publication import publication_enabled
+from filament_manager.services.printer_connections import configured_printers
 
-EXPECTED_SCHEMA_VERSION = "d8e9f012a3b4"
+EXPECTED_SCHEMA_VERSION = "e9f012a3b4c5"
 SYSTEM_AGGREGATE_ID = UUID("00000000-0000-0000-0000-000000000001")
 
 DATABASE_ERROR_CLASSES = {
@@ -242,6 +243,7 @@ def diagnostics_text(overview: dict[str, object]) -> str:
 
 
 async def _connection_checks(
+    session: AsyncSession,
     checked_at: datetime,
     google_record: GoogleConnection | None = None,
 ) -> list[dict[str, object]]:
@@ -336,7 +338,7 @@ async def _connection_checks(
             )
 
     pending = [spoolman(), google()]
-    pending.extend(moonraker(config) for config in settings.moonraker.printers)
+    pending.extend(moonraker(config) for config in (await configured_printers(session, settings)))
     return list(await asyncio.gather(*pending))
 
 
@@ -345,7 +347,7 @@ async def operational_overview(session: AsyncSession, *, error_days: int = 1) ->
 
     checked_at = datetime.now(UTC)
     error_cutoff = checked_at - timedelta(days=error_days)
-    checks = await _connection_checks(checked_at, await session.get(GoogleConnection, 1))
+    checks = await _connection_checks(session, checked_at, await session.get(GoogleConnection, 1))
     schema_result = await session.execute(text("SELECT version_num FROM alembic_version LIMIT 1"))
     schema_version = schema_result.scalar_one_or_none()
     checks.append(

@@ -245,7 +245,7 @@ function SurfaceCard({
 export default function BuildPlatesPage() {
   const { user } = useAuth()
   const client = useQueryClient()
-  const [printerId, setPrinterId] = useState('')
+  const [printerId, setPrinterId] = useState(() => new URLSearchParams(window.location.search).get('printer_id') ?? '')
   const [editingPlate, setEditingPlate] = useState<BuildPlate | null>(null)
   const [editingSurface, setEditingSurface] = useState<{ plate: BuildPlate; surface: BuildPlateSurface } | null>(null)
   const [detailsPlate, setDetailsPlate] = useState<BuildPlate | null>(null)

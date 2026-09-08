@@ -160,6 +160,20 @@ svg { flex: 0 0 auto; }
 .printer-state-card__unavailable small { color: var(--text-muted); }
 .printer-state-card footer { border-top: 1px solid var(--border); padding: 8px 20px 9px 24px; color: var(--text-soft); font-size: 11px; }
 .active-spool-card { min-height: 0; }
+.printer-state-card__header--carousel { grid-template-columns: 44px 62px minmax(0, 1fr) auto 44px; }
+.printer-state-card__header--carousel > button { min-width: 44px; min-height: 44px; padding: 8px; }
+.printer-overview { grid-column: 1 / -1; min-width: 0; }
+.printer-overview .table-scroll { overflow-x: auto; }
+.printer-overview table { width: 100%; }
+.printer-overview th, .printer-overview td { text-align: left; padding: 10px 14px; border-bottom: 1px solid var(--border); }
+.printer-overview button[aria-pressed="true"] { border-color: var(--accent); background: var(--accent-bg); }
+.active-spool + .active-spool { margin-top: 14px; padding-top: 14px; border-top: 1px solid var(--border); }
+@media (max-width: 760px) {
+  .printer-state-card__header--carousel { grid-template-columns: 44px minmax(0, 1fr) 44px; gap: 10px; padding: 14px; }
+  .printer-state-card__header--carousel > .printer-state-card__icon { display: none; }
+  .printer-state-card__header--carousel > .status-pill { grid-column: 2; grid-row: 2; min-width: 0; min-height: 36px; padding: 8px; }
+  .printer-state-card__header--carousel > button:last-child { grid-column: 3; grid-row: 1; }
+}
 .profile-scope-section { margin-top: 18px; }
 .profile-scope-section > .section-heading { align-items: flex-end; }
 .profile-scope-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 390px), 1fr)); gap: 14px; }

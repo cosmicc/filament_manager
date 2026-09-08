@@ -1,5 +1,11 @@
 # Database and Migration Skill
 
+- 0.8.0 automatic spool allocation locks transaction key 460807082 before reading all current/archived codes. Allocate the lowest positive gap, reserve case/leading-zero-equivalent suffixes, preserve old codes, and enforce immediate immutability through the API and `spool_code_immutable` trigger. A read-only preview does not reserve an identity. Never number from a paginated browser list or renumber after filament corrections.
+- The 0.8.0 migration also adds the unique non-null loaded printer/hotend index, `power_device`, and default-false `tool_routines_verified`. Clear/flush an old slot before claiming its replacement. Complete macro maps must contain only configured slots and known unique spool IDs, preserve foreign-printer ownership, and commit atomically. Preserve each slot during single-slot reconciliation.
+- Capture printer hotend count in new immutable print snapshots. Do not convert an aggregate multi-hotend filament counter into a sampled spool's weight or canonical debit; preserve incomplete attribution and rely on boundary-aligned Spoolman usage. Existing historical/single-hotend calculations retain their prior semantics.
+
+- Unpublished 0.8.0 migration `e9f012a3b4c5` adds explicit printer connection ownership/encrypted keys, capability metadata, active-extruder identity, and encrypted uploaded Google client secrets. Backfill existing active spools to `extruder`; preserve legacy environment ownership until explicit adoption. Refuse downgrade that would discard app-owned connections or multiple hotends. Migration fixtures targeting old schemas must insert only historically present columns rather than using current ORM INSERTs or altering the fixture schema.
+
 - Google publication stores encrypted connection state in a separate singleton and reads explicitly allowlisted business columns under repeatable-read without business row locks. See `skills/google-publication.md`; never include private connection state in Sheets exports.
 
 - Managed Cura edit receipts and takeover mappings are legacy history only. Never create canonical profile/template revisions from Cura reports or imports. Current values remain app-owned, with redundant overrides normalized against the exact old template before propagation. Do not rewrite historical evidence or automatically reset ambiguous older overrides.

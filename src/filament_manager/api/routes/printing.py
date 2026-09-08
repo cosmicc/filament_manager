@@ -21,6 +21,7 @@ from filament_manager.services.events import add_audit_event
 from filament_manager.services.print_costs import print_cost_summary, segment_cost
 from filament_manager.services.print_history import profile_success_statistics
 from filament_manager.services.print_template_comparison import current_print_template_comparison
+from filament_manager.services.printer_connections import configured_printers
 
 from ..dependencies import DatabaseSession, Operator, Viewer
 from ..errors import ApiError
@@ -251,7 +252,7 @@ async def stream_print_timelapse(
     configured = next(
         (
             item
-            for item in get_settings().moonraker.printers
+            for item in (await configured_printers(session, get_settings()))
             if printer is not None and item.id == printer.printer_code
         ),
         None,

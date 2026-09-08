@@ -47,6 +47,7 @@ export interface Spool {
   location: string | null
   spoolman_id: number | null
   active_printer_id: string | null
+  active_extruder?: string | null
   last_measurement_at: string | null
   notes: string | null
   archived: boolean
@@ -126,6 +127,7 @@ export interface BuildPlateSyncResult {
 }
 
 export interface DashboardData {
+  printer_contexts?: DashboardPrinterContext[]
   total_spools: number
   material_spool_counts: Record<string, number>
   distinct_colors: number
@@ -138,10 +140,21 @@ export interface DashboardData {
   printer_state: DashboardPrinterState
 }
 
+export interface DashboardPrinterContext {
+  printer_id: string
+  active_spools: Spool[]
+  active_plate: BuildPlate | null
+  active_plate_surface: BuildPlateSurface | null
+  printer_state: DashboardPrinterState
+}
+
 export interface DashboardPrinterState {
+  idle_state?: string | null
+  idle_timeout_seconds?: string | null
+  power_off_remaining_seconds?: string | null
   printer_name: string
   connection_status: 'connected' | 'unavailable' | 'not_configured'
-  operational_status: 'idle' | 'printing' | 'paused' | 'finished' | 'cancelled' | 'starting' | 'error' | 'unavailable' | 'not_configured'
+  operational_status: 'idle' | 'printing' | 'paused' | 'finished' | 'cancelled' | 'starting' | 'error' | 'unavailable' | 'not_configured' | 'powered_off'
   klipper_state: 'ready' | 'startup' | 'shutdown' | 'error' | null
   print_state: 'standby' | 'printing' | 'paused' | 'error' | 'complete' | 'cancelled' | null
   filename: string | null
@@ -279,6 +292,15 @@ export interface Vendor {
 }
 
 export interface Printer {
+  connection_managed?: boolean
+  connection_enabled?: boolean
+  heated_chamber?: boolean
+  max_extruder_temp_c?: string | null
+  max_bed_temp_c?: string | null
+  extruder_count?: number
+  power_device?: string
+  tool_routines_verified?: boolean
+  active_spools?: Spool[]
   configuration_locked?: boolean
   id: string
   printer_code: string

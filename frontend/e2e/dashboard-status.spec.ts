@@ -42,6 +42,20 @@ const dashboard = {
   },
 }
 
+test('confirmed power-off is neutral rather than a printer error', async ({ page }) => {
+  await mockDashboard(page)
+  await page.route('**/api/v1/dashboard', route => route.fulfill({ json: {
+    ...dashboard, printer_state: { ...dashboard.printer_state, operational_status: 'powered_off',
+      klipper_state: 'shutdown', print_state: null, filename: null, progress_percent: null,
+      nozzle_temperature_c: null, bed_temperature_c: null, chamber_temperature_c: null,
+      thumbnail_url: null, print_job_id: null },
+  } }))
+  await page.goto('/')
+  const status = page.locator('.printer-state-card .status-pill')
+  await expect(status).toHaveText('Powered Off')
+  await expect(status).toHaveClass(/status-pill--neutral/)
+})
+
 async function mockDashboard(page: Page) {
   await page.route('**/runtime-config.js', (route) => route.fulfill({
     contentType: 'application/javascript',
@@ -156,4 +170,36 @@ test('live printer dashboard card is responsive in light and dark profiles', asy
   }
   expect((await page.locator('.dashboard-metric-grid .metric-card').first().boundingBox())!.height).toBeLessThan(96)
   await page.screenshot({ path: testInfo.outputPath('dashboard-mobile-v072.png'), fullPage: true })
+})
+
+test('printer carousel scopes actions and remains usable on mobile', async ({ page }, testInfo) => {
+  await mockDashboard(page)
+  const contexts = ['First printer', 'Second printer'].map((name, index) => ({
+    printer_id: `printer-${index}`, active_spools: [], active_plate: null, active_plate_surface: null,
+    printer_state: { ...dashboard.printer_state, printer_name: name, thumbnail_url: null },
+  }))
+  await page.route('**/api/v1/dashboard', route => route.fulfill({ json: { ...dashboard, printer_contexts: contexts } }))
+  const queued: string[] = []
+  await page.route('**/api/v1/printers/*/sync-cura', route => { queued.push(new URL(route.request().url()).pathname); return route.fulfill({ json: { queued: 1 } }) })
+  await page.goto('/')
+  await expect(page.getByRole('heading', { name: 'First printer', exact: true })).toBeVisible()
+  await page.getByRole('button', { name: 'Next printer', exact: true }).click()
+  await expect(page.getByRole('heading', { name: 'Second printer', exact: true })).toBeVisible()
+  await expect(page.getByRole('link', { name: 'Load spool', exact: true })).toHaveAttribute('href', '/spools?action=load&printer_id=printer-1')
+  await page.getByRole('button', { name: 'Sync to Cura', exact: true }).click()
+  await expect.poll(() => queued).toEqual(['/api/v1/printers/printer-1/sync-cura'])
+  await page.getByRole('button', { name: 'Next printer', exact: true }).click()
+  await expect(page.getByRole('heading', { name: 'First printer', exact: true })).toBeVisible()
+  await page.getByRole('button', { name: 'Second printer', exact: true }).click()
+  await expect(page.getByRole('heading', { name: 'Second printer', exact: true })).toBeVisible()
+  for (const width of [1280, 390]) {
+    await page.setViewportSize({ width, height: 900 })
+    await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true)
+    for (const name of ['Previous printer', 'Next printer', 'Sync to Cura']) {
+      const button = page.getByRole('button', { name, exact: true })
+      await expect(button).toBeVisible()
+      if (width === 390) expect((await button.boundingBox())!.height).toBeGreaterThanOrEqual(44)
+    }
+    await page.screenshot({ path: testInfo.outputPath(`carousel-${width}.png`), fullPage: true })
+  }
 })

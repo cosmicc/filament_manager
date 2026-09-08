@@ -21,7 +21,7 @@ import { compactNumber, grams, inputNumber } from '../lib/format'
 import { materialIdentitySummary, materialModifierSummary } from '../lib/materialIdentity'
 
 function FilamentIdentity({ filament, hero = false }: { filament: Filament; hero?: boolean }) {
-  return <div className="table-identity"><span className={`filament-swatch${hero ? ' filament-swatch--hero' : ''}`} style={filamentSwatchStyle(filament.color_mode, filament.color_hexes, filament.color_hex ?? '2F80A5')} /><span><strong>{filament.vendor_name ?? 'Unknown'}</strong><small>{materialIdentitySummary(filament)}</small></span></div>
+  return <div className="table-identity"><span className={`filament-swatch${hero ? ' filament-swatch--hero' : ''}`} style={filamentSwatchStyle(filament.color_mode, filament.color_hexes, filament.color_hex ?? '2F80A5')} /><span><strong>{materialIdentitySummary(filament)}</strong><small>{filament.vendor_name ?? 'Unknown'}</small></span></div>
 }
 
 function FilamentCard({

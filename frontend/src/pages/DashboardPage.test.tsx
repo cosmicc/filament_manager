@@ -9,6 +9,7 @@ import DashboardPage from './DashboardPage'
 const apiFetchMock = vi.hoisted(() => vi.fn())
 
 vi.mock('../api/client', () => ({ apiFetch: apiFetchMock }))
+vi.mock('../context/AuthContext', () => ({ useAuth: () => ({ user: { role: 'administrator' } }) }))
 
 const dashboard = {
   total_spools: 8,
@@ -139,6 +140,7 @@ describe('DashboardPage', () => {
         ...dashboard,
         total_spools: 9,
         active_spool: {
+          id: 'spool-live',
           spool_code: 'S009',
           status: 'active',
           vendor_name: 'Polymaker',

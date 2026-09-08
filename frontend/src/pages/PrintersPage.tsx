@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { Pencil, Printer as PrinterIcon, RefreshCw, Save, Wrench } from 'lucide-react'
+import { Pencil, Plus, Printer as PrinterIcon, RefreshCw, Save, Settings, Wrench } from 'lucide-react'
 import { useState } from 'react'
 import { apiFetch } from '../api/client'
 import type { BuildPlate, Nozzle, Printer, SeedSystemResult } from '../api/types'
@@ -8,6 +8,7 @@ import { EmptyState } from '../components/EmptyState'
 import { LoadingState } from '../components/LoadingState'
 import { Modal } from '../components/Modal'
 import { PageHeader } from '../components/PageHeader'
+import { PrinterConnectionModal } from '../components/PrinterConnectionModal'
 import { useAuth } from '../context/AuthContext'
 import { Link } from '../context/RouterContext'
 import { compactNumber, inputNumber } from '../lib/format'
@@ -55,6 +56,12 @@ function PrinterEditorModal({
           <div className="form-grid">
             <label>Kinematics<input name="kinematics" defaultValue={printer.kinematics ?? ''} maxLength={48} placeholder="delta, cartesian, corexy…" /></label>
             <label>Extruder type<input name="extruder_type" defaultValue={printer.extruder_type ?? ''} maxLength={96} placeholder="Direct drive, Bowden…" /></label>
+            <label>Independent hotends<input name="extruder_count" type="number" min={1} max={16} step={1} defaultValue={printer.extruder_count ?? 1} required readOnly={printer.configuration_locked} /></label>
+            <label className="check-row"><input name="tool_routines_verified" type="checkbox" defaultChecked={printer.tool_routines_verified ?? false} disabled={printer.configuration_locked} /><span>Multi-hotend routines verified<small>I verified T-number tool changes, selected-hotend load/unload/purge routines, and the Filament Manager tool-change hook.</small></span></label>
+            <label>Moonraker power device<input name="power_device" defaultValue={printer.power_device ?? 'printer'} maxLength={160} /><small>Exact power switch name; leave blank to disable power detection.</small></label>
+            <label>Maximum extruder temperature (°C)<input name="max_extruder_temp_c" type="number" min={1} max={1000} step="0.1" defaultValue={inputNumber(printer.max_extruder_temp_c, 1)} /></label>
+            <label>Maximum bed temperature (°C)<input name="max_bed_temp_c" type="number" min={0} max={500} step="0.1" defaultValue={inputNumber(printer.max_bed_temp_c, 1)} /></label>
+            <label className="check-row"><input name="heated_chamber" type="checkbox" defaultChecked={printer.heated_chamber ?? false} />Heated chamber</label>
           </div>
           <p className="security-note"><Wrench size={16} /> Nozzle size and material are updated by recording the exact physical nozzle installation on the Nozzles page.</p>
         </EditorSection>
@@ -77,6 +84,7 @@ export default function PrintersPage() {
   const { user } = useAuth()
   const client = useQueryClient()
   const [editing, setEditing] = useState<Printer | null>(null)
+  const [connectionEditor, setConnectionEditor] = useState<Printer | 'new' | null>(null)
   const [message, setMessage] = useState('')
   const printers = useQuery({ queryKey: ['printers'], queryFn: () => apiFetch<Printer[]>('/printers'), refetchInterval: 15_000 })
   const plates = useQuery({ queryKey: ['plates'], queryFn: () => apiFetch<BuildPlate[]>('/build-plates'), refetchInterval: 15_000 })
@@ -109,6 +117,12 @@ export default function PrintersPage() {
           model: optional(data, 'model'),
           kinematics: optional(data, 'kinematics'),
           extruder_type: optional(data, 'extruder_type'),
+          extruder_count: Number(data.get('extruder_count') ?? 1),
+          power_device: String(data.get('power_device') ?? '').trim(),
+          tool_routines_verified: data.has('tool_routines_verified') ? true : printer.configuration_locked ? printer.tool_routines_verified ?? false : false,
+          heated_chamber: data.get('heated_chamber') === 'on',
+          max_extruder_temp_c: optional(data, 'max_extruder_temp_c'),
+          max_bed_temp_c: optional(data, 'max_bed_temp_c'),
           build_volume: {
             shape: optional(data, 'shape'),
             x_mm: optional(data, 'x_mm'),
@@ -130,7 +144,7 @@ export default function PrintersPage() {
 
   return (
     <div>
-      <PageHeader eyebrow="Physical printer context" title="3D Printers" description="Canonical machine identity, workspace, active plate, and exact installed nozzle." />
+      <PageHeader eyebrow="Physical printer context" title="3D Printers" description="Machine identity, workspace, loaded spools, active plate, and installed nozzle." actions={canEdit ? <button className="button button--primary" onClick={() => setConnectionEditor('new')}><Plus size={17} />Add 3D printer</button> : undefined} />
       {message ? <div className="deployment-note" role="status">{message}</div> : null}
       {printers.error ? <p className="form-error">{printers.error.message}</p> : null}
       {printers.isLoading ? <LoadingState /> : !printers.data?.length ? (
@@ -147,6 +161,7 @@ export default function PrintersPage() {
         <section className="printer-list">
           {printers.data.map((printer) => {
             const plate = plates.data?.find((item) => item.id === printer.active_plate_id)
+            const surface = plate?.surfaces.find((item) => item.id === printer.active_plate_surface_id)
             const nozzle = nozzles.data?.find((item) => item.id === printer.active_nozzle_id)
             return (
               <article className="printer-card card" key={printer.id}>
@@ -159,7 +174,10 @@ export default function PrintersPage() {
                     <dl className="definition-list">
                       <div><dt>Printer type</dt><dd>{printer.kinematics ? `${printer.kinematics} kinematics` : 'Not reported'}{printer.extruder_type ? ` · ${printer.extruder_type}` : ''}</dd></div>
                       <div><dt>Build volume</dt><dd>{printer.build_volume.shape === 'round' ? `Ø ${compactNumber(printer.build_volume.diameter_mm ?? printer.build_volume.x_mm, 1)} × ${compactNumber(printer.build_volume.z_mm, 1)} mm` : printer.build_volume.x_mm ? `${compactNumber(printer.build_volume.x_mm, 1)} × ${compactNumber(printer.build_volume.y_mm, 1)} × ${compactNumber(printer.build_volume.z_mm, 1)} mm` : 'Not reported'}</dd></div>
-                      <div><dt>Active plate</dt><dd>{plate ? `${plate.plate_code} - ${plate.display_name}` : 'Not selected'}</dd></div>
+                      <div><dt>Active plate</dt><dd>{plate ? `${surface?.surface_code ?? plate.plate_code} - ${plate.display_name}` : 'Not selected'}</dd></div>
+                      <div><dt>Active spools</dt><dd>{printer.active_spools?.length ? printer.active_spools.map((spool) => <div key={spool.id}><Link to={`/spools?spool_id=${spool.id}`}>{spool.active_extruder ?? 'extruder'} · {spool.spool_code} · {spool.material_type} {spool.color_name}</Link></div>) : 'No spool loaded'}</dd></div>
+                      <div><dt>Hotends / chamber</dt><dd>{printer.extruder_count ?? 1} independent hotend(s) · {printer.heated_chamber ? 'Heated chamber' : 'No heated chamber'}</dd></div>
+                      <div><dt>Maximum temperatures</dt><dd>Extruder: {printer.max_extruder_temp_c ? `${compactNumber(printer.max_extruder_temp_c, 0)} °C` : 'Not set'} · Bed: {printer.max_bed_temp_c != null ? `${compactNumber(printer.max_bed_temp_c, 0)} °C` : 'Not set'}</dd></div>
                       <div><dt>Installed nozzle</dt><dd>{nozzle ? `${nozzle.nozzle_code} · ${compactNumber(nozzle.diameter_mm, 1)} mm ${nozzle.material}` : 'No physical nozzle assigned'}</dd></div>
                     </dl>
                   </EditorSection>
@@ -167,6 +185,7 @@ export default function PrintersPage() {
                 <div className="printer-card__footer">
                   <p className="security-note"><Wrench size={16} /> Manage physical installation and usage on <Link to="/nozzles">Nozzles</Link>.</p>
                   {canEdit ? <button className="button" onClick={() => { setEditing(printer); setMessage('') }}><Pencil size={16} /> Edit printer</button> : null}
+                  {canEdit ? <button className="button" onClick={() => setConnectionEditor(printer)}><Settings size={16} />Connection</button> : null}
                 </div>
               </article>
             )
@@ -174,6 +193,7 @@ export default function PrintersPage() {
         </section>
       )}
       {editing ? <PrinterEditorModal printer={editing} pending={update.isPending} error={update.error?.message ?? ''} onClose={() => setEditing(null)} onSave={(form) => update.mutate({ printer: editing, form })} /> : null}
+      {connectionEditor && <PrinterConnectionModal printer={connectionEditor === 'new' ? undefined : connectionEditor} onClose={() => setConnectionEditor(null)} />}
     </div>
   )
 }

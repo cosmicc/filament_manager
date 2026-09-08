@@ -1,5 +1,7 @@
 # Roadmap
 
+- ~~**0.8.0 independent-hotend physical loading**~~ — Per-hotend spool slots, explicit targets, printer-owned tool selection, and regression checks are implemented. Installation requires the tool-change hook and explicit verification of selected-hotend hardware routines.
+
 - ~~**0.7.2 inventory choice cleanup**~~
 
   Implemented for 0.7.2: saved current/archived filaments define choices; unused choices are forgotten, None finishes become Standard, and new color/filler/finish choices save with the filament. Multicolor samples remain editable after use.

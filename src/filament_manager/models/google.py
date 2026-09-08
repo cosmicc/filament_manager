@@ -18,6 +18,8 @@ class GoogleConnection(Base):
     publication_key: Mapped[str] = mapped_column(String(36), nullable=False)
     mode: Mapped[str] = mapped_column(String(16), nullable=False, default="oauth", server_default="oauth")
     refresh_token: Mapped[str | None] = mapped_column(Text)
+    oauth_client_id: Mapped[str | None] = mapped_column(String(512))
+    oauth_client_secret: Mapped[str | None] = mapped_column(Text)
     state_hash: Mapped[str | None] = mapped_column(String(64))
     session_hash: Mapped[str | None] = mapped_column(String(64))
     verifier: Mapped[str | None] = mapped_column(Text)

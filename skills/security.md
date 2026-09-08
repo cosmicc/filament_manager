@@ -1,5 +1,11 @@
 # Security and Authentication Skill
 
+- Independent-hotend commands accept only fixed `extruder`/`extruder1` through `extruder15` slots within the current count, never arbitrary G-code names. Require saved operator verification for multi-hotend hardware routines, recheck queued targets and live idle state, and verify the actual selected hotend after printer-owned T-number motion. Every completed T macro must report its spool projection hook. Preserve other loaded slots and reject duplicate/foreign ownership.
+- The filament-amount gate holds the existing virtual-SD latch regardless of warn/block settings policy. Unknown quantity is not a pass. Worker replies and overrides must match the exact start sequence and loaded spool; persist evidence before external acknowledgement. Never bypass a motion-aware pause or rewrite the loaded file.
+- Power-device observation is read-only and only enriches non-ready status. Failed/unknown power reads cannot turn an error into Powered off, and power presentation never unlocks physical commands.
+
+- UI-managed integration credentials use `services/credentials.py`: private owner-only shared-volume directory/key, no-follow file opens, cross-process file lock, database transaction lock, and no key regeneration while any encrypted Google/printer data remains. Retain an explicit deployment key for compatibility. Moonraker URLs are Administrator-only settings; keys are write-only and excluded from general API, audit and Google exports. Endpoint changes require live idle confirmation and no pending physical commands. Reuse exact printer identity throughout queue delivery; never use a first-printer fallback for an ambiguous request.
+
 - Google OAuth uses only app-created-file access, hashed single-use session-bound state, PKCE and encrypted offline grants. Keep strict cookies, scrub callback queries before telemetry, and exclude raw access logs. Follow `skills/google-publication.md`; never export the private connection table or application/account/security configuration.
 
 - Discard all legacy managed setting reports, including explicit edited settings and event IDs. Reject legacy Cura template/profile import requests and takeover mappings. The app is the only authority for tracked settings; authenticated heartbeat acceptance never authorizes inbound edits.

@@ -31,14 +31,18 @@ for (const variant of [
     let spool = { ...originalSpool }
     let patch: Record<string, unknown> | undefined
     let created: Record<string, unknown> | undefined
+    let loadedHotend: string | null = null
     const locations = [{ name: 'Bucket 12' }, { name: 'Archived shelf' }]
     await page.route('**/runtime-config.js', (route) => route.fulfill({ contentType: 'application/javascript', body: 'window.__FILAMENT_MANAGER_RUNTIME_CONFIG__={bugsnag:{enabled:false}};' }))
     await page.route('**/api/v1/**', async (route) => {
       const url = new URL(route.request().url())
       const path = url.pathname.replace('/api/v1', '')
       const method = route.request().method()
+      if (path === '/spools/next-code') return route.fulfill({ json: { spool_code: 'P2' } })
       if (path === '/auth/me') return route.fulfill({ json: { id: 'administrator', role: 'administrator', username: 'admin', display_name: 'Administrator', is_active: true, must_change_password: false, record_version: 1 } })
-      if (['/notifications', '/printers', '/profiles', '/vendors', '/filament-colors'].includes(path)) return route.fulfill({ json: [] })
+      if (path === '/printers') return route.fulfill({ json: [{ id: 'printer-1', name: 'Workshop printer', printer_code: 'workshop', extruder_count: 2, tool_routines_verified: true, configuration_locked: false }] })
+      if (path === `/spools/${spoolId}/set-active`) { loadedHotend = url.searchParams.get('extruder'); return route.fulfill({ status: 202, json: { status: 'change_queued' } }) }
+      if (['/notifications', '/profiles', '/vendors', '/filament-colors'].includes(path)) return route.fulfill({ json: [] })
       if (path === '/profiles/templates') return route.fulfill({ json: [
         { id: 'template-pla', material_type: 'PLA', revisions: [], active: true },
         { id: 'template-petg', material_type: 'PETG', revisions: [], active: true },
@@ -89,11 +93,17 @@ for (const variant of [
     await page.getByText('SPOOL-001', { exact: true }).click()
     await expect(page.getByRole('dialog', { name: 'SPOOL-001 details' })).toBeVisible()
     await expect(page.getByRole('button', { name: 'Load spool', exact: true })).toBeVisible()
+    await page.getByRole('combobox', { name: 'Hotend', exact: true }).selectOption('extruder1')
+    await page.getByRole('button', { name: 'Load spool', exact: true }).click()
+    await expect.poll(() => loadedHotend).toBe('extruder1')
+    await expect(page.getByText('Not active', { exact: true })).toBeVisible()
     await page.goto('/locations')
     await expect(page).toHaveTitle(/Filament Manager/)
     await expect(page.getByRole('heading', { name: 'Locations', exact: true })).toBeVisible()
     await expect(page.getByRole('button', { name: /Bucket 12.*Spools.*1/ })).toHaveAttribute('aria-pressed', 'true')
     await expect(page.getByRole('button', { name: /Unassigned/ })).toBeVisible()
+    await expect(page.getByRole('meter', { name: 'SPOOL-001 filament remaining' })).toHaveAttribute('aria-valuenow', '87.5')
+    await expect(page.getByText('88%', { exact: true })).toBeVisible()
     const evidence = process.env.FILAMENT_MANAGER_E2E_EVIDENCE_DIR
     if (evidence) await page.screenshot({ path: `${evidence}/locations-${variant.name}.png`, fullPage: true })
     await page.getByRole('button', { name: /SPOOL-001.*Open spool details/ }).click()
@@ -123,7 +133,8 @@ for (const variant of [
     await expect(page.getByText('SPOOL-001', { exact: true })).toBeVisible()
     await page.getByRole('button', { name: 'Add spool', exact: true }).click()
     const create = page.getByRole('dialog', { name: 'Add a physical spool' })
-    await create.getByLabel('Spool code', { exact: true }).fill('NEW-USED')
+    await expect(create.getByLabel('Spool code', { exact: true })).toHaveValue('P2')
+    await expect(create.getByLabel('Spool code', { exact: true })).toHaveAttribute('readonly', '')
     await create.getByText('This spool is unused', { exact: false }).click()
     await create.getByLabel('Full spool scale weight (g)', { exact: false }).fill('700')
     await create.getByLabel('Suggested empty-spool weight').selectOption('0')
@@ -135,7 +146,7 @@ for (const variant of [
     if (evidence) await page.screenshot({ path: `${evidence}/new-location-${variant.name}.png` })
     await newLocation.getByRole('button', { name: 'Add location' }).click()
     await expect(create.getByLabel('Location', { exact: true })).toHaveValue('Unused storage shelf')
-    await expect(create.getByLabel('Spool code', { exact: true })).toHaveValue('NEW-USED')
+    await expect(create.getByLabel('Spool code', { exact: true })).toHaveValue('P2')
     await expect(create.getByLabel('Full spool scale weight (g)', { exact: false })).toHaveValue('700')
     await create.getByLabel('Location', { exact: true }).selectOption({ label: 'New Location' })
     await newLocation.getByRole('button', { name: 'Cancel' }).click()
@@ -144,6 +155,7 @@ for (const variant of [
     await create.getByRole('button', { name: /Create spool/ }).click()
     await expect(create).not.toBeVisible()
     expect(created?.initial_gross_mass_g).toBe('700')
+    expect(created).not.toHaveProperty('spool_code')
     expect(created?.location).toBe('Unused storage shelf')
     await page.getByRole('button', { name: 'Add spool', exact: true }).click()
     await expect(create.getByLabel('Location', { exact: true }).getByRole('option', { name: 'Unused storage shelf' })).toHaveCount(1)
@@ -159,6 +171,11 @@ for (const variant of [
     await page.getByLabel('Search filaments').fill('Carbon fiber')
     await expect(page.getByRole('heading', { name: 'PLA · Blue · Carbon fiber · Matte' })).toBeVisible()
     if (evidence) await page.screenshot({ path: `${evidence}/material-filter-${variant.name}.png`, fullPage: false })
+    await page.getByLabel('Filaments view').selectOption('list')
+    const identity = page.locator('tbody .table-identity')
+    await expect(identity.locator('strong')).toHaveText('PLA · Blue · Carbon fiber · Matte')
+    await expect(identity.locator('small')).toHaveText('Workshop')
+    if (evidence) await page.screenshot({ path: `${evidence}/filament-list-${variant.name}.png`, fullPage: false })
     expect(await page.locator('vite-error-overlay').count()).toBe(0)
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true)
     expect(errors).toEqual([])

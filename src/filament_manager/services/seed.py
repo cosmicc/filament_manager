@@ -92,7 +92,11 @@ async def seed_configured_system(session: AsyncSession, settings: Settings) -> d
     await session.flush()
     configured_printer_codes = [configured.id for configured in settings.moonraker.printers]
     configured_printers = list(
-        await session.scalars(select(Printer).where(Printer.printer_code.in_(configured_printer_codes)))
+        await session.scalars(
+            select(Printer).where(
+                Printer.printer_code.in_(configured_printer_codes) | Printer.connection_managed.is_(True)
+            )
+        )
     )
     for printer in configured_printers:
         nozzle = await session.get(Nozzle, printer.active_nozzle_id) if printer.active_nozzle_id else None

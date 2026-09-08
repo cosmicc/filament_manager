@@ -277,6 +277,12 @@ function CreateSpoolModal({
   const [purchaseCost, setPurchaseCost] = useState("");
   const [error, setError] = useState("");
   const selected = filaments.find((item) => item.id === filamentId);
+  const nextCode = useQuery({
+    queryKey: ["spools", "next-code", filamentId],
+    queryFn: () => apiFetch<{ spool_code: string }>(`/spools/next-code?filament_product_id=${encodeURIComponent(filamentId)}`),
+    enabled: Boolean(filamentId),
+    staleTime: 0,
+  });
   const inferredTare =
     unusedSpool && fullSpoolMass && filamentMass
       ? Number(fullSpoolMass) - Number(filamentMass)
@@ -288,7 +294,6 @@ function CreateSpoolModal({
       return apiFetch("/spools", {
         method: "POST",
         body: JSON.stringify({
-          spool_code: String(data.get("spool_code")).trim(),
           filament_product_id: selected.id,
           nominal_net_mass_g: filamentMass,
           tare_mass_g: unusedSpool && fullSpoolMass.trim() ? null : knownTare.trim() || null,
@@ -375,7 +380,7 @@ function CreateSpoolModal({
               >
                 {filaments.map((filament) => (
                   <option key={filament.id} value={filament.id}>
-                    {filament.vendor_name ?? "Unspecified"} ·{" "}
+                    {filament.vendor_name ?? "Unknown"} ·{" "}
                     {materialIdentitySummary(filament)}
                   </option>
                 ))}
@@ -383,13 +388,8 @@ function CreateSpoolModal({
             </label>
             <label>
               Spool code
-              <input
-                name="spool_code"
-                pattern={'[A-Za-z0-9_\\-]+'}
-                maxLength={64}
-                placeholder="SPOOL-001"
-                required
-              />
+              <input aria-label="Spool code" value={nextCode.data?.spool_code ?? "Assigned when saved"} readOnly />
+              <small>Assigned automatically on save; cannot be changed afterward.</small>
             </label>
             <label>
               Location
@@ -527,7 +527,6 @@ function EditSpoolModal({
       const data = new FormData(form);
       const payload: Record<string, unknown> = {
         expected_version: spool.record_version,
-        spool_code: String(data.get("spool_code")).trim(),
         filament_product_id: String(data.get("filament_product_id")),
         nominal_net_mass_g: purchaseWeight === inputNumber(spool.nominal_net_mass_g, 1) ? spool.nominal_net_mass_g : purchaseWeight,
         tare_mass_g: tareEdited ? tare : spool.tare_mass_g,
@@ -623,7 +622,7 @@ function EditSpoolModal({
           description="Correct the physical label, linked filament, capacity, tare, or current remaining amount."
         >
           <div className="form-grid">
-            <label>Spool code<input name="spool_code" defaultValue={spool.spool_code} pattern={'[A-Za-z0-9_\\-]+'} maxLength={64} required autoFocus /></label>
+            <label>Spool code<input aria-label="Spool code" value={spool.spool_code} readOnly /><small>Permanent for this spool.</small></label>
             <label>Filament product<select name="filament_product_id" value={filamentId} onChange={(event) => setFilamentId(event.target.value)} required>{filaments.map((filament) => <option key={filament.id} value={filament.id}>{filament.vendor_name ?? 'Unspecified'} · {materialIdentitySummary(filament)}</option>)}</select></label>
             <label>Filament purchase weight (g)<input name="nominal_net_mass_g" type="number" min="0.1" step="0.1" value={purchaseWeight} onChange={(event) => setPurchaseWeight(event.target.value)} required /><small className="field-help">Net filament purchased, excluding the empty physical spool.</small></label>
             <label>Empty spool weight (g)<input name="tare_mass_g" type="number" min="0" step="0.1" value={tare} onChange={(event) => updateTare(event.target.value)} required /><small className="field-help">Changing tare automatically recalculates remaining filament from the last scale weight and subsequent usage.</small></label>
@@ -665,6 +664,8 @@ export default function SpoolsPage() {
   const creationRequest = new URLSearchParams(window.location.search);
   const requestedFilamentId = creationRequest.get("filament_id") ?? undefined;
   const requestedAction = creationRequest.get("action");
+  const [loadPrinterId, setLoadPrinterId] = useState(creationRequest.get("printer_id") ?? "");
+  const [loadExtruder, setLoadExtruder] = useState("extruder");
   const canEdit = user?.role !== "viewer";
   const [search, setSearch] = useState("");
   const [status, setStatus] = useState("");
@@ -722,6 +723,8 @@ export default function SpoolsPage() {
     [printers.data],
   );
   const items = useMemo(() => query.data?.items ?? [], [query.data?.items]);
+  const loadPrinter = printers.data?.find((printer) => printer.id === loadPrinterId)
+    ?? (printers.data?.length === 1 ? printers.data[0] : undefined);
   useEffect(() => {
     if (!selected) return;
     const current = items.find((spool) => spool.id === selected.id);
@@ -733,7 +736,7 @@ export default function SpoolsPage() {
   }, [selected?.id]);
   const requestLoad = useMutation({
     mutationFn: (spool: Spool) =>
-      apiFetch(`/spools/${spool.id}/set-active`, { method: "POST" }),
+      apiFetch(`/spools/${spool.id}/set-active${loadPrinter ? `?printer_id=${loadPrinter.id}&extruder=${encodeURIComponent(loadExtruder)}` : ''}`, { method: "POST" }),
     onSuccess: async () => {
       setActionError("");
       setActionMessage(
@@ -755,7 +758,7 @@ export default function SpoolsPage() {
   });
   const requestUnload = useMutation({
     mutationFn: () =>
-      apiFetch("/printer-context/active-spool/clear", { method: "POST" }),
+      apiFetch(`/printer-context/active-spool/clear${selected?.active_printer_id ? `?printer_id=${selected.active_printer_id}&extruder=${encodeURIComponent(selected.active_extruder ?? 'extruder')}` : ''}`, { method: "POST" }),
     onSuccess: async () => {
       setActionError("");
       setActionMessage(
@@ -1036,19 +1039,23 @@ export default function SpoolsPage() {
                     {canEdit && selected.active_printer_id ? (
                       <button
                         className="button"
-                        disabled={requestUnload.isPending || printers.data?.some((printer) => printer.configuration_locked)}
+                        disabled={requestUnload.isPending || printers.data?.some((printer) => printer.id === selected.active_printer_id && printer.configuration_locked)}
                         title="Available only while idle; use M600 for an in-print replacement"
                         onClick={() => requestUnload.mutate()}
                       >
                         <PackageMinus size={17} /> Unload and clear active spool
                       </button>
                     ) : null}
+                    {canEdit && !selected.active_printer_id && <label>Load into printer<select value={loadPrinter?.id ?? ''} onChange={(event) => { setLoadPrinterId(event.target.value); setLoadExtruder('extruder'); }}><option value="">Select printer</option>{printers.data?.filter((printer) => printer.connection_enabled !== false).map((printer) => <option key={printer.id} value={printer.id}>{printer.name}</option>)}</select></label>}
+                    {canEdit && !selected.active_printer_id && (loadPrinter?.extruder_count ?? 1) > 1 ? <label>Hotend<select value={loadExtruder} onChange={(event) => setLoadExtruder(event.target.value)}>{Array.from({ length: loadPrinter?.extruder_count ?? 1 }, (_, index) => <option key={index} value={index ? `extruder${index}` : 'extruder'}>T{index} · {index ? `extruder${index}` : 'extruder'}</option>)}</select></label> : null}
+                    {canEdit && (loadPrinter?.extruder_count ?? 1) > 1 && !loadPrinter?.tool_routines_verified ? <p className="muted">Verify the selected-hotend load, unload, purge, and tool-change hook in 3D Printer settings before loading.</p> : null}
                     {canEdit && (
                       <button
                         className="button"
                         disabled={
                           !selected.spoolman_id ||
-                          printers.data?.some((printer) => printer.configuration_locked) ||
+                          !loadPrinter || loadPrinter.configuration_locked ||
+                          ((loadPrinter.extruder_count ?? 1) > 1 && !loadPrinter.tool_routines_verified) ||
                           requestLoad.isPending ||
                           Boolean(selected.active_printer_id)
                         }

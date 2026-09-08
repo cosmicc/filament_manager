@@ -76,7 +76,8 @@ describe('SpoolsPage', () => {
       if (path.startsWith('/spools?')) return Promise.resolve({ items: [spool], total: 1, limit: 200, offset: 0 })
       if (path === '/filaments') return Promise.resolve([])
       if (path === '/profiles/templates') return Promise.resolve([])
-      if (path === '/spools/spool-id/set-active' && options?.method === 'POST') {
+      if (path === '/printers') return Promise.resolve([{ id: 'printer-id', name: 'Test printer', connection_enabled: true }])
+      if (path === '/spools/spool-id/set-active?printer_id=printer-id&extruder=extruder' && options?.method === 'POST') {
         return Promise.resolve({ status: 'change_queued' })
       }
       return Promise.reject(new Error(`Unexpected API request: ${path}`))
@@ -99,7 +100,7 @@ describe('SpoolsPage', () => {
     fireEvent.click(await screen.findByRole('button', { name: 'Load spool' }))
 
     await waitFor(() => {
-      expect(apiFetchMock).toHaveBeenCalledWith('/spools/spool-id/set-active', { method: 'POST' })
+      expect(apiFetchMock).toHaveBeenCalledWith('/spools/spool-id/set-active?printer_id=printer-id&extruder=extruder', { method: 'POST' })
     })
     expect(await screen.findByText(/Load request sent to Fluidd/)).toBeTruthy()
     expect(screen.getByText('Not active')).toBeTruthy()
@@ -203,14 +204,15 @@ describe('SpoolsPage', () => {
     await waitFor(() => expect((screen.getByRole('button', { name: 'Add spool' }) as HTMLButtonElement).disabled).toBe(false))
     fireEvent.click(await screen.findByRole('button', { name: 'Add spool' }))
     await screen.findByRole('option', { name: /PLA.*Blue/ })
-    fireEvent.change(screen.getByLabelText('Spool code'), { target: { value: 'NEW-WEIGHED' } })
+    expect((screen.getByLabelText('Spool code') as HTMLInputElement).readOnly).toBe(true)
     fireEvent.change(screen.getByLabelText(/Full spool scale weight/), { target: { value: '1200' } })
     fireEvent.click(screen.getByRole('button', { name: 'Create spool' }))
     await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull())
     expect(screen.queryByText('Refresh failed after save')).toBeNull()
     const posts = apiFetchMock.mock.calls.filter((call) => call[1]?.method === 'POST')
     expect(posts).toHaveLength(1)
-    expect(JSON.parse(posts[0][1].body)).toMatchObject({ initial_gross_mass_g: '1200', spool_code: 'NEW-WEIGHED' })
+    expect(JSON.parse(posts[0][1].body)).toMatchObject({ initial_gross_mass_g: '1200' })
+    expect(JSON.parse(posts[0][1].body)).not.toHaveProperty('spool_code')
   })
 
   it('combines the template-derived filament type filter with text search', async () => {

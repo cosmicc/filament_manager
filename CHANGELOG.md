@@ -1,5 +1,37 @@
 # Changelog
 
+## 0.8.0 - 09.08.2026
+
+Testing release. Migration `e9f012a3b4c5` requires web/worker parity and preservation of the shared private encryption key. Install reviewed printer macros before testing the filament gate or multi-hotend workflows; verify selected-hotend physical routines explicitly in printer settings.
+
+### Added
+
+- Guided Google Web OAuth setup with console links, exact redirect validation, bounded credentials upload, encrypted storage, and private-volume key initialization with lost-key protection.
+- Administrator-managed Moonraker connections with encrypted write-only API keys, explicit legacy adoption, and printer capability fields for heated chamber, maximum temperatures, and independent hotend count.
+- Dashboard printer carousel, selectable all-printers overview, scoped active spool/plate context, and Sync to Cura for matching managed workstations.
+- Read-only completion acknowledgement and optional idle/power-countdown telemetry; separately prepared operator macro changes preserve immutable print history.
+- Independent hotend spool slots with explicit target selection, printer-owned T-number dispatch, completed-tool verification hooks, and a default-off operator verification gate for multi-hotend loading.
+- Automatic immutable spool-code allocation using existing active/archived codes and the first numeric gap; PLA and PLA+ share a sequence. Existing codes are unchanged.
+- Print-start filament availability gate with exact-start Cancel/Override controls, independent of the settings-inspection policy, and retained check/override evidence.
+- Exact Moonraker power-device status distinguishes confirmed power-off from Klipper faults without extra requests during healthy printing.
+
+### Changed
+
+- Inventory metrics move below printer context. Density moves beside template diameter without losing precise values or inheritance; Ironing follows Dimensional compensation in template and filament editors.
+- Integration workers resolve explicit database-owned connections. Ambiguous physical actions no longer fall back to the first printer, and connection changes wait for pending motion commands.
+- Google publication includes the new non-sensitive printer capability fields while excluding connection secrets.
+- Filament list rows put the derived name first in bold and the manufacturer underneath. Location spool cards include the shared horizontal remaining-filament bar and percentage.
+
+### Fixed
+
+- Rebuilt the complete supplied QQ-S macros with one captured pause position, explicit relative retraction, repeat-pause protection, clearance-first return, runout/slicer pause routing, and safe high-delta/unhomed/preflight exceptions. Preserve probe checks through optional mesh hooks instead of conflicting public definitions; provide installation and supervised-test instructions.
+
+- Corrected the supplied macro's automatic countdown arithmetic to the approved 30 minutes after its 10-minute idle timeout; manual reset stays 60 minutes and new prints cancel stale countdowns. Live printer files are not changed automatically.
+- Prevented lost encryption keys from being silently replaced when existing integrations still depend on them.
+- Exclude spools loaded on other printers from load catalogs and reject cross-printer ownership changes before modifying active inventory.
+- Enforce one physical spool per hotend and preserve other loaded slots during reconciliation; revalidate queued hotends after printer configuration changes.
+- Reject duplicate hotend spool targets before motion and stale insertion/purge confirmations after tool changes. Keep Cura's position-zero start material on T0 and mark multi-hotend aggregate usage/cost as incomplete instead of attributing it to one sampled spool.
+
 ## 0.7.9 - 09.07.2026
 
 Testing release. Upgrade web and worker together; migration `d8e9f012a3b4` adds private Google connection state. Google OAuth requires one-time deployment setup and account consent; see `docs/GOOGLE_SHEETS.md`. No new Klipper macros or Cura renderer changes are required from 0.7.8.

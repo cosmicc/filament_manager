@@ -8,6 +8,8 @@ PostgreSQL is the canonical data store. A distinct Spoolman service remains the 
 
 ## Current capabilities
 
+- Unpublished 0.8.0 adds guided Google setup, encrypted app-managed printer connections, a printer carousel and overview, Dashboard **Sync to Cura**, and independently loaded hotends with verified printer-owned routines. See [printer setup and upgrade notes](docs/PRINTER_CONNECTIONS.md).
+- New spools receive permanent automatic codes (P1 for PLA/PLA+, G1 for PETG, T1 for TPU, PP1 for PP, S1 for SPLA, and material abbreviations otherwise). Existing codes are preserved; the first available number is reused only when no active or archived spool holds it. Locations shows remaining-filament bars and percentages.
 - Google sign-in and **Sync now** under Settings, with automatic one-way publication of inventory, settings, calibration and print history to a linked, filterable **Filament Manager** spreadsheet. See [Google setup](docs/GOOGLE_SHEETS.md).
 - Cura-side AutoTowers retraction-speed base correction that preserves the actual test sections; see [calibration tower guidance](docs/CURA_WORKSTATION_AGENT.md#autotowers-retraction-speed-towers).
 - Automatically contrasting print thumbnails in History and the Dashboard, including display-only enhancement of dark opaque previews without changing stored images
@@ -50,7 +52,7 @@ Version 0.7.8 fixes AutoTowers retraction-speed base commands and retains the Cu
 
 ## Start locally
 
-Version 0.7.9 adds Google integration setup in Settings. Upgrade web and worker together; the connection-state migration runs automatically. Google setup requires an OAuth client and a persistent encryption key. No new Klipper macros or Cura plugin changes are required from 0.7.8.
+Version 0.8.0 is a testing release. Its migration adds encrypted app-managed integration settings and printer capabilities; web and worker must be upgraded together. Preserve the private shared data volume's encryption key separately from database backups. Pause parking and completion/idle presentation require reviewed printer macro updates; no Cura renderer change is required. See [full QQ-S macro installation](docs/PAUSE_PARK_SETUP.md), [Google setup](docs/GOOGLE_SHEETS.md), and [printer setup](docs/PRINTER_CONNECTIONS.md).
 
 See [INSTALL.md](INSTALL.md) for prerequisites, deployment variables, automatic database upgrades, first-login credentials, and Docker Compose instructions.
 

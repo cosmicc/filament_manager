@@ -80,6 +80,13 @@ def test_actual_weight_stays_unknown_for_legacy_unresolved_material() -> None:
     """Legacy history never invents an exact material density."""
 
     assert _actual_weight_g(Decimal("1000"), {"legacy_unresolved": True}) is None
+    assert (
+        _actual_weight_g(
+            Decimal("1000"),
+            {"printer": {"extruder_count": 2}, "filament": {"diameter_mm": "1.75", "density_g_cm3": "1.24"}},
+        )
+        is None
+    )
 
 
 def test_terminal_usage_aggregates_reused_spools_from_immutable_segments() -> None:

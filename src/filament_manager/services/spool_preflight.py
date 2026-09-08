@@ -7,7 +7,7 @@ from dataclasses import dataclass
 from decimal import Decimal, InvalidOperation
 from uuid import UUID
 
-from sqlalchemy import select
+from sqlalchemy import or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import joinedload
 
@@ -107,6 +107,8 @@ def _bounded_temperature(value: object) -> Decimal | None:
 async def spool_change_target(session: AsyncSession, *, spool: Spool, printer: Printer) -> SpoolChangeTarget:
     """Resolve one projected spool to its current safe printer profile."""
 
+    if spool.active_printer_id is not None and spool.active_printer_id != printer.id:
+        raise SpoolPreflightError("Unload this spool from its current printer before loading it elsewhere")
     if spool.spoolman_id is None or spool.spoolman_id <= 0:
         raise SpoolPreflightError("Project spool to Spoolman before loading it")
     if spool.archived or spool.status not in ELIGIBLE_SPOOL_STATUSES:
@@ -169,6 +171,7 @@ async def build_spool_preflight_catalog(session: AsyncSession, *, printer: Print
                 Spool.archived.is_(False),
                 Spool.status.in_(ELIGIBLE_SPOOL_STATUSES),
                 Spool.remaining_mass_effective_g > 0,
+                or_(Spool.active_printer_id.is_(None), Spool.active_printer_id == printer.id),
             )
             .options(joinedload(Spool.filament_product).joinedload(FilamentProduct.vendor))
             .order_by(Spool.spool_code, Spool.id)

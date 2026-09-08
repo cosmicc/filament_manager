@@ -207,7 +207,7 @@ class FilamentColorResponse(ApiModel):
 
 
 class SpoolCreate(ApiModel):
-    spool_code: str = Field(pattern=r"^[A-Za-z0-9_-]+$", max_length=64)
+    spool_code: str | None = Field(default=None, pattern=r"^[A-Za-z0-9_-]+$", max_length=64, deprecated=True)
     filament_product_id: UUID
     nominal_net_mass_g: Decimal = Field(gt=0)
     tare_mass_g: Decimal | None = Field(
@@ -292,6 +292,7 @@ class SpoolResponse(ApiModel):
     location: str | None
     spoolman_id: int | None
     active_printer_id: UUID | None
+    active_extruder: str | None = None
     last_measurement_at: datetime | None
     notes: str | None
     archived: bool
@@ -878,6 +879,15 @@ class PrinterResponse(ApiModel):
     configuration_locked: bool = False
     printer_code: str
     name: str
+    connection_managed: bool = False
+    connection_enabled: bool = True
+    heated_chamber: bool = False
+    max_extruder_temp_c: Decimal | None = None
+    max_bed_temp_c: Decimal | None = None
+    extruder_count: int = 1
+    power_device: str = "printer"
+    tool_routines_verified: bool = False
+    active_spools: list[SpoolResponse] = Field(default_factory=list)
     nozzle_diameter_mm: Decimal
     build_volume: dict[str, Any]
     manufacturer: str | None
@@ -975,6 +985,12 @@ class PrinterUpdate(ApiModel):
     """Manual printer fields and overrides protected by optimistic concurrency."""
 
     expected_version: int = Field(ge=1)
+    heated_chamber: bool | None = None
+    max_extruder_temp_c: Decimal | None = Field(default=None, gt=0, le=1000)
+    max_bed_temp_c: Decimal | None = Field(default=None, ge=0, le=500)
+    extruder_count: int | None = Field(default=None, ge=1, le=16)
+    power_device: str | None = Field(default=None, max_length=160, pattern=r"^[A-Za-z0-9_. -]*$")
+    tool_routines_verified: bool | None = None
     name: str | None = Field(default=None, min_length=1, max_length=160)
     manufacturer: str | None = Field(default=None, max_length=160)
     model: str | None = Field(default=None, max_length=160)
@@ -1020,6 +1036,7 @@ class DashboardPrinterStateResponse(ApiModel):
     printer_name: str
     connection_status: Literal["connected", "unavailable", "not_configured"]
     operational_status: Literal[
+        "powered_off",
         "idle",
         "printing",
         "paused",
@@ -1050,7 +1067,20 @@ class DashboardPrinterStateResponse(ApiModel):
     predicted_filament_cost: Decimal | None = None
     cost_currency: str | None = None
     cost_complete: bool = False
+    idle_state: str | None = None
+    idle_timeout_seconds: Decimal | None = None
+    power_off_remaining_seconds: Decimal | None = None
     checked_at: datetime
+
+
+class DashboardPrinterContext(ApiModel):
+    """One atomic printer-specific dashboard view, with no cross-printer fallbacks."""
+
+    printer_id: UUID
+    active_spools: list[SpoolResponse] = Field(default_factory=list)
+    active_plate: BuildPlateResponse | None = None
+    active_plate_surface: BuildPlateSurfaceResponse | None = None
+    printer_state: DashboardPrinterStateResponse
 
 
 class DashboardResponse(ApiModel):
@@ -1064,6 +1094,7 @@ class DashboardResponse(ApiModel):
     active_plate: BuildPlateResponse | None
     active_plate_surface: BuildPlateSurfaceResponse | None
     printer_state: DashboardPrinterStateResponse
+    printer_contexts: list[DashboardPrinterContext] = Field(default_factory=list)
 
 
 class Page(ApiModel):

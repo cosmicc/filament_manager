@@ -1338,6 +1338,19 @@ async def sync_workstation_settings(
 ) -> list[CuraDeploymentResponse]:
     """Queue the latest full app library without bypassing closed-Cura safety."""
 
+    result = await _queue_workstation_settings(agent_id, request, administrator, session)
+    await session.commit()
+    return result
+
+
+async def _queue_workstation_settings(
+    agent_id: UUID,
+    request: Request,
+    administrator: Administrator,
+    session: DatabaseSession,
+) -> list[CuraDeploymentResponse]:
+    """Queue and supersede safely inside the caller's transaction."""
+
     agent = await session.scalar(
         select(WorkstationAgent).where(WorkstationAgent.id == agent_id).with_for_update()
     )
@@ -1384,8 +1397,58 @@ async def sync_workstation_settings(
         correlation_id=request.state.correlation_id,
     )
     result = [CuraDeploymentResponse.model_validate(item) for item in deployments]
-    await session.commit()
     return result
+
+
+@router.post("/printers/{printer_id}/sync-cura", status_code=status.HTTP_202_ACCEPTED)
+async def sync_printer_settings(
+    printer_id: UUID,
+    request: Request,
+    administrator: Administrator,
+    session: DatabaseSession,
+) -> dict[str, int]:
+    """Queue only managed workstations reporting this exact printer identity."""
+    printer = await session.get(Printer, printer_id)
+    if printer is None:
+        raise ApiError(404, "unknown_printer", "Printer not found")
+    identities = {
+        _normalized_cura_machine_identity(printer.printer_code),
+        _normalized_cura_machine_identity(printer.name),
+    } - {""}
+    agents = await session.scalars(
+        select(WorkstationAgent)
+        .where(WorkstationAgent.enabled.is_(True), WorkstationAgent.cura_management_enabled.is_(True))
+        .order_by(WorkstationAgent.id)
+        .with_for_update()
+    )
+    matching = []
+    for agent in agents:
+        machines = []
+        for installation in agent.cura_installations:
+            reported = _reported_value(installation, "machines", [])
+            if isinstance(reported, list):
+                machines.extend(reported)
+        if any(
+            identities.intersection(
+                {
+                    _normalized_cura_machine_identity(_reported_value(machine, key, ""))
+                    for key in ("machine_id", "display_name", "definition_id")
+                }
+            )
+            for machine in machines
+        ):
+            matching.append(agent)
+    if not matching:
+        raise ApiError(
+            409,
+            "cura_printer_unmatched",
+            "No managed Cura workstation reports this printer. Match its Cura machine name "
+            "to the printer name and wait for the agent to report it.",
+        )
+    for agent in matching:
+        await _queue_workstation_settings(agent.id, request, administrator, session)
+    await session.commit()
+    return {"queued": len(matching)}
 
 
 @router.get("/cura-deployments", response_model=list[CuraDeploymentResponse])

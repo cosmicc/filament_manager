@@ -15,12 +15,13 @@ from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.orm import joinedload
 from sqlalchemy.sql.elements import ColumnElement
 
-from filament_manager.api.printer_safety import require_idle_printer
+from filament_manager.api.printer_safety import require_idle_printer, selected_printer
 from filament_manager.config import get_settings
 from filament_manager.domain.colors import (
     normalize_color_name,
     normalize_color_palette,
 )
+from filament_manager.domain.extruders import extruder_name
 from filament_manager.domain.mass import (
     InvalidWeightError,
     MeasurementConfirmationRequired,
@@ -41,7 +42,6 @@ from filament_manager.models.inventory import (
     MaterialProfile,
     MaterialTemplate,
     MaterialTemplateRevision,
-    Printer,
     Spool,
     SpoolLocationChoice,
     SpoolMeasurement,
@@ -68,6 +68,7 @@ from filament_manager.services.material_settings import (
     queue_managed_cura_library,
 )
 from filament_manager.services.print_statistics import completed_spool_print_counts
+from filament_manager.services.spool_codes import allocate_spool_code, next_spool_code
 from filament_manager.services.spool_labels import render_spool_label_png
 from filament_manager.services.spool_mass import spool_mass_basis
 from filament_manager.services.spool_preflight import spool_change_target
@@ -124,15 +125,30 @@ async def request_active_spool_unload(
     request: Request,
     operator: Operator,
     session: DatabaseSession,
+    printer_id: UUID | None = None,
+    extruder: str | None = None,
 ) -> dict[str, str]:
     """Queue a physical unload; canonical/Spoolman state clears only after motion."""
 
-    configured_code = get_settings().moonraker.printers[0].id
-    printer = await session.scalar(select(Printer).where(Printer.printer_code == configured_code))
-    if printer is None:
-        raise ApiError(status.HTTP_409_CONFLICT, "printer_not_configured", "Printer is not ready")
-    await require_idle_printer(printer.printer_code, get_settings())
-    spool = await session.scalar(select(Spool).where(Spool.active_printer_id == printer.id))
+    printer = await selected_printer(session, printer_id, get_settings())
+    if printer.extruder_count > 1 and not printer.tool_routines_verified:
+        raise ApiError(
+            status.HTTP_409_CONFLICT,
+            "tool_routines_unverified",
+            "Verify selected-hotend load, unload, and purge routines in printer settings first",
+        )
+    try:
+        selected_extruder = extruder_name(extruder, printer.extruder_count)
+    except ValueError as exc:
+        raise ApiError(status.HTTP_422_UNPROCESSABLE_ENTITY, "invalid_hotend", str(exc)) from exc
+    await require_idle_printer(printer.printer_code, get_settings(), session)
+    spool = await session.scalar(
+        select(Spool).where(
+            Spool.active_printer_id == printer.id,
+            (Spool.active_extruder == selected_extruder)
+            | (Spool.active_extruder.is_(None) & (selected_extruder == "extruder")),
+        )
+    )
     if spool is None:
         raise ApiError(status.HTTP_409_CONFLICT, "no_active_spool", "No spool is physically loaded")
     add_outbox_job(
@@ -142,7 +158,7 @@ async def request_active_spool_unload(
         aggregate_type="printer",
         aggregate_id=printer.id,
         aggregate_version=printer.record_version,
-        payload={"printer_id": str(printer.id)},
+        payload={"printer_id": str(printer.id), "extruder": selected_extruder},
     )
     add_audit_event(
         session,
@@ -373,6 +389,7 @@ def spool_response(spool: Spool, *, completed_print_count: int = 0) -> SpoolResp
         location=spool.location,
         spoolman_id=spool.spoolman_id,
         active_printer_id=spool.active_printer_id,
+        active_extruder=spool.active_extruder,
         last_measurement_at=spool.last_measurement_at,
         notes=spool.notes,
         archived=spool.archived,
@@ -1390,6 +1407,20 @@ async def list_spools(
     )
 
 
+@router.get("/spools/next-code")
+async def preview_spool_code(
+    filament_product_id: UUID, _: Viewer, session: DatabaseSession
+) -> dict[str, str]:
+    """Preview an identity without reserving it; allocation occurs on save."""
+
+    product = await session.get(FilamentProduct, filament_product_id)
+    if product is None:
+        raise ApiError(status.HTTP_404_NOT_FOUND, "unknown_filament", "Filament not found")
+    return {
+        "spool_code": next_spool_code(product.material_type, await session.scalars(select(Spool.spool_code)))
+    }
+
+
 @router.post("/spools", response_model=SpoolResponse, status_code=status.HTTP_201_CREATED)
 async def create_spool(
     payload: SpoolCreate,
@@ -1399,10 +1430,6 @@ async def create_spool(
 ) -> SpoolResponse:
     """Create a physical spool and queue its external projection atomically."""
 
-    if await session.scalar(
-        select(Spool.id).where(func.lower(Spool.spool_code) == payload.spool_code.casefold())
-    ):
-        raise ApiError(status.HTTP_409_CONFLICT, "spool_code_exists", "Spool code already exists")
     product = await session.scalar(
         select(FilamentProduct)
         .where(FilamentProduct.id == payload.filament_product_id)
@@ -1454,7 +1481,7 @@ async def create_spool(
         initial_measured_at = datetime.now(UTC)
 
     spool = Spool(
-        spool_code=payload.spool_code.upper(),
+        spool_code=await allocate_spool_code(session, product.material_type),
         filament_product_id=payload.filament_product_id,
         nominal_net_mass_g=payload.nominal_net_mass_g,
         tare_mass_g=resolved_tare,
@@ -1572,6 +1599,8 @@ async def update_spool(
     if spool.record_version != payload.expected_version:
         raise ApiError(status.HTTP_409_CONFLICT, "record_version_conflict", "Spool changed; reload and retry")
     if payload.spool_code is not None:
+        if payload.spool_code != spool.spool_code:
+            raise ApiError(status.HTTP_409_CONFLICT, "spool_identity_locked", "Spool codes cannot be changed")
         existing_code = await session.scalar(
             select(Spool.id).where(
                 func.lower(Spool.spool_code) == payload.spool_code.casefold(),
@@ -2036,21 +2065,32 @@ async def request_spool_load(
     request: Request,
     operator: Operator,
     session: DatabaseSession,
+    printer_id: UUID | None = None,
+    extruder: str | None = None,
 ) -> dict[str, str]:
     """Request a confirmed physical spool change without pre-activating the spool."""
 
     spool = await _get_spool(session, spool_id)
     if spool.spoolman_id is None:
         raise ApiError(status.HTTP_409_CONFLICT, "spool_not_projected", "Project spool to Spoolman first")
-    configured_printer_code = get_settings().moonraker.printers[0].id
-    printer = await session.scalar(select(Printer).where(Printer.printer_code == configured_printer_code))
-    if printer is None:
+    printer = await selected_printer(session, printer_id, get_settings())
+    if printer.extruder_count > 1 and not printer.tool_routines_verified:
         raise ApiError(
             status.HTTP_409_CONFLICT,
-            "printer_not_configured",
-            "The configured Moonraker printer is not ready",
+            "tool_routines_unverified",
+            "Verify selected-hotend load, unload, and purge routines in printer settings first",
         )
-    await require_idle_printer(printer.printer_code, get_settings())
+    try:
+        selected_extruder = extruder_name(extruder, printer.extruder_count)
+    except ValueError as exc:
+        raise ApiError(status.HTTP_422_UNPROCESSABLE_ENTITY, "invalid_hotend", str(exc)) from exc
+    if spool.active_printer_id == printer.id and spool.active_extruder not in (None, selected_extruder):
+        raise ApiError(
+            status.HTTP_409_CONFLICT,
+            "spool_already_loaded",
+            "Unload this spool from its current hotend first",
+        )
+    await require_idle_printer(printer.printer_code, get_settings(), session)
     try:
         target = await spool_change_target(session, spool=spool, printer=printer)
     except SpoolPreflightError as exc:
@@ -2059,7 +2099,13 @@ async def request_spool_load(
             "spool_change_not_ready",
             str(exc),
         ) from exc
-    current = await session.scalar(select(Spool).where(Spool.active_printer_id == printer.id))
+    current = await session.scalar(
+        select(Spool).where(
+            Spool.active_printer_id == printer.id,
+            (Spool.active_extruder == selected_extruder)
+            | (Spool.active_extruder.is_(None) & (selected_extruder == "extruder")),
+        )
+    )
     add_audit_event(
         session,
         actor_id=operator.id,
@@ -2076,6 +2122,7 @@ async def request_spool_load(
             "printer_id": str(printer.id),
             "requested_spool_id": str(spool.id),
             "requested_spoolman_id": target.spoolman_id,
+            "extruder": selected_extruder,
         },
         correlation_id=request.state.correlation_id,
     )
@@ -2087,9 +2134,11 @@ async def request_spool_load(
         aggregate_id=spool.id,
         aggregate_version=spool.record_version,
         payload={
+            "printer_id": str(printer.id),
             "spoolman_id": target.spoolman_id,
             "temperature_c": str(target.temperature_c),
             "prompt_label": target.prompt_label,
+            "extruder": selected_extruder,
         },
     )
     await session.commit()

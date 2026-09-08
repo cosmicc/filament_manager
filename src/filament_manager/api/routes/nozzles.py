@@ -182,7 +182,7 @@ async def update_nozzle(
         raise ApiError(status.HTTP_409_CONFLICT, "record_version_conflict", "Nozzle changed; reload")
     active_printer = await session.scalar(select(Printer).where(Printer.active_nozzle_id == nozzle.id))
     if active_printer is not None:
-        await require_idle_printer(active_printer.printer_code, config.get_settings())
+        await require_idle_printer(active_printer.printer_code, config.get_settings(), session)
     if payload.retired is True and active_printer is not None:
         raise ApiError(
             status.HTTP_409_CONFLICT,
@@ -309,7 +309,7 @@ async def install_nozzle(
         )
     if printer.active_nozzle_id == nozzle.id:
         return (await _nozzle_responses(session, [nozzle]))[0]
-    await require_idle_printer(printer.printer_code, config.get_settings())
+    await require_idle_printer(printer.printer_code, config.get_settings(), session)
     now = datetime.now(UTC)
     previous = await session.get(Nozzle, printer.active_nozzle_id) if printer.active_nozzle_id else None
     previous_diameter_mm = printer.nozzle_diameter_mm
@@ -390,7 +390,7 @@ async def remove_nozzle(
             "nozzle_not_installed",
             "This nozzle is not installed on the selected printer",
         )
-    await require_idle_printer(printer.printer_code, config.get_settings())
+    await require_idle_printer(printer.printer_code, config.get_settings(), session)
     now = datetime.now(UTC)
     printer.active_nozzle_id = None
     printer.record_version += 1

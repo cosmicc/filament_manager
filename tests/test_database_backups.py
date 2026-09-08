@@ -12,6 +12,7 @@ import zipfile
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from types import SimpleNamespace
+from unittest.mock import AsyncMock
 from uuid import UUID, uuid4
 
 import pytest
@@ -280,6 +281,7 @@ async def test_stale_interrupted_print_does_not_block_backups_forever(
             return SimpleNamespace(state="error")
 
     monkeypatch.setattr(database_backups, "MoonrakerClient", TerminalMoonrakerClient)
+    monkeypatch.setattr(database_backups, "configured_printers", AsyncMock(return_value=[object()]))
     monkeypatch.setattr(
         database_backups,
         "get_settings",
@@ -310,6 +312,7 @@ async def test_stale_print_deferral_fails_closed_when_moonraker_is_unavailable(
             raise RuntimeError("unavailable")
 
     monkeypatch.setattr(database_backups, "MoonrakerClient", UnavailableMoonrakerClient)
+    monkeypatch.setattr(database_backups, "configured_printers", AsyncMock(return_value=[object()]))
     monkeypatch.setattr(
         database_backups,
         "get_settings",

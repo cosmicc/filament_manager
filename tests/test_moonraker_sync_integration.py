@@ -1,6 +1,7 @@
 """PostgreSQL-backed automatic Moonraker state synchronization tests."""
 
 import json
+from dataclasses import replace
 from datetime import UTC, datetime
 from decimal import Decimal
 from types import SimpleNamespace
@@ -20,6 +21,7 @@ from filament_manager.clients.moonraker import (
 )
 from filament_manager.config import Settings
 from filament_manager.domain.spool_preflight import (
+    SpoolPreflightError,
     cura_material_guid,
     cura_product_material_guid,
 )
@@ -45,7 +47,7 @@ from filament_manager.models.printing import PrintJob, PrintMaterialSegment
 from filament_manager.services import events
 from filament_manager.services.moonraker_sync import synchronize_active_spool
 from filament_manager.services.print_history import synchronize_live_print, synchronize_print_history
-from filament_manager.services.spool_preflight import build_spool_preflight_catalog
+from filament_manager.services.spool_preflight import build_spool_preflight_catalog, spool_change_target
 from filament_manager.workers import dispatcher
 
 
@@ -380,6 +382,38 @@ async def test_active_spool_selection_and_clear_follow_moonraker(
             assert unchanged.changed is False
             assert await session.scalar(select(func.count(AuditEvent.id))) == baseline_audit_count + 1
 
+            other_printer = Printer(
+                printer_code="other-printer",
+                name="Other Printer",
+                moonraker_base_url="http://other-moonraker.test:7125",
+                nozzle_diameter_mm=Decimal("0.4"),
+            )
+            session.add(other_printer)
+            await session.flush()
+            with pytest.raises(SpoolPreflightError, match="Unload this spool"):
+                await spool_change_target(session, spool=second, printer=other_printer)
+            with pytest.raises(ValueError, match="already loaded on another printer"):
+                await synchronize_active_spool(
+                    session,
+                    printer_id=other_printer.id,
+                    spoolman_id=20,
+                    actor_id=None,
+                    correlation_id="cross-printer-ownership",
+                    commit=False,
+                )
+            assert second.active_printer_id == printer.id
+            assert second.active_extruder == "extruder"
+            assert await session.scalar(select(func.count(AuditEvent.id))) == baseline_audit_count + 1
+            # A spool available in this printer's profile scope disappears from
+            # its catalog when physically loaded on a different printer.
+            second.active_printer_id = other_printer.id
+            await session.flush()
+            isolated_catalog = await build_spool_preflight_catalog(session, printer=printer)
+            assert all(choice[0] != 20 for choice in isolated_catalog.manual_spools)
+            second.active_printer_id = printer.id
+            await session.flush()
+            await session.delete(other_printer)
+
             cleared = await synchronize_active_spool(
                 session,
                 printer_id=printer.id,
@@ -394,9 +428,20 @@ async def test_active_spool_selection_and_clear_follow_moonraker(
 
             inspection_submissions: list[bool] = []
             inspection_submission_failures = 1
+            filament_submissions: list[dict[str, object]] = []
 
             class InspectionClient:
                 """Provide one bounded file without an external Moonraker dependency."""
+
+                async def submit_filament_check(self, **values: object) -> None:
+                    """Check that evidence is committed before external acknowledgement."""
+                    async with factory() as observer:
+                        persisted = await observer.scalar(
+                            select(PrintJob).where(PrintJob.filename == "inspection-race.gcode")
+                        )
+                        assert persisted is not None
+                        assert persisted.inspection["filament_check"]["sequence"] == values["sequence"]
+                    filament_submissions.append(values)
 
                 async def gcode_metadata(self, filename: str) -> dict[str, object]:
                     assert filename in {
@@ -629,6 +674,41 @@ async def test_active_spool_selection_and_clear_follow_moonraker(
                 GcodeInspectionStatus.WARNING,
             }
             assert inspection_submissions == [True, True]
+
+            weight_gate = replace(
+                active_gate, phase="checking_weight", inspection_policy="warn", weight_sequence=9
+            )
+            for _ in range(2):
+                await synchronize_live_print(
+                    session,
+                    printer=printer,
+                    client=client,  # type: ignore[arg-type]
+                    print_state=inspection_wait,
+                    preflight_state=weight_gate,
+                    correlation_id="filament-check-retry",
+                )
+            assert len(filament_submissions) == 2
+            assert filament_submissions[0] == filament_submissions[1]
+            assert filament_submissions[0]["spoolman_id"] == 20
+            assert filament_submissions[0]["required_g"] > 0
+            assert filament_submissions[0]["remaining_g"] == second.remaining_mass_effective_g
+            assert (
+                await session.scalar(
+                    select(func.count(AuditEvent.id)).where(AuditEvent.action == "print.filament_check")
+                )
+                == 1
+            )
+            await synchronize_live_print(
+                session,
+                printer=printer,
+                client=client,  # type: ignore[arg-type]
+                print_state=inspection_wait,
+                preflight_state=replace(
+                    weight_gate, phase="idle", start_pending=False, weight_overridden=True
+                ),
+                correlation_id="filament-override",
+            )
+            assert inspection_job.inspection["filament_check"]["override"] is True
 
             material_change_start = MoonrakerPrintState(
                 filename="material-change.gcode",
