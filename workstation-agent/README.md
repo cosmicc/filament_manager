@@ -8,4 +8,6 @@ After initialization, the managed plugin also restores the required 56-key Mater
 
 The installers explicitly report fresh installation versus in-place upgrade. On Windows, installation adds the agent directory to the current user's PATH, prompts for pairing, registers the limited logon task, and starts the paired agent immediately. Matching Arch Linux and Windows uninstallers remove the per-user agent service/task and private agent files while leaving Cura's currently deployed managed library usable.
 
+Version 0.7.8: the managed plugin preserves original base retract/prime speeds around the recognized AutoTowers retraction-speed processor before export, without changing actual calibration sections or third-party plugin files. Renderer revision 26 refreshes this adapter with Cura closed. Reopen Cura and re-slice/export existing towers; previously uploaded G-code is not repaired.
+
 See [../docs/CURA_WORKSTATION_AGENT.md](../docs/CURA_WORKSTATION_AGENT.md) for installation, pairing, service operation, synchronization rollback, full Cura recovery, removal, and troubleshooting.

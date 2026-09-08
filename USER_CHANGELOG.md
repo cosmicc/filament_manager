@@ -1,5 +1,21 @@
 # User Changelog
 
+## 0.7.8 - 09.07.2026
+
+Testing release. Upgrade the app and workstation agent; close Cura, use **Push app settings**, wait for **Succeeded**, then reopen Cura and re-slice/upload the tower.
+
+### Added
+
+- Automatic Cura-side correction for the recognized AutoTowers retraction-speed tower base.
+
+### Changed
+
+- After installing the updated workstation agent, synchronize with Cura closed, reopen Cura, and re-slice/export the tower. Existing uploaded files are not repaired.
+
+### Fixed
+
+- Prevent AutoTowers from replacing valid base retract/prime speeds with zero or negative speeds. The tower's actual calibration speeds and your **Warn and continue** inspection choice remain unchanged.
+
 ## 0.7.7 - 09.07.2026
 
 ### Added

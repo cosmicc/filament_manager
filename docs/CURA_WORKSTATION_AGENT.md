@@ -95,6 +95,14 @@ Version 0.7.7 fixes a plugin conversion bug: app decimal values are transported 
 
 Upgrade both the app and workstation agent to 0.7.7, close Cura, select **Push app settings**, and wait for **Succeeded** before reopening and slicing a small model. Updating only the server does not replace the workstation plugin. Renderer revision 25 forces replacement even when no template value changed. There is no need to reset templates, remove overrides, or reinstall Klipper macros when upgrading from 0.7.6. If errors remain after this upgrade, retain Cura's error details and logs for diagnosis rather than disabling validation.
 
+### AutoTowers retraction-speed towers
+
+The AutoTowers retraction-speed processor 4.1 can write the tower base at **starting speed minus step size**. A 10 mm/s start and 10 mm/s step produces invalid `G1 F0` retract/prime moves before the first test section.
+
+The managed plugin corrects that recognized processor in memory before saving/uploading: it preserves the original positive retract and prime speeds from the sliced base, while leaving every actual calibration section unchanged. It does not guess speeds from extrusion direction, change app print settings, alter thumbnails, edit AutoTowers' installed files, or rewrite files already loaded on the printer. Other tower types are unaffected. Unknown processor versions or unverified input produce a local warning instead of a guessed repair. This is not a general G-code repair: invalid original feeds or deliberately zero-speed test sections are not corrected.
+
+Upgrade the app and workstation agent to 0.7.8, close Cura, use **Push app settings**, wait for **Succeeded**, and reopen Cura. Renderer revision 26 installs managed plugin 2.2.2 even when app settings are unchanged. **Re-slice and export/upload the tower again**; previously uploaded or already post-processed G-code is not repaired. No new Klipper macros or database migration are required from 0.7.7. Keep **Warn and continue** if you want calibration-related profile mismatches recorded without blocking the test; the policy is not changed automatically.
+
 Useful local commands:
 
 ```text

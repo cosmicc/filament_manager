@@ -9,6 +9,7 @@ from decimal import Decimal, InvalidOperation
 from pathlib import Path
 from typing import Any, cast
 
+from .cura_autotowers import AUTOTOWERS_COMPATIBILITY_CODE
 from .machine_settings import apply_managed_machine_gcode, serialize_cura_config
 from .models import CuraInstallation, CuraMachine
 
@@ -271,6 +272,8 @@ GUID_PATTERN = re.compile(
     re.IGNORECASE,
 )
 MISSING_VALUE = object()
+
+__AUTOTOWERS_COMPATIBILITY__
 
 
 def _catalog_checksum():
@@ -556,6 +559,7 @@ class FilamentManagerVisibility(Extension):
 
         if self._initialized:
             return
+        _install_autotowers_compatibility()
         try:
             _configure_material_settings_plugin(self._application)
             _configure_material_costs(self._application)
@@ -682,7 +686,7 @@ class FilamentManagerVisibility(Extension):
 PLUGIN_METADATA = b"""{
   "name": "Filament Manager Material Visibility",
   "author": "Filament Manager",
-  "version": "2.2.1",
+  "version": "2.2.2",
   "description": "Enforces the Filament Manager material library and print boundary.",
   "api": 5,
   "supported_sdk_versions": ["8.0.0"]
@@ -723,6 +727,7 @@ def _visibility_plugin_files(
             repr(managed_material_costs),
         )
         .replace("__CANONICAL_MATERIAL_SETTINGS__", repr(canonical_material_settings))
+        .replace("__AUTOTOWERS_COMPATIBILITY__", AUTOTOWERS_COMPATIBILITY_CODE)
         .encode("utf-8")
     )
     return {

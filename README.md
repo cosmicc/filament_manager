@@ -8,6 +8,7 @@ PostgreSQL is the canonical data store. A distinct Spoolman service remains the 
 
 ## Current capabilities
 
+- Cura-side AutoTowers retraction-speed base correction that preserves the actual test sections; see [calibration tower guidance](docs/CURA_WORKSTATION_AGENT.md#autotowers-retraction-speed-towers).
 - Automatically contrasting print thumbnails in History and the Dashboard, including display-only enhancement of dark opaque previews without changing stored images
 - Compact dashboard actions, non-archived spool totals by material type, and distinct named inventory colors
 - Correctable filament colors that update all linked spools and synchronization targets while preserving captured print history
@@ -44,7 +45,7 @@ PostgreSQL is the canonical data store. A distinct Spoolman service remains the 
 
 For automatic heightmap restoration and the 0.7.4 printer macro upgrade, see [Build plate setup](docs/BUILD_PLATE_SETUP.md).
 
-Version 0.7.7 fixes valid Cura material settings turning red and blocking slicing. Upgrade the server/worker and workstation agent, close Cura, then select **Push app settings** on Cura Workstations and wait for **Succeeded** before reopening. Edit tracked settings in the app only; existing overrides are preserved. No new Klipper macro installation is required from 0.7.6. See [Cura troubleshooting](docs/CURA_WORKSTATION_AGENT.md#red-settings-and-slicing-errors-after-075-or-076).
+Version 0.7.8 fixes AutoTowers retraction-speed base commands and retains the Cura red-settings fix. Upgrade the server/worker and workstation agent, close Cura, then select **Push app settings** on Cura Workstations and wait for **Succeeded** before reopening. Re-slice and upload the tower again; existing files are not repaired. No new Klipper macros are required from 0.7.7. See [Cura troubleshooting](docs/CURA_WORKSTATION_AGENT.md#autotowers-retraction-speed-towers).
 
 ## Start locally
 

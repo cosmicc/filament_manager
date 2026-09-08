@@ -208,7 +208,7 @@ def test_discovers_and_renders_complete_profile(tmp_path: Path, monkeypatch: obj
 
     compile(plugin, str(plugin_path), "exec")
     assert b"FilamentManagerVisibility(app)" in plugin_init
-    assert b'"version": "2.2.1"' in plugin_metadata
+    assert b'"version": "2.2.2"' in plugin_metadata
     assert b'preferences.setValue("cura/favorite_materials", updated)' in plugin
     assert b"enforceable = _enforceable_material_setting_keys(application)" in plugin
     assert b"managed_selected.update(enforceable)" in plugin
@@ -458,11 +458,20 @@ def test_generated_plugin_defers_machine_manager_until_cura_initialization(
     assert specification.loader is not None
     plugin_module = importlib.util.module_from_spec(specification)
     specification.loader.exec_module(plugin_module)
+    compatibility_initializations: list[bool] = []
+    assert callable(plugin_module._wrap_autotowers_speed_processor)
+    monkeypatch.setattr(
+        plugin_module,
+        "_install_autotowers_compatibility",
+        lambda: compatibility_initializations.append(True),
+    )
     application = FakeApplication()
     plugin_module.FilamentManagerVisibility(application)
 
     assert application.machine_manager_calls == 0
+    assert compatibility_initializations == []
     application.initializationFinished.emit()
+    assert compatibility_initializations == [True]
     assert application.machine_manager_calls == 1
     assert application.preferences["material_settings/visible_settings"] == ";".join(
         sorted(
@@ -555,7 +564,7 @@ def test_apply_is_idempotent_and_rollback_restores_original(tmp_path: Path, monk
     manifest = json.loads((version / ".filament-manager" / "manifest.json").read_text())
     assert manifest["library_checksum"] == "a" * 64
     assert manifest["schema_version"] == 4
-    assert manifest["renderer_revision"] == 25
+    assert manifest["renderer_revision"] == 26
     assert set(manifest["machine_files"]) == {"machine_instances/flsun-v400.global.cfg"}
     managed_machine = machine_path.read_text(encoding="utf-8")
     assert "FILAMENT_MANAGER_START_PRINT" in managed_machine
@@ -605,7 +614,7 @@ def test_apply_is_idempotent_and_rollback_restores_original(tmp_path: Path, monk
 
     # An upgraded renderer must replace older managed plugin output even when
     # canonical material settings—and therefore the server checksum—did not change.
-    manifest["renderer_revision"] = 24
+    manifest["renderer_revision"] = 25
     (version / ".filament-manager" / "manifest.json").write_text(
         json.dumps(manifest),
         encoding="utf-8",
@@ -619,7 +628,7 @@ def test_apply_is_idempotent_and_rollback_restores_original(tmp_path: Path, monk
     )
     assert upgraded["status"] == "installed"
     upgraded_manifest = json.loads((version / ".filament-manager" / "manifest.json").read_text())
-    assert upgraded_manifest["renderer_revision"] == 25
+    assert upgraded_manifest["renderer_revision"] == 26
 
     assert rollback(deployment_id) == ["Cura 5.10"]
     assert machine_path.read_bytes() == original_machine

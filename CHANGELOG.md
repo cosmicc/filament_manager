@@ -1,5 +1,21 @@
 # Changelog
 
+## 0.7.8 - 09.07.2026
+
+Testing release. Upgrade the app and workstation agent, synchronize with Cura closed, then reopen Cura and re-slice/export the tower. Existing uploaded files are not repaired. No database migration or Klipper macro replacement is required from 0.7.7.
+
+### Added
+
+- Narrow pre-export compatibility adapter for the installed AutoTowers retraction-speed processor 4.1, with bounded local warnings when its version, input, or exact edits cannot be verified.
+
+### Changed
+
+- Workstation renderer revision 26 and managed plugin 2.2.2 refresh the Cura integration with Cura closed. Existing G-code must be re-sliced and exported again; no database migration, server inspection change, or Klipper macro replacement is needed.
+
+### Fixed
+
+- Preserve the slicer's original positive retract/prime speeds in the tower base instead of AutoTowers' starting-speed-minus-step value, which can emit invalid `G1 F0` or negative feeds. Actual test sections, other tower types, original extrusion values, thumbnail content, and app-owned material settings are unchanged. The correction runs in memory before export, never against an already loaded printer file.
+
 ## 0.7.7 - 09.07.2026
 
 Testing release. Upgrade web/worker and the workstation agent. Close Cura, use **Push app settings**, and wait for **Succeeded** before reopening. No database migration or Klipper macro replacement is required when upgrading from 0.7.6.
