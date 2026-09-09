@@ -2,7 +2,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { PrintActivityDates } from '../components/PrintActivityDates'
 import { Pencil, Plus, Printer as PrinterIcon, RefreshCw, Save, Settings, Wrench } from 'lucide-react'
 import { useState } from 'react'
-import { apiFetch } from '../api/client'
+import { ApiClientError, apiFetch } from '../api/client'
 import type { BuildPlate, Nozzle, Printer, SeedSystemResult } from '../api/types'
 import { EditorSection } from '../components/EditorSection'
 import { EmptyState } from '../components/EmptyState'
@@ -87,7 +87,7 @@ export default function PrintersPage() {
   const [editing, setEditing] = useState<Printer | null>(null)
   const [connectionEditor, setConnectionEditor] = useState<Printer | 'new' | null>(null)
   const [message, setMessage] = useState('')
-  const printers = useQuery({ queryKey: ['printers'], queryFn: () => apiFetch<Printer[]>('/printers'), refetchInterval: 15_000 })
+  const printers = useQuery({ queryKey: ['printers'], queryFn: () => apiFetch<Printer[]>('/printers'), refetchInterval: editing ? false : 15_000 })
   const plates = useQuery({ queryKey: ['plates'], queryFn: () => apiFetch<BuildPlate[]>('/build-plates'), refetchInterval: 15_000 })
   const nozzles = useQuery({ queryKey: ['nozzles'], queryFn: () => apiFetch<Nozzle[]>('/nozzles?include_retired=true'), refetchInterval: 15_000 })
   const seedSystem = useMutation({
@@ -109,10 +109,11 @@ export default function PrintersPage() {
   const update = useMutation({
     mutationFn: ({ printer, form }: { printer: Printer; form: HTMLFormElement }) => {
       const data = new FormData(form)
+      const latest = printers.data?.find((item) => item.id === printer.id) ?? printer
       return apiFetch<Printer>(`/printers/${printer.id}`, {
         method: 'PATCH',
         body: JSON.stringify({
-          expected_version: printer.record_version,
+          expected_version: latest.record_version,
           name: String(data.get('name') ?? '').trim(),
           manufacturer: optional(data, 'manufacturer'),
           model: optional(data, 'model'),
@@ -134,6 +135,20 @@ export default function PrintersPage() {
           notes: optional(data, 'notes'),
         }),
       })
+    },
+    onError: async (error) => {
+      if (error instanceof ApiClientError && error.code === 'version_conflict') {
+        setEditing(printer => {
+          if (printer && printers.data) {
+            return printers.data.find((item) => item.id === printer.id) ?? printer
+          }
+          return printer
+        })
+        await refreshPrinters()
+        setMessage('Printer changed while saving. Re-open the editor to load current values and try again.')
+        return
+      }
+      setMessage(error.message)
     },
     onSuccess: async () => {
       setMessage('Printer details saved.')

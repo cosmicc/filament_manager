@@ -1,5 +1,21 @@
 # User Changelog
 
+## 0.8.2 - 09.09.2026
+
+Testing release.
+
+### Added
+
+- Printer settings now refresh current hardware values automatically when a save conflict occurs.
+
+### Changed
+
+- Reworded the filament settings header from **Filament product** to **Material template**.
+
+### Fixed
+
+- Fixed save conflicts when updating printer max extruder/bed limits so stale edits no longer fail with “Printer changed; reload.”
+
 ## 0.8.1 - 09.08.2026
 
 Testing release.

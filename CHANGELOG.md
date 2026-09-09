@@ -1,5 +1,21 @@
 # Changelog
 
+## 0.8.2 - 09.09.2026
+
+Testing release.
+
+### Added
+
+- Printer hardware settings now support reliable save-and-refresh behavior when editing maximum extruder or bed temperature limits while preserving concurrent edits made elsewhere.
+
+### Changed
+
+- Renamed the filament settings list heading from **Filament product** to **Material template** in the filament print-settings view.
+
+### Fixed
+
+- Fixed intermittent `"Printer changed; reload"` conflicts when saving printer hardware limits by including the latest known version in the save payload and reloading on version mismatch.
+
 ## 0.8.1 - 09.08.2026
 
 Testing release. Migration `fa012b3c4d56` preserves historical settings, appends template-density corrections to current profiles, and classifies existing physical spools as Unknown. No printer macro replacement is required.
