@@ -292,7 +292,7 @@ function CreateSpoolModal({
       : null;
   const mutation = useMutation({
     mutationFn: (form: HTMLFormElement) => {
-      if (!selected) throw new Error("Select a filament product");
+      if (!selected) throw new Error("Select a material template");
       const data = new FormData(form);
       return apiFetch("/spools", {
         method: "POST",
@@ -365,11 +365,11 @@ function CreateSpoolModal({
       >
         <EditorSection
           title="Spool identity"
-          description="Connect the physical label to its canonical filament product."
+          description="Connect the physical label to its canonical material template."
         >
           <div className="form-grid">
             <label className="form-grid__wide">
-              Filament product
+              Material template
               <select
                 value={filamentId}
                 onChange={(event) => {
@@ -632,7 +632,7 @@ function EditSpoolModal({
         >
           <div className="form-grid">
             <label>Spool code<input aria-label="Spool code" value={spool.spool_code} readOnly /><small>Permanent for this spool.</small></label>
-            <label>Filament product<select name="filament_product_id" value={filamentId} onChange={(event) => setFilamentId(event.target.value)} required>{filaments.map((filament) => <option key={filament.id} value={filament.id}>{filament.vendor_name ?? 'Unspecified'} · {materialIdentitySummary(filament)}</option>)}</select></label>
+            <label>Material template<select name="filament_product_id" value={filamentId} onChange={(event) => setFilamentId(event.target.value)} required>{filaments.map((filament) => <option key={filament.id} value={filament.id}>{filament.vendor_name ?? 'Unspecified'} · {materialIdentitySummary(filament)}</option>)}</select></label>
             <label>Filament purchase weight (g)<input name="nominal_net_mass_g" type="number" min="0.1" step="0.1" value={purchaseWeight} onChange={(event) => setPurchaseWeight(event.target.value)} required /><small className="field-help">Net filament purchased, excluding the empty physical spool.</small></label>
             <label>Empty spool weight (g)<input name="tare_mass_g" type="number" min="0" step="0.1" value={tare} onChange={(event) => updateTare(event.target.value)} required /><small className="field-help">Changing tare automatically recalculates remaining filament from the last scale weight and subsequent usage.</small></label>
             <label>Current filament remaining (g)<input name="remaining_mass_g" type="number" min="0" step="0.1" value={remainingOverride ?? inputNumber(calculatedRemaining, 1)} onChange={(event) => setRemainingOverride(event.target.value)} required /><small className="field-help">Calculated automatically. Typing a value records an explicit operator correction.</small>{remainingOverride !== null ? <button type="button" className="text-button" onClick={() => setRemainingOverride(null)}>Use calculated remaining</button> : null}</label>

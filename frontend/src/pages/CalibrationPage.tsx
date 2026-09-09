@@ -109,7 +109,7 @@ function CreateCalibrationModal({ filaments, printers, plates, onClose }: { fila
       <form id="create-calibration" className="form-stack" onSubmit={(event) => { event.preventDefault(); mutation.mutate() }}>
         <EditorSection title="Material and printer" description="The exact combination this calibration will tune.">
           <div className="form-grid">
-            <label className="form-grid__wide">Filament product<select value={filamentId} onChange={(event) => setFilamentId(event.target.value)} required autoFocus>{filaments.map((item) => <option key={item.id} value={item.id}>{item.vendor_name ?? 'Unknown'} · {materialIdentitySummary(item)}</option>)}</select></label>
+            <label className="form-grid__wide">Material template<select value={filamentId} onChange={(event) => setFilamentId(event.target.value)} required autoFocus>{filaments.map((item) => <option key={item.id} value={item.id}>{item.vendor_name ?? 'Unknown'} · {materialIdentitySummary(item)}</option>)}</select></label>
             <label>Printer<select value={printerId} onChange={(event) => { const id = event.target.value; setPrinterId(id); setNozzle(printers.find((item) => item.id === id)?.nozzle_diameter_mm ?? '0.4') }} required>{printers.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}</select></label>
             <label>Nozzle diameter<div className="input-suffix"><input type="number" min="0.1" step="0.1" value={nozzle} onChange={(event) => setNozzle(event.target.value)} required /><span>mm</span></div></label>
           </div>

@@ -10,7 +10,7 @@ Testing release.
 
 ### Changed
 
-- Renamed the filament settings list heading from **Filament product** to **Material template** in the filament print-settings view.
+- Renamed filament/product selector labels from **Filament product** to **Material template** in filament print-settings and material scope selection surfaces.
 
 ### Fixed
 

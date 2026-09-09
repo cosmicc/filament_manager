@@ -10,7 +10,7 @@ Testing release.
 
 ### Changed
 
-- Reworded the filament settings header from **Filament product** to **Material template**.
+- Reworded filament-related selection labels from **Filament product** to **Material template** in print settings and material-scoped actions.
 
 ### Fixed
 
