@@ -18,8 +18,10 @@ from filament_manager.models.enums import PrintJobStatus
 from filament_manager.models.inventory import Printer
 from filament_manager.models.printing import PrintAssessment, PrintJob
 from filament_manager.services.events import add_audit_event
+from filament_manager.services.print_activity import ActivityKind, print_activity_dates
 from filament_manager.services.print_costs import print_cost_summary, segment_cost
 from filament_manager.services.print_history import profile_success_statistics
+from filament_manager.services.print_setting_evidence import retained_setting_summary
 from filament_manager.services.print_template_comparison import current_print_template_comparison
 from filament_manager.services.printer_connections import configured_printers
 
@@ -35,6 +37,15 @@ from ..schemas import (
 )
 
 router = APIRouter(prefix="/prints", tags=["print history"])
+
+
+@router.get("/activity/{kind}")
+async def activity_dates(
+    kind: ActivityKind, _: Viewer, session: DatabaseSession
+) -> dict[UUID, dict[str, datetime | None]]:
+    """Share one cached catalog request across detail displays without printer traffic."""
+    return await print_activity_dates(session, kind)
+
 
 MOONRAKER_HISTORY_STATUSES = frozenset(
     {
@@ -91,6 +102,7 @@ def _print_response[PrintResponse: PrintJobSummaryResponse](
     )
     return response.model_copy(
         update={
+            **retained_setting_summary(job),
             "moonraker_status": moonraker_status,
             "timelapse_url": f"/api/v1/prints/{job.id}/timelapse" if job.timelapse_url else None,
             "thumbnail_url": (
@@ -202,6 +214,12 @@ async def get_print(print_id: UUID, _: Viewer, session: DatabaseSession) -> Prin
     if job is None:
         raise ApiError(status.HTTP_404_NOT_FOUND, "unknown_print", "Print not found")
     response = _print_response(job, PrintJobResponse)
+    if not response.cura_quality_profile:
+        cura = job.print_settings_snapshot.get("cura")
+        global_scope = cura.get("global") if isinstance(cura, dict) else None
+        name = global_scope.get("name") if isinstance(global_scope, dict) else None
+        if isinstance(name, str) and name.strip() and len(name) <= 255:
+            response.cura_quality_profile = name
     response.current_template_comparison = await current_print_template_comparison(
         session, job.print_settings_snapshot
     )

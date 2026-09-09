@@ -1348,6 +1348,16 @@ async def synchronize_print_history(
     printer.print_history_initialized_at = printer.print_history_initialized_at or now
     printer.last_print_history_sync_at = now
     printer.last_print_history_end_at = latest_end
+    # This pass is deferred by the worker while printing/paused. A failed
+    # optional total must not invalidate imported jobs or erase the last receipt.
+    try:
+        total, longest = await client.history_totals()
+    except MoonrakerError:
+        logger.warning("moonraker_history_totals_unavailable", printer_code=printer.printer_code)
+    else:
+        printer.total_print_time_seconds = total
+        printer.longest_print_time_seconds = longest
+        printer.history_totals_checked_at = datetime.now(UTC)
     await _associate_timelapses(session, printer=printer, client=client)
     await session.commit()
     if skipped:

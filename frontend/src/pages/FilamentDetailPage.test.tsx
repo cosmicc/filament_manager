@@ -231,7 +231,7 @@ describe('FilamentDetailPage', () => {
           422,
           'validation_error',
           'Request validation failed',
-          [{ field: 'density_g_cm3', message: 'Density must be greater than zero.', type: 'greater_than' }],
+          [{ field: 'diameter_mm', message: 'Diameter must be greater than zero.', type: 'greater_than' }],
           'request-reference',
         ))
       }
@@ -247,11 +247,11 @@ describe('FilamentDetailPage', () => {
     fireEvent.click(await screen.findByRole('button', { name: 'Edit product' }))
     fireEvent.click(screen.getByRole('button', { name: 'Save filament' }))
 
-    const density = await screen.findByLabelText('Density (g/cm³)')
-    await waitFor(() => expect(density.getAttribute('aria-invalid')).toBe('true'))
-    expect(density.getAttribute('aria-describedby')).toBe('filament-product-density_g_cm3-error')
-    expect(screen.getAllByText('Density must be greater than zero.').length).toBeGreaterThanOrEqual(2)
-    await waitFor(() => expect(document.activeElement).toBe(density))
+    const diameter = await screen.findByLabelText(/^Filament diameter \(mm\)/)
+    await waitFor(() => expect(diameter.getAttribute('aria-invalid')).toBe('true'))
+    expect(diameter.getAttribute('aria-describedby')).toBe('filament-product-diameter_mm-error')
+    expect(screen.getAllByText('Diameter must be greater than zero.').length).toBeGreaterThanOrEqual(2)
+    await waitFor(() => expect(document.activeElement).toBe(diameter))
     expect(screen.getByText('Diagnostic reference: request-reference')).toBeTruthy()
   })
 })

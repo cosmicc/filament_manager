@@ -74,6 +74,7 @@ async def test_manufacturer_tare_uses_mode_exact_capacity_and_archived_evidence(
                     spool_code=f"TEST-{index}",
                     filament_product_id=products[product_index].id,
                     tare_mass_g=Decimal(tare),
+                    spool_type="Cardboard",
                     nominal_net_mass_g=Decimal(capacity),
                     remaining_mass_expected_g=Decimal("100"),
                     remaining_mass_effective_g=Decimal("100"),

@@ -200,6 +200,7 @@ async def save_template_settings(
     for product in products:
         if product.source_template_revision_id != revision.id:
             product.source_template_revision_id = revision.id
+            product.density_g_cm3 = Decimal(str(revision.settings["filament_density_g_cm3"]))
             product.record_version += 1
 
     # Determine the newest profile in every exact scope before deciding whether

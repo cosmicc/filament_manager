@@ -1538,7 +1538,6 @@ async def create_profile_from_template(
         )
 
     settings = MaterialSettingsInput.model_validate(revision.settings).model_dump(mode="json")
-    settings["filament_density_g_cm3"] = format(product.density_g_cm3, "f")
     profile = await create_published_profile_snapshot(
         session,
         filament_product_id=product.id,

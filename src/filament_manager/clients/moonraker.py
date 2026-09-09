@@ -720,6 +720,19 @@ class MoonrakerClient:
             preflight_state = None
         return print_state, preflight_state
 
+    async def history_totals(self) -> tuple[Decimal, Decimal]:
+        """Read supported resettable print-time totals, excluding paused duration."""
+        payload = await self._get("/server/history/totals")
+        result = payload.get("result")
+        totals = result.get("job_totals") if isinstance(result, dict) else None
+        if not isinstance(totals, dict):
+            raise MoonrakerError("Moonraker history totals are unavailable")
+        total = self._optional_nonnegative_number(totals.get("total_print_time"))
+        longest = self._optional_nonnegative_number(totals.get("longest_print"))
+        if total is None or longest is None or longest > total:
+            raise MoonrakerError("Moonraker history totals are invalid")
+        return total, longest
+
     async def history_jobs(
         self, *, start: int = 0, limit: int = 100, since: float | None = None
     ) -> tuple[dict[str, Any], ...]:

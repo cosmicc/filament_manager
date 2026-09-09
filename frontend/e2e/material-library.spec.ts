@@ -108,6 +108,8 @@ test.beforeEach(async ({ page }) => {
     body: 'window.__FILAMENT_MANAGER_RUNTIME_CONFIG__={bugsnag:{enabled:false}};',
   }))
   await page.route('**/api/v1/auth/me', (route) => route.fulfill({ json: user }))
+  await page.route('**/api/v1/prints/activity/*', (route) => route.fulfill({ json: {} }))
+  await page.route('**/api/v1/spool-type-choices', (route) => route.fulfill({ json: [{ name: 'Unknown' }, { name: 'Cardboard' }] }))
   await page.route('**/api/v1/printers', (route) => route.fulfill({ json: [printer] }))
   await page.route('**/api/v1/nozzles', (route) => route.fulfill({ json: [nozzle] }))
   await page.route('**/api/v1/build-plates', (route) => route.fulfill({ json: [] }))
@@ -237,7 +239,7 @@ test('template library is usable at desktop and mobile sizes', async ({ page }) 
   await captureEvidence(page, 'template-editor-desktop-v057')
   await expect(page.getByLabel('Printing temperature (°C)')).toHaveValue('210')
   await expect(page.getByRole('heading', { name: 'Retraction' })).toBeVisible()
-  await expect(page.getByRole('heading', { name: 'Klipper' })).toBeVisible()
+  await expect(page.getByRole('heading', { name: 'Pressure Advance' })).toBeVisible()
   await expect(page.getByRole('heading', { name: /Advanced Cura-only Settings/ })).toHaveCount(0)
   await expect(page.getByText('Enable Klipper Smooth Time', { exact: true })).toBeVisible()
 
@@ -724,8 +726,8 @@ test('Rainbow edits omit display names and rejected product fields are explicit'
             message: 'Request validation failed',
             correlation_id: 'rendered-validation-reference',
             errors: [{
-              field: 'density_g_cm3',
-              message: 'Density must be greater than zero.',
+              field: 'diameter_mm',
+              message: 'Diameter must be greater than zero.',
               type: 'greater_than',
             }],
           },
@@ -754,10 +756,10 @@ test('Rainbow edits omit display names and rejected product fields are explicit'
   rejectNextSave = true
   await page.getByRole('button', { name: 'Edit product' }).click()
   await page.getByRole('button', { name: 'Save filament' }).click()
-  const density = page.getByLabel('Density (g/cm³)')
+  const density = page.getByLabel('Filament diameter (mm)')
   await expect(density).toHaveAttribute('aria-invalid', 'true')
   await expect(density).toBeFocused()
-  await expect(page.getByText('Density must be greater than zero.').first()).toBeVisible()
+  await expect(page.getByText('Diameter must be greater than zero.').first()).toBeVisible()
   await expect(page.getByText('Diagnostic reference: rendered-validation-reference')).toBeVisible()
   await density.scrollIntoViewIfNeeded()
   await captureEvidence(page, 'filament-product-validation')

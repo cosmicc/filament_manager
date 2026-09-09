@@ -117,6 +117,7 @@ async def test_tare_edits_preserve_usage_and_location_inventory(monkeypatch: pyt
                         "spool_code": code,
                         "filament_product_id": product,
                         "nominal_net_mass_g": "1000",
+                        "spool_type": "Cardboard",
                         **extra,
                     },
                 )
@@ -337,12 +338,16 @@ async def test_tare_edits_preserve_usage_and_location_inventory(monkeypatch: pyt
             await create("OTHER", product_ids[2], tare_mass_g="999")
             suggestions = (
                 await client.get(
-                    "/api/v1/spool-tare-suggestions", params={"filament_product_id": product_ids[1]}
+                    "/api/v1/spool-tare-suggestions",
+                    params={
+                        "filament_product_id": product_ids[1],
+                        "spool_type": "Cardboard",
+                        "nominal_net_mass_g": "1000",
+                    },
                 )
             ).json()
             assert [(Decimal(item["tare_mass_g"]), item["spool_count"]) for item in suggestions] == [
                 (Decimal("220"), 2),
-                (Decimal("100"), 1),
             ]
             assert (
                 await client.get(
@@ -455,7 +460,45 @@ async def test_tare_edits_preserve_usage_and_location_inventory(monkeypatch: pyt
                 assert row.remaining_mass_effective_g == 325
                 assert job.segments[0].state_snapshot["spool"]["remaining_mass_g"] == "450"
                 await session.commit()
+            choices = (await client.get("/api/v1/spool-type-choices")).json()
+            assert {choice["name"] for choice in choices} >= {"Unknown", "Cardboard", "Plastic — fixed"}
+            created_type = await client.post("/api/v1/spool-type-choices", json={"name": "Thin wood"})
+            assert created_type.status_code == 201 and created_type.json()["name"] == "Thin wood"
+            duplicate_type = await client.post("/api/v1/spool-type-choices", json={"name": "THIN WOOD"})
+            assert duplicate_type.json()["name"] == "Thin wood"
+            assert (
+                sum(
+                    item["name"] == "Thin wood"
+                    for item in (await client.get("/api/v1/spool-type-choices")).json()
+                )
+                == 1
+            )
+            for design, capacity, expected in (
+                ("Cardboard", "500", 1),
+                ("Thin wood", "1000", 0),
+                ("Unknown", "1000", 0),
+            ):
+                result = await client.get(
+                    "/api/v1/spool-tare-suggestions",
+                    params={
+                        "filament_product_id": product_ids[1],
+                        "spool_type": design,
+                        "nominal_net_mass_g": capacity,
+                    },
+                )
+                assert result.status_code == 200 and len(result.json()) == expected
+            unknown_type = await client.post(
+                "/api/v1/spools",
+                json={
+                    "filament_product_id": product_ids[0],
+                    "nominal_net_mass_g": "1000",
+                    "spool_type": "Not created",
+                },
+            )
+            assert unknown_type.status_code == 422
             app.dependency_overrides.pop(dependencies.current_user)
+            assert (await client.get("/api/v1/spool-type-choices")).status_code == 401
+            assert (await client.get("/api/v1/prints/activity/spool")).status_code == 401
             assert (await client.get("/api/v1/locations")).status_code == 401
             assert (await client.get(f"/api/v1/spools/{spool_id}/mass-basis")).status_code == 401
             assert (

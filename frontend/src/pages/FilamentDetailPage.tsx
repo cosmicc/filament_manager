@@ -1,4 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { PrintActivityDates } from '../components/PrintActivityDates'
 import { ArrowLeft, Copy, Download, GitCompareArrows, Pencil, Plus, Save, Trash2 } from 'lucide-react'
 import { type InvalidEvent, useEffect, useMemo, useRef, useState } from 'react'
 import { actionableApiError, apiFetch, validationMessagesFor } from '../api/client'
@@ -119,7 +120,6 @@ export default function FilamentDetailPage() {
           color_hexes: colorMode === 'rainbow' ? [] : colorHexes,
           diameter_mm: preserveUnchangedNumber(String(data.get('diameter_mm')), filament.data.diameter_mm, 2),
           tolerance_mm: optional(data, 'tolerance_mm'),
-          density_g_cm3: String(data.get('density_g_cm3')),
           nominal_net_mass_g: String(data.get('nominal_net_mass_g')),
           filler: optional(data, 'filler'),
           finish: optional(data, 'finish'),
@@ -237,6 +237,7 @@ export default function FilamentDetailPage() {
       <header className="card__header"><div><p className="eyebrow">Canonical filament</p><h2>Product details</h2></div><div className="card-header-actions"><span className="filament-swatch" style={filamentSwatchStyle(item.color_mode, item.color_hexes, item.color_hex ?? '808080')} />{canEdit ? <><button className="button" onClick={() => { update.reset(); setEditingProduct(true) }}><Pencil size={16} /> Edit product</button><button className="button button--danger" disabled={remove.isPending} onClick={() => { if (window.confirm('Delete this filament? It will be archived instead if retained history prevents safe deletion.')) remove.mutate() }}><Trash2 size={16} /> {remove.isPending ? 'Removing…' : 'Delete or archive'}</button></> : null}</div></header>
       <dl className="definition-list"><div><dt>Manufacturer</dt><dd>{item.vendor_name ?? 'Unknown'}</dd></div><div><dt>Material</dt><dd>{item.material_type}{itemModifiers ? ` · ${itemModifiers}` : ''}</dd></div><div><dt>Color</dt><dd>{item.color_name} · {item.color_mode === 'rainbow' ? 'Rainbow' : item.color_hexes.map((color) => `#${color}`).join(' / ')}</dd></div><div><dt>Diameter</dt><dd>{compactNumber(item.diameter_mm, 2)} mm{item.tolerance_mm ? ` ± ${compactNumber(item.tolerance_mm, 2)} mm` : ''}</dd></div><div><dt>Density</dt><dd>{compactNumber(item.density_g_cm3, 2)} g/cm³</dd></div><div><dt>Nominal net mass</dt><dd>{compactNumber(item.nominal_net_mass_g, 0)} g</dd></div><div><dt>Notes</dt><dd>{item.notes ?? 'No notes'}</dd></div></dl>
       <dl className="definition-list"><DryingTemperatureDetails filamentId={item.id} /></dl>
+      <PrintActivityDates kind="filament" id={item.id} />
     </section>
 
     <section className="profile-scope-section" aria-labelledby="filament-print-settings-heading">
@@ -259,11 +260,10 @@ export default function FilamentDetailPage() {
             <p className="field-help form-grid__wide">Color corrections update this filament and all linked spools. Previously saved print history keeps its original colors.</p>
           </div>
         </EditorSection>
-        <EditorSection title="Physical specifications" description="Dimensions, density, packaged mass, and material modifiers.">
+        <EditorSection title="Physical specifications" description="Dimensions, packaged mass, and material modifiers.">
           <div className="form-grid">
             <label>Filament diameter (mm)<input name="diameter_mm" type="number" min="0.1" step="0.01" defaultValue={inputNumber(item.diameter_mm, 2)} required aria-invalid={productErrorsFor('diameter_mm').length ? true : undefined} aria-describedby={productErrorsFor('diameter_mm').length ? productErrorId('diameter_mm') : undefined} />{productFieldError('diameter_mm')}</label>
             <label>Diameter tolerance (mm)<input name="tolerance_mm" type="number" min="0" step="0.01" defaultValue={inputNumber(item.tolerance_mm, 2)} aria-invalid={productErrorsFor('tolerance_mm').length ? true : undefined} aria-describedby={productErrorsFor('tolerance_mm').length ? productErrorId('tolerance_mm') : undefined} />{productFieldError('tolerance_mm')}</label>
-            <label>Density (g/cm³)<input name="density_g_cm3" type="number" min="0.01" step="0.01" defaultValue={inputNumber(item.density_g_cm3, 2)} required aria-invalid={productErrorsFor('density_g_cm3').length ? true : undefined} aria-describedby={productErrorsFor('density_g_cm3').length ? productErrorId('density_g_cm3') : undefined} />{productFieldError('density_g_cm3')}</label>
             <label>Nominal net mass (g)<input name="nominal_net_mass_g" type="number" min="1" step="1" defaultValue={inputNumber(item.nominal_net_mass_g, 0)} required aria-invalid={productErrorsFor('nominal_net_mass_g').length ? true : undefined} aria-describedby={productErrorsFor('nominal_net_mass_g').length ? productErrorId('nominal_net_mass_g') : undefined} />{productFieldError('nominal_net_mass_g')}</label>
             <label>Filler<InventoryChoiceSelect kind="filler" name="filler" defaultValue={item.filler ?? 'None'} aria-invalid={productErrorsFor('filler').length ? true : undefined} aria-describedby={productErrorsFor('filler').length ? productErrorId('filler') : undefined} />{productFieldError('filler')}</label>
             <label>Finish<InventoryChoiceSelect kind="finish" name="finish" defaultValue={item.finish ?? 'Standard'} aria-invalid={productErrorsFor('finish').length ? true : undefined} aria-describedby={productErrorsFor('finish').length ? productErrorId('finish') : undefined} />{productFieldError('finish')}</label>

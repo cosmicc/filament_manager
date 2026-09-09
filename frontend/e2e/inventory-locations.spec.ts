@@ -9,6 +9,7 @@ const filament = {
   nominal_net_mass_g: '1000', material_template_revision_id: null, archived: false, record_version: 1,
 }
 const originalSpool = {
+  spool_type: 'Cardboard',
   ...filament, id: spoolId, filament_product_id: productId, spool_code: 'SPOOL-001',
   tare_mass_g: '200', remaining_mass_effective_g: '875', remaining_mass_expected_g: '875',
   remaining_mass_measured_g: '1000', remaining_percent: '87.5', current_total_mass_g: '1075',
@@ -33,12 +34,22 @@ for (const variant of [
     let created: Record<string, unknown> | undefined
     let loadedHotend: string | null = null
     const locations = [{ name: 'Bucket 12' }, { name: 'Archived shelf' }]
+    const spoolTypes = [{ name: 'Unknown' }, { name: 'Cardboard' }]
     await page.route('**/runtime-config.js', (route) => route.fulfill({ contentType: 'application/javascript', body: 'window.__FILAMENT_MANAGER_RUNTIME_CONFIG__={bugsnag:{enabled:false}};' }))
     await page.route('**/api/v1/**', async (route) => {
       const url = new URL(route.request().url())
       const path = url.pathname.replace('/api/v1', '')
       const method = route.request().method()
       if (path === '/spools/next-code') return route.fulfill({ json: { spool_code: 'P2' } })
+      if (path.startsWith('/prints/activity/')) return route.fulfill({ json: { [spoolId]: { last_completed_print_at: '2026-09-08T00:00:00Z', last_other_print_at: '2026-09-07T00:00:00Z' } } })
+      if (path === '/spool-type-choices') {
+        if (method === 'POST') {
+          const item = route.request().postDataJSON() as { name: string }
+          spoolTypes.push(item)
+          return route.fulfill({ status: 201, json: item })
+        }
+        return route.fulfill({ json: spoolTypes })
+      }
       if (path === '/auth/me') return route.fulfill({ json: { id: 'administrator', role: 'administrator', username: 'admin', display_name: 'Administrator', is_active: true, must_change_password: false, record_version: 1 } })
       if (path === '/printers') return route.fulfill({ json: [{ id: 'printer-1', name: 'Workshop printer', printer_code: 'workshop', extruder_count: 2, tool_routines_verified: true, configuration_locked: false }] })
       if (path === `/spools/${spoolId}/set-active`) { loadedHotend = url.searchParams.get('extruder'); return route.fulfill({ status: 202, json: { status: 'change_queued' } }) }
@@ -137,6 +148,15 @@ for (const variant of [
     await expect(create.getByLabel('Spool code', { exact: true })).toHaveAttribute('readonly', '')
     await create.getByText('This spool is unused', { exact: false }).click()
     await create.getByLabel('Full spool scale weight (g)', { exact: false }).fill('700')
+    await create.getByLabel('Spool Type', { exact: true }).selectOption({ label: 'New Spool Type' })
+    const newType = page.getByRole('dialog', { name: 'New Spool Type', exact: true })
+    await newType.getByLabel('Spool Type name').fill('Reusable metal')
+    await newType.getByRole('button', { name: 'Add spool type' }).click()
+    await expect(create.getByLabel('Spool Type', { exact: true })).toHaveValue('Reusable metal')
+    await expect(create.getByLabel('Full spool scale weight (g)', { exact: false })).toHaveValue('700')
+    await create.getByLabel('Spool Type', { exact: true }).scrollIntoViewIfNeeded()
+    if (evidence) await page.screenshot({ path: `${evidence}/spool-type-${variant.name}.png`, fullPage: false })
+    await create.getByLabel('Spool Type', { exact: true }).selectOption('Cardboard')
     await create.getByLabel('Suggested empty-spool weight').selectOption('0')
     await expect(create.getByLabel('Empty spool weight (g)', { exact: false })).toHaveValue('250')
     await create.getByLabel('Location', { exact: true }).selectOption({ label: 'New Location' })

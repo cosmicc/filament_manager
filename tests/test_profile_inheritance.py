@@ -8,6 +8,18 @@ from filament_manager.domain.profile_inheritance import (
 )
 
 
+def test_density_is_silently_template_owned() -> None:
+    """Legacy overrides cannot suppress density inheritance on future saves."""
+    base = _settings()
+    custom = {"filament_density_g_cm3": "9.99", "flow_percent": "95"}
+    resolved = resolve_profile_settings(base, custom)
+    assert resolved["filament_density_g_cm3"] == "1.24"
+    assert resolved["flow_percent"] == "95"
+    assert "filament_density_g_cm3" not in override_setting_keys(custom)
+    base["filament_density_g_cm3"] = "1.34567"
+    assert resolve_profile_settings(base, custom)["filament_density_g_cm3"] == "1.34567"
+
+
 def _settings() -> dict[str, object]:
     return {
         "chamber_temp_c": None,

@@ -1,5 +1,7 @@
 # Deployment and Operations Skill
 
+- Version 0.8.1 is a testing release. Back up the canonical database and upgrade web/worker together; startup applies `fa012b3c4d56`, appending density-inheritance corrections without changing historical snapshots. Existing spool types remain Unknown until explicitly selected. No replacement of the 0.8.0 printer macros or firmware restart is required. Follow `docs/UPGRADE_0.8.1.md` for tare-default clearing, duration-counter semantics, and rollback limits.
+
 - Ship the full QQ-S example and matching app macro with 0.8.0. Follow `docs/PAUSE_PARK_SETUP.md` for exact filenames, one final app include, native pause/resume aliases, and removable-probe hooks. Back up live configuration and install only while idle; require supervised motion/runout verification after restart. Never replace another printer's toolchanger macros with this single-hotend example.
 
 - For 0.8.0 multi-hotend operation, review `docs/PRINTER_CONNECTIONS.md`, install the current reference, append `FILAMENT_MANAGER_TOOL_CHANGED` after every completed printer-owned T macro, verify selected-hotend hardware load/unload/purge behavior, then save **Multi-hotend routines verified** while idle. This setting defaults off and is rechecked on queued delivery. Test each slot and cancellation without changing other slots. Review the new independent filament-amount dialog under both inspection policies; no live motion validation is implied by template rendering.

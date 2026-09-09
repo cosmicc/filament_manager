@@ -75,6 +75,7 @@ const printJob = {
   slicer: 'Cura',
   slicer_version: '5.10.1',
   cura_quality_profile: 'Dimensional',
+  setting_sources: { bed_temp_c: 'captured_profile' },
   layer_height_mm: '0.2',
   line_width_mm: '0.44',
   extruder_temp_c: '240',
@@ -220,7 +221,9 @@ test('exact print state, inspection, scoring, notifications, and mobile cards re
   await expect(dialog.getByText('PETG-01', { exact: true })).toBeVisible()
   await expect(dialog.getByText('N4 · 0.4 mm · Hardened steel')).toBeVisible()
   await expect(dialog.getByAltText('Preview of dimensional-cube.gcode')).toBeVisible()
-  await expect(dialog.getByText('240 / 85 / 80 / — °C')).toBeVisible()
+  await expect(dialog.getByText('Cura profile used', { exact: true })).toBeVisible()
+  await expect(dialog.getByText('240 °C', { exact: false })).toBeVisible()
+  await expect(dialog.getByText('Captured app settings (not measured)', { exact: true })).toBeVisible()
   await expect(dialog.getByText('$0.89', { exact: true })).toBeVisible()
   await expect(dialog.getByText('3¢/g captured cost', { exact: false })).toBeVisible()
   await expect(dialog.getByText(/SHA-256/)).toHaveCount(0)

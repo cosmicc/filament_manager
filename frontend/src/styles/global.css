@@ -242,6 +242,7 @@ svg { flex: 0 0 auto; }
 .progress--small { height: 5px; margin-top: 6px; }
 .table-actions { display: flex; gap: 3px; }
 .definition-list { display: grid; gap: 0; margin: 0; }
+.print-activity-dates { grid-column: 1 / -1; min-width: 0; }
 .definition-list > div { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; padding: 9px 0; border-bottom: 1px solid var(--border); }
 .definition-list dt { display: inline-flex; align-items: center; gap: 5px; color: var(--text-muted); }
 .definition-list dd { margin: 0; font-weight: 650; text-align: right; }

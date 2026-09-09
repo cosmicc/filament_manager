@@ -1,6 +1,8 @@
 import { expect, test } from '@playwright/test'
 
 test('printer setup submits write-only credentials and preserves capability fields', async ({ page }) => {
+  const errors: string[] = []
+  page.on('pageerror', error => errors.push(error.message))
   const submitted: Record<string, unknown>[] = []
   let printers: Record<string, unknown>[] = []
   await page.route('**/runtime-config.js', route => route.fulfill({ contentType: 'application/javascript', body: 'window.__FILAMENT_MANAGER_RUNTIME_CONFIG__={bugsnag:{enabled:false}};' }))
@@ -10,10 +12,11 @@ test('printer setup submits write-only credentials and preserves capability fiel
     if (path.endsWith('/printers') && route.request().method() === 'POST') {
       const body = route.request().postDataJSON()
       submitted.push(body)
-      printers = [{ id: 'printer-1', printer_code: 'printer-1', name: body.name, extruder_count: body.extruder_count, build_volume: {}, record_version: 1, active_spools: [] }]
+      printers = [{ id: 'printer-1', printer_code: 'printer-1', name: body.name, extruder_count: body.extruder_count, build_volume: {}, record_version: 1, active_spools: [], total_print_time_seconds: '9000', longest_print_time_seconds: '4500', history_totals_checked_at: '2026-09-08T00:00:00Z' }]
       return route.fulfill({ status: 201, json: printers[0] })
     }
     if (path.endsWith('/printers')) return route.fulfill({ json: printers })
+    if (path.endsWith('/prints/activity/printer')) return route.fulfill({ json: { 'printer-1': { last_completed_print_at: '2026-09-08T00:00:00Z', last_other_print_at: '2026-09-07T00:00:00Z' } } })
     return route.fulfill({ json: [] })
   })
   await page.goto('/printers')
@@ -27,5 +30,17 @@ test('printer setup submits write-only credentials and preserves capability fiel
   await expect(dialog).toHaveCount(0)
   expect(submitted).toEqual([{ name: 'Workshop printer', extruder_count: 2, base_url: 'http://printer.example.test:7125', enabled: true, api_key: 'test-only-printer-key' }])
   await expect(page.getByRole('heading', { name: 'Workshop printer', exact: true })).toBeVisible()
+  await expect(page.getByText('2.5 hours', { exact: true })).toBeVisible()
+  await expect(page.getByText('1.25 hours', { exact: true })).toBeVisible()
+  await expect(page.getByText('Last completed print', { exact: true })).toBeVisible()
+  await expect(page.getByText('Last other print', { exact: true })).toBeVisible()
+  const evidence = process.env.FILAMENT_MANAGER_E2E_EVIDENCE_DIR
+  if (evidence) await page.screenshot({ path: `${evidence}/printer-statistics-desktop.png`, fullPage: true })
+  await page.setViewportSize({ width: 390, height: 844 })
+  await page.reload()
+  await expect(page.getByText('2.5 hours', { exact: true })).toBeVisible()
+  expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(390)
+  if (evidence) await page.screenshot({ path: `${evidence}/printer-statistics-mobile.png`, fullPage: true })
+  expect(errors).toEqual([])
   expect(await page.evaluate(() => JSON.stringify({ ...localStorage, ...sessionStorage }))).not.toContain('test-only-printer-key')
 })

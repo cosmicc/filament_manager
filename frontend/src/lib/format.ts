@@ -1,6 +1,6 @@
 export function grams(value: string | number | null | undefined, precision = 0): string {
   if (value == null) return '—'
-  return `${Number(value).toLocaleString(undefined, { maximumFractionDigits: precision })} g`
+  return `${Number(value).toLocaleString(undefined, { maximumFractionDigits: Math.max(0, Math.min(2, precision)) })} g`
 }
 
 export function percent(value: string | number | null | undefined): string {
@@ -17,7 +17,7 @@ export function compactNumber(
   if (!Number.isFinite(numeric)) return String(value)
   return numeric.toLocaleString(undefined, {
     minimumFractionDigits: 0,
-    maximumFractionDigits,
+    maximumFractionDigits: Math.max(0, Math.min(2, maximumFractionDigits)),
   })
 }
 
@@ -60,7 +60,7 @@ export function inputNumber(
   if (value == null || value === '') return ''
   const numeric = Number(value)
   if (!Number.isFinite(numeric)) return String(value)
-  const fixed = numeric.toFixed(maximumFractionDigits)
+  const fixed = numeric.toFixed(Math.max(0, Math.min(2, maximumFractionDigits)))
   return fixed.includes('.') ? fixed.replace(/0+$/, '').replace(/\.$/, '') : fixed
 }
 

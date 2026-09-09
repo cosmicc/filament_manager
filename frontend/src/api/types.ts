@@ -18,6 +18,7 @@ export interface IntegrationStatus {
 }
 
 export interface Spool {
+  spool_type?: string
   id: string
   spool_code: string
   filament_product_id: string
@@ -292,6 +293,9 @@ export interface Vendor {
 }
 
 export interface Printer {
+  total_print_time_seconds?: string | null
+  longest_print_time_seconds?: string | null
+  history_totals_checked_at?: string | null
   connection_managed?: boolean
   connection_enabled?: boolean
   heated_chamber?: boolean
@@ -697,6 +701,7 @@ export interface PrintMaterialSegment {
 }
 
 export interface PrintJob {
+  setting_sources?: Record<string, 'recorded_print' | 'captured_profile'>
   id: string
   printer_id: string
   moonraker_job_id: string | null

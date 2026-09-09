@@ -45,6 +45,7 @@ from filament_manager.models.inventory import (
     Spool,
     SpoolLocationChoice,
     SpoolMeasurement,
+    SpoolTypeChoice,
     SpoolUsageEvent,
     Vendor,
 )
@@ -72,6 +73,7 @@ from filament_manager.services.spool_codes import allocate_spool_code, next_spoo
 from filament_manager.services.spool_labels import render_spool_label_png
 from filament_manager.services.spool_mass import spool_mass_basis
 from filament_manager.services.spool_preflight import spool_change_target
+from filament_manager.services.spool_types import DEFAULT_SPOOL_TYPES, resolve_spool_type, spool_type_key
 
 from ..dependencies import DatabaseSession, Operator, Viewer
 from ..errors import ApiError
@@ -360,6 +362,7 @@ def spool_response(spool: Spool, *, completed_print_count: int = 0) -> SpoolResp
         (spool.remaining_mass_effective_g / spool.nominal_net_mass_g) * Decimal("100")
     ).quantize(Decimal("0.001"))
     return SpoolResponse(
+        spool_type=spool.spool_type,
         id=spool.id,
         spool_code=spool.spool_code,
         filament_product_id=spool.filament_product_id,
@@ -586,6 +589,46 @@ async def _remember_spool_location(session: DatabaseSession, name: str | None) -
         .on_conflict_do_nothing(index_elements=["name"])
         .returning(SpoolLocationChoice.id)
     )
+
+
+@router.get("/spool-type-choices", response_model=list[dict[str, str]])
+async def list_spool_type_choices(_: Viewer, session: DatabaseSession) -> list[dict[str, str]]:
+    """Keep predefined and explicitly added physical designs available for reuse."""
+    names = await session.scalars(select(SpoolTypeChoice.name).order_by(SpoolTypeChoice.name))
+    return [{"name": name} for name in dict.fromkeys([*DEFAULT_SPOOL_TYPES, *names])]
+
+
+@router.post("/spool-type-choices", response_model=SpoolLocationChoiceCreate, status_code=201)
+async def create_spool_type_choice(
+    payload: SpoolLocationChoiceCreate, request: Request, operator: Operator, session: DatabaseSession
+) -> SpoolLocationChoiceCreate:
+    """Create a durable dropdown choice explicitly, with duplicate-safe audit."""
+    key = spool_type_key(payload.name)
+    for label in DEFAULT_SPOOL_TYPES:
+        if key == spool_type_key(label):
+            return SpoolLocationChoiceCreate(name=label)
+    choice_id = await session.scalar(
+        insert(SpoolTypeChoice)
+        .values(name=payload.name, name_key=key)
+        .on_conflict_do_nothing(index_elements=["name_key"])
+        .returning(SpoolTypeChoice.id)
+    )
+    if choice_id is not None:
+        add_audit_event(
+            session,
+            actor_id=operator.id,
+            source="web",
+            action="spool_type.create",
+            object_type="spool_type_choice",
+            object_id=choice_id,
+            before=None,
+            after={"name": payload.name},
+            correlation_id=request.state.correlation_id,
+        )
+    name = await resolve_spool_type(session, payload.name)
+    response = SpoolLocationChoiceCreate(name=name)
+    await session.commit()
+    return response
 
 
 @router.get("/spool-location-choices", response_model=list[dict[str, str]])
@@ -859,6 +902,8 @@ async def create_filament(
         }
     )
     product_values["vendor_id"] = payload.vendor_id or await unknown_manufacturer_id(session)
+    if template_revision is not None:
+        product_values["density_g_cm3"] = Decimal(str(template_revision.settings["filament_density_g_cm3"]))
     product = FilamentProduct(
         **product_values,
         material_type=payload.material_type.strip(),
@@ -878,14 +923,7 @@ async def create_filament(
             else None
         )
         if inherited_overrides is not None:
-            template_density = Decimal(str(template_revision.settings["filament_density_g_cm3"]))
-            if product.density_g_cm3 == template_density:
-                inherited_overrides.pop("filament_density_g_cm3", None)
-            else:
-                inherited_overrides["filament_density_g_cm3"] = format(
-                    product.density_g_cm3,
-                    "f",
-                )
+            inherited_overrides.pop("filament_density_g_cm3", None)
         profile_values = (
             resolve_profile_settings(
                 template_revision.settings,
@@ -894,9 +932,6 @@ async def create_filament(
             if duplicate_source_profile is not None
             else MaterialSettingsInput.model_validate(template_revision.settings).model_dump(mode="json")
         )
-        # Product density is canonical for the actual purchasable filament and
-        # intentionally supersedes the generic template's starting density.
-        profile_values["filament_density_g_cm3"] = product.density_g_cm3
         profile = await create_published_profile_snapshot(
             session,
             filament_product_id=product.id,
@@ -1062,7 +1097,6 @@ async def update_filament(
     for field in (
         "material_type",
         "diameter_mm",
-        "density_g_cm3",
         "nominal_net_mass_g",
     ):
         value = getattr(payload, field)
@@ -1078,8 +1112,7 @@ async def update_filament(
         product.archived = payload.archived
 
     created_profiles: list[MaterialProfile] = []
-    density_changed = "density_g_cm3" in payload.model_fields_set
-    if density_changed or (target_revision is not None and target_template is not None):
+    if target_revision is not None and target_template is not None:
         current_profiles = await _current_product_profiles(session, product.id, lock=True)
         target_scope = (
             (target_template.printer_id, target_template.nozzle_diameter_mm)
@@ -1091,7 +1124,7 @@ async def update_filament(
             scope = (current_profile.printer_id, current_profile.nozzle_diameter_mm)
             rebasing_scope = target_scope == scope and target_revision is not None
             matched_target_scope = matched_target_scope or rebasing_scope
-            if not density_changed and not rebasing_scope:
+            if not rebasing_scope:
                 continue
             base_revision = (
                 target_revision
@@ -1107,15 +1140,10 @@ async def update_filament(
                     "profile_template_missing",
                     "The current print-settings template is unavailable",
                 )
-            if not density_changed and current_profile.base_template_revision_id == base_revision.id:
+            if current_profile.base_template_revision_id == base_revision.id:
                 continue
             overrides = dict(current_profile.setting_overrides or {})
-            if density_changed:
-                template_density = Decimal(str(base_revision.settings["filament_density_g_cm3"]))
-                if product.density_g_cm3 == template_density:
-                    overrides.pop("filament_density_g_cm3", None)
-                else:
-                    overrides["filament_density_g_cm3"] = format(product.density_g_cm3, "f")
+            overrides.pop("filament_density_g_cm3", None)
             resolved = resolve_profile_settings(base_revision.settings, overrides)
             created_profiles.append(
                 await create_published_profile_snapshot(
@@ -1136,6 +1164,7 @@ async def update_filament(
                     "The filament does not have print settings for that printer and nozzle",
                 )
             product.source_template_revision_id = target_revision.id
+            product.density_g_cm3 = Decimal(str(target_revision.settings["filament_density_g_cm3"]))
     product.record_version += 1
     add_audit_event(
         session,
@@ -1312,7 +1341,11 @@ async def list_spool_locations(
 
 @router.get("/spool-tare-suggestions", response_model=list[SpoolTareSuggestionResponse])
 async def spool_tare_suggestions(
-    filament_product_id: UUID, _: Viewer, session: DatabaseSession
+    filament_product_id: UUID,
+    _: Viewer,
+    session: DatabaseSession,
+    spool_type: str = Query(default="Unknown", max_length=160),
+    nominal_net_mass_g: Annotated[Decimal | None, Query(gt=0)] = None,
 ) -> list[SpoolTareSuggestionResponse]:
     """Suggest known positive tares for the same exact manufacturer, including archived spools."""
 
@@ -1322,11 +1355,15 @@ async def spool_tare_suggestions(
     vendor = await session.get(Vendor, product.vendor_id) if product.vendor_id else None
     if vendor is None or vendor.name.strip().casefold() == "unknown":
         return []
+    selected_type = await resolve_spool_type(session, spool_type)
+    if selected_type == "Unknown" or nominal_net_mass_g is None:
+        return []
     count = func.count(Spool.id)
     rows = await session.execute(
         select(Spool.tare_mass_g, Spool.nominal_net_mass_g, count)
         .join(Spool.filament_product)
         .where(FilamentProduct.vendor_id == product.vendor_id, Spool.tare_mass_g > 0)
+        .where(Spool.spool_type == selected_type, Spool.nominal_net_mass_g == nominal_net_mass_g)
         .group_by(Spool.tare_mass_g, Spool.nominal_net_mass_g)
         .order_by(count.desc(), Spool.tare_mass_g, Spool.nominal_net_mass_g)
         .limit(50)
@@ -1481,6 +1518,7 @@ async def create_spool(
         initial_measured_at = datetime.now(UTC)
 
     spool = Spool(
+        spool_type=await resolve_spool_type(session, payload.spool_type),
         spool_code=await allocate_spool_code(session, product.material_type),
         filament_product_id=payload.filament_product_id,
         nominal_net_mass_g=payload.nominal_net_mass_g,
@@ -1672,6 +1710,8 @@ async def update_spool(
         before["remaining_mass_g"] = spool.remaining_mass_effective_g
     for field in editable_fields:
         value = getattr(payload, field)
+        if field == "spool_type":
+            value = await resolve_spool_type(session, payload.spool_type)
         if value is None and field in {
             "spool_code",
             "filament_product_id",

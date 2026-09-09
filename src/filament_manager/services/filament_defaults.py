@@ -149,7 +149,13 @@ async def spoolman_filament_defaults(
     # Capacity is essential: a manufacturer's 250 g and 3 kg packaging differ.
     frequency = func.count(Spool.id)
     rows = await session.execute(
-        select(FilamentProduct.vendor_id, Spool.nominal_net_mass_g, Spool.tare_mass_g, frequency)
+        select(
+            FilamentProduct.vendor_id,
+            Spool.spool_type,
+            Spool.nominal_net_mass_g,
+            Spool.tare_mass_g,
+            frequency,
+        )
         .join(Spool, Spool.filament_product_id == FilamentProduct.id)
         .join(Vendor, Vendor.id == FilamentProduct.vendor_id)
         .where(
@@ -158,21 +164,41 @@ async def spoolman_filament_defaults(
                 ("unknown", "unspecified manufacturer", "unspecified vendor", "unspecified")
             ),
             Spool.tare_mass_g > 0,
+            Spool.spool_type != "Unknown",
         )
-        .group_by(FilamentProduct.vendor_id, Spool.nominal_net_mass_g, Spool.tare_mass_g)
+        .group_by(FilamentProduct.vendor_id, Spool.spool_type, Spool.nominal_net_mass_g, Spool.tare_mass_g)
         .order_by(frequency.desc(), Spool.tare_mass_g)
     )
-    tares: dict[tuple[UUID | None, Decimal], Decimal] = {}
-    for vendor_id, capacity, tare, _frequency in rows:
-        tares.setdefault((vendor_id, capacity), tare)
+    tares: dict[tuple[UUID | None, str, Decimal], Decimal] = {}
+    for vendor_id, spool_type, capacity, tare, _frequency in rows:
+        tares.setdefault((vendor_id, spool_type, capacity), tare)
+    # A shared Spoolman filament has no physical design field. Only publish a
+    # default if its own spools establish one unambiguous known design/capacity.
+    designs: dict[UUID, set[str]] = {}
+    design_rows = await session.execute(
+        select(Spool.filament_product_id, Spool.spool_type)
+        .join(FilamentProduct, FilamentProduct.id == Spool.filament_product_id)
+        .where(
+            Spool.filament_product_id.in_(product_ids),
+            Spool.nominal_net_mass_g == FilamentProduct.nominal_net_mass_g,
+        )
+        .distinct()
+    )
+    for product_id, design in design_rows:
+        designs.setdefault(product_id, set()).add(design)
+    product_tares = {
+        product.id: tares.get(
+            (product.vendor_id, next(iter(designs[product.id])), product.nominal_net_mass_g)
+        )
+        for product in products
+        if len(designs.get(product.id, set())) == 1
+    }
     result: dict[UUID, dict[str, float | int | None]] = {
         product.id: {
             "price": float(costs[product.id].price_for_weight(product.nominal_net_mass_g))
             if product.id in costs
             else None,
-            "spool_weight": float(tares[(product.vendor_id, product.nominal_net_mass_g)])
-            if (product.vendor_id, product.nominal_net_mass_g) in tares
-            else None,
+            "spool_weight": float(tare) if (tare := product_tares.get(product.id)) is not None else None,
             "settings_extruder_temp": None,
             "settings_bed_temp": None,
         }

@@ -1,7 +1,13 @@
 import { describe, expect, it } from 'vitest'
-import { costPerGram, currencyAmount, dateTime, grams, percent, preserveUnchangedNumber, titleCase } from './format'
+import { compactNumber, inputNumber, costPerGram, currencyAmount, dateTime, grams, percent, preserveUnchangedNumber, titleCase } from './format'
 
 describe('presentation formatting', () => {
+  it('caps presentation at two decimals without changing canonical precision', () => {
+    expect(compactNumber('1.234567', 5)).toBe('1.23')
+    expect(inputNumber('1.234567', 5)).toBe('1.23')
+    expect(grams('1.234567', 5)).toBe('1.23 g')
+    expect(preserveUnchangedNumber('1.23', '1.234567', 5)).toBe('1.234567')
+  })
   it('retains precise filament diameter unless its displayed value changes', () => {
     expect(preserveUnchangedNumber('1.75', '1.75400', 2)).toBe('1.75400')
     expect(preserveUnchangedNumber('2.85', '1.75400', 2)).toBe('2.85')

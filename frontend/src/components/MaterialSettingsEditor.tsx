@@ -61,7 +61,7 @@ const coreFields: Array<{
   { key: 'ironing_flow_percent', label: 'Ironing flow', unit: '%', precision: 0 },
   { key: 'ironing_speed_mm_s', label: 'Ironing speed', unit: 'mm/s', precision: 0 },
   { key: 'ironing_line_spacing_mm', label: 'Ironing line spacing', unit: 'mm', precision: 2 },
-  { key: 'filament_density_g_cm3', label: 'Filament density', unit: 'g/cm³', required: true, defaultValue: '1.24', precision: 2 },
+  { key: 'filament_density_g_cm3', label: 'Filament density', unit: 'g/cm³', required: true, defaultValue: '1.24', precision: 2, templateOnly: true },
 ]
 
 const identityLabels: Record<string, string> = {
@@ -458,7 +458,7 @@ coreFields.filter((field) => (
     },
     {
       id: 'klipper',
-      title: 'Klipper',
+      title: 'Pressure Advance',
       description: 'Pressure advance and smooth-time controls owned by the Klipper settings integration.',
       keys: ['pressure_advance'],
     },
@@ -479,7 +479,7 @@ coreFields.filter((field) => (
   ))
   return (
     <div className="editor-form">
-      {renderIdentity ? renderIdentity(renderCoreFields(["filament_density_g_cm3"])) : <div className="form-grid">{renderCoreFields(["filament_density_g_cm3"])}</div>}
+      {scope === 'template' && (renderIdentity ? renderIdentity(renderCoreFields(['filament_density_g_cm3'])) : <div className="form-grid">{renderCoreFields(['filament_density_g_cm3'])}</div>)}
       {scope === 'profile' ? <>
         {coreFields.filter((field) => field.templateOnly).map((field) => (
           <input

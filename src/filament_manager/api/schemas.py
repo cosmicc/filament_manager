@@ -152,7 +152,7 @@ class FilamentCreate(FilamentModifiers):
     product_name: str | None = Field(default=None, max_length=160)
     diameter_mm: Decimal = Field(gt=0)
     tolerance_mm: Decimal | None = Field(default=None, ge=0)
-    density_g_cm3: Decimal = Field(gt=0)
+    density_g_cm3: Decimal = Field(default=Decimal("1.24"), gt=0, deprecated=True)
     nominal_net_mass_g: Decimal = Field(gt=0)
     notes: str | None = Field(default=None, max_length=4000)
     material_template_revision_id: UUID | None = None
@@ -207,6 +207,7 @@ class FilamentColorResponse(ApiModel):
 
 
 class SpoolCreate(ApiModel):
+    spool_type: str = Field(default="Unknown", min_length=1, max_length=160)
     spool_code: str | None = Field(default=None, pattern=r"^[A-Za-z0-9_-]+$", max_length=64, deprecated=True)
     filament_product_id: UUID
     nominal_net_mass_g: Decimal = Field(gt=0)
@@ -238,6 +239,7 @@ class SpoolCreate(ApiModel):
 
 
 class SpoolUpdate(ApiModel):
+    spool_type: str | None = Field(default=None, min_length=1, max_length=160)
     expected_version: int = Field(ge=1)
     spool_code: str | None = Field(default=None, pattern=r"^[A-Za-z0-9_-]+$", max_length=64)
     filament_product_id: UUID | None = None
@@ -263,6 +265,7 @@ class SpoolUpdate(ApiModel):
 
 
 class SpoolResponse(ApiModel):
+    spool_type: str = "Unknown"
     id: UUID
     spool_code: str
     filament_product_id: UUID
@@ -876,6 +879,9 @@ class PrinterResponse(ApiModel):
     """Useful canonical printer metadata with connection details excluded."""
 
     id: UUID
+    total_print_time_seconds: Decimal | None = None
+    longest_print_time_seconds: Decimal | None = None
+    history_totals_checked_at: datetime | None = None
     configuration_locked: bool = False
     printer_code: str
     name: str
@@ -1602,6 +1608,7 @@ class PrintMaterialSegmentResponse(ApiModel):
 
 
 class PrintJobSummaryResponse(ApiModel):
+    setting_sources: dict[str, Literal["recorded_print", "captured_profile"]] = Field(default_factory=dict)
     """Print history fields needed to render lists and ordinary job details."""
 
     id: UUID

@@ -1,5 +1,25 @@
 # User Changelog
 
+## 0.8.1 - 09.08.2026
+
+Testing release.
+
+### Added
+
+- Spool type selection and reusable New Spool Type choices. Empty-spool weight suggestions now match manufacturer, type and filament capacity.
+- Last completed and last cancelled/failed print dates on inventory and printer details.
+- Printer total printing time and longest print from Moonraker, with the last successful update date.
+
+### Changed
+
+- Pressure Advance replaces the Klipper settings heading. Filament density follows its template silently.
+- Numbers display at most two decimal places without reducing saved precision.
+- Print History shows Cura profile used separately from the machine.
+
+### Fixed
+
+- Missing history settings can display the print's saved app values, clearly distinguished from recorded G-code evidence. Unknown past values remain unknown.
+
 ## 0.8.0 - 09.08.2026
 
 Testing release. Multi-hotend loading requires reviewed printer macros and explicit routine verification in printer settings.

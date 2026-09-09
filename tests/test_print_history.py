@@ -212,6 +212,9 @@ async def test_malformed_history_record_does_not_block_success_checkpoint(
             self.committed = True
 
     class FakeClient:
+        async def history_totals(self) -> tuple[Decimal, Decimal]:
+            return Decimal("100"), Decimal("50")
+
         async def history_jobs(
             self, *, start: int, limit: int, since: float | None
         ) -> tuple[dict[str, object], ...]:

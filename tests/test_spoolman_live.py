@@ -159,6 +159,7 @@ async def test_real_spoolman_names_and_metadata_preserve_usage(monkeypatch: pyte
                     filament_product=product,
                     nominal_net_mass_g=Decimal("1000"),
                     tare_mass_g=Decimal("210"),
+                    spool_type="Cardboard",
                     remaining_mass_expected_g=Decimal("1000"),
                     remaining_mass_effective_g=Decimal("1000"),
                     purchase_cost=Decimal("24.50"),

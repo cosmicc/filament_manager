@@ -1,4 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { PrintActivityDates } from '../components/PrintActivityDates'
 import { History, Pencil, Plus, Printer as PrinterIcon, Save, Search, Unplug, Wrench } from 'lucide-react'
 import { useEffect, useMemo, useState } from 'react'
 import { apiFetch } from '../api/client'
@@ -137,6 +138,7 @@ export default function NozzlesPage() {
         <div><dt>Recorded filament</dt><dd>{Number(nozzle.completed_filament_weight_g).toLocaleString(undefined, { maximumFractionDigits: 1 })} g</dd></div>
         <div><dt>Installed</dt><dd>{dateTime(nozzle.installed_at)}</dd></div>
       </dl>
+      <PrintActivityDates kind="nozzle" id={nozzle.id} />
       <div className="detail-actions">
         <button className="button" onClick={() => { setDetailsNozzle(null); setSelected(nozzle) }}><History size={16} /> History</button>
         {canEdit ? <button className="button" disabled={Boolean(nozzle.installed_printer_id && installedPrinter?.configuration_locked)} onClick={() => { setDetailsNozzle(null); setEditing(nozzle) }}><Pencil size={16} /> Edit</button> : null}

@@ -246,7 +246,7 @@ async def test_direct_template_save_updates_linked_product_profile(
                 item for item in product_profiles.json() if item["filament_product_id"] == product_id
             )
             assert original_profile["base_template_name"] == "Template PCTPE"
-            assert original_profile["override_keys"] == ["filament_density_g_cm3"]
+            assert original_profile["override_keys"] == []
             assert original_profile["status"] == "published"
 
             templates = await client.get("/api/v1/profiles/templates?include_inactive=true")
@@ -425,13 +425,13 @@ async def test_direct_template_save_updates_linked_product_profile(
                 assert comparison.status == "differs"
                 assert any(item.key == "bed_temp_c" for item in comparison.differences)
                 assert not any(item.key == "drying_time_hours" for item in comparison.differences)
-            assert Decimal(inherited_profile["filament_density_g_cm3"]) == Decimal("1.21")
+            assert Decimal(inherited_profile["filament_density_g_cm3"]) == Decimal("1.20")
             assert Decimal(inherited_profile["pressure_advance"]) == Decimal("0.05")
             assert Decimal(inherited_profile["ironing_flow_percent"]) == Decimal("12")
             assert Decimal(inherited_profile["ironing_speed_mm_s"]) == Decimal("25")
             assert Decimal(inherited_profile["ironing_line_spacing_mm"]) == Decimal("0.12")
             assert inherited_profile["cura_extensions"]["acceleration_travel"] == "8000"
-            assert inherited_profile["override_keys"] == ["filament_density_g_cm3"]
+            assert inherited_profile["override_keys"] == []
             duplicate = await client.post(
                 "/api/v1/filaments",
                 json={
@@ -456,7 +456,7 @@ async def test_direct_template_save_updates_linked_product_profile(
             )
             assert duplicate_profile["override_keys"] == inherited_profile["override_keys"]
             assert Decimal(duplicate_profile["extruder_temp_c"]) == Decimal("250")
-            assert Decimal(duplicate_profile["filament_density_g_cm3"]) == Decimal("1.30")
+            assert Decimal(duplicate_profile["filament_density_g_cm3"]) == Decimal("1.20")
             exported = await client.get(f"/api/v1/profiles/{inherited_profile['id']}/exports/cura")
             assert exported.status_code == 200, exported.text
             assert exported.headers["content-disposition"].startswith(
@@ -580,8 +580,8 @@ async def test_direct_template_save_updates_linked_product_profile(
             assert profile.nozzle_diameter_mm == Decimal("0.60000")
             assert profile.base_template_revision_id == product.source_template_revision_id
             assert profile.extruder_temp_c == Decimal("250.00000")
-            assert profile.filament_density_g_cm3 == Decimal("1.21000")
-            assert profile.setting_overrides == {"filament_density_g_cm3": "1.21"}
+            assert profile.filament_density_g_cm3 == Decimal("1.20000")
+            assert profile.setting_overrides == {}
             library = await build_cura_library(session)
             assert library["schema_version"] == 3
             materials = library["materials"]

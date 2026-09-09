@@ -1,4 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { PrintActivityDates } from '../components/PrintActivityDates'
 import { Check, Eraser, ImageUp, Layers3, Pencil, Plus, Save, Search, Sparkles, Trash2, TriangleAlert } from 'lucide-react'
 import { useEffect, useMemo, useState } from 'react'
 import { actionableApiError, apiFetch } from '../api/client'
@@ -230,6 +231,7 @@ function SurfaceCard({
         <div><dt>Last activated</dt><dd>{surface.last_activated_at ? dateTime(surface.last_activated_at) : 'Unknown'}</dd></div>
         {surface.last_mesh_observed_at && !surface.last_mesh_calibrated_at ? <div><dt>Calibration detected</dt><dd>{dateTime(surface.last_mesh_observed_at)} · exact time unavailable</dd></div> : null}
       </dl>
+      <PrintActivityDates kind="side" id={surface.id} />
       <div className="plate-surface__actions">
         {canSelect ? (
           <button className="button" disabled={active || pending || surface.mesh_available === false} title={surface.mesh_available === false ? 'This mesh is unavailable in Moonraker' : undefined} onClick={onSelect}>
@@ -337,6 +339,7 @@ export default function BuildPlatesPage() {
           <p className="eyebrow">Physical plate {plate.plate_code}</p>
           <div className="build-plate-card__title"><h2>{plate.display_name}</h2><StatusPill status={activePlate ? 'active' : plate.status} /></div>
           <p className="plate-description">{plate.description ?? 'No plate description has been recorded.'}</p>
+          <PrintActivityDates kind="plate" id={plate.id} />
           <dl className="plate-facts">
             <div><dt>Condition</dt><dd>{plate.condition}</dd></div>
             <div><dt>Product</dt><dd>{[plate.manufacturer, plate.product_name].filter(Boolean).join(' · ') || 'Not specified'}</dd></div>

@@ -1,5 +1,30 @@
 # Changelog
 
+## 0.8.1 - 09.08.2026
+
+Testing release. Migration `fa012b3c4d56` preserves historical settings, appends template-density corrections to current profiles, and classifies existing physical spools as Unknown. No printer macro replacement is required.
+
+Known limitation: published at the operator's explicit request without upgrading development dependencies flagged by GHSA-82fw-gwwq-j7x9 and GHSA-2883-xcg3-v3hh. Audit checks remain enabled; see `docs/UPGRADE_0.8.1.md`.
+
+### Added
+
+- Physical spool types with durable New Spool Type creation and manufacturer/type/capacity-specific tare suggestions.
+- Separate last completed and last other print dates for filaments, spools, printers, nozzles, plates and sides, including exact material-change segments.
+- Cached Moonraker total printing time and longest print, with source freshness and reset semantics; refreshed only in the existing deferred history pass.
+
+### Changed
+
+- Rename the print-settings Klipper section to Pressure Advance. Density is silently template-owned and no longer editable in filament/product forms.
+- Display at most two decimal places while preserving stored precision and exact historical archives.
+- Print History labels the recorded Cura quality name as Cura profile used, separately from the machine.
+- Google publication includes physical spool types and cached printer duration totals. Shared Spoolman tare defaults require one known unambiguous product spool design and matching manufacturer/capacity evidence.
+
+### Fixed
+
+- Fill missing print-history temperature, speed, flow and retraction summaries from that print's retained app profile, with explicit source labels rather than substituting current templates or claiming measured values.
+- Keep regular and initial build-plate temperatures distinct; captured-profile fallbacks never enter G-code inspection decisions.
+- Preserve former density overrides in historical profile snapshots while current profiles inherit their exact linked template on upgrade and future saves.
+
 ## 0.8.0 - 09.08.2026
 
 Testing release. Migration `e9f012a3b4c5` requires web/worker parity and preservation of the shared private encryption key. Install reviewed printer macros before testing the filament gate or multi-hotend workflows; verify selected-hotend physical routines explicitly in printer settings.

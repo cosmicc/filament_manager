@@ -231,7 +231,7 @@ async def test_multi_profile_creation_inheritance_density_and_duplication(
             )
             assert added.status_code == 201, added.text
             assert Decimal(added.json()["nozzle_diameter_mm"]) == Decimal("0.6")
-            assert Decimal(added.json()["filament_density_g_cm3"]) == Decimal("1.25")
+            assert Decimal(added.json()["filament_density_g_cm3"]) == Decimal("1.24")
             duplicate_scope = await client.post(
                 "/api/v1/profiles/from-template",
                 json={
@@ -284,10 +284,10 @@ async def test_multi_profile_creation_inheritance_density_and_duplication(
                 for profile in density_profiles
                 if profile["filament_product_id"] == product["id"]
             }
-            assert scopes[Decimal("0.4")]["version"] == 2
-            assert scopes[Decimal("0.6")]["version"] == 3
+            assert scopes[Decimal("0.4")]["version"] == 1
+            assert scopes[Decimal("0.6")]["version"] == 2
             assert {Decimal(profile["filament_density_g_cm3"]) for profile in scopes.values()} == {
-                Decimal("1.30")
+                Decimal("1.24")
             }
             assert scopes[Decimal("0.4")]["base_template_revision_id"] == revision_04
             assert (

@@ -36,7 +36,7 @@ from filament_manager.services.events import add_audit_event, add_outbox_job
 from filament_manager.services.google_publication import publication_enabled
 from filament_manager.services.printer_connections import configured_printers
 
-EXPECTED_SCHEMA_VERSION = "e9f012a3b4c5"
+EXPECTED_SCHEMA_VERSION = "fa012b3c4d56"
 SYSTEM_AGGREGATE_ID = UUID("00000000-0000-0000-0000-000000000001")
 
 DATABASE_ERROR_CLASSES = {

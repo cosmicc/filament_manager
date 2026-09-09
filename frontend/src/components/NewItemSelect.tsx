@@ -25,19 +25,20 @@ export function NewItemSelect({ itemLabel, options, onCreate, ...props }: Omit<S
 }
 
 /** Select a new choice without losing the draft; filament attributes save with the filament. */
-export function InventoryChoiceSelect({ kind, defaultValue, ...props }: Omit<SelectHTMLAttributes<HTMLSelectElement>, 'children' | 'value' | 'onChange'> & {
-  kind: 'manufacturer' | 'filler' | 'finish' | 'location'
+export function InventoryChoiceSelect({ kind, defaultValue, onSelectionChange, ...props }: Omit<SelectHTMLAttributes<HTMLSelectElement>, 'children' | 'value' | 'onChange'> & {
+  kind: 'manufacturer' | 'filler' | 'finish' | 'location' | 'spool-type'
   defaultValue?: string
+  onSelectionChange?: (value: string) => void
 }) {
   const client = useQueryClient()
-  const label = kind === 'manufacturer' ? 'Manufacturer' : kind === 'filler' ? 'Filler' : kind === 'location' ? 'Location' : 'Finish'
-  const fallback = kind === 'manufacturer' || kind === 'location' ? '' : kind === 'filler' ? 'None' : 'Standard'
+  const label = kind === 'spool-type' ? 'Spool Type' : kind === 'manufacturer' ? 'Manufacturer' : kind === 'filler' ? 'Filler' : kind === 'location' ? 'Location' : 'Finish'
+  const fallback = kind === 'spool-type' ? 'Unknown' : kind === 'manufacturer' || kind === 'location' ? '' : kind === 'filler' ? 'None' : 'Standard'
   const [selected, setSelected] = useState((kind === 'location' ? defaultValue : defaultValue?.trim()) || fallback)
   const [creating, setCreating] = useState(false)
   const [added, setAdded] = useState<Choice[]>([])
   const isAttribute = kind === 'filler' || kind === 'finish'
-  const key = kind === 'manufacturer' ? ['vendors'] : kind === 'location' ? ['spool-location-choices'] : ['filament-attributes', kind]
-  const endpoint = kind === 'manufacturer' ? '/vendors' : kind === 'location' ? '/spool-location-choices' : '/filament-attributes'
+  const key = kind === 'spool-type' ? ['spool-type-choices'] : kind === 'manufacturer' ? ['vendors'] : kind === 'location' ? ['spool-location-choices'] : ['filament-attributes', kind]
+  const endpoint = kind === 'spool-type' ? '/spool-type-choices' : kind === 'manufacturer' ? '/vendors' : kind === 'location' ? '/spool-location-choices' : '/filament-attributes'
   const choices = useQuery({ queryKey: key, queryFn: () => apiFetch<{ id?: string; name: string }[]>(`${endpoint}${isAttribute ? `?kind=${kind}` : ''}`) })
   const create = useMutation({
     mutationFn: (name: string) => apiFetch<{ id?: string; name: string }>(endpoint, {
@@ -47,6 +48,7 @@ export function InventoryChoiceSelect({ kind, defaultValue, ...props }: Omit<Sel
       const value = kind === 'manufacturer' ? item.id! : item.name
       setAdded((items) => [...items, { value, label: item.name }])
       setSelected(value)
+      onSelectionChange?.(value)
       setCreating(false)
       // Attributes remain form-local until the filament transaction succeeds.
       if (!isAttribute) await Promise.allSettled([client.invalidateQueries({ queryKey: key })])
@@ -62,7 +64,7 @@ export function InventoryChoiceSelect({ kind, defaultValue, ...props }: Omit<Sel
   const effectiveSelected = selected || unknownManufacturer?.id || fallback
   if (!options.has(effectiveSelected)) options.set(effectiveSelected, effectiveSelected)
   return <>
-    <NewItemSelect aria-label={label} {...props} value={effectiveSelected} onChange={(event) => setSelected(event.target.value)} itemLabel={label}
+    <NewItemSelect aria-label={label} {...props} value={effectiveSelected} onChange={(event) => { setSelected(event.target.value); onSelectionChange?.(event.target.value) }} itemLabel={label}
       options={Array.from(options, ([value, name]) => ({ value, label: name }))}
       onCreate={() => { create.reset(); setCreating(true) }} />
     {choices.error ? <small className="form-error" role="alert">Unable to load {label.toLowerCase()} choices. Your current selection is preserved.</small> : null}

@@ -62,6 +62,14 @@ class SpoolLocationChoice(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     name: Mapped[str] = mapped_column(String(160), nullable=False, unique=True)
 
 
+class SpoolTypeChoice(UUIDPrimaryKeyMixin, TimestampMixin, Base):
+    """Durable physical spool designs, independent of filament material families."""
+
+    __tablename__ = "spool_type_choices"
+    name: Mapped[str] = mapped_column(String(160), nullable=False)
+    name_key: Mapped[str] = mapped_column(String(320), nullable=False, unique=True)
+
+
 class FilamentColor(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     """A remembered shared solid color or fixed rainbow screen sample."""
 
@@ -153,6 +161,9 @@ class Spool(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     """A uniquely labelled physical spool."""
 
     __tablename__ = "spools"
+    spool_type: Mapped[str] = mapped_column(
+        String(160), nullable=False, default="Unknown", server_default="Unknown"
+    )
     __table_args__ = (
         CheckConstraint("nominal_net_mass_g > 0", name="nominal_mass_positive"),
         CheckConstraint("tare_mass_g >= 0", name="tare_nonnegative"),
@@ -267,6 +278,9 @@ class Printer(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     """A configured Moonraker/Klipper printer."""
 
     __tablename__ = "printers"
+    total_print_time_seconds: Mapped[Decimal | None] = mapped_column(Numeric(18, 3))
+    longest_print_time_seconds: Mapped[Decimal | None] = mapped_column(Numeric(18, 3))
+    history_totals_checked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
     printer_code: Mapped[str] = mapped_column(String(64), nullable=False, unique=True)
     name: Mapped[str] = mapped_column(String(160), nullable=False)

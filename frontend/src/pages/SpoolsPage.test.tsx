@@ -130,7 +130,7 @@ describe('SpoolsPage', () => {
 
   it('opens a location link and previews tare changes without silently overriding remaining mass', async () => {
     window.history.replaceState(null, '', '/spools?spool_id=spool-id')
-    const weighed = { ...spool, remaining_mass_effective_g: '875', last_measurement_at: '2026-09-05T00:00:00Z' }
+    const weighed = { ...spool, spool_type: 'Cardboard', remaining_mass_effective_g: '875', last_measurement_at: '2026-09-05T00:00:00Z' }
     apiFetchMock.mockImplementation((path: string, options?: { method?: string; body?: string }) => {
       if (path.startsWith('/spools?')) return Promise.resolve({ items: [], total: 0, limit: 200, offset: 0 })
       if (path === '/spools/spool-id') return Promise.resolve(options?.method === 'PATCH' ? { ...weighed, tare_mass_g: '240', remaining_mass_effective_g: '835' } : weighed)

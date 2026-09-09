@@ -1,4 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { PrintActivityDates } from '../components/PrintActivityDates'
 import { Pencil, Plus, Printer as PrinterIcon, RefreshCw, Save, Settings, Wrench } from 'lucide-react'
 import { useState } from 'react'
 import { apiFetch } from '../api/client'
@@ -11,7 +12,7 @@ import { PageHeader } from '../components/PageHeader'
 import { PrinterConnectionModal } from '../components/PrinterConnectionModal'
 import { useAuth } from '../context/AuthContext'
 import { Link } from '../context/RouterContext'
-import { compactNumber, inputNumber } from '../lib/format'
+import { compactNumber, dateTime, inputNumber } from '../lib/format'
 
 function optional(data: FormData, key: string) {
   return String(data.get(key) ?? '').trim() || null
@@ -171,7 +172,11 @@ export default function PrintersPage() {
                 </div>
                 <div className="printer-card__details printer-card__details--single">
                   <EditorSection title="Hardware and workspace">
+                    <PrintActivityDates kind="printer" id={printer.id} />
                     <dl className="definition-list">
+                      <div><dt>Total print time</dt><dd>{printer.total_print_time_seconds == null ? 'Unavailable' : `${compactNumber(Number(printer.total_print_time_seconds) / 3600, 2)} hours`}</dd></div>
+                      <div><dt>Longest print</dt><dd>{printer.longest_print_time_seconds == null ? 'Unavailable' : `${compactNumber(Number(printer.longest_print_time_seconds) / 3600, 2)} hours`}</dd></div>
+                      <div><dt>Moonraker totals checked</dt><dd>{printer.history_totals_checked_at ? dateTime(printer.history_totals_checked_at) : 'Not yet available'}<small className="table-subtext">Print time excludes pauses. Moonraker totals may be reset independently.</small></dd></div>
                       <div><dt>Printer type</dt><dd>{printer.kinematics ? `${printer.kinematics} kinematics` : 'Not reported'}{printer.extruder_type ? ` · ${printer.extruder_type}` : ''}</dd></div>
                       <div><dt>Build volume</dt><dd>{printer.build_volume.shape === 'round' ? `Ø ${compactNumber(printer.build_volume.diameter_mm ?? printer.build_volume.x_mm, 1)} × ${compactNumber(printer.build_volume.z_mm, 1)} mm` : printer.build_volume.x_mm ? `${compactNumber(printer.build_volume.x_mm, 1)} × ${compactNumber(printer.build_volume.y_mm, 1)} × ${compactNumber(printer.build_volume.z_mm, 1)} mm` : 'Not reported'}</dd></div>
                       <div><dt>Active plate</dt><dd>{plate ? `${surface?.surface_code ?? plate.plate_code} - ${plate.display_name}` : 'Not selected'}</dd></div>

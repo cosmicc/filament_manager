@@ -64,6 +64,7 @@ DECIMAL_SETTING_KEYS = frozenset(
 NUMERIC_TEXT = re.compile(r"^-?\d+(?:\.\d+)?$")
 TEMPLATE_ONLY_PROFILE_SETTING_KEYS = frozenset(
     {
+        "filament_density_g_cm3",
         "print_speed_mm_s",
         "outer_wall_speed_mm_s",
         "inner_wall_speed_mm_s",

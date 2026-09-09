@@ -146,7 +146,6 @@ export default function FilamentsPage() {
           color_hexes: colorMode === 'rainbow' ? [] : colorHexes,
           diameter_mm: String(data.get('diameter_mm')),
           tolerance_mm: String(data.get('tolerance_mm') ?? '').trim() || null,
-          density_g_cm3: String(data.get('density_g_cm3')),
           nominal_net_mass_g: String(data.get('nominal_net_mass_g')),
           notes: String(data.get('notes') ?? '').trim() || null,
           material_template_revision_id: selected.settingsSnapshot.id,
@@ -194,11 +193,10 @@ export default function FilamentsPage() {
             <FilamentColorEditor name={colorName} mode={colorMode} colorHexes={colorHexes} rememberedColors={colors.data ?? []} onNameChange={setColorName} onModeChange={setColorMode} onColorsChange={setColorHexes} />
           </div>
         </EditorSection>
-        <EditorSection title="Physical specifications" description="Record the diameter, density, packaged mass, and material modifiers.">
+        <EditorSection title="Physical specifications" description="Record the diameter, packaged mass, and material modifiers.">
           <div className="form-grid">
             <label>Filament diameter (mm)<input name="diameter_mm" type="number" min="0.1" step="0.01" defaultValue={inputNumber(duplicateSource.data?.diameter_mm ?? '1.75', 2)} required /></label>
             <label>Diameter tolerance (mm)<input name="tolerance_mm" type="number" min="0" step="0.01" defaultValue={duplicateSource.data?.tolerance_mm ?? ''} /></label>
-            <label>Density (g/cm³)<input name="density_g_cm3" type="number" min="0.01" step="0.01" defaultValue={duplicateSource.data?.density_g_cm3 ?? '1.24'} required /></label>
             <label>Nominal net mass (g)<input name="nominal_net_mass_g" type="number" min="1" step="1" defaultValue={duplicateSource.data?.nominal_net_mass_g ?? '1000'} required /></label>
             <label>Filler<InventoryChoiceSelect kind="filler" name="filler" defaultValue={duplicateSource.data?.filler ?? 'None'} /></label>
             <label>Finish<InventoryChoiceSelect kind="finish" name="finish" defaultValue={duplicateSource.data?.finish ?? 'Standard'} /></label>

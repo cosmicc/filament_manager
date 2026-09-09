@@ -475,6 +475,9 @@ async def test_active_spool_selection_and_clear_follow_moonraker(
                         size=96,
                     )
 
+                async def history_totals(self) -> tuple[Decimal, Decimal]:
+                    return Decimal("10000.123"), Decimal("2000.456")
+
                 async def history_jobs(
                     self, *, start: int = 0, limit: int = 100, since: float | None = None
                 ) -> tuple[dict[str, object], ...]:

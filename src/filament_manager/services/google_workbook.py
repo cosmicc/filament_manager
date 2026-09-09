@@ -26,7 +26,7 @@ EXPORTS = (
     (
         "Spools",
         "spools",
-        "spool_code filament_product_id nominal_net_mass_g tare_mass_g "
+        "spool_code spool_type filament_product_id nominal_net_mass_g tare_mass_g "
         "remaining_mass_expected_g remaining_mass_measured_g remaining_mass_effective_g "
         "weight_confidence status purchase_source purchase_date purchase_cost currency "
         "first_used_at last_used_at last_measurement_at last_usage_event_at location "
@@ -86,7 +86,8 @@ EXPORTS = (
         "printer_code name nozzle_diameter_mm build_volume manufacturer model kinematics "
         "nozzle_material extruder_type klipper_version moonraker_version notes active_plate_id "
         "active_plate_surface_id active_nozzle_id heated_chamber max_extruder_temp_c "
-        "max_bed_temp_c extruder_count status record_version created_at updated_at",
+        "max_bed_temp_c extruder_count total_print_time_seconds longest_print_time_seconds "
+        "history_totals_checked_at status record_version created_at updated_at",
     ),
     (
         "Nozzles",
@@ -107,6 +108,7 @@ EXPORTS = (
     ),
     ("Manufacturers", "vendors", "name preferred aliases notes record_version created_at updated_at"),
     ("Locations", "spool_location_choices", "name created_at updated_at"),
+    ("Spool Types", "spool_type_choices", "name created_at updated_at"),
     (
         "Colors",
         "filament_colors",

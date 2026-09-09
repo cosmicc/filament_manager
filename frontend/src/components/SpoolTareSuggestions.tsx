@@ -9,15 +9,17 @@ interface TareSuggestion {
 }
 
 /** Saved manufacturer observations are advisory, never automatically selected. */
-export function SpoolTareSuggestions({ filamentId, disabled = false, onApply }: {
+export function SpoolTareSuggestions({ filamentId, spoolType, capacity, disabled = false, onApply }: {
   filamentId: string
+  spoolType: string
+  capacity: string
   disabled?: boolean
   onApply: (tare: string) => void
 }) {
   const query = useQuery({
-    queryKey: ['spool-tare-suggestions', filamentId],
-    queryFn: () => apiFetch<TareSuggestion[]>(`/spool-tare-suggestions?filament_product_id=${encodeURIComponent(filamentId)}`),
-    enabled: Boolean(filamentId),
+    queryKey: ['spool-tare-suggestions', filamentId, spoolType, capacity],
+    queryFn: () => apiFetch<TareSuggestion[]>(`/spool-tare-suggestions?${new URLSearchParams({ filament_product_id: filamentId, spool_type: spoolType, nominal_net_mass_g: capacity })}`),
+    enabled: Boolean(filamentId) && spoolType !== 'Unknown' && Number(capacity) > 0,
   })
   return <div className="form-grid__wide">
     <label>Previously saved empty-spool weights
@@ -32,7 +34,7 @@ export function SpoolTareSuggestions({ filamentId, disabled = false, onApply }: 
         </option>)}
       </select>
     </label>
-    <p className="field-help">Same manufacturer, most common first. Spool designs vary; verify before applying.{disabled ? ' Tare inferred from this unused spool’s scale weight takes priority.' : ''}</p>
+    <p className="field-help">Same manufacturer, spool type and filament capacity, most common first. Select a known spool type to see matching weights; verify before applying.{disabled ? ' Tare inferred from this unused spool’s scale weight takes priority.' : ''}</p>
     {query.isError ? <p className="form-error" role="alert">Weight suggestions could not be loaded. You can still enter a known weight.</p> : null}
   </div>
 }

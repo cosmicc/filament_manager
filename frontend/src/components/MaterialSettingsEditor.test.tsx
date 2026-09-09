@@ -52,6 +52,13 @@ it('shows read-only retraction safeguards and updates the derived window live', 
 })
 
 describe('MaterialSettingsEditor validation', () => {
+  it('keeps density hidden and exact for profiles with a Pressure Advance heading', () => {
+    const view = render(<form><MaterialSettingsEditor scope="profile" settings={{ ...settings, filament_density_g_cm3: '1.23456' }} catalog={[]} plates={[]} /></form>)
+    expect(within(view.container).queryByLabelText(/Filament density/)).toBeNull()
+    expect(within(view.container).getByRole('heading', { name: 'Pressure Advance' })).toBeTruthy()
+    expect((view.container.querySelector('input[name="filament_density_g_cm3"]') as HTMLInputElement).value).toBe('1.23456')
+    view.unmount()
+  })
   it('serializes fixed care dropdowns and supports copying a blank care value', () => {
     const rendered = render(<form><MaterialSettingsEditor settings={settings} catalog={[]} plates={[]} scope="template" copySources={[{ id: 'care-source', label: 'Template PETG', settings: { ...settings, drying_time_hours: '6-8' } }]} /></form>)
     const controls = within(rendered.container)
