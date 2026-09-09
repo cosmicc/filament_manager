@@ -16,7 +16,7 @@
     "@bugsnag/js": "^8.10.0",
     "@bugsnag/plugin-react": "^8.9.0",
     "@tanstack/react-query": "^5.102.8",
-    "lucide-react": "^1.33.0",
+    "lucide-react": "^1.41.0",
     "react": "^19.1.1",
     "react-dom": "^19.1.1"
   },
