@@ -22,7 +22,7 @@
   },
   "devDependencies": {
     "@bugsnag/vite-plugin-bugsnag": "^1.1.0",
-    "@eslint/js": "^9.34.0",
+    "@eslint/js": "^10.0.1",
     "@playwright/test": "^1.55.0",
     "@testing-library/jest-dom": "^7.0.1",
     "@testing-library/react": "^16.3.0",
