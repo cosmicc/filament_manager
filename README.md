@@ -1,7 +1,5 @@
 # Filament Manager
 
-Ordinary build-plate, nozzle, and active-spool changes are locked during printing and pauses. Use M600/runout handling for deliberate filament replacement. The 0.7.6 interlock update requires the matching Klipper macros and an idle firmware restart.
-
 Filament Manager is a self-hosted inventory and calibration application for physical filament spools, manual weight measurements, material profiles, build plates, and Klipper-based printers.
 
 PostgreSQL is the canonical data store. A distinct Spoolman service remains the printer-facing usage service, while Google Sheets is an optional read-only publication target.
