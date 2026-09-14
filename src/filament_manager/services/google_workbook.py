@@ -259,7 +259,40 @@ async def snapshot(session: AsyncSession) -> list[WorkbookTab]:
                     "Inventory exceeds the safe workbook size. The last complete publication is retained."
                 )
         tabs.append(tab)
-    tabs.append(details)
+    # Only this exact business namespace is exported from application settings.
+    # Connection, account and other operational settings remain excluded.
+    settings_table = Base.metadata.tables["application_settings"]
+    rating_tab = WorkbookTab(
+        "Plate Ratings", ["id", "material_template_id", "build_plate_surface_id", "stars"]
+    )
+    rating_rows = await session.stream(
+        select(settings_table.c.id, settings_table.c.key, settings_table.c.value)
+        .where(settings_table.c.key.startswith("plate_ratings.", autoescape=True))
+        .order_by(settings_table.c.id)
+    )
+    async for record in rating_rows:
+        try:
+            template_id = str(UUID(record.key.removeprefix("plate_ratings.")))
+        except ValueError:
+            continue
+        if not isinstance(record.value, dict):
+            continue
+        for side, stars in sorted(record.value.items()):
+            try:
+                side_id = str(UUID(side))
+            except (ValueError, TypeError):
+                continue
+            if type(stars) is not int or not 0 <= stars <= 5:
+                continue
+            row = [f"{record.id}:{side_id}", template_id, side_id, stars]
+            rating_tab.rows.append(row)
+            cells += 4
+            content_bytes += len(json.dumps(row).encode())
+            if cells > MAX_CELLS or content_bytes > MAX_CONTENT_BYTES:
+                raise GoogleSheetsError(
+                    "Inventory exceeds the safe workbook size. The last complete publication is retained."
+                )
+    tabs.extend([rating_tab, details])
     # Add derived live identities without changing historical captured names.
     filament = next(tab for tab in tabs if tab.title == "Filaments")
     names: dict[str, str] = {}

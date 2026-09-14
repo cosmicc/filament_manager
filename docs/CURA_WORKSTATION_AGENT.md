@@ -1,5 +1,7 @@
 # Cura Workstation Agent
 
+For 0.8.3, follow the [upgrade and Cura setup notes](UPGRADE_0.8.3.md). Renderer 27 installs the Moonraker metadata comment block before the managed start boundary. Configure **Extensions → Post Processing → Modify G-Code → Time Lapse Camera** to add **M240** on every layer when using timelapse. Re-slice after installing updated settings; uploaded files are not rewritten.
+
 ## What it automates
 
 Each Arch Linux or Windows 11 workstation runs one agent under the same user account as Cura. The agent automatically:

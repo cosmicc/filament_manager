@@ -69,6 +69,21 @@ export function dateTime(value: string | null | undefined): string {
   return new Intl.DateTimeFormat(undefined, { dateStyle: 'medium', timeStyle: 'short' }).format(new Date(value))
 }
 
+/** Express elapsed time using at most two nonzero units without rounding up. */
+export function elapsedTime(value: string, now = Date.now()): string {
+  const timestamp = Date.parse(value)
+  if (!Number.isFinite(timestamp)) return ''
+  let seconds = Math.max(0, Math.floor((now - timestamp) / 1000))
+  const parts: string[] = []
+  for (const [label, size] of [['Week', 604800], ['Day', 86400], ['Hour', 3600], ['Minute', 60]] as const) {
+    const count = Math.floor(seconds / size)
+    if (count) parts.push(`${count} ${label}${count === 1 ? '' : 's'}`)
+    seconds %= size
+    if (parts.length === 2) break
+  }
+  return parts.length ? `${parts.join(', ')} ago` : 'Less than a minute ago'
+}
+
 /** Keep stored precision when an operator saves an unchanged rounded control. */
 export function preserveUnchangedNumber(value: string, original: string, precision: number): string {
   return Number(value) === Number(inputNumber(original, precision)) ? original : value

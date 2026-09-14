@@ -1,5 +1,32 @@
 # Changelog
 
+## 0.8.3 - 09.14.2026
+
+Testing release. See `docs/UPGRADE_0.8.3.md` for the required macro and agent upgrade.
+
+### Added
+
+- Per-template, per-side zero-to-five-star build plate ratings, ranked recommendations, explicit unrated state, mandatory zero-star print-start blocking, and a safe Google Plate Ratings export.
+- Full-file streaming heater maxima and observed initial/variable layer heights, with immutable print evidence and no additional printer requests.
+- Automatically derived Silk PLA, PLA Carbon Fiber, and PETG Carbon Fiber templates copied from existing exact PLA/PETG scopes without reassigning filaments.
+- Two-unit elapsed-date subtext and server-side Activity pagination/search with 20/50/100/200 sizes.
+
+### Changed
+
+- Compact Dashboard and inventory cards, green active spool/plate cards, warning-tinted missing-template filaments, and full-width printer/Cura workstation summaries opening detail dialogs.
+- Spool loading chooses a printer only when requested; a sole configured printer is automatic and multi-hotend selection remains explicit.
+- Removed Labels from navigation and redundant card footers; updated navigation icons/order and replaced app branding with the supplied color/white/black artwork.
+- Print History removes Machine, links captured spool and filament identities, shows manufacturer for new captures, and distinguishes adaptive/initial-layer evidence.
+- Workstation renderer 27 writes the requested Moonraker metadata block above managed start G-code; setup documents cover Cura Time Lapse Camera M240 on every layer.
+
+### Fixed
+
+- Printer settings now use an editable-field concurrency token so unrelated telemetry cannot prevent saving maximum temperatures; genuine concurrent edits still conflict.
+- Hardware temperature limits and unsupported chamber heating block managed starts even under warning inspection; initial bed temperature is checked independently from regular temperature.
+- Missed scheduled backups coalesce into one current occurrence and newer due slots supersede old retry delays, retaining active-print deferral and failure backoff.
+- Confirmed powered-off printers show synchronization tasks as waiting instead of warnings, without treating unknown power as off.
+
+
 ## 0.8.2 - 09.09.2026
 
 Testing release.

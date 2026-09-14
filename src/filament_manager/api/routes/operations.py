@@ -5,8 +5,8 @@ import unicodedata
 from datetime import UTC, datetime, timedelta
 from uuid import UUID
 
-from fastapi import APIRouter, Request, status
-from sqlalchemy import func, select
+from fastapi import APIRouter, Query, Request, status
+from sqlalchemy import func, or_, select
 from sqlalchemy.orm import joinedload, selectinload
 
 from filament_manager.api.printer_safety import require_idle_printer
@@ -479,7 +479,11 @@ async def update_printer(
     printer = await session.scalar(select(Printer).where(Printer.id == printer_id).with_for_update())
     if printer is None:
         raise ApiError(status.HTTP_404_NOT_FOUND, "unknown_printer", "Printer not found")
-    if printer.record_version != payload.expected_version:
+    if (
+        printer.settings_token != payload.expected_settings_token
+        if payload.expected_settings_token is not None
+        else printer.record_version != payload.expected_version
+    ):
         raise ApiError(status.HTTP_409_CONFLICT, "record_version_conflict", "Printer changed; reload")
     if printer.active_nozzle_id is not None and (
         "nozzle_diameter_mm" in payload.model_fields_set or "nozzle_material" in payload.model_fields_set
@@ -821,6 +825,56 @@ async def list_audit_events(_: Viewer, session: DatabaseSession, limit: int = 10
         }
         for event in result.scalars()
     ]
+
+
+@router.get("/audit-events/page")
+async def audit_events_page(
+    _: Viewer,
+    session: DatabaseSession,
+    page: int = Query(default=1, ge=1),
+    per_page: int = Query(default=20),
+    search: str = Query(default="", max_length=200),
+) -> dict[str, object]:
+    """Paginate the complete immutable activity log with literal substring search."""
+    if per_page not in {20, 50, 100, 200}:
+        raise ApiError(422, "invalid_page_size", "Choose 20, 50, 100, or 200 events")
+    filters = []
+    if search.strip():
+        filters.append(
+            or_(
+                *(
+                    column.icontains(search.strip(), autoescape=True)
+                    for column in (AuditEvent.action, AuditEvent.object_type, AuditEvent.source)
+                )
+            )
+        )
+    total = int(await session.scalar(select(func.count()).select_from(AuditEvent).where(*filters)) or 0)
+    pages = max(1, (total + per_page - 1) // per_page)
+    page = min(page, pages)
+    events = await session.scalars(
+        select(AuditEvent)
+        .where(*filters)
+        .order_by(AuditEvent.occurred_at.desc(), AuditEvent.id.desc())
+        .offset((page - 1) * per_page)
+        .limit(per_page)
+    )
+    return {
+        "page": page,
+        "pages": pages,
+        "per_page": per_page,
+        "total": total,
+        "items": [
+            {
+                "id": event.id,
+                "action": event.action,
+                "object_type": event.object_type,
+                "source": event.source,
+                "correlation_id": event.correlation_id,
+                "occurred_at": event.occurred_at,
+            }
+            for event in events
+        ],
+    }
 
 
 @router.get("/devices", response_model=list[dict[str, object]])

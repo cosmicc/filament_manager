@@ -1,8 +1,8 @@
 import {
-  Activity, Bell, Boxes, ChevronLeft, ChevronRight, CircleGauge, FlaskConical,
+  Activity, Bell, ChevronLeft, ChevronRight, LayoutDashboard, Ruler, Cable, FileSliders,
   HeartPulse,
-  Layers3, Library, MapPin, Menu, PackageOpen, Printer,
-  MonitorCog, QrCode, Settings, Wrench, X, History,
+  Layers3, MapPin, Menu, Printer,
+  MonitorCog, Settings, X, History,
 } from 'lucide-react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { type ReactNode, useEffect, useRef, useState } from 'react'
@@ -10,19 +10,19 @@ import { apiFetch } from '../api/client'
 import type { OperatorNotification } from '../api/types'
 import { NavLink, useRouter } from '../context/RouterContext'
 import { APP_VERSION } from '../lib/version'
+import { NozzleIcon, SpoolNavIcon } from './InventoryIcons'
 
 const primaryNavigation = [
-  { to: '/', label: 'Dashboard', icon: CircleGauge },
-  { to: '/spools', label: 'Spools', icon: Boxes },
+  { to: '/', label: 'Dashboard', icon: LayoutDashboard },
+  { to: '/spools', label: 'Spools', icon: SpoolNavIcon },
   { to: '/locations', label: 'Locations', icon: MapPin },
-  { to: '/filaments', label: 'Filaments', icon: PackageOpen },
-  { to: '/templates', label: 'Templates', icon: Library },
-  { to: '/calibration', label: 'Calibration', icon: FlaskConical },
+  { to: '/filaments', label: 'Filaments', icon: Cable },
+  { to: '/templates', label: 'Templates', icon: FileSliders },
+  { to: '/calibration', label: 'Calibration', icon: Ruler },
   { to: '/plates', label: 'Build plates', icon: Layers3 },
-  { to: '/nozzles', label: 'Nozzles', icon: Wrench },
+  { to: '/nozzles', label: 'Nozzles', icon: NozzleIcon },
   { to: '/printers', label: '3D Printers', icon: Printer },
   { to: '/prints', label: 'Print history', icon: History },
-  { to: '/labels', label: 'Labels', icon: QrCode },
 ]
 
 function NavigationItems({ items, collapsed, close }: { items: typeof primaryNavigation; collapsed: boolean; close: () => void }) {
@@ -63,10 +63,10 @@ function NotificationCenter() {
 }
 
 const secondaryNavigation = [
-  { to: '/diagnostics', label: 'Diagnostics', icon: HeartPulse },
   { to: '/workstations', label: 'Cura workstations', icon: MonitorCog },
-  { to: '/activity', label: 'Activity', icon: Activity },
   { to: '/settings', label: 'Settings', icon: Settings },
+  { to: '/diagnostics', label: 'Diagnostics', icon: HeartPulse },
+  { to: '/activity', label: 'Activity', icon: Activity },
 ]
 
 export function AppShell({ children }: { children: ReactNode }) {

@@ -1,5 +1,7 @@
 # Google publication workflow
 
+- Plate Ratings explicitly selects only `plate_ratings.<valid template UUID>` settings and valid side UUID/integer stars 0–5. Never export the rest of application_settings. Rating saves queue publication and the periodic digest covers removals. Keep size limits and literal cells.
+
 - 0.8.1 explicitly exports Spool Types, each spool's type, and cached printer duration totals/freshness. Derived activity views stay canonical history queries; existing Print History and Material Segments tabs retain the underlying dates and captured identities. New database fields never expand the export contract implicitly.
 
 - Settings is the Google setup surface; do not restore Integrations. Guided setup accepts a bounded Web OAuth JSON download, validates client fields and exact redirect URI, ignores supplied endpoint URLs, and stores the secret encrypted. Preserve environment-configured clients until explicit adoption. The shared credential helper initializes a private-volume key only when no encrypted printer/Google data exists; a lost key is a recovery failure. Keep the key outside PostgreSQL and never return token/client-secret/state/verifier material in status, audit or logs. Replacing credentials invalidates pending consent and the prior grant, retaining workbook identity.

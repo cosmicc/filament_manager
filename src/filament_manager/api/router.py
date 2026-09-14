@@ -12,6 +12,7 @@ from .routes import (
     notifications,
     nozzles,
     operations,
+    plate_ratings,
     plates,
     printer_connections,
     printing,
@@ -25,6 +26,7 @@ api_router.include_router(google.router)
 api_router.include_router(imports.router)
 api_router.include_router(inventory.router)
 api_router.include_router(plates.router)
+api_router.include_router(plate_ratings.router)
 api_router.include_router(profiles.router)
 api_router.include_router(calibrations.router)
 api_router.include_router(diagnostics.router)

@@ -2,6 +2,9 @@
 
 from datetime import UTC, datetime
 from types import SimpleNamespace
+from unittest.mock import AsyncMock
+
+import pytest
 
 from filament_manager.services.diagnostics import (
     EXPECTED_SCHEMA_VERSION,
@@ -9,6 +12,31 @@ from filament_manager.services.diagnostics import (
     _sanitized_error_detail,
     diagnostics_text,
 )
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("power,expected", [("off", "waiting"), ("on", "healthy"), (None, "healthy")])
+async def test_only_confirmed_power_off_marks_connection_waiting(monkeypatch, power, expected) -> None:
+    """An unavailable power reading must not be interpreted as a powered-off printer."""
+    from filament_manager.services import diagnostics
+
+    configured = SimpleNamespace(id="test", name="Printer")
+    monkeypatch.setattr(diagnostics, "configured_printers", AsyncMock(return_value=[configured]))
+    monkeypatch.setattr(
+        diagnostics, "SpoolmanClient", lambda _config: SimpleNamespace(projection_health=AsyncMock())
+    )
+    monkeypatch.setattr(
+        diagnostics,
+        "get_settings",
+        lambda: SimpleNamespace(spoolman=None, google=SimpleNamespace(enabled=False)),
+    )
+    client = SimpleNamespace(
+        health=AsyncMock(return_value={"result": {"klippy_state": "shutdown"}}),
+        printer_power_state=AsyncMock(return_value=power),
+    )
+    monkeypatch.setattr(diagnostics, "MoonrakerClient", lambda _config: client)
+    checks = await diagnostics._connection_checks(None, datetime.now(UTC))
+    assert next(check for check in checks if check["key"] == "moonraker.test")["status"] == expected
 
 
 def test_expected_schema_matches_current_migration_head() -> None:

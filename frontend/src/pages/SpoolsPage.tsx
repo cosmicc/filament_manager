@@ -1,4 +1,6 @@
+import { DateWithAge } from '../components/DateWithAge'
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { PlateCompatibility } from "../components/PlateCompatibility";
 import { PrintActivityDates } from '../components/PrintActivityDates';
 import {
   Boxes,
@@ -37,7 +39,7 @@ import { useAuth } from "../context/AuthContext";
 import { useRouter } from "../context/RouterContext";
 import { useCollectionView } from "../hooks/useCollectionView";
 import { filamentSwatchStyle } from "../lib/colors";
-import { costPerGram, currencyAmount, dateTime, grams, inputNumber, percent } from "../lib/format";
+import { costPerGram, currencyAmount, grams, inputNumber, percent } from "../lib/format";
 import { materialIdentitySummary } from "../lib/materialIdentity";
 
 function WeighModal({ spool, onClose }: { spool: Spool; onClose: () => void }) {
@@ -365,11 +367,11 @@ function CreateSpoolModal({
       >
         <EditorSection
           title="Spool identity"
-          description="Connect the physical label to its canonical material template."
+          description="Connect the physical label to its filament."
         >
           <div className="form-grid">
             <label className="form-grid__wide">
-              Material template
+              Filament
               <select
                 value={filamentId}
                 onChange={(event) => {
@@ -632,7 +634,7 @@ function EditSpoolModal({
         >
           <div className="form-grid">
             <label>Spool code<input aria-label="Spool code" value={spool.spool_code} readOnly /><small>Permanent for this spool.</small></label>
-            <label>Material template<select name="filament_product_id" value={filamentId} onChange={(event) => setFilamentId(event.target.value)} required>{filaments.map((filament) => <option key={filament.id} value={filament.id}>{filament.vendor_name ?? 'Unspecified'} · {materialIdentitySummary(filament)}</option>)}</select></label>
+            <label>Filament<select name="filament_product_id" value={filamentId} onChange={(event) => setFilamentId(event.target.value)} required>{filaments.map((filament) => <option key={filament.id} value={filament.id}>{filament.vendor_name ?? 'Unknown'} · {materialIdentitySummary(filament)}</option>)}</select></label>
             <label>Filament purchase weight (g)<input name="nominal_net_mass_g" type="number" min="0.1" step="0.1" value={purchaseWeight} onChange={(event) => setPurchaseWeight(event.target.value)} required /><small className="field-help">Net filament purchased, excluding the empty physical spool.</small></label>
             <label>Empty spool weight (g)<input name="tare_mass_g" type="number" min="0" step="0.1" value={tare} onChange={(event) => updateTare(event.target.value)} required /><small className="field-help">Changing tare automatically recalculates remaining filament from the last scale weight and subsequent usage.</small></label>
             <label>Current filament remaining (g)<input name="remaining_mass_g" type="number" min="0" step="0.1" value={remainingOverride ?? inputNumber(calculatedRemaining, 1)} onChange={(event) => setRemainingOverride(event.target.value)} required /><small className="field-help">Calculated automatically. Typing a value records an explicit operator correction.</small>{remainingOverride !== null ? <button type="button" className="text-button" onClick={() => setRemainingOverride(null)}>Use calculated remaining</button> : null}</label>
@@ -675,6 +677,7 @@ export default function SpoolsPage() {
   const requestedFilamentId = creationRequest.get("filament_id") ?? undefined;
   const requestedAction = creationRequest.get("action");
   const [loadPrinterId, setLoadPrinterId] = useState(creationRequest.get("printer_id") ?? "");
+  const [showLoad, setShowLoad] = useState(false);
   const [loadExtruder, setLoadExtruder] = useState("extruder");
   const canEdit = user?.role !== "viewer";
   const [search, setSearch] = useState("");
@@ -733,8 +736,24 @@ export default function SpoolsPage() {
     [printers.data],
   );
   const items = useMemo(() => query.data?.items ?? [], [query.data?.items]);
-  const loadPrinter = printers.data?.find((printer) => printer.id === loadPrinterId)
-    ?? (printers.data?.length === 1 ? printers.data[0] : undefined);
+  const configuredLoadPrinters = useMemo(
+    () => printers.data?.filter((printer) => printer.connection_enabled !== false) ?? [],
+    [printers.data],
+  );
+  const loadPrinter = useMemo(
+    () => configuredLoadPrinters.find((printer) => printer.id === loadPrinterId)
+      ?? (configuredLoadPrinters.length === 1 ? configuredLoadPrinters[0] : undefined),
+    [configuredLoadPrinters, loadPrinterId],
+  );
+  useEffect(() => {
+    if (configuredLoadPrinters.length === 1 && loadPrinterId !== configuredLoadPrinters[0].id) {
+      setLoadPrinterId(configuredLoadPrinters[0].id);
+      return;
+    }
+    if (loadPrinterId && !configuredLoadPrinters.some((printer) => printer.id === loadPrinterId)) {
+      setLoadPrinterId(configuredLoadPrinters.length === 1 ? configuredLoadPrinters[0].id : "");
+    }
+  }, [configuredLoadPrinters, loadPrinterId]);
   useEffect(() => {
     if (!selected) return;
     const current = items.find((spool) => spool.id === selected.id);
@@ -923,7 +942,7 @@ export default function SpoolsPage() {
                     </td>
                     <td>{spool.completed_print_count.toLocaleString()}</td>
                     <td>{spool.location ?? "—"}</td>
-                    <td>{dateTime(spool.last_measurement_at)}</td>
+                    <td><DateWithAge value={spool.last_measurement_at} /></td>
                   </tr>
                 ))}
               </tbody>
@@ -931,14 +950,14 @@ export default function SpoolsPage() {
           </div>
       ) : (
         <section className={`collection-grid collection-grid--${view}`}>
-          {items.map((spool) => <button className={`collection-card collection-card--button${view === "detailed" ? " collection-card--detailed" : ""}`} key={spool.id} onClick={() => openSpool(spool)}>
+          {items.map((spool) => <button className={`collection-card collection-card--button${spool.active_printer_id ? " inventory-card--active" : ""}${view === "detailed" ? " collection-card--detailed" : ""}`} key={spool.id} onClick={() => openSpool(spool)}>
             <header className="collection-card__header">
               <div className="table-identity"><span className={`filament-swatch${view === "detailed" ? " filament-swatch--large" : ""}`} style={filamentSwatchStyle(spool.color_mode, spool.color_hexes, spool.color_hex ?? "2F80A5")} /><span><strong>{spool.spool_code}</strong><small>{spool.vendor_name ?? "No vendor"}</small></span></div>
               <span className="status-stack">{spool.active_printer_id ? <StatusPill status="active" /> : null}<StatusPill status={spool.status} /></span>
             </header>
             <div className="collection-card__body"><h2>{materialIdentitySummary(spool)}</h2><div className="table-progress"><span><strong>{grams(spool.remaining_mass_effective_g)}</strong><small>{percent(spool.remaining_percent)}</small></span><div className="progress progress--small"><span style={{ width: `${Math.min(100, Number(spool.remaining_percent))}%` }} /></div></div></div>
-            <dl className="catalog-meta"><div><dt>Cost / gram</dt><dd>{costPerGram(spool.cost_per_gram, spool.currency)}</dd></div><div><dt>Location</dt><dd>{spool.location ?? "Not set"}</dd></div>{view === "detailed" ? <><div><dt>Completed prints</dt><dd>{spool.completed_print_count.toLocaleString()}</dd></div><div><dt>Last weighed</dt><dd>{dateTime(spool.last_measurement_at)}</dd></div><div><dt>Confidence</dt><dd>{spool.weight_confidence}</dd></div><div><dt>Printer</dt><dd>{spool.active_printer_id ? printerNames.get(spool.active_printer_id) ?? "Assigned printer" : "Not active"}</dd></div></> : null}</dl>
-            <span className="collection-card__link">Open details and actions</span>
+            <dl className="catalog-meta"><div><dt>Cost / gram</dt><dd>{costPerGram(spool.cost_per_gram, spool.currency)}</dd></div><div><dt>Location</dt><dd>{spool.location ?? "Not set"}</dd></div>{view === "detailed" ? <><div><dt>Completed prints</dt><dd>{spool.completed_print_count.toLocaleString()}</dd></div><div><dt>Last weighed</dt><dd><DateWithAge value={spool.last_measurement_at} /></dd></div><div><dt>Confidence</dt><dd>{spool.weight_confidence}</dd></div><div><dt>Printer</dt><dd>{spool.active_printer_id ? printerNames.get(spool.active_printer_id) ?? "Assigned printer" : "Not active"}</dd></div></> : null}</dl>
+
           </button>)}
         </section>
       )}
@@ -963,7 +982,7 @@ export default function SpoolsPage() {
                   />
                 </header>
                 <div>
-                  <PrintActivityDates kind="spool" id={selected.id} />
+                  <PrintActivityDates kind="spool" id={selected.id} /><PlateCompatibility filamentId={selected.filament_product_id} printerId={selected.active_printer_id ?? undefined} />
                   <dl className="definition-list">
                     <div><dt>Spool type</dt><dd>{selected.spool_type ?? 'Unknown'}</dd></div>
                     <DryingTemperatureDetails filamentId={selected.filament_product_id} />
@@ -1058,16 +1077,13 @@ export default function SpoolsPage() {
                         <PackageMinus size={17} /> Unload and clear active spool
                       </button>
                     ) : null}
-                    {canEdit && !selected.active_printer_id && <label>Load into printer<select value={loadPrinter?.id ?? ''} onChange={(event) => { setLoadPrinterId(event.target.value); setLoadExtruder('extruder'); }}><option value="">Select printer</option>{printers.data?.filter((printer) => printer.connection_enabled !== false).map((printer) => <option key={printer.id} value={printer.id}>{printer.name}</option>)}</select></label>}
-                    {canEdit && !selected.active_printer_id && (loadPrinter?.extruder_count ?? 1) > 1 ? <label>Hotend<select value={loadExtruder} onChange={(event) => setLoadExtruder(event.target.value)}>{Array.from({ length: loadPrinter?.extruder_count ?? 1 }, (_, index) => <option key={index} value={index ? `extruder${index}` : 'extruder'}>T{index} · {index ? `extruder${index}` : 'extruder'}</option>)}</select></label> : null}
-                    {canEdit && (loadPrinter?.extruder_count ?? 1) > 1 && !loadPrinter?.tool_routines_verified ? <p className="muted">Verify the selected-hotend load, unload, purge, and tool-change hook in 3D Printer settings before loading.</p> : null}
                     {canEdit && (
                       <button
                         className="button"
                         disabled={
                           !selected.spoolman_id ||
-                          !loadPrinter || loadPrinter.configuration_locked ||
-                          ((loadPrinter.extruder_count ?? 1) > 1 && !loadPrinter.tool_routines_verified) ||
+                          !configuredLoadPrinters.length ||
+                          (configuredLoadPrinters.length === 1 && configuredLoadPrinters[0].configuration_locked) ||
                           requestLoad.isPending ||
                           Boolean(selected.active_printer_id)
                         }
@@ -1078,7 +1094,7 @@ export default function SpoolsPage() {
                               ? "This spool is already physically loaded"
                               : "Open the confirmed load workflow in Fluidd"
                         }
-                        onClick={() => requestLoad.mutate(selected)}
+                        onClick={() => { if (configuredLoadPrinters.length === 1 && (configuredLoadPrinters[0].extruder_count ?? 1) === 1) requestLoad.mutate(selected); else setShowLoad(true); }}
                       >
                         <Star size={17} />
                         {selected.active_printer_id
@@ -1113,6 +1129,12 @@ export default function SpoolsPage() {
                   )}
                 </div>
       </Modal> : null}
+      {showLoad && selected && <Modal title="Load spool" onClose={() => setShowLoad(false)} footer={<><button className="button" onClick={() => setShowLoad(false)}>Cancel</button><button className="button button--primary" disabled={!loadPrinter || loadPrinter.configuration_locked || ((loadPrinter.extruder_count ?? 1) > 1 && !loadPrinter.tool_routines_verified) || requestLoad.isPending} onClick={() => { requestLoad.mutate(selected, { onSuccess: () => setShowLoad(false) }); }}>Request load</button></>}>
+        {configuredLoadPrinters.length > 1 && <label>Printer<select value={loadPrinter?.id ?? ''} onChange={(event) => { setLoadPrinterId(event.target.value); setLoadExtruder('extruder'); }}><option value="">Select printer</option>{configuredLoadPrinters.map((printer) => <option key={printer.id} value={printer.id} disabled={printer.configuration_locked}>{printer.name}{printer.configuration_locked ? ' · Busy' : ''}</option>)}</select></label>}
+        {(loadPrinter?.extruder_count ?? 1) > 1 && <label>Hotend<select value={loadExtruder} onChange={(event) => setLoadExtruder(event.target.value)}>{Array.from({ length: loadPrinter!.extruder_count! }, (_, i) => <option key={i} value={i ? `extruder${i}` : 'extruder'}>T{i}</option>)}</select></label>}
+        {(loadPrinter?.extruder_count ?? 1) > 1 && !loadPrinter?.tool_routines_verified && <p className="warning-note">Verify this printer’s hotend routines in 3D Printer settings before loading.</p>}
+        {requestLoad.error && <p className="form-error">{requestLoad.error.message}</p>}
+      </Modal>}
       {weighing && (
         <WeighModal
           spool={weighing}

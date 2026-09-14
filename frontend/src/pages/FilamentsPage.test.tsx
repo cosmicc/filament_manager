@@ -48,6 +48,21 @@ function renderPage() {
 }
 
 describe('FilamentsPage', () => {
+  it.each([true, false])('distinguishes a retained source template from missing settings (%s)', async (available) => {
+    window.localStorage.setItem('filament-manager.collection-view.filaments', 'cards')
+    apiFetchMock.mockImplementation((path: string) => Promise.resolve(
+      path === '/filaments' ? [filament] : path === '/profiles/templates' ? [{ id: 'template-id', active: true, material_type: 'PLA', revisions: [{ id: available ? 'revision-id' : 'other-revision' }] }] : [],
+    ))
+    renderPage()
+    const selector = await screen.findByLabelText('Filaments view')
+    fireEvent.change(selector, { target: { value: 'cards' } })
+    await waitFor(() => {
+      const card = document.querySelector('.catalog-card')
+      expect(card).not.toBeNull()
+      expect(card!.classList.contains('inventory-card--warning')).toBe(!available)
+    })
+  })
+
   afterEach(() => {
     cleanup()
     apiFetchMock.mockReset()

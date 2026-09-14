@@ -274,7 +274,19 @@ async def _connection_checks(
 
     async def moonraker(configured: PrinterConfig) -> dict[str, object]:
         try:
-            await MoonrakerClient(configured).health()
+            client = MoonrakerClient(configured)
+            receipt = await client.health()
+            info = receipt.get("result", {})
+            if isinstance(info, dict) and info.get("klippy_state") != "ready":
+                if await client.printer_power_state() == "off":
+                    return _check(
+                        f"moonraker.{configured.id}",
+                        f"Moonraker · {configured.name}",
+                        "connection",
+                        "waiting",
+                        "Waiting for printer power on",
+                        checked_at,
+                    )
             return _check(
                 f"moonraker.{configured.id}",
                 f"Moonraker · {configured.name}",
@@ -463,6 +475,11 @@ async def operational_overview(session: AsyncSession, *, error_days: int = 1) ->
         )
     printers = list(await session.scalars(select(Printer).order_by(Printer.name)))
     for printer in printers:
+        powered_off = any(
+            check["key"] == f"moonraker.{printer.printer_code}" and check["status"] == "waiting"
+            for check in checks
+        )
+        first_printer_check = len(checks)
         state_fresh = printer.last_seen_at is not None and printer.last_seen_at >= checked_at - timedelta(
             minutes=2
         )
@@ -533,6 +550,12 @@ async def operational_overview(session: AsyncSession, *, error_days: int = 1) ->
                 ),
             ]
         )
+
+        if powered_off:
+            for check in checks[first_printer_check:]:
+                if check["category"] == "synchronization":
+                    check["status"] = "waiting"
+                    check["detail"] = "Waiting for printer power on"
 
     agents = list(await session.scalars(select(WorkstationAgent).order_by(WorkstationAgent.display_name)))
     for agent in agents:

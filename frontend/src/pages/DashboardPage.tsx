@@ -5,6 +5,7 @@ import { apiFetch } from '../api/client'
 import type { DashboardData } from '../api/types'
 import { EmptyState } from '../components/EmptyState'
 import { LoadingState } from '../components/LoadingState'
+import { PlateCompatibility } from '../components/PlateCompatibility'
 import { PageHeader } from '../components/PageHeader'
 import { PrintThumbnail } from '../components/PrintThumbnail'
 import { StatusPill } from '../components/StatusPill'
@@ -124,21 +125,22 @@ export default function DashboardPage() {
           <footer>Checked {dateTime(data.printer_state.checked_at)}{data.printer_state.idle_state ? ` · Idle controller: ${data.printer_state.idle_state}` : ''}{data.printer_state.power_off_remaining_seconds != null ? ` · Power-off countdown: ${duration(data.printer_state.power_off_remaining_seconds)} remaining if idle` : data.printer_state.idle_timeout_seconds ? ` · Idle timeout: ${duration(data.printer_state.idle_timeout_seconds)}` : ''}</footer>
         </article>
 
-        <article className="card active-spool-card">
-          <header className="card__header"><div><p className="eyebrow">Printing context</p><h2>Active {activeSpools.length > 1 ? "spools" : "spool"}</h2></div></header>
-          {activeSpools.length ? activeSpools.map((spool) => (
+        <article className={`card active-spool-card${activeSpools.length ? '--active' : ''}`}>
+          {!activeSpools.length && <header className="card__header"><div><p className="eyebrow">Printing context</p><h2>Active spool</h2></div></header>}
+          {activeSpools.length ? activeSpools.map((spool, index) => (
             <div className="active-spool" key={spool.id}>
+              {index === 0 && <header className="card__header active-spool__heading"><div><p className="eyebrow">Printing context</p><h2>Active {activeSpools.length > 1 ? 'spools' : 'spool'}</h2></div></header>}
               <span className="filament-swatch filament-swatch--large" style={filamentSwatchStyle(spool.color_mode, spool.color_hexes, spool.color_hex ?? '2F80A5')} />
               <div className="active-spool__identity"><small>{spool.active_extruder ?? "extruder"}</small><strong>{spool.spool_code}</strong><span>{[spool.vendor_name, materialIdentitySummary(spool)].filter(Boolean).join(' · ')}</span></div>
               <div className="remaining-visual"><div className="remaining-visual__labels"><span>{grams(spool.remaining_mass_effective_g)}</span><strong>{percent(spool.remaining_percent)}</strong></div><div className="progress"><span style={{ width: `${Math.min(100, Number(spool.remaining_percent))}%` }} /></div><small>{spool.weight_confidence} confidence</small></div>
-              <Link className="text-link" to="/spools">View inventory <ArrowRight size={15} /></Link>
+              <PlateCompatibility filamentId={spool.filament_product_id} printerId={spool.active_printer_id ?? undefined} activeSideId={data.active_plate_surface?.id} /><Link className="text-link" to={`/spools?spool_id=${spool.id}`}>View inventory <ArrowRight size={15} /></Link>
             </div>
           )) : <EmptyState icon={Boxes} title="No active spool" description="Load a spool through Inventory or the confirmed Fluidd workflow. The current physical spool updates automatically." action={<Link className="button" to="/spools">Open inventory</Link>} />}
         </article>
 
-        <article className="card plate-card">
+        <article className={`card plate-card${data.active_plate ? " plate-card--active" : ""}`}>
           <header className="card__header"><div><p className="eyebrow">Printer surface</p><h2>Active build plate</h2></div><Layers3 size={21} /></header>
-          {data.active_plate ? <div className="plate-summary"><div className={`plate-illustration${data.active_plate.image_url ? ' plate-illustration--photo' : ''}`}>{data.active_plate.image_url ? <img src={data.active_plate.image_url} alt={`${data.active_plate.display_name} build plate`} /> : null}<span>{data.active_plate_surface?.surface_code ?? data.active_plate.plate_code}</span></div><strong>{data.active_plate.display_name}</strong><span>{data.active_plate_surface ? `Side ${data.active_plate_surface.side.toUpperCase()} · ${data.active_plate_surface.surface_material ?? 'Surface not specified'}` : 'Side not selected'}</span><StatusPill status={data.active_plate.condition} /></div> : <EmptyState icon={Layers3} title="No plate selected" description="Select a synchronized P-number plate side for a configured printer." action={<Link className="button" to="/plates">Open plates</Link>} />}
+          {data.active_plate ? <div className="plate-summary"><div className={`plate-illustration${data.active_plate.image_url ? ' plate-illustration--photo' : ''}`}>{data.active_plate.image_url ? <img src={data.active_plate.image_url} alt={`${data.active_plate.display_name} build plate`} /> : null}<span>{data.active_plate_surface?.surface_code ?? data.active_plate.plate_code}</span></div><strong>{data.active_plate.display_name}</strong><span>{data.active_plate_surface ? `Side ${data.active_plate_surface.side.toUpperCase()} · ${data.active_plate_surface.surface_material ?? 'Surface not specified'}` : 'Side not selected'}</span></div> : <EmptyState icon={Layers3} title="No plate selected" description="Select a synchronized P-number plate side for a configured printer." action={<Link className="button" to="/plates">Open plates</Link>} />}
         </article>
 
         {contexts.length > 1 && <section className="card printer-overview" aria-label="All printers">

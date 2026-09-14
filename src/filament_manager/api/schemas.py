@@ -879,6 +879,7 @@ class PrinterResponse(ApiModel):
     """Useful canonical printer metadata with connection details excluded."""
 
     id: UUID
+    settings_token: str
     total_print_time_seconds: Decimal | None = None
     longest_print_time_seconds: Decimal | None = None
     history_totals_checked_at: datetime | None = None
@@ -991,6 +992,7 @@ class PrinterUpdate(ApiModel):
     """Manual printer fields and overrides protected by optimistic concurrency."""
 
     expected_version: int = Field(ge=1)
+    expected_settings_token: str | None = Field(default=None, pattern=r"^[a-f0-9]{64}$")
     heated_chamber: bool | None = None
     max_extruder_temp_c: Decimal | None = Field(default=None, gt=0, le=1000)
     max_bed_temp_c: Decimal | None = Field(default=None, ge=0, le=500)

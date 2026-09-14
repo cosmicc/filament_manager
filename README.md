@@ -6,6 +6,8 @@ PostgreSQL is the canonical data store. A distinct Spoolman service remains the 
 
 ## Current capabilities
 
+- Testing release **0.8.3** adds plate-side compatibility ratings, mandatory printer-temperature checks, compact printer/workstation details, activity pagination, improved print history, and refreshed app icons. **Update the app macros and workstation agents** as described in the [0.8.3 upgrade/setup notes](docs/UPGRADE_0.8.3.md), including Cura's per-layer **M240 Time Lapse Camera** setup.
+
 - Testing release 0.8.1 adds spool design-aware tare suggestions, separate completed/other print dates, Moonraker printer duration totals, and source-labelled history settings. See [0.8.1 upgrade notes](docs/UPGRADE_0.8.1.md).
 - Guided Google setup, encrypted app-managed printer connections, a printer carousel and overview, Dashboard **Sync to Cura**, and independently loaded hotends with verified printer-owned routines. See [printer setup](docs/PRINTER_CONNECTIONS.md).
 - New spools receive permanent automatic codes (P1 for PLA/PLA+, G1 for PETG, T1 for TPU, PP1 for PP, S1 for SPLA, and material abbreviations otherwise). Existing codes are preserved; the first available number is reused only when no active or archived spool holds it. Locations shows remaining-filament bars and percentages.
@@ -51,7 +53,7 @@ Version 0.7.8 fixes AutoTowers retraction-speed base commands and retains the Cu
 
 ## Start locally
 
-Version 0.8.0 is a testing release. Its migration adds encrypted app-managed integration settings and printer capabilities; web and worker must be upgraded together. Preserve the private shared data volume's encryption key separately from database backups. Pause parking and completion/idle presentation require reviewed printer macro updates; no Cura renderer change is required. See [full QQ-S macro installation](docs/PAUSE_PARK_SETUP.md), [Google setup](docs/GOOGLE_SHEETS.md), and [printer setup](docs/PRINTER_CONNECTIONS.md).
+Version 0.8.3 is a testing release. Upgrade web and worker together, replace the app's Klipper macros while idle, and upgrade the workstation agent with Cura closed. Follow the [0.8.3 upgrade guide](docs/UPGRADE_0.8.3.md) for safety gates, compatibility ratings, Cura metadata, and per-layer M240 timelapse setup. Preserve the private shared data volume's encryption key separately from database backups. See [full QQ-S macro installation](docs/PAUSE_PARK_SETUP.md), [Google setup](docs/GOOGLE_SHEETS.md), and [printer setup](docs/PRINTER_CONNECTIONS.md).
 
 See [INSTALL.md](INSTALL.md) for prerequisites, deployment variables, automatic database upgrades, first-login credentials, and Docker Compose instructions.
 
@@ -67,7 +69,7 @@ Release tags are fixed snapshots. Later reviewed dependency updates may advance 
 
 The newest five release packages stay on GitHub; older releases are backed up before removal, and all source tags remain. See [release retention and recovery](docs/RELEASE_RETENTION.md).
 
-- [Full-color 128 x 128 app icon for notification services](frontend/public/assets/filament-manager-icon-128.png)
+- [Full-color app icon for notification services](frontend/public/assets/filament-manager-icon-128.png)
 - [GUI color-profile palette reference](docs/design/theme-palettes.svg)
 - [Architecture](docs/ARCHITECTURE.md)
 - [Security](SECURITY.md)

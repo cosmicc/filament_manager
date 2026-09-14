@@ -1,5 +1,7 @@
 # Frontend Design and Accessibility Skill
 
+- 0.8.3 printer/workstation catalogs use full-width summary buttons opening shared detail modals. Spool load asks for a printer only after the action, and automatically targets a sole configured printer; multi-hotend slot choice remains explicit. Sidebar omits Labels and ends Cura workstations, Settings, Diagnostics, Activity. Use the supplied color/white/black PNG artwork, semantic green active cards, and warning tint for missing active templates. Shared DateWithAge adds at most two elapsed units; Activity uses server-side 20/50/100/200 pagination. PlateRatingEditor saves each per-side rating with concurrency checks, while PlateCompatibility suggests highest ratings and explicitly warns on zero stars. Keep captured history identities separate from current links.
+
 - 0.8.1 hides template-owned density in filament/product editors and renames the Klipper group Pressure Advance. Shared number helpers cap display at two decimals, retaining exact unchanged input and archive values. Spool types follow durable New Item creation; suggestions require manufacturer/type/capacity and explicit application. Detail screens separate completed and other print dates. Print history labels captured app-setting fallback sources and Cura profile used; never claim fallback values were measured.
 
 - Filament list identity is the bold derived material/color/modifier name with a smaller manufacturer beneath. Location spool cards reuse the shared remaining bar and formatted percentage with an accessible bounded meter.

@@ -12,7 +12,7 @@ test('printer setup submits write-only credentials and preserves capability fiel
     if (path.endsWith('/printers') && route.request().method() === 'POST') {
       const body = route.request().postDataJSON()
       submitted.push(body)
-      printers = [{ id: 'printer-1', printer_code: 'printer-1', name: body.name, extruder_count: body.extruder_count, build_volume: {}, record_version: 1, active_spools: [], total_print_time_seconds: '9000', longest_print_time_seconds: '4500', history_totals_checked_at: '2026-09-08T00:00:00Z' }]
+      printers = [{ id: 'printer-1', printer_code: 'printer-1', name: body.name, status: 'idle', extruder_count: body.extruder_count, build_volume: {}, record_version: 1, active_spools: [], total_print_time_seconds: '9000', longest_print_time_seconds: '4500', history_totals_checked_at: '2026-09-08T00:00:00Z' }]
       return route.fulfill({ status: 201, json: printers[0] })
     }
     if (path.endsWith('/printers')) return route.fulfill({ json: printers })
@@ -29,7 +29,8 @@ test('printer setup submits write-only credentials and preserves capability fiel
   await dialog.getByRole('button', { name: 'Save printer', exact: true }).click()
   await expect(dialog).toHaveCount(0)
   expect(submitted).toEqual([{ name: 'Workshop printer', extruder_count: 2, base_url: 'http://printer.example.test:7125', enabled: true, api_key: 'test-only-printer-key' }])
-  await expect(page.getByRole('heading', { name: 'Workshop printer', exact: true })).toBeVisible()
+  await page.getByRole('button', { name: 'View Workshop printer', exact: true }).click()
+  await expect(page.getByRole('dialog', { name: 'Workshop printer', exact: true })).toBeVisible()
   await expect(page.getByText('2.5 hours', { exact: true })).toBeVisible()
   await expect(page.getByText('1.25 hours', { exact: true })).toBeVisible()
   await expect(page.getByText('Last completed print', { exact: true })).toBeVisible()
@@ -38,6 +39,7 @@ test('printer setup submits write-only credentials and preserves capability fiel
   if (evidence) await page.screenshot({ path: `${evidence}/printer-statistics-desktop.png`, fullPage: true })
   await page.setViewportSize({ width: 390, height: 844 })
   await page.reload()
+  await page.getByRole('button', { name: 'View Workshop printer', exact: true }).click()
   await expect(page.getByText('2.5 hours', { exact: true })).toBeVisible()
   expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(390)
   if (evidence) await page.screenshot({ path: `${evidence}/printer-statistics-mobile.png`, fullPage: true })

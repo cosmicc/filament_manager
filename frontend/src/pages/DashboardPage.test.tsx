@@ -9,6 +9,7 @@ import DashboardPage from './DashboardPage'
 const apiFetchMock = vi.hoisted(() => vi.fn())
 
 vi.mock('../api/client', () => ({ apiFetch: apiFetchMock }))
+vi.mock('../components/PlateCompatibility', () => ({ PlateCompatibility: () => null }))
 vi.mock('../context/AuthContext', () => ({ useAuth: () => ({ user: { role: 'administrator' } }) }))
 
 const dashboard = {

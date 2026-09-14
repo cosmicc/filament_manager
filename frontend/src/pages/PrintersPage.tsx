@@ -1,3 +1,4 @@
+import { DateWithAge } from '../components/DateWithAge'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { PrintActivityDates } from '../components/PrintActivityDates'
 import { Pencil, Plus, Printer as PrinterIcon, RefreshCw, Save, Settings, Wrench } from 'lucide-react'
@@ -12,7 +13,7 @@ import { PageHeader } from '../components/PageHeader'
 import { PrinterConnectionModal } from '../components/PrinterConnectionModal'
 import { useAuth } from '../context/AuthContext'
 import { Link } from '../context/RouterContext'
-import { compactNumber, dateTime, inputNumber } from '../lib/format'
+import { compactNumber, inputNumber } from '../lib/format'
 
 function optional(data: FormData, key: string) {
   return String(data.get(key) ?? '').trim() || null
@@ -84,6 +85,7 @@ function PrinterEditorModal({
 export default function PrintersPage() {
   const { user } = useAuth()
   const client = useQueryClient()
+  const [selectedId, setSelectedId] = useState<string | null>(null)
   const [editing, setEditing] = useState<Printer | null>(null)
   const [connectionEditor, setConnectionEditor] = useState<Printer | 'new' | null>(null)
   const [message, setMessage] = useState('')
@@ -109,11 +111,11 @@ export default function PrintersPage() {
   const update = useMutation({
     mutationFn: ({ printer, form }: { printer: Printer; form: HTMLFormElement }) => {
       const data = new FormData(form)
-      const latest = printers.data?.find((item) => item.id === printer.id) ?? printer
       return apiFetch<Printer>(`/printers/${printer.id}`, {
         method: 'PATCH',
         body: JSON.stringify({
-          expected_version: latest.record_version,
+          expected_version: printer.record_version,
+          expected_settings_token: printer.settings_token,
           name: String(data.get('name') ?? '').trim(),
           manufacturer: optional(data, 'manufacturer'),
           model: optional(data, 'model'),
@@ -137,7 +139,10 @@ export default function PrintersPage() {
       })
     },
     onError: async (error) => {
-      if (error instanceof ApiClientError && error.code === 'version_conflict') {
+      if (
+        error instanceof ApiClientError
+        && (error.code === 'version_conflict' || error.code === 'record_version_conflict')
+      ) {
         setEditing(printer => {
           if (printer && printers.data) {
             return printers.data.find((item) => item.id === printer.id) ?? printer
@@ -181,6 +186,10 @@ export default function PrintersPage() {
             const nozzle = nozzles.data?.find((item) => item.id === printer.active_nozzle_id)
             return (
               <article className="printer-card card" key={printer.id}>
+                <button className="record-summary-button" onClick={() => setSelectedId(printer.id)} aria-label={`View ${printer.name}`}>
+                  <PrinterIcon size={24} /><span><strong>{printer.name}</strong><small>{printer.configuration_locked ? 'Printing / busy' : printer.status.replaceAll('_', ' ')} · {printer.active_spools?.map((spool) => spool.spool_code).join(', ') || 'No spool loaded'} · {surface?.surface_code ?? 'No active plate'}</small></span>
+                </button>
+                {selectedId === printer.id && <Modal title={printer.name} onClose={() => setSelectedId(null)} size="wide">
                 <div className="printer-card__heading">
                   <span className="printer-card__icon"><PrinterIcon size={28} /></span>
                   <div><p className="eyebrow">{printer.printer_code}</p><h2>{printer.name}</h2><p className="muted">{[printer.manufacturer, printer.model].filter(Boolean).join(' ') || 'Manufacturer and model not specified'}</p></div>
@@ -191,7 +200,7 @@ export default function PrintersPage() {
                     <dl className="definition-list">
                       <div><dt>Total print time</dt><dd>{printer.total_print_time_seconds == null ? 'Unavailable' : `${compactNumber(Number(printer.total_print_time_seconds) / 3600, 2)} hours`}</dd></div>
                       <div><dt>Longest print</dt><dd>{printer.longest_print_time_seconds == null ? 'Unavailable' : `${compactNumber(Number(printer.longest_print_time_seconds) / 3600, 2)} hours`}</dd></div>
-                      <div><dt>Moonraker totals checked</dt><dd>{printer.history_totals_checked_at ? dateTime(printer.history_totals_checked_at) : 'Not yet available'}<small className="table-subtext">Print time excludes pauses. Moonraker totals may be reset independently.</small></dd></div>
+                      <div><dt>Moonraker totals checked</dt><dd>{printer.history_totals_checked_at ? <DateWithAge value={printer.history_totals_checked_at} /> : 'Not yet available'}<small className="table-subtext">Print time excludes pauses. Moonraker totals may be reset independently.</small></dd></div>
                       <div><dt>Printer type</dt><dd>{printer.kinematics ? `${printer.kinematics} kinematics` : 'Not reported'}{printer.extruder_type ? ` · ${printer.extruder_type}` : ''}</dd></div>
                       <div><dt>Build volume</dt><dd>{printer.build_volume.shape === 'round' ? `Ø ${compactNumber(printer.build_volume.diameter_mm ?? printer.build_volume.x_mm, 1)} × ${compactNumber(printer.build_volume.z_mm, 1)} mm` : printer.build_volume.x_mm ? `${compactNumber(printer.build_volume.x_mm, 1)} × ${compactNumber(printer.build_volume.y_mm, 1)} × ${compactNumber(printer.build_volume.z_mm, 1)} mm` : 'Not reported'}</dd></div>
                       <div><dt>Active plate</dt><dd>{plate ? `${surface?.surface_code ?? plate.plate_code} - ${plate.display_name}` : 'Not selected'}</dd></div>
@@ -204,9 +213,10 @@ export default function PrintersPage() {
                 </div>
                 <div className="printer-card__footer">
                   <p className="security-note"><Wrench size={16} /> Manage physical installation and usage on <Link to="/nozzles">Nozzles</Link>.</p>
-                  {canEdit ? <button className="button" onClick={() => { setEditing(printer); setMessage('') }}><Pencil size={16} /> Edit printer</button> : null}
+                  {canEdit ? <button className="button" onClick={() => { void printers.refetch().then((result) => { setEditing(result.data?.find((item) => item.id === printer.id) ?? printer); setMessage('') }) }}><Pencil size={16} /> Edit printer</button> : null}
                   {canEdit ? <button className="button" onClick={() => setConnectionEditor(printer)}><Settings size={16} />Connection</button> : null}
                 </div>
+                </Modal>}
               </article>
             )
           })}

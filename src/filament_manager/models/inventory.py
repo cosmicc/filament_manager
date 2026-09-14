@@ -278,6 +278,14 @@ class Printer(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     """A configured Moonraker/Klipper printer."""
 
     __tablename__ = "printers"
+
+    @property
+    def settings_token(self) -> str:
+        """Editable-settings identity independent of live status updates."""
+        from filament_manager.domain.printer_settings import printer_settings_token
+
+        return printer_settings_token(self)
+
     total_print_time_seconds: Mapped[Decimal | None] = mapped_column(Numeric(18, 3))
     longest_print_time_seconds: Mapped[Decimal | None] = mapped_column(Numeric(18, 3))
     history_totals_checked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))

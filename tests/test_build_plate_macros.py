@@ -70,6 +70,59 @@ def test_all_reference_templates_compile_with_klipper_delimiters() -> None:
             ENVIRONMENT.from_string(MACROS.get(section, "gcode"))
 
 
+def test_zero_star_plate_cannot_use_filament_weight_override() -> None:
+    """An exact unsafe side blocks even when sufficient filament is available."""
+
+    printer = printer_snapshot()
+    printer["gcode_macro FILAMENT_MANAGER_SPOOL_STATE"].update(
+        phase="checking_weight", start_pending=1, loaded_spool_id=9, weight_sequence=2
+    )
+    result = render(
+        "FILAMENT_MANAGER_FILAMENT_CHECK",
+        printer,
+        ID="9",
+        SEQUENCE="2",
+        REQUIRED="1",
+        REMAINING="200",
+        PLATE_SAFE="0",
+    )
+    assert "Incompatible build plate" in result
+    assert "Cancel Print|FILAMENT_MANAGER_ABORT" in result
+    assert "Override and Continue" not in result
+    assert "_FILAMENT_MANAGER_CONTINUE_START" not in result
+    assert "Incompatible build plate" not in render(
+        "FILAMENT_MANAGER_FILAMENT_CHECK",
+        printer,
+        ID="9",
+        SEQUENCE="1",
+        REQUIRED="1",
+        REMAINING="200",
+        PLATE_SAFE="0",
+    )
+
+
+def test_checked_plate_identity_cannot_change_during_start() -> None:
+    """Reject stale server evidence and a deferred chooser changing approved sides."""
+    printer = printer_snapshot()
+    spool = printer["gcode_macro FILAMENT_MANAGER_SPOOL_STATE"]
+    spool.update(phase="checking_weight", start_pending=1, loaded_spool_id=9, weight_sequence=2)
+    result = render(
+        "FILAMENT_MANAGER_FILAMENT_CHECK",
+        printer,
+        ID="9",
+        SEQUENCE="2",
+        REQUIRED="1",
+        REMAINING="200",
+        PLATE="P4",
+    )
+    assert "Build plate changed" in result
+    assert "_FILAMENT_MANAGER_CONTINUE_START" not in result
+    spool.update(checked_plate="P4b", resume_virtual_sd=1)
+    printer["gcode_macro START_PRINT"]["waiting_for_mesh"] = 1
+    with pytest.raises(ValueError, match="changed after compatibility"):
+        render("SELECT_BUILD_PLATE", printer, PLATE="P4")
+
+
 @pytest.mark.parametrize("state", ["printing", "paused", "unknown"])
 @pytest.mark.parametrize(
     "macro", ["FILAMENT_MANAGER_CHANGE_SPOOL", "FILAMENT_MANAGER_LOAD_TARGET", "UNLOAD_FILAMENT"]

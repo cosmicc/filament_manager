@@ -15,10 +15,14 @@ const facts = [
 /** Distinguish captured app requests from values recorded in the sliced file. */
 export function PrintSettingSummary({ job }: { job: PrintJob }) {
   const sources = job.setting_sources ?? {}
+  const evidence = (job.inspection?.extracted ?? {}) as Record<string, unknown>
+  const low = Number(evidence.minimum_layer_height_mm)
+  const high = Number(evidence.maximum_layer_height_mm)
+  const observed = Number.isFinite(low) && Number.isFinite(high) && low > 0
+  const adaptive = evidence.adaptive_layers_enabled === true || (observed && high - low > 0.0001)
   return <section><p className="eyebrow">Print settings</p><dl className="definition-list">
     <div><dt>Slicer</dt><dd>{[job.slicer, job.slicer_version].filter(Boolean).join(' ') || 'Not recorded'}</dd></div>
     <div><dt>Cura profile used</dt><dd>{job.cura_quality_profile || 'Not recorded'}</dd></div>
-    <div><dt>Machine</dt><dd>{job.machine_name || 'Not recorded'}</dd></div>
-    {facts.map(([key, label, unit]) => <div key={key}><dt>{label}</dt><dd>{job[key] == null ? 'Not recorded' : <>{compactNumber(job[key], 2)} {unit}<small className="table-subtext">{sources[key] === 'captured_profile' ? 'Captured app settings (not measured)' : 'Recorded print evidence'}</small></>}</dd></div>)}
+    {observed && <div><dt>{adaptive ? 'Adaptive layer heights' : 'Observed layer height'}</dt><dd>{compactNumber(low, 2)}{high !== low ? `–${compactNumber(high, 2)}` : ''} mm</dd></div>}{evidence.initial_layer_height_mm != null && <div><dt>Initial layer height</dt><dd>{compactNumber(String(evidence.initial_layer_height_mm), 2)} mm</dd></div>}{evidence.initial_layer_line_width_percent != null && <div><dt>Initial layer line width</dt><dd>{compactNumber(String(evidence.initial_layer_line_width_percent), 2)}% of normal line width</dd></div>}{facts.map(([key, label, unit]) => <div key={key}><dt>{key === 'layer_height_mm' && adaptive ? 'Nominal layer height (adaptive)' : label}</dt><dd>{job[key] == null ? 'Not recorded' : <>{compactNumber(job[key], 2)} {unit}<small className="table-subtext">{sources[key] === 'captured_profile' ? 'Captured app settings (not measured)' : 'Recorded print evidence'}</small></>}</dd></div>)}
   </dl></section>
 }

@@ -701,27 +701,34 @@ async def update_backup_policy(
 
 
 async def backup_is_due(session: AsyncSession) -> tuple[bool, BackupPolicy]:
+    """Catch up one newest due occurrence; never accumulate a backlog of dumps."""
     policy = await get_backup_policy(session)
     if not policy.enabled:
         return False, policy
-    status = backup_status()
-    next_retry_value = status.get("next_retry_at")
-    if isinstance(next_retry_value, str):
-        try:
-            next_retry_at = datetime.fromisoformat(next_retry_value)
-        except ValueError:
-            next_retry_at = None
-        if (
-            next_retry_at is not None
-            and next_retry_at.tzinfo is not None
-            and datetime.now(UTC) < next_retry_at
-        ):
-            return False, policy
+    now = datetime.now(UTC)
+    interval = timedelta(hours=policy.interval_hours)
     automatic = [item for item in list_backup_archives() if item.storage_kind == "automatic"]
+    latest_due = None
     if automatic:
-        due_at = automatic[0].created_at + timedelta(hours=policy.interval_hours)
-        if datetime.now(UTC) < due_at:
+        due_at = automatic[0].created_at + interval
+        if now < due_at:
             return False, policy
+        latest_due = due_at + ((now - due_at) // interval) * interval
+    status = backup_status()
+
+    def timestamp(key: str) -> datetime | None:
+        raw = status.get(key)
+        try:
+            value = datetime.fromisoformat(raw) if isinstance(raw, str) else None
+        except ValueError:
+            return None
+        return value if value is not None and value.tzinfo is not None else None
+
+    next_retry = timestamp("next_retry_at")
+    attempted_at = timestamp("checked_at")
+    newer_occurrence = latest_due is not None and attempted_at is not None and latest_due > attempted_at
+    if next_retry is not None and now < next_retry and not newer_occurrence:
+        return False, policy
     return not await backup_has_active_print(session), policy
 
 

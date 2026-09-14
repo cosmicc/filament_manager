@@ -1,5 +1,7 @@
 # Deployment and Operations Skill
 
+- Testing release 0.8.3 requires the updated app macro and idle firmware restart for mandatory hardware checks, plus workstation renderer 27 for the metadata header. Upgrade web/worker together, close Cura for agent deployment, and re-slice after successful synchronization. No schema migration is added. Follow `docs/UPGRADE_0.8.3.md`; never claim physical printer or live Google validation from automated fixtures.
+
 - Version 0.8.1 is a testing release. Back up the canonical database and upgrade web/worker together; startup applies `fa012b3c4d56`, appending density-inheritance corrections without changing historical snapshots. Existing spool types remain Unknown until explicitly selected. No replacement of the 0.8.0 printer macros or firmware restart is required. Follow `docs/UPGRADE_0.8.1.md` for tare-default clearing, duration-counter semantics, and rollback limits.
 
 - Ship the full QQ-S example and matching app macro with 0.8.0. Follow `docs/PAUSE_PARK_SETUP.md` for exact filenames, one final app include, native pause/resume aliases, and removable-probe hooks. Back up live configuration and install only while idle; require supervised motion/runout verification after restart. Never replace another printer's toolchanger macros with this single-hotend example.

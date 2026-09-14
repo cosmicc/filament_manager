@@ -4,6 +4,15 @@ import configparser
 import io
 
 MANAGED_MACHINE_START_GCODE = (
+    ";===== MOONRAKER METADATA =====\n"
+    ";Nozzle diameter = {machine_nozzle_size}\n"
+    ";Filament type = {material_type}\n"
+    ";Filament name = {material_name}\n"
+    ";Filament weight = {filament_weight}\n"
+    ";M109 S{material_print_temperature}\n"
+    ";M190 S{material_bed_temperature}\n"
+    ";M191 S{build_volume_temperature}\n"
+    ";===== END MOONRAKER METADATA =====\n"
     "FILAMENT_MANAGER_START_PRINT "
     "MATERIAL_GUID={material_guid, 0} "
     "BED_TEMP={material_bed_temperature_layer_0, 0} "

@@ -49,6 +49,7 @@ from filament_manager.models.inventory import (
     Printer,
     Spool,
     SpoolUsageEvent,
+    Vendor,
 )
 from filament_manager.models.operations import ApplicationSetting
 from filament_manager.models.printing import PrintJob, PrintMaterialSegment
@@ -321,6 +322,9 @@ async def _state_snapshot(
         else None
     )
     nozzle = await session.get(Nozzle, printer.active_nozzle_id) if printer.active_nozzle_id else None
+    manufacturer = (
+        await session.scalar(select(Vendor.name).where(Vendor.id == product.vendor_id)) if product else None
+    )
     cost_per_gram = (
         spool.purchase_cost / spool.nominal_net_mass_g
         if spool is not None and spool.purchase_cost is not None and spool.nominal_net_mass_g > 0
@@ -363,6 +367,7 @@ async def _state_snapshot(
                 "id": str(product.id),
                 "material_type": product.material_type,
                 "product_name": product.display_name,
+                "manufacturer": manufacturer,
                 "color_name": product.color_name,
                 "filler": product.filler,
                 "finish": product.finish,
@@ -669,6 +674,7 @@ async def _inspection_result(
         gcode = await client.gcode_file(filename)
     except MoonrakerError:
         return None, None, metadata, profile, material_guid
+    metadata = {**metadata, "stream_observations": gcode.observations}
     profile_snapshot = _json_safe(settings_snapshot_from_profile(profile)) if profile else None
     result = inspect_gcode(
         metadata,
@@ -680,6 +686,9 @@ async def _inspection_result(
         # interchangeable. Retain the machine value as evidence; exact machine
         # enforcement remains the workstation deployment agent's responsibility.
         expected_machine_name=None,
+        expected_extruder_temp_limit_c=printer.max_extruder_temp_c,
+        expected_bed_temp_limit_c=printer.max_bed_temp_c,
+        require_chamber_when_configured=printer.heated_chamber,
     )
     extracted_guid = str(result.extracted.get("material_guid") or "").strip().casefold()
     if profile is None and extracted_guid:
@@ -697,6 +706,9 @@ async def _inspection_result(
                 expected_profile=_json_safe(settings_snapshot_from_profile(profile)),
                 expected_material_guid=material_guid,
                 expected_machine_name=None,
+                expected_extruder_temp_limit_c=printer.max_extruder_temp_c,
+                expected_bed_temp_limit_c=printer.max_bed_temp_c,
+                require_chamber_when_configured=printer.heated_chamber,
             )
     return result, gcode.sha256, metadata, profile, material_guid
 
@@ -707,10 +719,14 @@ def _blocking_gate_passed(job: PrintJob) -> bool:
     mismatches = job.inspection.get("mismatches") if isinstance(job.inspection, dict) else None
     return (
         job.inspected_at is not None
-        and job.material_profile_id is not None
+        and (job.inspection_policy == "warn" or job.material_profile_id is not None)
         and job.inspection_status in {GcodeInspectionStatus.PASSED, GcodeInspectionStatus.WARNING}
         and isinstance(mismatches, list)
-        and not mismatches
+        and (
+            not mismatches
+            if job.inspection_policy != "warn"
+            else all(isinstance(item, dict) and not item.get("blocking") for item in mismatches)
+        )
     )
 
 
@@ -902,9 +918,7 @@ async def synchronize_live_print(
             metadata=metadata,
         )
         if result is None:
-            job.inspection_status = (
-                GcodeInspectionStatus.BLOCKED if policy == "block" else GcodeInspectionStatus.UNAVAILABLE
-            )
+            job.inspection_status = GcodeInspectionStatus.BLOCKED
             job.inspection = {
                 "mismatches": [],
                 "warnings": ["Moonraker could not provide a safely bounded G-code inspection."],
@@ -914,7 +928,9 @@ async def synchronize_live_print(
             }
         else:
             _apply_extracted(job, result.extracted)
-            blocked = policy == "block" and (profile is None or bool(result.mismatches))
+            blocked = any(item.get("blocking") for item in result.mismatches) or (
+                policy == "block" and (profile is None or bool(result.mismatches))
+            )
             job.inspection_status = (
                 GcodeInspectionStatus.BLOCKED
                 if blocked
@@ -1099,6 +1115,13 @@ async def synchronize_live_print(
                     }
                 },
             )
+        from filament_manager.services.plate_ratings import filament_plate_rating
+
+        rating = (
+            await filament_plate_rating(session, printer, weight_spool.filament_product_id)
+            if weight_spool
+            else None
+        )
         remaining = weight_spool.remaining_mass_effective_g if weight_spool is not None else None
         evidence: dict[str, object] = {
             "sequence": preflight_state.weight_sequence,
@@ -1106,6 +1129,10 @@ async def synchronize_live_print(
             "required_g": str(required) if required is not None else None,
             "remaining_g": str(remaining) if remaining is not None else None,
             "override": False,
+            "plate_surface_id": str(printer.active_plate_surface_id)
+            if printer.active_plate_surface_id
+            else None,
+            "plate_rating": rating,
         }
         if job.inspection.get("filament_check") != evidence:
             job.inspection = {**job.inspection, "filament_check": evidence}
@@ -1121,11 +1148,18 @@ async def synchronize_live_print(
                 correlation_id=correlation_id,
             )
             await session.commit()
+        checked_side = (
+            await session.get(BuildPlateSurface, printer.active_plate_surface_id)
+            if printer.active_plate_surface_id
+            else None
+        )
         await client.submit_filament_check(
             spoolman_id=preflight_state.loaded_spool_id,
             sequence=preflight_state.weight_sequence,
             required_g=required,
             remaining_g=remaining,
+            plate_safe=rating != 0,
+            plate_code=checked_side.surface_code if checked_side else "UNSET",
         )
     elif preflight_state is not None and preflight_state.weight_overridden:
         override_evidence = job.inspection.get("filament_check")

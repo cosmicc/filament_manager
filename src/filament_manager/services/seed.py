@@ -12,6 +12,7 @@ from filament_manager.models.inventory import (
     BuildPlate,
     BuildPlateSurface,
     MaterialTemplate,
+    MaterialTemplateRevision,
     Nozzle,
     Printer,
 )
@@ -162,6 +163,59 @@ async def seed_configured_system(session: AsyncSession, settings: Settings) -> d
             increment_template_record=False,
         )
         seeded_templates += 1
+    # Derive new families only from an existing exact scope; never guess tuned values.
+    bases = list(
+        await session.scalars(
+            select(MaterialTemplate)
+            .where(
+                MaterialTemplate.active.is_(True),
+                func.lower(MaterialTemplate.material_type).in_(["pla", "petg"]),
+            )
+            .order_by(MaterialTemplate.id)
+            .with_for_update()
+        )
+    )
+    for base in bases:
+        targets = (
+            ("Silk PLA", "PLA Carbon Fiber")
+            if base.material_type.casefold() == "pla"
+            else ("PETG Carbon Fiber",)
+        )
+        for material in targets:
+            exists = await session.scalar(
+                select(MaterialTemplate.id)
+                .where(
+                    MaterialTemplate.nozzle_id == base.nozzle_id,
+                    func.lower(MaterialTemplate.material_type) == material.casefold(),
+                )
+                .limit(1)
+            )
+            if exists is not None:
+                continue
+            revision = await session.scalar(
+                select(MaterialTemplateRevision)
+                .where(MaterialTemplateRevision.material_template_id == base.id)
+                .order_by(MaterialTemplateRevision.version.desc())
+                .limit(1)
+            )
+            if revision is None:
+                continue
+            template = MaterialTemplate(
+                name=f"Template {material}",
+                material_type=material,
+                description=f"Copied from {base.name}; review and calibrate for this material.",
+                printer_id=base.printer_id,
+                nozzle_id=base.nozzle_id,
+                nozzle_diameter_mm=base.nozzle_diameter_mm,
+                filament_diameter_mm=base.filament_diameter_mm,
+                active=True,
+            )
+            session.add(template)
+            await session.flush()
+            await save_template_settings(
+                session, template=template, settings=dict(revision.settings), increment_template_record=False
+            )
+            seeded_templates += 1
     await session.flush()
     return {
         "plates": seeded_plates,

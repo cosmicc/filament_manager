@@ -291,14 +291,66 @@ def inspect_gcode(
     expected_profile: dict[str, object] | None,
     expected_material_guid: str | None,
     expected_machine_name: str | None,
+    expected_extruder_temp_limit_c: object | None = None,
+    expected_bed_temp_limit_c: object | None = None,
+    require_chamber_when_configured: bool | None = None,
 ) -> InspectionResult:
     """Compare extracted G-code settings with one immutable profile snapshot."""
 
     bounded_header = header[:MAX_GCODE_TEXT_LENGTH]
     settings, cura_settings = _parse_cura_setting_payload(tail[-MAX_GCODE_TEXT_LENGTH:])
     extracted = _extract_gcode_metadata(metadata, bounded_header, settings)
+    observations = metadata.get("stream_observations")
+    if isinstance(observations, dict):
+        for key in (
+            "maximum_bed_temp_c",
+            "maximum_extruder_temp_c",
+            "maximum_chamber_temp_c",
+            "initial_layer_height_mm",
+            "minimum_layer_height_mm",
+            "maximum_layer_height_mm",
+        ):
+            value = _decimal(observations.get(key))
+            if value is not None:
+                extracted[key] = str(value)
+    extracted["adaptive_layers_enabled"] = (
+        settings.get("adaptive_layer_height_enabled", "").casefold() == "true"
+    )
+    initial_width = _decimal(settings.get("initial_layer_line_width_factor"))
+    if initial_width is not None:
+        extracted["initial_layer_line_width_percent"] = str(initial_width)
     mismatches: list[dict[str, object]] = []
     warnings: list[str] = []
+    bed_limit = _decimal(expected_bed_temp_limit_c)
+    extruder_limit = _decimal(expected_extruder_temp_limit_c)
+    for key, label, limit in (
+        ("bed_temp_c", "build plate temperature", bed_limit),
+        ("initial_bed_temp_c", "initial build plate temperature", bed_limit),
+        ("maximum_bed_temp_c", "maximum bed temperature in file", bed_limit),
+        ("extruder_temp_c", "printing temperature", extruder_limit),
+        ("maximum_extruder_temp_c", "maximum extruder temperature in file", extruder_limit),
+        (
+            "chamber_temp_c",
+            "unsupported chamber heating",
+            Decimal(0) if require_chamber_when_configured is False else None,
+        ),
+        (
+            "maximum_chamber_temp_c",
+            "unsupported chamber heating in file",
+            Decimal(0) if require_chamber_when_configured is False else None,
+        ),
+    ):
+        actual = _decimal(extracted.get(key))
+        if limit is not None and actual is not None and actual > limit:
+            mismatches.append(
+                {
+                    "field": key,
+                    "label": label,
+                    "gcode_value": str(actual),
+                    "profile_value": str(limit),
+                    "blocking": True,
+                }
+            )
     if expected_profile is None:
         warnings.append("No exact managed material profile could be resolved for this G-code file.")
         return InspectionResult(extracted, tuple(mismatches), tuple(warnings), cura_settings)

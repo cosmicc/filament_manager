@@ -1,5 +1,31 @@
 # User Changelog
 
+## 0.8.3 - 09.14.2026
+
+Testing release.
+
+### Added
+
+- Rate each build plate side for each material template. Five stars recommends it; zero stars prevents an unsafe managed print.
+- Separate Silk PLA and carbon-fiber PLA/PETG templates, copied from your existing base settings without moving existing filaments.
+- Easier activity browsing, elapsed dates, adaptive layer-height details, and linked spool/filament print history.
+
+### Changed
+
+- Smaller dashboard/inventory cards, refreshed app icons, simplified navigation, and compact printer/workstation lists with details on click.
+- Loading a spool asks which printer only when more than one is configured.
+- Cura receives the new metadata header. Setup instructions explain per-layer M240 timelapse commands.
+
+### Fixed
+
+- Saving printer temperature limits no longer fails because background status changed.
+- Prints exceeding configured printer temperatures or requiring an unavailable heated chamber are blocked.
+- Missed backups run at the next safe opportunity; powered-off printer synchronization shows Waiting.
+- Missing-template filaments are highlighted and redundant card text is removed.
+
+Update the app's Klipper macros and restart firmware while idle, then upgrade workstation agents with Cura closed. See [upgrade instructions](docs/UPGRADE_0.8.3.md).
+
+
 ## 0.8.2 - 09.09.2026
 
 Testing release.

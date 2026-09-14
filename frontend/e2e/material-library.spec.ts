@@ -113,6 +113,8 @@ test.beforeEach(async ({ page }) => {
   await page.route('**/api/v1/printers', (route) => route.fulfill({ json: [printer] }))
   await page.route('**/api/v1/nozzles', (route) => route.fulfill({ json: [nozzle] }))
   await page.route('**/api/v1/build-plates', (route) => route.fulfill({ json: [] }))
+  await page.route('**/api/v1/build-plate-ratings/filament/**', (route) => route.fulfill({ json: [] }))
+  await page.route('**/api/v1/build-plate-ratings/template-id', (route) => route.fulfill({ json: { template_id: 'template-id', record_version: 0, ratings: {} } }))
   await page.route('**/api/v1/notifications**', (route) => route.fulfill({ json: [] }))
   await page.route('**/api/v1/profiles/templates', (route) => route.fulfill({ json: [template] }))
   await page.route('**/api/v1/profiles', (route) => route.fulfill({ json: [] }))
@@ -189,6 +191,47 @@ test('new inventory choices preserve the draft and template changes retain custo
   await expect(page.getByRole('heading', { level: 1 })).toContainText('TPU')
   await expect(page.getByText('218 °C', { exact: true })).toBeVisible()
   await expect(page.getByText('45 °C', { exact: true })).toBeVisible()
+})
+
+test('plate-side ratings save immediately and activity pagination spans all events', async ({ page }) => {
+  await page.route('**/api/v1/profiles/cura-settings/catalog', route => route.fulfill({ json: [] }))
+  await page.route('**/api/v1/build-plates', route => route.fulfill({ json: [{ id: 'plate-id', plate_code: 'P1', display_name: 'Textured PEI', surfaces: [{ id: 'side-id', surface_code: 'P1', side: 'a' }] }] }))
+  let ratings: Record<string, number> = {}
+  let version = 0
+  await page.route('**/api/v1/build-plate-ratings/template-id', route => {
+    if (route.request().method() === 'PUT') {
+      const payload = route.request().postDataJSON()
+      expect(payload.expected_version).toBe(version)
+      ratings = payload.ratings
+      version += 1
+    }
+    return route.fulfill({ json: { template_id: 'template-id', record_version: version, ratings } })
+  })
+  await page.goto('/templates')
+  await page.locator('.catalog-card--template').click()
+  await page.getByLabel('Rating for P1', { exact: true }).selectOption('0')
+  await expect.poll(() => ratings['side-id']).toBe(0)
+  await expect(page.getByLabel('Rating for P1', { exact: true })).toBeEnabled()
+  await page.getByLabel('Rating for P1', { exact: true }).selectOption('5')
+  await expect.poll(() => ratings['side-id']).toBe(5)
+  const evidence = process.env.FILAMENT_MANAGER_E2E_EVIDENCE_DIR
+  if (evidence) await page.screenshot({ path: `${evidence}/plate-ratings-desktop-v083.png` })
+  await page.setViewportSize({ width: 390, height: 844 })
+  await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(390)
+  if (evidence) await page.screenshot({ path: `${evidence}/plate-ratings-mobile-v083.png` })
+  await page.route('**/api/v1/audit-events/page?**', route => {
+    const url = new URL(route.request().url())
+    const perPage = Number(url.searchParams.get('per_page'))
+    const currentPage = Number(url.searchParams.get('page'))
+    return route.fulfill({ json: { page: currentPage, pages: Math.ceil(61 / perPage), total: 61, items: [{ id: `${currentPage}`, action: 'spool.update', object_type: 'spool', source: 'web', correlation_id: 'test', occurred_at: '2026-09-13T00:00:00Z' }] } })
+  })
+  await page.goto('/activity')
+  await expect(page.getByText('Page 1 of 4', { exact: true })).toBeVisible()
+  await page.getByRole('button', { name: 'Last', exact: true }).click()
+  await expect(page.getByText('Page 4 of 4', { exact: true })).toBeVisible()
+  await page.getByLabel('Events per page').selectOption('50')
+  await expect(page.getByText('Page 1 of 2', { exact: true })).toBeVisible()
+  if (evidence) await page.screenshot({ path: `${evidence}/activity-mobile-v083.png`, fullPage: true })
 })
 
 test('template library is usable at desktop and mobile sizes', async ({ page }) => {
@@ -512,7 +555,7 @@ test('filament creation requires and submits a current template', async ({ page 
   await expect(page).toHaveURL(new RegExp(`/spools\\?create=1&filament_id=${filament.id}`))
   const spoolDialog = page.getByRole('dialog', { name: 'Add a physical spool' })
   await expect(spoolDialog).toBeVisible()
-  await expect(spoolDialog.getByLabel('Filament product')).toHaveValue(filament.id)
+  await expect(spoolDialog.getByRole('combobox', { name: 'Filament', exact: true })).toHaveValue(filament.id)
   await captureEvidence(page, 'filament-create-spool-form-v070')
 })
 
@@ -535,8 +578,8 @@ test('filament details create a preselected spool with automatic names at deskto
     await page.getByRole('link', { name: 'Create spool from filament' }).click()
     const dialog = page.getByRole('dialog', { name: 'Add a physical spool' })
     await expect(dialog).toBeVisible()
-    await expect(dialog.getByLabel('Filament product')).toHaveValue(filament.id)
-    await expect(dialog.getByLabel('Filament product').locator('option:checked')).toHaveText(/PLA · Blue · Matte/)
+    await expect(dialog.getByRole('combobox', { name: 'Filament', exact: true })).toHaveValue(filament.id)
+    await expect(dialog.getByRole('combobox', { name: 'Filament', exact: true }).locator('option:checked')).toHaveText(/PLA · Blue · Matte/)
   }
 })
 
@@ -816,12 +859,12 @@ test('spool creation is available without opening Spoolman', async ({ page }) =>
   await expect(page.getByRole('option', { name: /PLA · Blue · Carbon Fiber · Silk/ })).toHaveCount(0)
   await page.getByRole('button', { name: 'Add spool' }).click()
   await expect(page.getByRole('option', { name: /PLA · Blue · Carbon Fiber · Silk/ })).toHaveCount(1)
-  await page.getByLabel('Spool code').fill('PLA-BLUE-01')
+  await expect(page.getByLabel('Spool code')).toHaveAttribute('readonly', '')
   await page.getByLabel('Purchase cost').fill('15')
   await expect(page.getByText('1.5¢/g using filament weight only.')).toBeVisible()
   await page.getByRole('button', { name: 'Create spool' }).click()
   await expect.poll(() => submitted?.filament_product_id).toBe(filament.id)
-  await expect.poll(() => submitted?.spool_code).toBe('PLA-BLUE-01')
+  expect(submitted).not.toHaveProperty('spool_code')
   await expect.poll(() => submitted?.purchase_cost).toBe('15')
 })
 
@@ -875,6 +918,7 @@ test('an empty Cura library can complete the one-time atomic takeover', async ({
   })
 
   await page.goto('/workstations')
+  await page.getByRole('button', { name: 'View Arch Cura', exact: true }).click()
   await expect(page.getByRole('button', { name: 'Add Cura workstation' })).toBeVisible()
   await expect(page.getByText('Awaiting one-time takeover')).toBeVisible()
   await page.getByRole('button', { name: 'Review takeover', exact: true }).click()
@@ -924,6 +968,7 @@ test('managed Cura workstations show verified material print setting coverage', 
   }] }))
 
   await page.goto('/workstations')
+  await page.getByRole('button', { name: 'View Arch Cura', exact: true }).click()
   await expect(page.getByText('53 of 53 verified')).toBeVisible()
   await expect(page.getByText('Material Settings and Klipper Settings are ready; managed values are enforced over Cura profiles.')).toBeVisible()
   await expect(page.getByText(/Verified Aug 22, 2026/)).toBeVisible()
@@ -974,6 +1019,7 @@ test('takeover replaces reported Cura sources without importing values', async (
   })
 
   await page.goto('/workstations')
+  await page.getByRole('button', { name: 'View Arch Cura', exact: true }).click()
   await expect(page.getByRole('heading', { name: 'Filament Manager → Cura' })).toBeVisible()
   await page.getByRole('button', { name: 'Review takeover', exact: true }).click()
   const dialog = page.getByRole('dialog', { name: 'Review Cura takeover' })

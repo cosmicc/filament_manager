@@ -101,4 +101,9 @@ test('dashboard replaces its rendered operational snapshot within ten seconds', 
   await expect(page.getByText('Smooth PEI')).toBeVisible()
   await expect(page.getByText('9', { exact: true })).toBeVisible()
   expect(dashboardRequests).toBeGreaterThanOrEqual(2)
+  const evidence = process.env.FILAMENT_MANAGER_E2E_EVIDENCE_DIR
+  if (evidence) await page.screenshot({ path: `${evidence}/dashboard-active-desktop-v083.png`, fullPage: true })
+  await page.setViewportSize({ width: 390, height: 844 })
+  await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(390)
+  if (evidence) await page.screenshot({ path: `${evidence}/dashboard-active-mobile-v083.png`, fullPage: true })
 })

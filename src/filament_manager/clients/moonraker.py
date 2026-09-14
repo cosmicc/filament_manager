@@ -4,7 +4,7 @@ import hashlib
 import math
 import posixpath
 import re
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from decimal import Decimal, InvalidOperation
 from typing import Any
@@ -15,6 +15,7 @@ import httpx
 from filament_manager.config import PrinterConfig
 from filament_manager.domain.build_plates import is_build_plate_surface_code
 from filament_manager.domain.extruders import EXTRUDERS, tool_number
+from filament_manager.domain.gcode_observations import GcodeObservations
 from filament_manager.domain.spool_preflight import (
     SpoolPreflightCatalog,
     validate_catalog_revision,
@@ -113,6 +114,7 @@ class MoonrakerGcodeFile:
     header: str
     tail: str
     size: int
+    observations: dict[str, object] = field(default_factory=dict)
 
 
 @dataclass(frozen=True, slots=True)
@@ -624,12 +626,21 @@ class MoonrakerClient:
         )
 
     async def submit_filament_check(
-        self, *, spoolman_id: int, sequence: int, required_g: Decimal | None, remaining_g: Decimal | None
+        self,
+        *,
+        spoolman_id: int,
+        sequence: int,
+        required_g: Decimal | None,
+        remaining_g: Decimal | None,
+        plate_safe: bool = True,
+        plate_code: str | None = None,
     ) -> dict[str, Any]:
         """Answer only the exact paused preflight; never resume a print directly."""
 
         if spoolman_id <= 0 or not 0 <= sequence <= 2**53:
             raise ValueError("Invalid filament check identity")
+        if plate_code is not None and plate_code != "UNSET" and not is_build_plate_surface_code(plate_code):
+            raise ValueError("Invalid checked plate side")
         values = []
         for value in (required_g, remaining_g):
             if value is not None and (not value.is_finite() or not 0 <= value <= Decimal("1000000000")):
@@ -641,6 +652,8 @@ class MoonrakerClient:
                 "script": (
                     f"FILAMENT_MANAGER_FILAMENT_CHECK ID={spoolman_id} SEQUENCE={sequence} "
                     f"REQUIRED={values[0]} REMAINING={values[1]}"
+                    + (" PLATE_SAFE=0" if not plate_safe else "")
+                    + (f" PLATE={plate_code}" if plate_code is not None else "")
                 )
             },
         )
@@ -901,6 +914,7 @@ class MoonrakerClient:
             raise ValueError("invalid G-code download bounds")
         encoded = quote(validated, safe="/")
         digest = hashlib.sha256()
+        observations = GcodeObservations()
         header = bytearray()
         tail = bytearray()
         size = 0
@@ -913,6 +927,7 @@ class MoonrakerClient:
                         if size > max_bytes:
                             raise MoonrakerError("G-code file exceeds the inspection size limit")
                         digest.update(chunk)
+                        observations.feed(chunk)
                         if len(header) < sample_bytes:
                             header.extend(chunk[: sample_bytes - len(header)])
                         tail.extend(chunk)
@@ -927,6 +942,7 @@ class MoonrakerClient:
             header=header.decode("utf-8", errors="replace"),
             tail=tail.decode("utf-8", errors="replace"),
             size=size,
+            observations=observations.finish(),
         )
 
     async def submit_gcode_inspection(self, *, passed: bool) -> dict[str, Any]:

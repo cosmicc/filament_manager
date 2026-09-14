@@ -58,6 +58,7 @@ function materialSettingsSummary(sync: CuraMaterialSettingsSyncReport | null | u
 }
 
 export default function WorkstationsPage() {
+  const [selectedId, setSelectedId] = useState<string | null>(null)
   const { user } = useAuth()
   const queryClient = useQueryClient()
   const [pairing, setPairing] = useState<WorkstationPairingCode | null>(null)
@@ -140,6 +141,8 @@ export default function WorkstationsPage() {
     <div className="section-heading"><h2>Paired workstations</h2><button className="icon-button" onClick={() => void agents.refetch()} aria-label="Refresh workstations"><RefreshCw size={17} /></button></div>
     {agents.isLoading ? <LoadingState /> : !agents.data?.length ? <EmptyState icon={MonitorCog} title="No workstations paired" description="Create a one-time code, install the agent under your normal workstation account, and pair it with Filament Manager." /> : <div className="workstation-grid">{agents.data.map((agent) => {
       return <article className="workstation-card card" key={agent.id}>
+        <button className="record-summary-button" onClick={() => setSelectedId(agent.id)} aria-label={`View ${agent.display_name}`}><MonitorCog size={24} /><span><strong>{agent.display_name}</strong><small>Cura {agent.cura_installations.map((item) => item.version).join(', ') || 'not detected'} · {agent.cura_management_enabled ? 'Managed settings' : 'Awaiting takeover'}{agent.last_error ? ' · Needs attention' : ''}</small></span><StatusPill status={agent.enabled ? 'active' : 'disabled'} /></button>
+        {selectedId === agent.id && <Modal title={agent.display_name} onClose={() => setSelectedId(null)} size="wide">
         <header><span className="workstation-card__icon"><MonitorCog size={22} /></span><div><h2>{agent.display_name}</h2><p>{platformLabel(agent.platform)} · {agent.hostname} · Agent {agent.agent_version}</p></div><StatusPill status={agent.enabled ? 'active' : 'disabled'} /></header>
         <dl className="definition-list"><div><dt>Cura installations</dt><dd>{agent.cura_installations.length}</dd></div><div><dt>Material library</dt><dd>{agent.cura_management_enabled ? 'Automatic synchronization active' : 'Awaiting one-time takeover'}</dd></div><div><dt>{agent.cura_management_enabled ? 'Managed material profiles' : 'Unmanaged material import sources'}</dt><dd>{String(agent.cura_management_enabled ? agent.capabilities.managed_material_count ?? 'Unknown' : agent.capabilities.unmanaged_material_count ?? 'Unknown')}</dd></div><div><dt>User-saved custom print profiles</dt><dd>{String(agent.capabilities.unmanaged_print_profile_count ?? 'Unknown')}</dd></div><div><dt>Agent ID</dt><dd>{agent.agent_code}</dd></div></dl>
         {agent.cura_installations.map((installation) => {
@@ -172,6 +175,7 @@ export default function WorkstationsPage() {
           {syncRequests[agent.id] ? <StatusPill status={deployments.data?.find((item) => item.id === syncRequests[agent.id])?.status ?? 'pending'} /> : null}
         </div> : null}
         {user?.role === 'administrator' && <div className="template-card__actions"><button className="button" disabled={toggleAgent.isPending} onClick={() => toggleAgent.mutate(agent)}>{agent.enabled ? <PowerOff size={16} /> : <Power size={16} />}{agent.enabled ? 'Revoke agent' : 'Enable agent'}</button></div>}
+        </Modal>}
       </article>
     })}</div>}
     {currentTakeoverAgent ? <Modal title="Review Cura takeover" description="The app is the sole source of tracked print settings." onClose={() => setTakeoverAgent(null)} footer={<><button className="button" onClick={() => setTakeoverAgent(null)}>Cancel</button><button className="button button--primary" disabled={takeover.isPending} onClick={() => takeover.mutate(currentTakeoverAgent)}>Complete takeover</button></>}>

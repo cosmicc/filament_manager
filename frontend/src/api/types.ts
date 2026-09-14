@@ -293,6 +293,7 @@ export interface Vendor {
 }
 
 export interface Printer {
+  settings_token?: string
   total_print_time_seconds?: string | null
   longest_print_time_seconds?: string | null
   history_totals_checked_at?: string | null
