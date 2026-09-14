@@ -263,30 +263,41 @@ async def snapshot(session: AsyncSession) -> list[WorkbookTab]:
     # Connection, account and other operational settings remain excluded.
     settings_table = Base.metadata.tables["application_settings"]
     rating_tab = WorkbookTab(
-        "Plate Ratings", ["id", "material_template_id", "build_plate_surface_id", "stars"]
+        "Plate Ratings", ["id", "material_template_id", "filament_product_id", "build_plate_id", "stars"]
     )
     rating_rows = await session.stream(
         select(settings_table.c.id, settings_table.c.key, settings_table.c.value)
-        .where(settings_table.c.key.startswith("plate_ratings.", autoescape=True))
+        .where(
+            settings_table.c.key.startswith("plate_ratings.", autoescape=True)
+            | settings_table.c.key.startswith("filament_plate_ratings.", autoescape=True)
+        )
         .order_by(settings_table.c.id)
     )
     async for record in rating_rows:
         try:
-            template_id = str(UUID(record.key.removeprefix("plate_ratings.")))
+            is_override = record.key.startswith("filament_plate_ratings.")
+            prefix = "filament_plate_ratings." if is_override else "plate_ratings."
+            owner_id = str(UUID(record.key.removeprefix(prefix)))
         except ValueError:
             continue
         if not isinstance(record.value, dict):
             continue
-        for side, stars in sorted(record.value.items()):
+        for plate, stars in sorted(record.value.items()):
             try:
-                side_id = str(UUID(side))
+                plate_id = str(UUID(plate))
             except (ValueError, TypeError):
                 continue
             if type(stars) is not int or not 0 <= stars <= 5:
                 continue
-            row = [f"{record.id}:{side_id}", template_id, side_id, stars]
+            row = [
+                f"{record.id}:{plate_id}",
+                "" if is_override else owner_id,
+                owner_id if is_override else "",
+                plate_id,
+                stars,
+            ]
             rating_tab.rows.append(row)
-            cells += 4
+            cells += 5
             content_bytes += len(json.dumps(row).encode())
             if cells > MAX_CELLS or content_bytes > MAX_CONTENT_BYTES:
                 raise GoogleSheetsError(

@@ -6,7 +6,7 @@ PostgreSQL is the canonical data store. A distinct Spoolman service remains the 
 
 ## Current capabilities
 
-- Testing release **0.8.3** adds plate-side compatibility ratings, mandatory printer-temperature checks, compact printer/workstation details, activity pagination, improved print history, and refreshed app icons. **Update the app macros and workstation agents** as described in the [0.8.3 upgrade/setup notes](docs/UPGRADE_0.8.3.md), including Cura's per-layer **M240 Time Lapse Camera** setup.
+- Testing release **0.8.4** adds whole-build-plate star ratings, live template inheritance, filament overrides, and better-plate warnings. Open **Build plate ratings** on Templates or Build plates. Review reset legacy conflicts and printer setup in the [0.8.4 upgrade notes](docs/UPGRADE_0.8.4.md).
 
 - Testing release 0.8.1 adds spool design-aware tare suggestions, separate completed/other print dates, Moonraker printer duration totals, and source-labelled history settings. See [0.8.1 upgrade notes](docs/UPGRADE_0.8.1.md).
 - Guided Google setup, encrypted app-managed printer connections, a printer carousel and overview, Dashboard **Sync to Cura**, and independently loaded hotends with verified printer-owned routines. See [printer setup](docs/PRINTER_CONNECTIONS.md).

@@ -54,6 +54,22 @@ async def test_v083_metadata_ratings_and_pagination(monkeypatch: pytest.MonkeyPa
             printer = await session.scalar(select(Printer))
             side = await session.scalar(select(BuildPlateSurface))
             assert printer and side
+            other_side = await session.scalar(
+                select(BuildPlateSurface).where(
+                    BuildPlateSurface.build_plate_id == side.build_plate_id,
+                    BuildPlateSurface.id != side.id,
+                )
+            )
+            if other_side is None:
+                other_code = side.surface_code.removesuffix("b") + ("b" if side.side == "a" else "")
+                session.add(
+                    BuildPlateSurface(
+                        build_plate_id=side.build_plate_id,
+                        side="b" if side.side == "a" else "a",
+                        surface_code=other_code,
+                        klipper_mesh_profile=other_code,
+                    )
+                )
             printer.active_plate_surface_id = side.id
             template = MaterialTemplate(
                 name="Template PLA",
@@ -94,7 +110,12 @@ async def test_v083_metadata_ratings_and_pagination(monkeypatch: pytest.MonkeyPa
             assert (await seed_configured_system(session, settings))["templates"] == 0
             session.add(ApplicationSetting(key="private.connection", value={"secret": "never-export-this"}))
             await session.commit()
-            printer_id, template_id, side_id, product_id = printer.id, template.id, side.id, product.id
+            printer_id, template_id, plate_id, product_id = (
+                printer.id,
+                template.id,
+                side.build_plate_id,
+                product.id,
+            )
 
         async def sessions() -> AsyncIterator[AsyncSession]:
             async with factory() as session:
@@ -131,14 +152,14 @@ async def test_v083_metadata_ratings_and_pagination(monkeypatch: pytest.MonkeyPa
             endpoint = f"/api/v1/build-plate-ratings/{template_id}"
             assert (await client.get(endpoint)).json()["ratings"] == {}
             saved_rating = await client.put(
-                endpoint, json={"expected_version": 0, "ratings": {str(side_id): 0}}
+                endpoint, json={"expected_version": 0, "ratings": {str(plate_id): 0}}
             )
             assert saved_rating.status_code == 200, saved_rating.text
             assert (
-                await client.put(endpoint, json={"expected_version": 0, "ratings": {str(side_id): 5}})
+                await client.put(endpoint, json={"expected_version": 0, "ratings": {str(plate_id): 5}})
             ).status_code == 409
             assert (
-                await client.put(endpoint, json={"expected_version": 1, "ratings": {str(side_id): True}})
+                await client.put(endpoint, json={"expected_version": 1, "ratings": {str(plate_id): True}})
             ).status_code == 422
             async with factory() as session:
                 printer = await session.get(Printer, printer_id)
@@ -164,7 +185,7 @@ async def test_v083_metadata_ratings_and_pagination(monkeypatch: pytest.MonkeyPa
             compatibility = (
                 await client.get(f"/api/v1/build-plate-ratings/filament/{product_id}?printer_id={printer_id}")
             ).json()
-            assert compatibility[0]["ratings"][str(side_id)] == 0
+            assert compatibility[0]["ratings"][str(plate_id)] == 0
             assert (await client.get("/api/v1/audit-events/page?per_page=21")).status_code == 422
             page = (
                 await client.get("/api/v1/audit-events/page?per_page=20&search=plate_ratings&page=999")
@@ -172,7 +193,55 @@ async def test_v083_metadata_ratings_and_pagination(monkeypatch: pytest.MonkeyPa
             assert page["page"] == page["pages"] == 1
             assert page["total"] == 1
             assert UUID(page["items"][0]["id"])
+            # 0.8.4: live inheritance, product-owned overrides, and exact revert.
+            overrides_url = f"/api/v1/build-plate-ratings/filament/{product_id}/overrides"
+            assert (await client.get(overrides_url)).json()["ratings"] == {}
+            custom = await client.put(
+                overrides_url, json={"expected_version": 0, "ratings": {str(plate_id): 4}}
+            )
+            assert custom.status_code == 200, custom.text
+            assert (
+                await client.put(overrides_url, json={"expected_version": 0, "ratings": {}})
+            ).status_code == 409
+            changed = await client.put(endpoint, json={"expected_version": 1, "ratings": {str(plate_id): 5}})
+            assert changed.status_code == 200
+            async with factory() as session:
+                printer = await session.get(Printer, printer_id)
+                assert printer
+                assert await filament_plate_rating(session, printer, product_id) == 4
+                sides = list(
+                    await session.scalars(
+                        select(BuildPlateSurface).where(BuildPlateSurface.build_plate_id == plate_id)
+                    )
+                )
+                for current_side in sides:
+                    assert await filament_plate_rating(session, printer, product_id, current_side.id) == 4
+                assert len(sides) == 2
+                tabs = await snapshot(session)
+                exported = next(tab for tab in tabs if tab.title == "Plate Ratings")
+                assert any(row[2] == str(product_id) and row[-1] == 4 for row in exported.rows)
+            reverted = await client.put(overrides_url, json={"expected_version": 1, "ratings": {}})
+            assert reverted.status_code == 200
+            async with factory() as session:
+                printer = await session.get(Printer, printer_id)
+                assert printer
+                assert await filament_plate_rating(session, printer, product_id) == 5
+            assert (
+                await client.put(overrides_url, json={"expected_version": 2, "ratings": {str(plate_id): 0}})
+            ).status_code == 200
+            async with factory() as session:
+                printer = await session.get(Printer, printer_id)
+                assert printer
+                assert await filament_plate_rating(session, printer, product_id) == 0
+            assert (
+                await client.put(
+                    overrides_url, json={"expected_version": 3, "ratings": {str(plate_id): True}}
+                )
+            ).status_code == 422
             user.role = UserRole.VIEWER
+            assert (
+                await client.put(overrides_url, json={"expected_version": 3, "ratings": {}})
+            ).status_code == 403
             assert (
                 await client.put(endpoint, json={"expected_version": 1, "ratings": {}})
             ).status_code == 403

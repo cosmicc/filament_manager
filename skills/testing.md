@@ -1,5 +1,7 @@
 # Testing and Validation Skill
 
+- 0.8.4 covers populated side-to-plate migration (matching/single/zero/conflict resets), audited originals, downgrade refusal with overrides, live inheritance, sparse overrides/revert, exact-side equivalent blocking, auth/version/bounds, safe Google export, best-rating ties and lower-rating warnings. Exercise accessible stars and rating entry points on desktop/mobile in light/dark themes; retain zero-star macro no-override tests.
+
 - The production frontend TypeScript build includes unit-test files. Repeat typechecking after the final test-only edit; runtime test success does not replace that build gate. Testing Library and Playwright locator option types are different.
 
 - 0.8.3 regressions cover metadata saves after telemetry version churn versus genuine editable-field conflict, complete activity search/page boundaries, backup catch-up/superseded retry, confirmed-off diagnostics, rating auth/version/zero/unrated behavior, and exact preflight zero-star blocking with no weight override, stale plate receipts, and deferred-start side changes. Stream observations must survive chunk boundaries, include late heater commands, ignore comments/oversized lines, and distinguish initial/variable layer heights. Test mandatory hardware gating under warn mode and unchanged ordinary calibration warnings. Renderer 27 must invalidate 26 and preserve the exact metadata block above the start boundary. Render summary-to-detail dialogs and template ratings on desktop/mobile.

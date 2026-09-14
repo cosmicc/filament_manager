@@ -1,5 +1,9 @@
 # Build plates and automatic heightmaps
 
+For whole-plate star rankings, template inheritance, filament overrides, and
+zero-star print blocking, see [Build plate ratings in 0.8.4](UPGRADE_0.8.4.md).
+Open **Build plate ratings** on this page or Templates to configure them.
+
 The 0.7.6 interlock update blocks ordinary plate, nozzle, and spool changes while printing or paused. Use explicit M600 for an intentional filament replacement. Its native mesh-load and spool execution guards require updating the included macro file and restarting firmware while idle; app preflight restoration remains supported.
 
 Version 0.7.4 keeps the app-selected build plate and its exact saved Klipper mesh aligned. Side A uses `P<number>`; Side B uses `P<number>b`. Select the side that is physically installed—software cannot detect a physical plate swap.

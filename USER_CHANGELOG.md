@@ -1,5 +1,21 @@
 # User Changelog
 
+## 0.8.4 - 09.14.2026
+
+### Added
+
+- Clickable build plate stars on Templates and Build plates, plus editable filament overrides.
+- Recommended plates and a warning when the loaded filament has a better-rated option.
+
+### Changed
+
+- Each physical plate has one rating for both sides. Template changes automatically update inheriting filaments; customized ratings stay put until reverted.
+- Conflicting old side ratings reset to Unrated. Review these before printing, because Unrated remains allowed.
+
+### Fixed
+
+- Zero stars clearly says Do NOT use and blocks managed printing, including when set as a filament override.
+
 ## 0.8.3 - 09.14.2026
 
 Testing release.

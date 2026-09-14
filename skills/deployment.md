@@ -1,5 +1,7 @@
 # Deployment and Operations Skill
 
+- 0.8.4 upgrades web/worker together and applies `fb123c4d5e67`. Review conflicting legacy ratings reset to Unrated before printing, retain a backup, and install app macro 0.8.4 while idle plus FIRMWARE_RESTART. Renderer 27 remains unchanged. Follow `docs/UPGRADE_0.8.4.md`; published images and automated tests do not certify live printer motion.
+
 - Testing release 0.8.3 requires the updated app macro and idle firmware restart for mandatory hardware checks, plus workstation renderer 27 for the metadata header. Upgrade web/worker together, close Cura for agent deployment, and re-slice after successful synchronization. No schema migration is added. Follow `docs/UPGRADE_0.8.3.md`; never claim physical printer or live Google validation from automated fixtures.
 
 - Version 0.8.1 is a testing release. Back up the canonical database and upgrade web/worker together; startup applies `fa012b3c4d56`, appending density-inheritance corrections without changing historical snapshots. Existing spool types remain Unknown until explicitly selected. No replacement of the 0.8.0 printer macros or firmware restart is required. Follow `docs/UPGRADE_0.8.1.md` for tare-default clearing, duration-counter semantics, and rollback limits.

@@ -1,6 +1,6 @@
 # Google publication workflow
 
-- Plate Ratings explicitly selects only `plate_ratings.<valid template UUID>` settings and valid side UUID/integer stars 0–5. Never export the rest of application_settings. Rating saves queue publication and the periodic digest covers removals. Keep size limits and literal cells.
+- Plate Ratings exports only the two business namespaces `plate_ratings.<valid template UUID>` and `filament_plate_ratings.<valid filament UUID>`, with separate owner columns, whole-plate UUID and strict integer stars 0–5. Never export other application_settings. Mutation jobs and the periodic full-content digest cover saves, clears and migration resets. Preserve size limits and literal cells.
 
 - 0.8.1 explicitly exports Spool Types, each spool's type, and cached printer duration totals/freshness. Derived activity views stay canonical history queries; existing Print History and Material Segments tabs retain the underlying dates and captured identities. New database fields never expand the export contract implicitly.
 

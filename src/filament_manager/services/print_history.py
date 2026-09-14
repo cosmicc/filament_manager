@@ -1123,6 +1123,11 @@ async def synchronize_live_print(
             else None
         )
         remaining = weight_spool.remaining_mass_effective_g if weight_spool is not None else None
+        checked_side = (
+            await session.get(BuildPlateSurface, printer.active_plate_surface_id)
+            if printer.active_plate_surface_id
+            else None
+        )
         evidence: dict[str, object] = {
             "sequence": preflight_state.weight_sequence,
             "spool_id": str(weight_spool.id) if weight_spool is not None else None,
@@ -1133,6 +1138,7 @@ async def synchronize_live_print(
             if printer.active_plate_surface_id
             else None,
             "plate_rating": rating,
+            "build_plate_id": str(checked_side.build_plate_id) if checked_side else None,
         }
         if job.inspection.get("filament_check") != evidence:
             job.inspection = {**job.inspection, "filament_check": evidence}
@@ -1148,11 +1154,6 @@ async def synchronize_live_print(
                 correlation_id=correlation_id,
             )
             await session.commit()
-        checked_side = (
-            await session.get(BuildPlateSurface, printer.active_plate_surface_id)
-            if printer.active_plate_surface_id
-            else None
-        )
         await client.submit_filament_check(
             spoolman_id=preflight_state.loaded_spool_id,
             sequence=preflight_state.weight_sequence,

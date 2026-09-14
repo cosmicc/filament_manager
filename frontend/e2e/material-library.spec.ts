@@ -96,6 +96,55 @@ const spool = {
   notes: null, archived: false, record_version: 3, completed_print_count: 6,
 }
 
+test('filament stars inherit, override, revert, and warn in desktop dark and mobile light', async ({ page }) => {
+  await page.route(`**/api/v1/filaments/${filament.id}`, route => route.fulfill({ json: filament }))
+  await page.route('**/api/v1/profiles/cura-settings/catalog', route => route.fulfill({ json: [] }))
+  await page.route('**/api/v1/profiles/templates?**', route => route.fulfill({ json: [template] }))
+  let overrides: Record<string, number> = {}
+  let version = 0
+  const plateRows = [
+    { id: 'plate-id', plate_code: 'P1', display_name: 'Smooth PEI', status: 'active', surfaces: [{ id: 'side-a', side: 'a', surface_code: 'P1' }, { id: 'side-b', side: 'b', surface_code: 'P1b' }] },
+    { id: 'plate-2', plate_code: 'P2', display_name: 'Textured PEI', status: 'active', surfaces: [] },
+  ]
+  await page.addInitScript(() => localStorage.setItem('filament-manager-theme', 'dark-navy'))
+  await page.route('**/api/v1/build-plates', route => route.fulfill({ json: plateRows }))
+  await page.route(`**/api/v1/build-plate-ratings/filament/${filament.id}`, route => route.fulfill({ json: [{
+    printer_id: printer.id, printer_name: printer.name, active_plate_id: 'plate-id', template_id: template.id,
+    template_name: template.name, record_version: version, inherited_ratings: { 'plate-id': 3, 'plate-2': 5 },
+    overrides, ratings: { 'plate-id': 3, 'plate-2': 5, ...overrides },
+  }] }))
+  await page.route(`**/api/v1/build-plate-ratings/filament/${filament.id}/overrides`, route => {
+    if (route.request().method() === 'PUT') {
+      const payload = route.request().postDataJSON()
+      expect(payload.expected_version).toBe(version)
+      overrides = payload.ratings
+      version += 1
+    }
+    return route.fulfill({ json: { record_version: version, ratings: overrides } })
+  })
+  await page.goto(`/filaments/${filament.id}`)
+  await expect(page.getByText('A better-rated build plate is available.')).toBeVisible()
+  await page.getByRole('button', { name: '★ View / edit build plate ratings', exact: true }).click()
+  const dialog = page.getByRole('dialog', { name: 'Filament build plate ratings', exact: true })
+  await expect(dialog.getByRole('group')).toHaveCount(2)
+  await dialog.getByRole('button', { name: 'Rate P1 5 stars', exact: true }).click()
+  await expect.poll(() => overrides['plate-id']).toBe(5)
+  await expect(dialog.getByText('Customized', { exact: true })).toBeVisible()
+  const evidence = process.env.FILAMENT_MANAGER_E2E_EVIDENCE_DIR
+  if (evidence) await page.screenshot({ path: `${evidence}/filament-ratings-desktop-dark-v084.png` })
+  await dialog.getByRole('button', { name: 'Revert to Template for P1', exact: true }).click()
+  await expect.poll(() => Object.keys(overrides).length).toBe(0)
+  await dialog.getByRole('button', { name: 'Rate P1 0 stars — do not use', exact: true }).click()
+  await expect.poll(() => overrides['plate-id']).toBe(0)
+  await dialog.getByRole('button', { name: 'Done', exact: true }).click()
+  await expect(page.getByText('Do NOT use this build plate with this filament. Printing is blocked.')).toBeVisible()
+  await page.evaluate(() => { document.documentElement.dataset.theme = 'light-navy' })
+  await page.setViewportSize({ width: 390, height: 844 })
+  await page.getByRole('button', { name: '★ View / edit build plate ratings', exact: true }).click()
+  await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(390)
+  if (evidence) await page.screenshot({ path: `${evidence}/filament-ratings-mobile-light-v084.png` })
+})
+
 test.beforeEach(async ({ page }) => {
   const errors: string[] = []
   browserErrors.set(page, errors)
@@ -193,9 +242,9 @@ test('new inventory choices preserve the draft and template changes retain custo
   await expect(page.getByText('45 °C', { exact: true })).toBeVisible()
 })
 
-test('plate-side ratings save immediately and activity pagination spans all events', async ({ page }) => {
+test('whole-plate ratings save immediately and activity pagination spans all events', async ({ page }) => {
   await page.route('**/api/v1/profiles/cura-settings/catalog', route => route.fulfill({ json: [] }))
-  await page.route('**/api/v1/build-plates', route => route.fulfill({ json: [{ id: 'plate-id', plate_code: 'P1', display_name: 'Textured PEI', surfaces: [{ id: 'side-id', surface_code: 'P1', side: 'a' }] }] }))
+  await page.route('**/api/v1/build-plates', route => route.fulfill({ json: [{ id: 'plate-id', plate_code: 'P1', display_name: 'Textured PEI', status: 'active', surfaces: [{ id: 'side-id', surface_code: 'P1', side: 'a' }] }] }))
   let ratings: Record<string, number> = {}
   let version = 0
   await page.route('**/api/v1/build-plate-ratings/template-id', route => {
@@ -208,17 +257,17 @@ test('plate-side ratings save immediately and activity pagination spans all even
     return route.fulfill({ json: { template_id: 'template-id', record_version: version, ratings } })
   })
   await page.goto('/templates')
-  await page.locator('.catalog-card--template').click()
-  await page.getByLabel('Rating for P1', { exact: true }).selectOption('0')
-  await expect.poll(() => ratings['side-id']).toBe(0)
-  await expect(page.getByLabel('Rating for P1', { exact: true })).toBeEnabled()
-  await page.getByLabel('Rating for P1', { exact: true }).selectOption('5')
-  await expect.poll(() => ratings['side-id']).toBe(5)
+  await page.getByRole('button', { name: '★ Build plate ratings', exact: true }).click()
+  await page.getByRole('button', { name: 'Rate P1 0 stars — do not use', exact: true }).click()
+  await expect.poll(() => ratings['plate-id']).toBe(0)
+  await expect(page.getByRole('button', { name: 'Rate P1 5 stars', exact: true })).toBeEnabled()
+  await page.getByRole('button', { name: 'Rate P1 5 stars', exact: true }).click()
+  await expect.poll(() => ratings['plate-id']).toBe(5)
   const evidence = process.env.FILAMENT_MANAGER_E2E_EVIDENCE_DIR
-  if (evidence) await page.screenshot({ path: `${evidence}/plate-ratings-desktop-v083.png` })
+  if (evidence) await page.screenshot({ path: `${evidence}/plate-ratings-desktop-v084.png` })
   await page.setViewportSize({ width: 390, height: 844 })
   await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(390)
-  if (evidence) await page.screenshot({ path: `${evidence}/plate-ratings-mobile-v083.png` })
+  if (evidence) await page.screenshot({ path: `${evidence}/plate-ratings-mobile-v084.png` })
   await page.route('**/api/v1/audit-events/page?**', route => {
     const url = new URL(route.request().url())
     const perPage = Number(url.searchParams.get('per_page'))

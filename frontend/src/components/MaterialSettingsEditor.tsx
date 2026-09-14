@@ -465,7 +465,7 @@ coreFields.filter((field) => (
     {
       id: 'build_plate',
       title: 'Build plate',
-      description: 'The preferred printable surface for this material.',
+      description: 'Recommendations and print protection use Build plate ratings. This older side preference is retained as metadata only and does not override the stars.',
       keys: [],
     },
   ]

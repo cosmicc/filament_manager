@@ -1,5 +1,27 @@
 # Changelog
 
+## 0.8.4 - 09.14.2026
+
+Testing release. See `docs/UPGRADE_0.8.4.md` for rating migration and printer setup.
+
+### Added
+
+- Visible zero-to-five-star controls and Build plate ratings entry points on Templates and Build plates.
+- Sparse filament-level plate-rating overrides, live template inheritance, and Revert to Template.
+- Explicit warnings when an active spool has a better-rated plate available, with all highest-rated ties recommended.
+
+### Changed
+
+- Ratings apply to whole physical plates, regardless of side. Matching/single legacy side ratings carry over; conflicting side ratings reset to Unrated by operator request, with originals retained in audit.
+- Google Plate Ratings includes whole-plate template ratings and filament overrides. Print preflight records the physical plate ID alongside effective rating evidence.
+- App macro version 0.8.4 clearly identifies a zero-star prohibition. Cura renderer 27 is unchanged.
+
+### Fixed
+
+- Filament overrides and current template ratings now drive the same zero-star print-start guard regardless of which side is active or which optional inspection policy is selected.
+- Highest-ranked ties do not produce false better-plate warnings; unavailable plates are excluded from recommendations.
+- Ratings are no longer accessible only through the template print-settings editor, and filament details expose all ratings and their ownership.
+
 ## 0.8.3 - 09.14.2026
 
 Testing release. See `docs/UPGRADE_0.8.3.md` for the required macro and agent upgrade.
