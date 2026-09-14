@@ -122,7 +122,7 @@ describe('SpoolsPage', () => {
     render(<QueryClientProvider client={queryClient}><RouterProvider><SpoolsPage /></RouterProvider></QueryClientProvider>)
 
     expect(await screen.findByRole('dialog', { name: 'Add a physical spool' })).toBeTruthy()
-    expect((screen.getByRole('combobox', { name: 'Filament', exact: true }) as HTMLSelectElement).value).toBe('product-id')
+    expect((screen.getByRole('combobox', { name: 'Filament' }) as HTMLSelectElement).value).toBe('product-id')
     expect((screen.getAllByRole('spinbutton')[0] as HTMLInputElement).value).toBe('750')
     fireEvent.click(screen.getByRole('button', { name: 'Cancel' }))
     expect(window.location.search).toBe('')
