@@ -1,5 +1,11 @@
 # Frontend Design and Accessibility Skill
 
+- Dashboard active spools use a semantic link stretched across the card (or each spool region for multiple hotends), not a nested button/link or click-only article. Keep the ratings button independently above its hit area and preserve portal modal interactions. Compatibility alerts use at least 1rem supporting text and a 1.125rem prominent message, stacked with warning/danger theme colors.
+
+- BuildPlatesPage must not render, edit, or search the legacy `preferred_materials` list. Omit it from update payloads instead of clearing retained data. Keep actual surface material/texture and star-rating entry points unchanged.
+
+- 0.8.5 places PlateRatingEditor after template/profile print-settings forms, never above identity fields. The old Preferred plate side selector is removed; a hidden value preserves legacy metadata on unrelated saves. FilamentPlateRatingEditor loads the exact edited template's rating map and blocks editing on a failed inheritance read. Compact reset icons retain descriptive accessible names/titles, 44px targets, explicit Unrated/zero distinction, and template-clear versus filament-revert semantics. Keep rating writes independent and immediately saved.
+
 - Printer/workstation catalogs use full-width summary buttons opening shared detail modals. Spool load asks for a printer only after the action, automatically targeting a sole printer while keeping hotend choice explicit. Sidebar omits Labels and ends Cura workstations, Settings, Diagnostics, Activity. Preserve supplied app artwork, green active cards, missing-template warning tint, DateWithAge, Activity pagination, and immutable captured history identities.
 
 - 0.8.4 TemplatePlateRatingsButton opens a visible whole-plate star editor from Templates and Build plates. PlateRatingEditor uses accessible 0–5 controls, immediate versioned saves, explicit Unrated and per-filament Inherited/Customized ownership with Revert to Template. Selecting the inherited rating removes the override. PlateCompatibility shows all highest positive active-plate ties, warns for a lower-rated active plate, and errors explicitly on zero; do not recommend unavailable plates. Filament overrides apply across printers; show the selected printer's linked template defaults. Retain compact cards, semantic palette colors, and 44px star touch targets.

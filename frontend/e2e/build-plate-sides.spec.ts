@@ -35,7 +35,7 @@ const plate = {
   flexible: true,
   condition: 'good',
   status: 'active',
-  preferred_materials: [],
+  preferred_materials: ['Legacy material preference'],
   max_bed_temp_c: '120',
   last_activated_at: '2026-09-01T12:00:00Z',
   last_printed_at: '2026-09-02T14:00:00Z',
@@ -99,6 +99,59 @@ test.beforeEach(async ({ page }) => {
   } : [plate] }))
   await page.route('**/api/v1/notifications**', (route) => route.fulfill({ json: [] }))
   await page.route('**/api/v1/printers', (route) => route.fulfill({ json: [printer] }))
+  await page.route('**/api/v1/profiles/templates', (route) => route.fulfill({ json: [] }))
+  await page.route('**/api/v1/prints/activity/*', (route) => route.fulfill({ json: {} }))
+})
+
+test('removes preferred materials across plate views and saves without clearing legacy data', async ({ page }) => {
+  const errors: string[] = []
+  page.on('pageerror', error => errors.push(error.message))
+  page.on('console', message => { if (['error', 'warning'].includes(message.type())) errors.push(message.text()) })
+  let saved: Record<string, unknown> | undefined
+  await page.route('**/api/v1/build-plates/plate-id', route => {
+    saved = route.request().postDataJSON()
+    return route.fulfill({ json: { ...plate, ...saved } })
+  })
+  await page.addInitScript(() => localStorage.setItem('filament-manager-theme', 'dark-navy'))
+  await page.goto('/plates')
+  await expect(page).toHaveURL(/\/plates$/)
+  await expect(page).toHaveTitle('Filament Manager')
+  const evidence = process.env.FILAMENT_MANAGER_E2E_EVIDENCE_DIR
+  for (const view of ['list', 'cards', 'detailed']) {
+    await page.getByLabel('Build plates view').selectOption(view)
+    await expect(page.getByText('Preferred materials', { exact: true })).toHaveCount(0)
+    await expect(page.getByText('Materials', { exact: true })).toHaveCount(0)
+    await expect(page.getByText('Legacy material preference', { exact: true })).toHaveCount(0)
+    await expect(page.getByRole('button', { name: '★ Build plate ratings', exact: true })).toBeVisible()
+    if (view === 'list') {
+      await page.getByRole('button', { name: 'Open details', exact: true }).click()
+      const detail = page.getByRole('dialog', { name: 'P4 details', exact: true })
+      await expect(detail.getByText('Preferred materials')).toHaveCount(0)
+      await expect(detail.getByText('PEX', { exact: true })).toBeVisible()
+      await detail.getByRole('button', { name: 'Done', exact: true }).click()
+    }
+    if (view === 'cards' && evidence) await page.screenshot({ path: `${evidence}/plates-without-preferences-desktop-v085.png` })
+  }
+  await page.getByLabel('Search build plates').fill('Legacy material preference')
+  await expect(page.getByRole('heading', { name: 'No build plates match' })).toBeVisible()
+  await page.getByLabel('Search build plates').fill('PEX')
+  await expect(page.getByRole('heading', { name: 'Flexible P4' })).toBeVisible()
+  await page.getByRole('button', { name: 'Edit physical plate', exact: true }).click()
+  const editor = page.getByRole('dialog', { name: 'Edit P4', exact: true })
+  await expect(editor.getByLabel('Preferred materials')).toHaveCount(0)
+  await editor.getByLabel('Name', { exact: true }).fill('Updated P4')
+  await editor.getByRole('button', { name: 'Save plate', exact: true }).click()
+  await expect(editor).toBeHidden()
+  expect(saved?.display_name).toBe('Updated P4')
+  expect(saved).not.toHaveProperty('preferred_materials')
+  await page.getByLabel('Search build plates').fill('')
+  await page.setViewportSize({ width: 390, height: 844 })
+  await page.evaluate(() => { document.documentElement.dataset.theme = 'light-navy' })
+  await page.getByLabel('Build plates view').selectOption('cards')
+  await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true)
+  await expect(page.locator('vite-error-overlay')).toHaveCount(0)
+  if (evidence) await page.screenshot({ path: `${evidence}/plates-without-preferences-mobile-v085.png`, fullPage: true })
+  expect(errors).toEqual([])
 })
 
 test('groups both sides under one physical plate on desktop and mobile', async ({ page }) => {

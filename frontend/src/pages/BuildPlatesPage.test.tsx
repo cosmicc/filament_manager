@@ -46,7 +46,7 @@ const plate = {
   flexible: true,
   condition: 'good',
   status: 'active',
-  preferred_materials: [],
+  preferred_materials: ['Legacy material preference'],
   max_bed_temp_c: '120',
   mesh_due_after_prints: 50,
   mesh_due_after_days: 30,
@@ -103,6 +103,23 @@ describe('BuildPlatesPage', () => {
     expect(apiFetchMock).not.toHaveBeenCalledWith('/build-plates/synchronize', expect.anything())
   })
 
+  it.each(['list', 'cards', 'detailed'])('removes preferred materials from the %s view and search', async (view) => {
+    apiFetchMock.mockImplementation((path: string) => {
+      if (path === '/build-plates') return Promise.resolve([plate])
+      if (path === '/printers') return Promise.resolve([printer])
+      return Promise.resolve([])
+    })
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+    render(<QueryClientProvider client={client}><BuildPlatesPage /></QueryClientProvider>)
+    await screen.findByRole('heading', { name: 'Build Plate P1' })
+    fireEvent.change(screen.getByLabelText('Build plates view'), { target: { value: view } })
+    expect(screen.queryByText('Preferred materials')).toBeNull()
+    expect(screen.queryByText('Materials', { exact: true })).toBeNull()
+    expect(screen.queryByText('Legacy material preference')).toBeNull()
+    fireEvent.change(screen.getByLabelText('Search build plates'), { target: { value: 'Legacy material preference' } })
+    expect(screen.getByRole('heading', { name: 'No build plates match' })).toBeTruthy()
+  })
+
   it('adds the canonical Side B through the plate API', async () => {
     apiFetchMock.mockImplementation((path: string) => {
       if (path === '/build-plates') return Promise.resolve([plate])
@@ -146,6 +163,7 @@ describe('BuildPlatesPage', () => {
     expect(screen.getByRole('heading', { name: 'Identity' })).toBeTruthy()
     expect(screen.getByRole('heading', { name: 'Geometry' })).toBeTruthy()
     expect(screen.getByRole('heading', { name: 'Condition and use' })).toBeTruthy()
+    expect(screen.queryByLabelText('Preferred materials')).toBeNull()
   })
 
   it('keeps physical plate actions together in a compact action row', async () => {
@@ -185,6 +203,8 @@ describe('BuildPlatesPage', () => {
     expect(screen.queryByRole('button', { name: 'Mark cleaned' })).toBeNull()
     expect(screen.queryByRole('button', { name: 'Mark calibrated' })).toBeNull()
     expect(screen.getByRole('button', { name: 'Add Side B' })).toBeTruthy()
+    expect(screen.queryByText('Preferred materials')).toBeNull()
+    expect(screen.queryByText('Legacy material preference')).toBeNull()
   })
 
   it('shows and saves only the dimensions that match the selected shape', async () => {
@@ -222,6 +242,7 @@ describe('BuildPlatesPage', () => {
       const update = apiFetchMock.mock.calls.find(([path]) => path === '/build-plates/plate-id')
       expect(update).toBeTruthy()
       const body = JSON.parse(String(update?.[1]?.body))
+      expect(body).not.toHaveProperty('preferred_materials')
       expect(body.shape).toBe('round')
       expect(body.dimensions_mm).toEqual({
         width: null,

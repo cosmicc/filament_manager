@@ -1,6 +1,6 @@
 import { useMutation, useQuery } from '@tanstack/react-query'
 import { useState } from 'react'
-import { AlertTriangle, ArrowRight, Boxes, ChevronLeft, ChevronRight, FlaskConical, Gauge, Layers3, PackageOpen, Palette, Plus, Printer, RefreshCw, Scale, Thermometer, WifiOff } from 'lucide-react'
+import { AlertTriangle, Boxes, ChevronLeft, ChevronRight, FlaskConical, Gauge, Layers3, PackageOpen, Palette, Plus, Printer, RefreshCw, Scale, Thermometer, WifiOff } from 'lucide-react'
 import { apiFetch } from '../api/client'
 import type { DashboardData } from '../api/types'
 import { EmptyState } from '../components/EmptyState'
@@ -125,15 +125,15 @@ export default function DashboardPage() {
           <footer>Checked {dateTime(data.printer_state.checked_at)}{data.printer_state.idle_state ? ` · Idle controller: ${data.printer_state.idle_state}` : ''}{data.printer_state.power_off_remaining_seconds != null ? ` · Power-off countdown: ${duration(data.printer_state.power_off_remaining_seconds)} remaining if idle` : data.printer_state.idle_timeout_seconds ? ` · Idle timeout: ${duration(data.printer_state.idle_timeout_seconds)}` : ''}</footer>
         </article>
 
-        <article className={`card active-spool-card${activeSpools.length ? '--active' : ''}`}>
+        <article className={`card active-spool-card${activeSpools.length ? '--active' : ''}${activeSpools.length > 1 ? ' active-spool-card--multiple' : ''}`}>
           {!activeSpools.length && <header className="card__header"><div><p className="eyebrow">Printing context</p><h2>Active spool</h2></div></header>}
           {activeSpools.length ? activeSpools.map((spool, index) => (
             <div className="active-spool" key={spool.id}>
               {index === 0 && <header className="card__header active-spool__heading"><div><p className="eyebrow">Printing context</p><h2>Active {activeSpools.length > 1 ? 'spools' : 'spool'}</h2></div></header>}
               <span className="filament-swatch filament-swatch--large" style={filamentSwatchStyle(spool.color_mode, spool.color_hexes, spool.color_hex ?? '2F80A5')} />
-              <div className="active-spool__identity"><small>{spool.active_extruder ?? "extruder"}</small><strong>{spool.spool_code}</strong><span>{[spool.vendor_name, materialIdentitySummary(spool)].filter(Boolean).join(' · ')}</span></div>
+              <div className="active-spool__identity"><small>{spool.active_extruder ?? "extruder"}</small><strong><Link className="active-spool__details-link" to={`/spools?spool_id=${spool.id}`} aria-label={`Open spool ${spool.spool_code} details`}>{spool.spool_code}</Link></strong><span>{[spool.vendor_name, materialIdentitySummary(spool)].filter(Boolean).join(' · ')}</span></div>
               <div className="remaining-visual"><div className="remaining-visual__labels"><span>{grams(spool.remaining_mass_effective_g)}</span><strong>{percent(spool.remaining_percent)}</strong></div><div className="progress"><span style={{ width: `${Math.min(100, Number(spool.remaining_percent))}%` }} /></div><small>{spool.weight_confidence} confidence</small></div>
-              <PlateCompatibility filamentId={spool.filament_product_id} printerId={spool.active_printer_id ?? undefined} activeSideId={data.active_plate_surface?.id} /><Link className="text-link" to={`/spools?spool_id=${spool.id}`}>View inventory <ArrowRight size={15} /></Link>
+              <PlateCompatibility filamentId={spool.filament_product_id} printerId={spool.active_printer_id ?? undefined} activeSideId={data.active_plate_surface?.id} />
             </div>
           )) : <EmptyState icon={Boxes} title="No active spool" description="Load a spool through Inventory or the confirmed Fluidd workflow. The current physical spool updates automatically." action={<Link className="button" to="/spools">Open inventory</Link>} />}
         </article>

@@ -1,5 +1,11 @@
 # Testing and Validation Skill
 
+- Dashboard spool-card checks cover pointer/keyboard navigation to exact spool details, preservation of native modified-click links, no View inventory link, independent rating-modal controls, empty and multiple loaded-spool states, and current-printer context changes. Check large compatibility and missing-heatmap warnings for wrapping and readability in desktop/mobile light/dark views without changing zero-star behavior or polling.
+
+- Retired build plate Preferred materials must be absent from List/Cards/Detailed, detail and edit dialogs, and search even when legacy data is populated. Assert update payloads omit the field, surface material/texture remain visible, and whole-plate rating entry points still work.
+
+- 0.8.5 regressions cover last-section placement in template/profile editors, absence of the legacy preference selector with unchanged serialized metadata, compact accessible clear/revert buttons, no parent-form submission, exact edited-template inheritance, and disabled editing on failed inheritance fetch. Check desktop dark/mobile light layouts, overflow and 44px reset targets, sparse saves/reverts, and existing zero-star warnings.
+
 - 0.8.4 covers populated side-to-plate migration (matching/single/zero/conflict resets), audited originals, downgrade refusal with overrides, live inheritance, sparse overrides/revert, exact-side equivalent blocking, auth/version/bounds, safe Google export, best-rating ties and lower-rating warnings. Exercise accessible stars and rating entry points on desktop/mobile in light/dark themes; retain zero-star macro no-override tests.
 
 - The production frontend TypeScript build includes unit-test files. Repeat typechecking after the final test-only edit; runtime test success does not replace that build gate. Testing Library and Playwright locator option types are different.

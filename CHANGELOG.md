@@ -1,5 +1,26 @@
 # Changelog
 
+## 0.8.5 - 09.14.2026
+
+Testing release. Upgrade web and worker together. No new database migration, workstation-agent upgrade, or Klipper macro replacement is required from 0.8.4.
+
+### Added
+
+- Direct whole-plate rating controls at the bottom of each filament's exact-scope settings editor.
+
+### Changed
+
+- Dashboard active spool cards open their exact spool details without a separate View inventory link. Each loaded spool keeps its own destination; the ratings button remains independently operable.
+- Build plate compatibility warnings use larger text, stacked messages, and stronger visual separation in the selected theme. Missing-heatmap warnings are larger too.
+- Template and filament settings replace the legacy Preferred plate side section with compact build plate ratings. Reset uses a small accessible icon button, clearing a template rating or restoring filament inheritance.
+- Removed Preferred materials from build plate editing, List/Cards/Detailed presentations, details, and search. Plate saves omit the retired field so retained legacy data is not accidentally cleared; star ratings remain the recommendation source.
+- Retained legacy preference metadata and immutable history are unchanged. No database migration, Cura renderer update, or Klipper macro change is required.
+
+### Fixed
+
+- Filament settings load rating defaults from the exact edited template, including scopes other than the currently installed nozzle. Failed inheritance reads disable rating editing rather than assuming Unrated.
+- Rating controls keep 44-pixel touch targets without the tall reset text row.
+
 ## 0.8.4 - 09.14.2026
 
 Testing release. See `docs/UPGRADE_0.8.4.md` for rating migration and printer setup.

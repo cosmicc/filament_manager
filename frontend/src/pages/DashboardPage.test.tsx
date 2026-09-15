@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { act, cleanup, render, screen } from '@testing-library/react'
+import { act, cleanup, fireEvent, render, screen } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { RouterProvider } from '../context/RouterContext'
 import DashboardPage from './DashboardPage'
@@ -55,6 +55,36 @@ describe('DashboardPage', () => {
     cleanup()
     apiFetchMock.mockReset()
     vi.useRealTimers()
+  })
+
+  it('links the active spool identity to its exact details without View inventory', async () => {
+    apiFetchMock.mockResolvedValue({ ...dashboard, active_spool: {
+      id: 'spool-one', spool_code: 'P1', filament_product_id: 'filament-one', material_type: 'PLA', color_name: 'Blue',
+      color_mode: 'solid', color_hexes: ['2457A6'], remaining_mass_effective_g: '750', remaining_percent: '75', weight_confidence: 'measured',
+    } })
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+    render(<QueryClientProvider client={client}><RouterProvider><DashboardPage /></RouterProvider></QueryClientProvider>)
+    const link = await screen.findByRole('link', { name: 'Open spool P1 details' })
+    expect(link.getAttribute('href')).toBe('/spools?spool_id=spool-one')
+    expect(link.closest('article')?.classList.contains('active-spool-card--active')).toBe(true)
+    expect(screen.queryByText('View inventory')).toBeNull()
+  })
+
+  it('keeps separate destinations for loaded hotends and updates them with the printer context', async () => {
+    const spool = { id: 'spool-one', spool_code: 'P1', color_mode: 'solid', color_hexes: ['2457A6'], remaining_mass_effective_g: '750', remaining_percent: '75', weight_confidence: 'measured' }
+    apiFetchMock.mockResolvedValue({ ...dashboard, printer_contexts: [
+      { printer_id: 'printer-one', printer_state: dashboard.printer_state, active_spools: [spool, { ...spool, id: 'spool-two', spool_code: 'P2', active_extruder: 'extruder1' }] },
+      { printer_id: 'printer-two', printer_state: { ...dashboard.printer_state, printer_name: 'Second printer' }, active_spools: [] },
+    ] })
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+    render(<QueryClientProvider client={client}><RouterProvider><DashboardPage /></RouterProvider></QueryClientProvider>)
+    const first = await screen.findByRole('link', { name: 'Open spool P1 details' })
+    expect(first.getAttribute('href')).toBe('/spools?spool_id=spool-one')
+    expect(first.closest('article')?.classList.contains('active-spool-card--multiple')).toBe(true)
+    expect(screen.getByRole('link', { name: 'Open spool P2 details' }).getAttribute('href')).toBe('/spools?spool_id=spool-two')
+    fireEvent.click(screen.getByRole('button', { name: 'Next printer' }))
+    expect(screen.queryByRole('link', { name: /Open spool P/ })).toBeNull()
+    expect(screen.getByText('No active spool')).toBeTruthy()
   })
 
   it('shows live printer state, progress, and all available temperatures', async () => {

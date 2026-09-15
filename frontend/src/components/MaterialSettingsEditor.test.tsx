@@ -37,7 +37,7 @@ const settings: MaterialSettings = {
 }
 
 it('shows read-only retraction safeguards and updates the derived window live', () => {
-  const view = render(<form><MaterialSettingsEditor settings={{ ...settings, retraction_distance_mm: '0.65' }} catalog={[]} plates={[]} scope="template" /></form>)
+  const view = render(<form><MaterialSettingsEditor settings={{ ...settings, retraction_distance_mm: '0.65' }} catalog={[]} scope="template" /></form>)
   const windowField = screen.getByLabelText(/Minimum Extrusion Distance Window/) as HTMLInputElement
   const count = screen.getByLabelText(/Maximum Retraction Count/) as HTMLInputElement
   expect(windowField.readOnly).toBe(true)
@@ -52,15 +52,23 @@ it('shows read-only retraction safeguards and updates the derived window live', 
 })
 
 describe('MaterialSettingsEditor validation', () => {
+  it.each(['template', 'profile'] as const)('removes the old plate preference in %s without changing retained metadata', (scope) => {
+    const view = render(<form><MaterialSettingsEditor scope={scope} settings={{ ...settings, preferred_build_plate_surface_id: 'legacy-side' }} catalog={[]} /></form>)
+    expect(within(view.container).queryByLabelText('Preferred plate side')).toBeNull()
+    expect(within(view.container).queryByRole('heading', { name: 'Build plate' })).toBeNull()
+    expect(settingsFromForm(view.container.querySelector('form')!, [], scope).preferred_build_plate_surface_id).toBe('legacy-side')
+    view.unmount()
+  })
+
   it('keeps density hidden and exact for profiles with a Pressure Advance heading', () => {
-    const view = render(<form><MaterialSettingsEditor scope="profile" settings={{ ...settings, filament_density_g_cm3: '1.23456' }} catalog={[]} plates={[]} /></form>)
+    const view = render(<form><MaterialSettingsEditor scope="profile" settings={{ ...settings, filament_density_g_cm3: '1.23456' }} catalog={[]} /></form>)
     expect(within(view.container).queryByLabelText(/Filament density/)).toBeNull()
     expect(within(view.container).getByRole('heading', { name: 'Pressure Advance' })).toBeTruthy()
     expect((view.container.querySelector('input[name="filament_density_g_cm3"]') as HTMLInputElement).value).toBe('1.23456')
     view.unmount()
   })
   it('serializes fixed care dropdowns and supports copying a blank care value', () => {
-    const rendered = render(<form><MaterialSettingsEditor settings={settings} catalog={[]} plates={[]} scope="template" copySources={[{ id: 'care-source', label: 'Template PETG', settings: { ...settings, drying_time_hours: '6-8' } }]} /></form>)
+    const rendered = render(<form><MaterialSettingsEditor settings={settings} catalog={[]} scope="template" copySources={[{ id: 'care-source', label: 'Template PETG', settings: { ...settings, drying_time_hours: '6-8' } }]} /></form>)
     const controls = within(rendered.container)
     const moisture = controls.getByRole('combobox', { name: /^Filament moisture sensitivity/ })
     expect(within(moisture).getAllByRole('option')).toHaveLength(8)
@@ -74,7 +82,7 @@ describe('MaterialSettingsEditor validation', () => {
   })
 
   it('shows four print temperatures plus drying guidance', () => {
-    const rendered = render(<MaterialSettingsEditor settings={settings} catalog={[]} plates={[]} />)
+    const rendered = render(<MaterialSettingsEditor settings={settings} catalog={[]} />)
 
     expect(screen.getByLabelText('Printing temperature (°C)')).toBeTruthy()
     expect(screen.getByLabelText('Build volume temperature (°C)')).toBeTruthy()
@@ -88,7 +96,7 @@ describe('MaterialSettingsEditor validation', () => {
 
   it('edits and reverts all three filament care overrides', () => {
     const base = { ...settings, drying_temp_c: '65', drying_time_hours: '4-6', moisture_sensitivity: 'moderate' } as MaterialSettings
-    const rendered = render(<form><MaterialSettingsEditor settings={base} baseSettings={base} catalog={[]} plates={[]} scope="profile" /></form>)
+    const rendered = render(<form><MaterialSettingsEditor settings={base} baseSettings={base} catalog={[]} scope="profile" /></form>)
     const controls = within(rendered.container)
     const cases = [
       ['Filament drying temperature', 'drying_temp_c', '75', '65'],
@@ -114,7 +122,6 @@ describe('MaterialSettingsEditor validation', () => {
     render(
       <MaterialSettingsEditor
         catalog={[]}
-        plates={[]}
         validationErrors={{ flow_percent: ['Input should be greater than 0'] }}
       />,
     )
@@ -129,7 +136,7 @@ describe('MaterialSettingsEditor validation', () => {
   it('serializes all editable ironing values from a template form', () => {
     const rendered = render(
       <form data-testid="settings-form">
-        <MaterialSettingsEditor settings={settings} catalog={[]} plates={[]} scope="template" />
+        <MaterialSettingsEditor settings={settings} catalog={[]} scope="template" />
       </form>,
     )
     const controls = within(rendered.container)
@@ -150,7 +157,6 @@ describe('MaterialSettingsEditor validation', () => {
   it('groups every requested Cura cooling control and allows initial fan speed editing', () => {
     const rendered = render(
       <MaterialSettingsEditor
-        plates={[]}
         catalog={[
           { key: 'cool_fan_full_layer', label: 'Regular Fan Speed at Layer', value_type: 'number', unit: null, editable: true, template_only: false },
           { key: 'cool_min_layer_time', label: 'Minimum Layer Time', value_type: 'number', unit: 's', editable: true, template_only: false },
@@ -176,7 +182,6 @@ describe('MaterialSettingsEditor validation', () => {
       <MaterialSettingsEditor
         settings={settings}
         baseSettings={settings}
-        plates={[]}
         scope="profile"
         catalog={[
           { key: 'cool_fan_full_layer', label: 'Regular Fan Speed at Layer', value_type: 'number', unit: null, editable: true, template_only: false },
@@ -202,7 +207,6 @@ describe('MaterialSettingsEditor validation', () => {
   it('strongly marks explicit filament customizations and reverts them to the template', () => {
     const rendered = render(
       <MaterialSettingsEditor
-        plates={[]}
         catalog={[]}
         settings={settings}
         baseSettings={{ ...settings, flow_percent: '100' }}
@@ -230,7 +234,7 @@ describe('MaterialSettingsEditor validation', () => {
       { key: 'klipper_smooth_time_enable', label: 'Enable Klipper Smooth Time', value_type: 'boolean' as const, unit: null, editable: true, template_only: true },
     ]
     const template = render(
-      <MaterialSettingsEditor settings={settings} plates={[]} catalog={catalog} scope="template" />,
+      <MaterialSettingsEditor settings={settings} catalog={catalog} scope="template" />,
     )
     const templateControls = within(template.container)
 
@@ -245,7 +249,6 @@ describe('MaterialSettingsEditor validation', () => {
       <MaterialSettingsEditor
         settings={settings}
         baseSettings={settings}
-        plates={[]}
         catalog={catalog}
         scope="profile"
       />,
@@ -261,7 +264,6 @@ describe('MaterialSettingsEditor validation', () => {
     const rendered = render(
       <MaterialSettingsEditor
         settings={settings}
-        plates={[]}
         catalog={[]}
         copySources={[{
           id: 'template-petg',
@@ -281,7 +283,7 @@ describe('MaterialSettingsEditor validation', () => {
 
   it('explains when a blank value has no populated active template source', () => {
     const rendered = render(
-      <MaterialSettingsEditor settings={settings} plates={[]} catalog={[]} scope="template" />,
+      <MaterialSettingsEditor settings={settings} catalog={[]} scope="template" />,
     )
 
     const chooser = within(rendered.container).getByLabelText('Copy Build volume temperature from another template')

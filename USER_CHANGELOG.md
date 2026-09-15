@@ -1,5 +1,25 @@
 # User Changelog
 
+## 0.8.5 - 09.14.2026
+
+Testing release.
+
+### Added
+
+- Edit build plate stars directly at the bottom of filament print settings.
+
+### Changed
+
+- Click an active spool card on the Dashboard to open its details. The separate View inventory link is removed.
+- Build plate warnings are larger and easier to read.
+- Compact star-rating cards replace the old plate preference section at the bottom of template and filament settings.
+- Removed Preferred materials from build plate settings and all build plate views. Use the star ratings for filament compatibility and recommendations.
+- A small reset button clears a template rating or restores a filament's inherited rating. Rating changes still save immediately.
+
+### Fixed
+
+- Filament rating defaults follow the exact template being edited. Existing ratings and zero-star print protection are preserved.
+
 ## 0.8.4 - 09.14.2026
 
 ### Added

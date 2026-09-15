@@ -1,7 +1,7 @@
 /* This editor intentionally exports its form serializer and canonical typed-key set. */
 /* eslint-disable react-refresh/only-export-components */
 import { useId, useState, type ReactNode } from 'react'
-import type { BuildPlate, CuraSettingCatalogItem, MaterialSettings } from '../api/types'
+import type { CuraSettingCatalogItem, MaterialSettings } from '../api/types'
 import { compactNumber, inputNumber } from '../lib/format'
 import { EditorSection } from './EditorSection'
 
@@ -233,7 +233,6 @@ export function MaterialSettingsEditor({
   overrideKeys = [],
   validationErrors = {},
   catalog,
-  plates,
   copySources = [],
   scope = 'template',
   renderIdentity,
@@ -243,7 +242,6 @@ export function MaterialSettingsEditor({
   overrideKeys?: string[]
   validationErrors?: Record<string, string[]>
   catalog: CuraSettingCatalogItem[]
-  plates: BuildPlate[]
   copySources?: MaterialSettingCopySource[]
   scope?: 'template' | 'profile'
   renderIdentity?: (density: ReactNode) => ReactNode
@@ -462,12 +460,6 @@ coreFields.filter((field) => (
       description: 'Pressure advance and smooth-time controls owned by the Klipper settings integration.',
       keys: ['pressure_advance'],
     },
-    {
-      id: 'build_plate',
-      title: 'Build plate',
-      description: 'Recommendations and print protection use Build plate ratings. This older side preference is retained as metadata only and does not override the stars.',
-      keys: [],
-    },
   ]
   const visibleGroups = fieldGroups.filter((group) => (
     group.keys.some((key) => coreFields.some((field) => (
@@ -475,10 +467,11 @@ coreFields.filter((field) => (
     )))
     || extensionCatalog.some((item) => curaSettingGroup(item.key) === group.id)
     || group.id === 'cooling'
-    || group.id === 'build_plate'
   ))
   return (
     <div className="editor-form">
+      {/* Retain legacy metadata on unrelated saves; ratings alone drive plate choice. */}
+      <input type="hidden" name="preferred_build_plate_surface_id" value={String(effectiveValue('preferred_build_plate_surface_id') ?? '')} />
       {scope === 'template' && (renderIdentity ? renderIdentity(renderCoreFields(['filament_density_g_cm3'])) : <div className="form-grid">{renderCoreFields(['filament_density_g_cm3'])}</div>)}
       {scope === 'profile' ? <>
         {coreFields.filter((field) => field.templateOnly).map((field) => (
@@ -539,24 +532,6 @@ coreFields.filter((field) => (
                 {ownership(item.key, baseSettings?.cura_extensions[item.key])}
               </div>
             ))}
-            {group.id === 'build_plate' ? (
-              <div className={`setting-field${customized('preferred_build_plate_surface_id') ? ' setting-field--customized' : ''}${errorsFor('preferred_build_plate_surface_id').length ? ' setting-field--invalid' : ''}`}>
-                <label>
-                  Preferred plate side
-                  <select name="preferred_build_plate_surface_id" defaultValue={String(effectiveValue('preferred_build_plate_surface_id') ?? '')} aria-invalid={errorsFor('preferred_build_plate_surface_id').length ? true : undefined} aria-describedby={errorsFor('preferred_build_plate_surface_id').length ? errorId('preferred_build_plate_surface_id') : undefined} onChange={(event) => markOwnership('preferred_build_plate_surface_id', event.currentTarget.value, baseSettings?.preferred_build_plate_surface_id)}>
-                    <option value="">No preference</option>
-                    {plates.flatMap((plate) => plate.surfaces.map((surface) => (
-                      <option key={surface.id} value={surface.id}>
-                        {surface.surface_code} · {surface.surface_material ?? 'Surface not specified'} · {surface.texture ?? 'texture not specified'}
-                      </option>
-                    )))}
-                  </select>
-                </label>
-                {copyControl('preferred_build_plate_surface_id', effectiveValue('preferred_build_plate_surface_id'), baseSettings?.preferred_build_plate_surface_id)}
-                {fieldErrors('preferred_build_plate_surface_id')}
-                {ownership('preferred_build_plate_surface_id', baseSettings?.preferred_build_plate_surface_id)}
-              </div>
-            ) : null}
           </div>
         </EditorSection>
       ))}

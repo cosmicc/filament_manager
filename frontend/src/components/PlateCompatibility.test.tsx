@@ -4,7 +4,7 @@ import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/re
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { BuildPlate } from '../api/types'
 import { apiFetch } from '../api/client'
-import { PlateCompatibility, PlateRatingEditor } from './PlateCompatibility'
+import { FilamentPlateRatingEditor, PlateCompatibility, PlateRatingEditor } from './PlateCompatibility'
 
 vi.mock('../api/client', () => ({ apiFetch: vi.fn() }))
 afterEach(() => { cleanup(); vi.resetAllMocks() })
@@ -19,6 +19,37 @@ function wrap(content: React.ReactNode) {
 }
 
 describe('whole-plate ratings', () => {
+  it('clears a template rating with an accessible icon button without submitting its parent form', async () => {
+    let ratings: Record<string, number> = { p1: 4 }
+    const submit = vi.fn()
+    vi.mocked(apiFetch).mockImplementation(async (_path, options) => {
+      if (options?.method === 'PUT') ratings = JSON.parse(String(options.body)).ratings
+      return { record_version: 1, ratings } as never
+    })
+    wrap(<form onSubmit={submit}><PlateRatingEditor templateId="template" plates={plates} /></form>)
+    const clear = await screen.findByRole('button', { name: 'Clear P1 to Unrated' })
+    await waitFor(() => expect((clear as HTMLButtonElement).disabled).toBe(false))
+    expect(clear.textContent).toBe('')
+    fireEvent.click(clear)
+    await waitFor(() => expect(ratings).toEqual({}))
+    expect(submit).not.toHaveBeenCalled()
+  })
+
+  it('loads inheritance from the edited exact template and preserves sparse ownership', async () => {
+    vi.mocked(apiFetch).mockImplementation(async (path) => ({ record_version: 1, ratings: path === '/build-plate-ratings/exact-template' ? { p1: 4 } : {} }) as never)
+    wrap(<FilamentPlateRatingEditor filamentId="filament" templateId="exact-template" plates={plates} />)
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Rate P1 4 stars' }).getAttribute('aria-pressed')).toBe('true'))
+    expect(screen.getAllByText('Inherited')).toHaveLength(2)
+    expect(vi.mocked(apiFetch).mock.calls.every(([path]) => !path.includes('printer_id'))).toBe(true)
+  })
+
+  it('does not allow rating writes when template inheritance cannot be loaded', async () => {
+    vi.mocked(apiFetch).mockRejectedValue(new Error('Unavailable'))
+    wrap(<FilamentPlateRatingEditor filamentId="filament" templateId="exact-template" plates={plates} />)
+    await screen.findByRole('alert')
+    expect(screen.queryByRole('button')).toBeNull()
+  })
+
   it('shows one star control per whole plate and persists sparse overrides/revert', async () => {
     let saved: Record<string, number> = {}
     vi.mocked(apiFetch).mockImplementation(async (_path, options) => {

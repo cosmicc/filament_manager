@@ -96,6 +96,63 @@ const spool = {
   notes: null, archived: false, record_version: 3, completed_print_count: 6,
 }
 
+test('compact ratings replace the final legacy preference section in both settings editors', async ({ page }) => {
+  await page.addInitScript(() => localStorage.setItem('filament-manager-theme', 'dark-navy'))
+  await page.route(`**/api/v1/filaments/${filament.id}`, route => route.fulfill({ json: filament }))
+  await page.route('**/api/v1/profiles', route => route.fulfill({ json: [comparisonProfile] }))
+  await page.route('**/api/v1/profiles/cura-settings/catalog', route => route.fulfill({ json: [] }))
+  await page.route('**/api/v1/profiles/templates?**', route => route.fulfill({ json: [template] }))
+  await page.route('**/api/v1/profiles/templates/template-id', route => route.fulfill({ json: template }))
+  await page.route('**/api/v1/build-plates', route => route.fulfill({ json: [
+    { id: 'plate-id', plate_code: 'P1', display_name: 'Smooth PEI', status: 'active', surfaces: [] },
+    { id: 'plate-2', plate_code: 'P2', display_name: 'Textured PEI', status: 'active', surfaces: [] },
+  ] }))
+  let ratings: Record<string, number> = { 'plate-id': 3, 'plate-2': 5 }
+  let overrides: Record<string, number> = {}
+  await page.route('**/api/v1/build-plate-ratings/template-id', route => {
+    if (route.request().method() === 'PUT') ratings = route.request().postDataJSON().ratings
+    return route.fulfill({ json: { record_version: 1, ratings } })
+  })
+  await page.route(`**/api/v1/build-plate-ratings/filament/${filament.id}/overrides`, route => {
+    if (route.request().method() === 'PUT') overrides = route.request().postDataJSON().ratings
+    return route.fulfill({ json: { record_version: 1, ratings: overrides } })
+  })
+  await page.goto('/templates')
+  await expect(page).toHaveURL(/\/templates$/)
+  await expect(page).toHaveTitle(/Filament Manager/)
+  await page.getByRole('button', { name: /Edit Template PLA/ }).click()
+  let dialog = page.getByRole('dialog')
+  await expect(dialog.getByRole('heading').last()).toHaveText('Build plate ratings')
+  await expect(dialog.getByLabel('Preferred plate side')).toHaveCount(0)
+  await dialog.getByRole('button', { name: 'Clear P1 to Unrated', exact: true }).click()
+  await expect.poll(() => ratings['plate-id']).toBeUndefined()
+  await dialog.getByRole('button', { name: 'Rate P1 3 stars', exact: true }).click()
+  await expect.poll(() => ratings['plate-id']).toBe(3)
+  await dialog.locator('.template-rating-section').scrollIntoViewIfNeeded()
+  await captureEvidence(page, 'template-settings-bottom-desktop-dark-v085')
+  await dialog.getByRole('button', { name: 'Cancel', exact: true }).click()
+  await page.goto(`/filaments/${filament.id}`)
+  await page.getByRole('button', { name: 'Edit settings', exact: true }).click()
+  dialog = page.getByRole('dialog')
+  await expect(dialog.getByRole('heading').last()).toHaveText('Build plate ratings')
+  await expect(dialog.getByLabel('Preferred plate side')).toHaveCount(0)
+  await expect(dialog.getByRole('button', { name: 'Rate P1 3 stars', exact: true })).toHaveAttribute('aria-pressed', 'true')
+  await dialog.getByRole('button', { name: 'Rate P1 4 stars', exact: true }).click()
+  await expect.poll(() => overrides).toEqual({ 'plate-id': 4 })
+  await dialog.getByRole('button', { name: 'Revert to Template for P1', exact: true }).click()
+  await expect.poll(() => overrides).toEqual({})
+  await page.evaluate(() => { document.documentElement.dataset.theme = 'light-navy' })
+  await page.setViewportSize({ width: 390, height: 844 })
+  await dialog.locator('.template-rating-section').scrollIntoViewIfNeeded()
+  await expect.poll(() => dialog.locator('.modal__body').evaluate(node => node.scrollWidth <= node.clientWidth)).toBe(true)
+  const reset = dialog.getByRole('button', { name: 'Revert to Template for P1', exact: true })
+  await expect(reset).toHaveText('')
+  const target = await reset.boundingBox()
+  expect(target?.width).toBeGreaterThanOrEqual(44)
+  expect(target?.height).toBeGreaterThanOrEqual(44)
+  await captureEvidence(page, 'filament-settings-bottom-mobile-light-v085')
+})
+
 test('filament stars inherit, override, revert, and warn in desktop dark and mobile light', async ({ page }) => {
   await page.route(`**/api/v1/filaments/${filament.id}`, route => route.fulfill({ json: filament }))
   await page.route('**/api/v1/profiles/cura-settings/catalog', route => route.fulfill({ json: [] }))

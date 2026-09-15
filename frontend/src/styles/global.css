@@ -161,6 +161,8 @@ svg { flex: 0 0 auto; }
 .printer-state-card footer { border-top: 1px solid var(--border); padding: 8px 20px 9px 24px; color: var(--text-soft); font-size: 11px; }
 .active-spool-card { min-height: 0; }
 .active-spool-card--active {
+  position: relative;
+  isolation: isolate;
   border-color: var(--success);
   box-shadow: inset 0 0 0 1px var(--success);
 }
@@ -926,22 +928,47 @@ textarea { resize: vertical; }
 .active-spool__heading { grid-column: 1; grid-row: 1; margin-bottom: 0; }
 .active-spool .plate-compatibility { grid-column: 1 / -1; }
 .plate-compatibility { min-width: 0; }
-.template-rating-section { margin-block: var(--space-4); }
+/* Stretch the semantic spool link over its card without nesting the ratings button. */
+.active-spool__details-link { color: inherit; text-decoration: none; }
+.active-spool__details-link::after { content: ''; position: absolute; inset: 0; z-index: 1; border-radius: var(--radius-md); }
+.active-spool__details-link:hover::after { box-shadow: inset 0 0 0 2px var(--blue-500); }
+.active-spool__details-link:focus-visible { outline: none; }
+.active-spool__details-link:focus-visible::after { outline: 3px solid var(--blue-500); outline-offset: 3px; }
+.active-spool-card--multiple .active-spool { position: relative; }
+.active-spool-card--active .plate-compatibility > button.text-link { position: relative; z-index: 2; }
+.plate-compatibility__notice { display: grid; gap: var(--space-1); }
+.plate-compatibility__notice--alert { font-size: 1rem; line-height: 1.5; padding: var(--space-3); border: 1px solid currentColor; border-radius: var(--radius-sm); }
+.plate-compatibility__notice--alert small { font-size: inherit; line-height: inherit; color: inherit; }
+.plate-compatibility__notice--alert strong { font-size: 1.125rem; line-height: 1.5; }
+.plate-compatibility__notice--alert.form-error { background: var(--danger-bg); }
+.build-plate-mesh-warning, .plate-surface__mesh-warning { font-size: 1rem; line-height: 1.5; }
+.build-plate-mesh-warning svg, .plate-surface__mesh-warning svg { flex-shrink: 0; }
+.template-rating-section { min-width: 0; }
+.editor-form + .template-rating-section { margin-top: var(--space-4); }
 .template-rating-section label, .template-rating-section select { min-width: 0; }
 .plate-compatibility small { overflow-wrap: anywhere; }
-.plate-rating-list { display: grid; gap: var(--space-3); }
-.plate-rating-row { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: var(--space-3); padding: var(--space-3); border: 1px solid var(--border); border-radius: var(--radius-sm); }
+.plate-rating-list { display: grid; gap: var(--space-2); }
+.plate-rating-row { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: var(--space-2); padding: var(--space-2); border: 1px solid var(--border); border-radius: var(--radius-sm); }
 .plate-rating-row > div { min-width: 0; }
 .plate-rating-row strong { overflow-wrap: anywhere; }
 .plate-rating-row--blocked { background: var(--danger-bg); border-color: var(--danger); }
 .plate-star-control, .plate-stars { display: flex; align-items: center; }
-.plate-star-control { flex-wrap: wrap; gap: var(--space-2); }
+.plate-star-control { gap: 0; }
+.plate-rating-actions { display: flex; align-items: center; flex-wrap: wrap; }
+.plate-rating-actions .plate-rating-reset, .plate-star-control .plate-avoid { flex: 0 0 44px; width: 44px; min-height: 44px; padding: var(--space-1); }
+.plate-rating-row .profile-ownership { padding-block: var(--space-1); }
+@media (max-width: 600px) {
+  .plate-rating-row { display: grid; grid-template-columns: minmax(0, 1fr) 44px; }
+  .plate-rating-actions { display: contents; }
+  .plate-rating-row .plate-star-control { grid-column: 1 / -1; grid-row: 2; }
+  .plate-rating-row .plate-rating-reset { grid-column: 2; grid-row: 1; }
+}
+.plate-star-control .plate-avoid[aria-pressed="true"] { color: var(--danger); border-color: var(--danger); background: var(--danger-bg); }
 .plate-star { background: transparent; color: var(--text-muted); border: 0; min-width: 44px; min-height: 44px; padding: var(--space-1); font-size: 1.7rem; cursor: pointer; }
 .plate-star--filled { color: var(--accent); }
 .plate-star:focus-visible { outline: 2px solid var(--blue-500); border-radius: var(--radius-sm); }
 .plate-star:disabled { opacity: 0.6; cursor: wait; }
-.plate-rating-row button.text-link, .plate-compatibility > button.text-link { border: 0; background: transparent; padding: var(--space-2) 0; min-height: 44px; text-align: left; text-decoration: underline; cursor: pointer; }
-.plate-rating-row button.text-link:disabled { opacity: 0.6; cursor: default; }
+.plate-compatibility > button.text-link { border: 0; background: transparent; padding: var(--space-2) 0; min-height: 44px; text-align: left; text-decoration: underline; cursor: pointer; }
 .plate-summary { padding-bottom: 0; }
 .printer-card:has(> .record-summary-button), .workstation-card:has(> .record-summary-button) { display: block; min-height: 0; padding: 0; }
 .record-summary-button { padding: 20px; min-height: 64px; border-radius: inherit; }

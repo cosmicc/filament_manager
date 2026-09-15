@@ -1,5 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useState } from 'react'
+import { RotateCcw } from 'lucide-react'
 import { apiFetch } from '../api/client'
 import type { BuildPlate, MaterialTemplate, Printer } from '../api/types'
 import { compactNumber } from '../lib/format'
@@ -24,7 +25,7 @@ export function ratingLabel(rating: number | undefined) {
 /** Keyboard-accessible stars announce numeric values instead of glyphs. */
 function StarControl({ plate, value, disabled, onChange }: { plate: BuildPlate; value?: number; disabled: boolean; onChange: (value: number) => void }) {
   return <div className="plate-star-control" role="group" aria-label={`Rating for ${plate.plate_code}`}>
-    <button type="button" className="button" aria-label={`Rate ${plate.plate_code} 0 stars — do not use`} aria-pressed={value === 0} disabled={disabled} onClick={() => onChange(0)}>0 · Avoid</button>
+    <button type="button" className="button plate-avoid" aria-label={`Rate ${plate.plate_code} 0 stars — do not use`} title="Zero stars: do not use" aria-pressed={value === 0} disabled={disabled} onClick={() => onChange(0)}>0</button>
     <div className="plate-stars">{[1, 2, 3, 4, 5].map((stars) => <button key={stars} type="button" className={`plate-star${value != null && stars <= value ? ' plate-star--filled' : ''}`} aria-label={`Rate ${plate.plate_code} ${stars} ${stars === 1 ? 'star' : 'stars'}`} aria-pressed={value === stars} disabled={disabled} onClick={() => onChange(stars)}>{value != null && stars <= value ? '★' : '☆'}</button>)}</div>
   </div>
 }
@@ -58,12 +59,24 @@ export function PlateRatingEditor({ templateId, filamentId, plates, inherited = 
       const value = effective[plate.id]
       return <div key={plate.id} className={`plate-rating-row${value === 0 ? ' plate-rating-row--blocked' : ''}`}>
         <div><strong>{plate.plate_code} · {plate.display_name}</strong><small className="table-subtext">{ratingLabel(value)}{value != null && value > 0 && value === best && plate.status === 'active' ? ' · Recommended' : ''}{plate.status !== 'active' ? ' · Unavailable' : ''}</small>{filamentId && <small className={custom ? 'profile-ownership profile-ownership--customized' : 'profile-ownership'}>{custom ? 'Customized' : 'Inherited'}</small>}</div>
-        {!readOnly && <div><StarControl plate={plate} value={value} disabled={!query.data || save.isPending} onChange={(next) => save.mutate({ plateId: plate.id, value: next })} /><button type="button" className="text-link" disabled={!query.data || save.isPending || (filamentId ? !custom : value == null)} onClick={() => save.mutate({ plateId: plate.id, value: undefined })}>{filamentId ? `Revert to Template for ${plate.plate_code}` : `Clear ${plate.plate_code} to Unrated`}</button></div>}
+        {!readOnly && <div className="plate-rating-actions"><StarControl plate={plate} value={value} disabled={!query.data || save.isPending} onChange={(next) => save.mutate({ plateId: plate.id, value: next })} /><button type="button" className="button plate-rating-reset" aria-label={filamentId ? `Revert to Template for ${plate.plate_code}` : `Clear ${plate.plate_code} to Unrated`} title={filamentId ? 'Revert to Template' : 'Clear to Unrated'} disabled={!query.data || save.isPending || (filamentId ? !custom : value == null)} onClick={() => save.mutate({ plateId: plate.id, value: undefined })}><RotateCcw size={16} aria-hidden="true" /></button></div>}
       </div>
     })}</div>
     {(query.error || save.error) && <p className="form-error" role="alert">{(query.error || save.error)?.message}</p>}
     {save.isSuccess && <small role="status">Ratings saved.</small>}
   </EditorSection></div>
+}
+
+/** Use the edited profile's exact template, not the printer's installed-nozzle fallback. */
+export function FilamentPlateRatingEditor({ filamentId, templateId, plates, readOnly = false }: { filamentId: string; templateId: string | null; plates: BuildPlate[]; readOnly?: boolean }) {
+  const template = useQuery({
+    queryKey: ['plate-ratings', 'template', templateId],
+    queryFn: () => apiFetch<Ratings>(`/build-plate-ratings/${templateId}`),
+    enabled: Boolean(templateId),
+  })
+  if (templateId && template.isPending) return <p role="status">Loading template build plate ratings…</p>
+  if (templateId && template.error) return <p className="form-error" role="alert">Template build plate ratings unavailable. Reopen settings to retry.</p>
+  return <PlateRatingEditor filamentId={filamentId} plates={plates} inherited={templateId ? template.data?.ratings : undefined} readOnly={readOnly} />
 }
 
 /** Catalog entry point separate from unrelated print-setting controls. */
@@ -90,7 +103,7 @@ export function PlateCompatibility({ filamentId, printerId, activeSideId, editab
     const best = ranked[0] ? item.ratings[ranked[0].id] : undefined
     const recommended = ranked.filter((plate) => item.ratings[plate.id] === best)
     const better = active != null && best != null && best > active
-    return <div key={item.printer_id} className={active === 0 ? 'form-error' : better ? 'warning-note' : 'muted'} role={active === 0 || better ? 'alert' : undefined}>
+    return <div key={item.printer_id} className={`plate-compatibility__notice${active === 0 || better ? ' plate-compatibility__notice--alert' : ''} ${active === 0 ? 'form-error' : better ? 'warning-note' : 'muted'}`} role={active === 0 || better ? 'alert' : undefined}>
       <small>{item.printer_name} · Active plate: {ratingLabel(active)}</small>
       {active === 0 && <strong className="table-subtext">Do NOT use this build plate with this filament. Printing is blocked.</strong>}
       {better && active !== 0 && <strong className="table-subtext">A better-rated build plate is available.</strong>}

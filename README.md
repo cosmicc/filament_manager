@@ -6,6 +6,10 @@ PostgreSQL is the canonical data store. A distinct Spoolman service remains the 
 
 ## Current capabilities
 
+- Dashboard active spool cards open the matching spool details, with larger build plate compatibility warnings and a separate ratings action.
+- Testing release **0.8.5** replaces the old plate preference selector with compact star-rating cards at the bottom of template and filament print settings. Ratings save immediately; the reset icon clears a template rating or restores filament inheritance. Upgrade web and worker together; no new migration, agent upgrade, or macro replacement is required from 0.8.4.
+- Build plates no longer show a separate Preferred materials field; star ratings determine filament compatibility and recommendations.
+
 - Testing release **0.8.4** adds whole-build-plate star ratings, live template inheritance, filament overrides, and better-plate warnings. Open **Build plate ratings** on Templates or Build plates. Review reset legacy conflicts and printer setup in the [0.8.4 upgrade notes](docs/UPGRADE_0.8.4.md).
 
 - Testing release 0.8.1 adds spool design-aware tare suggestions, separate completed/other print dates, Moonraker printer duration totals, and source-labelled history settings. See [0.8.1 upgrade notes](docs/UPGRADE_0.8.1.md).

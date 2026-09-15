@@ -327,7 +327,6 @@ export default function TemplatesPage() {
       </div>
     </Modal> : null}
     {showEditor ? <Modal title={editSource ? `Edit ${editSource.name}` : 'Add material template'} description={editSource ? 'Save current settings directly. Linked profiles inherit the change immediately unless a value is customized.' : 'Group the template identity and all Cura settings in one guided editor.'} onClose={closeEditor} size="wide" footer={<>{editSource && canEdit ? <div className="modal__footer-group modal__footer-group--start"><a className="button" href={`/api/v1/profiles/templates/${editSource.id}/exports/json`} aria-label={`Export ${editSource.name}`}><Download size={17} /> Export JSON</a><button type="button" className="button button--danger" onClick={beginDeleteFromEditor}><Trash2 size={17} /> Delete template</button></div> : null}<div className="modal__footer-group"><button type="button" className="button" onClick={closeEditor}>Cancel</button><button type="submit" className="button button--primary" form="edit-material-template" disabled={save.isPending}>{editSource ? <Pencil size={17} /> : <Plus size={17} />}{save.isPending ? 'Saving…' : 'Save template'}</button></div></>}>
-      {editSource && <PlateRatingEditor templateId={editSource.id} plates={plates.data ?? []} readOnly={!canEdit} />}
       <form ref={editorFormRef} id="edit-material-template" className="editor-form" onSubmit={submit} onInvalid={centerNativeInvalid} key={editSource?.revisions[0]?.id ?? 'new-template'}>
         <MaterialSettingsEditor
           renderIdentity={(density) => (
@@ -345,7 +344,6 @@ export default function TemplatesPage() {
           settings={sourceSettings}
           validationErrors={settingsValidationErrors}
           catalog={catalog.data ?? []}
-          plates={plates.data ?? []}
           copySources={(templates.data ?? []).filter((template) => template.active && template.id !== editSource?.id && template.revisions[0]).map((template) => ({
             id: template.id,
             label: `${template.name} · ${printers.data?.find((printer) => printer.id === template.printer_id)?.name ?? 'Unknown printer'} · ${compactNumber(template.nozzle_diameter_mm, 1)} mm`,
@@ -359,6 +357,7 @@ export default function TemplatesPage() {
           conflictMessage="This template changed after the editor opened. Close and reopen it to load the current values before saving."
         />
       </form>
+      {editSource ? <PlateRatingEditor templateId={editSource.id} plates={plates.data ?? []} readOnly={!canEdit} /> : <p className="muted">Save the new template before adding build plate ratings.</p>}
     </Modal> : null}
     {deleteTarget ? <Modal title={`Delete ${deleteTarget.name}?`} description="This is a destructive catalog action. The template will be removed from active choices and from the managed Cura library." onClose={() => setDeleteTarget(null)} footer={<><button type="button" className="button" onClick={() => setDeleteTarget(null)}>Cancel</button><button type="button" className="button button--danger" disabled={deleteConfirmation !== deleteTarget.name || deleteTemplate.isPending} onClick={() => deleteTemplate.mutate(deleteTarget)}><Trash2 size={17} /> {deleteTemplate.isPending ? 'Deleting…' : 'Delete template'}</button></>}>
       <div className="editor-form">

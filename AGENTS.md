@@ -61,6 +61,10 @@ Do not add Redis, Celery, Kafka, or another message broker without an approved a
 
 ## Agent routing
 
+- Build plate Preferred materials is retired from editing, every catalog/detail presentation, and search. Omit `preferred_materials` on UI saves to retain legacy database/audit values. Preserve per-side surface material and texture; compatibility and recommendations use whole-plate star ratings.
+
+- 0.8.5 settings place compact whole-plate ratings last, replacing the legacy Preferred plate side control. Retain legacy metadata on unrelated saves and preserve immutable history; it never drives recommendations. Filament rating editors must fetch defaults for the exact edited profile's template, not an installed-nozzle fallback. Rating writes remain immediate, versioned, and separate from print-settings Save.
+
 - 0.8.4 whole-plate compatibility uses versioned `plate_ratings.<template UUID>` maps keyed by physical plate UUID, plus sparse `filament_plate_ratings.<filament UUID>` overrides. Resolve current exact-scope template inheritance at read/preflight time; never materialize inherited values as overrides. Filament overrides survive template changes. Both sides share one rating. Migration resets conflicting side ratings to Unrated by explicit operator choice and audits originals. Zero blocks managed starts without a weight override; highest positive active-plate ratings drive recommendations and lower-rated active plates warn. Preserve exact P-number side binding against late physical changes and add no Moonraker polling. Printer metadata uses editable-settings tokens independent of telemetry. Hard hardware-temperature checks remain mandatory. Follow `docs/UPGRADE_0.8.4.md` and the database/frontend/testing skills. Renderer 27 and macro 0.8.4 are current.
 
 - The supplied QQ-S operator configuration is maintained in `integrations/klipper/examples/flsun-qq-s-macros.cfg`. Follow `docs/PAUSE_PARK_SETUP.md`: native pause captures once before motion, return XY at clearance before native descent, never overwrite on repeated pause, never park at a fixed lower Z, preserve high-delta/unhomed/preflight exceptions, and never deploy live macros automatically. Optional before/after mesh hooks preserve removable-probe behavior without duplicate public wrappers. Validate rendered commands and disclose that physical clearance still needs an operator test.
@@ -77,6 +81,8 @@ Do not add Redis, Celery, Kafka, or another message broker without an approved a
 Read the relevant skill before changing that area. The numbered source specifications are under `docs/specification/`.
 
 ## Visual contract
+
+Dashboard active-spool navigation uses a stretched semantic link, one exact spool destination per loaded slot. Keep ratings controls above the link hit area and portal dialogs independent; preserve keyboard and modified-click navigation. Compatibility warnings use readable stacked text and the existing warning/danger tokens.
 
 Every profile has four approved colors in the palette sheet. Use `--accent` and `--accent-bg` for section markers, summary icons, and secondary highlights; preserve primary-action, focus, warning, danger, and physical filament-color semantics.
 
