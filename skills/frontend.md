@@ -1,5 +1,7 @@
 # Frontend Design and Accessibility Skill
 
+- Calibration review uses Horizontal Expansion / Hole Horizontal Expansion with millimeter units and two-decimal display via `calibrationSuggestions`, retaining exact stored Cura keys/values. Never show the retired preferred plate ID. Update linked template is primary with exact-name confirmation; Save to filament only stays separate. Disable both writes while either is pending, show errors inside the modal and a destination-specific success message, invalidate all affected inventory/profile/template/Cura caches, and never report cache-refresh failure as a failed committed save.
+
 - Dashboard printer cards are untinted for idle and non-fault transitional/terminal states, green for printing, cyan for paused, yellow for confirmed powered off, and red for error/unavailable. Use semantic light/dark paused tokens, not a new palette accent. Dashboard active spool/plate surfaces stay neutral; green active cards remain in inventory catalogs. The 64px Dashboard spool swatch aligns with its three identity lines; keep overflow and multiple-hotend layouts usable.
 
 - Dashboard active spools use a semantic link stretched across the card (or each spool region for multiple hotends), not a nested button/link or click-only article. Keep the ratings button independently above its hit area and preserve portal modal interactions. Compatibility alerts use at least 1rem supporting text and a 1.125rem prominent message, stacked with warning/danger theme colors.

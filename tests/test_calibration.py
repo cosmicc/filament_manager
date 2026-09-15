@@ -120,6 +120,7 @@ def test_template_calibration_applies_only_supported_suggestions() -> None:
             "flow_percent": Decimal("97.5"),
             "cura_extensions.xy_offset": "0.10",
             "ironing_flow_percent": "12",
+            "preferred_build_plate_surface_id": "00000000-0000-4000-8000-000000000001",
         },
     )
 
@@ -132,3 +133,4 @@ def test_template_calibration_applies_only_supported_suggestions() -> None:
         "cool_fan_speed_0": "0",
     }
     assert settings.ironing_flow_percent == Decimal("12")
+    assert settings.preferred_build_plate_surface_id is None

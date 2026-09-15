@@ -6,6 +6,7 @@ PostgreSQL is the canonical data store. A distinct Spoolman service remains the 
 
 ## Current capabilities
 
+- Testing release **0.8.7** clarifies calibration saving: **Update linked template** replaces calibrated defaults after confirmation, while **Save to filament only** leaves the template unchanged. Review uses Cura's expansion labels and no retired preferred-plate field. Upgrade web and worker together; no agent or macro replacement is required from 0.8.6.
 - Testing release **0.8.6** simplifies Dashboard actions and uses clear printer-state colors with neutral spool/plate cards. **Sync to Cura** queues the same settings as **Push app settings**, directly for one eligible workstation or after choosing among several. Upgrade web and worker together; no agent or macro replacement is required from 0.8.5. Keep Cura closed and wait for **Succeeded** in Cura Workstations before reopening.
 - Dashboard active spool cards open the matching spool details, with larger build plate compatibility warnings and a separate ratings action.
 - Testing release **0.8.5** replaces the old plate preference selector with compact star-rating cards at the bottom of template and filament print settings. Ratings save immediately; the reset icon clears a template rating or restores filament inheritance. Upgrade web and worker together; no new migration, agent upgrade, or macro replacement is required from 0.8.4.

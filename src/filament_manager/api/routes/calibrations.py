@@ -406,9 +406,8 @@ async def _calibration_suggestion(
             suggestions[f"cura_extensions.{key}"] = extension_value
     settings["cura_extensions"] = extensions
     settings["filament_density_g_cm3"] = product.density_g_cm3
-    if calibration.build_plate_surface_id is not None:
-        settings["preferred_build_plate_surface_id"] = calibration.build_plate_surface_id
-        suggestions["preferred_build_plate_surface_id"] = calibration.build_plate_surface_id
+    # The test surface is historical context, not a preferred-plate setting.
+    # Whole-plate star ratings own compatibility and recommendations.
     return MaterialSettingsInput.model_validate(settings), suggestions, base_revision
 
 
@@ -428,6 +427,8 @@ def _template_settings_with_suggestions(
     extensions = dict(raw_extensions) if isinstance(raw_extensions, dict) else {}
     supported_fields = set(MaterialSettingsInput.model_fields)
     for key, value in suggestions.items():
+        if key == "preferred_build_plate_surface_id":
+            continue
         extension_prefix = "cura_extensions."
         if key.startswith(extension_prefix):
             extensions[key.removeprefix(extension_prefix)] = value
@@ -558,8 +559,6 @@ async def apply_calibration_profile_settings(
             extensions[key] = format(Decimal(str(results[key])), "f")
     base_settings["cura_extensions"] = extensions
     base_settings["filament_density_g_cm3"] = product.density_g_cm3
-    if calibration.build_plate_surface_id is not None:
-        base_settings["preferred_build_plate_surface_id"] = calibration.build_plate_surface_id
 
     desired_settings = MaterialSettingsInput.model_validate(base_settings).model_dump(mode="json")
     setting_overrides = sparse_profile_overrides(base_revision.settings, desired_settings)

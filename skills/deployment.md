@@ -1,5 +1,7 @@
 # Deployment and Operations Skill
 
+- Testing release 0.8.7 upgrades web/worker together with no migration, renderer, or macro changes from 0.8.6. Calibration template saves replace calibrated defaults after exact-name confirmation; existing explicit filament overrides remain. No live printer configuration or existing calibration history is rewritten.
+
 - Testing release 0.8.6 upgrades web/worker together with no database migration, workstation renderer, or Klipper macro change from 0.8.5. Dashboard Sync to Cura uses the existing full-library workstation queue without printer-name matching; it never bypasses takeover, Administrator authorization, or closed-Cura deployment. Existing 0.8.4 agents and macros remain compatible.
 
 - Testing release 0.8.5 upgrades web/worker together with no new migration, workstation renderer, or Klipper macro change from 0.8.4. The UI retires legacy preference controls without deleting their stored metadata; whole-plate ratings and zero-star safety remain authoritative. Existing 0.8.4 agents and macros remain compatible.

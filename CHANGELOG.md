@@ -1,5 +1,24 @@
 # Changelog
 
+## 0.8.7 - 09.14.2026
+
+Testing release. Upgrade web and worker together. No migration, agent upgrade, or Klipper macro replacement is required from 0.8.6.
+
+### Added
+
+- Explicit calibration save confirmation identifies whether the linked template or only the filament profile was updated.
+
+### Changed
+
+- Calibration review uses Cura's Horizontal Expansion and Hole Horizontal Expansion labels, millimeter units, and at most two displayed decimal places. Internal Cura keys and stored precision remain unchanged.
+- Update linked template is the primary review action with exact-name confirmation; Save to filament only remains explicitly separate. Template updates replace calibrated defaults while preserving unrelated current settings and explicit filament overrides.
+
+### Fixed
+
+- Removed Preferred Build Plate Surface ID from calibration suggestions and stopped applying the test surface as a preferred-plate value. Star ratings remain authoritative; retained historical context is unchanged.
+- Calibration save refreshes filament, template, profile, and synchronization views. Refresh failures cannot turn a committed save into an apparent failed write; request errors remain visible inside the review dialog and simultaneous save actions are disabled.
+- Added PostgreSQL regression coverage proving template values persist after calibration, inherited filament settings update, custom overrides and historical snapshots survive, and repeated/stale applications are rejected.
+
 ## 0.8.6 - 09.14.2026
 
 Testing release. Upgrade web and worker together. No database migration, workstation-agent upgrade, or Klipper macro replacement is required from 0.8.5.

@@ -1,5 +1,23 @@
 # User Changelog
 
+## 0.8.7 - 09.14.2026
+
+Testing release.
+
+### Added
+
+- A clear confirmation after calibration says which settings were saved.
+
+### Changed
+
+- Update linked template is the main calibration save action; Save to filament only remains available separately. Unrelated settings and custom filament overrides are preserved.
+- Calibration review calls the Cura values Horizontal Expansion and Hole Horizontal Expansion, shows millimeters, and limits displayed numbers to two decimal places.
+
+### Fixed
+
+- Removed the retired Preferred Build Plate Surface ID from calibration recommendations.
+- Calibration save errors appear in the review dialog, and saved template/filament views refresh consistently.
+
 ## 0.8.6 - 09.14.2026
 
 Testing release.

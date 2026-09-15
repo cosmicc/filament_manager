@@ -61,6 +61,8 @@ Do not add Redis, Celery, Kafka, or another message broker without an approved a
 
 ## Agent routing
 
+- 0.8.7 calibration review uses Cura labels for `xy_offset` and `hole_xy_offset`, millimeter units and at most two display decimals without mutating stored precision. Update linked template is the primary, exact-name-confirmed action; filament-only save remains explicit. The test plate stays historical context and must never become a preferred-plate suggestion or override. Verify committed template/cascade values against PostgreSQL, preserve unrelated settings and sparse overrides, refresh all affected caches, and show request failures inside the review dialog. See frontend and testing skills.
+
 - Build plate Preferred materials is retired from editing, every catalog/detail presentation, and search. Omit `preferred_materials` on UI saves to retain legacy database/audit values. Preserve per-side surface material and texture; compatibility and recommendations use whole-plate star ratings.
 
 - 0.8.5 settings place compact whole-plate ratings last, replacing the legacy Preferred plate side control. Retain legacy metadata on unrelated saves and preserve immutable history; it never drives recommendations. Filament rating editors must fetch defaults for the exact edited profile's template, not an installed-nozzle fallback. Rating writes remain immediate, versioned, and separate from print-settings Save.
