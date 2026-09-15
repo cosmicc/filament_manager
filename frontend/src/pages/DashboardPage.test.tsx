@@ -111,10 +111,11 @@ describe('DashboardPage', () => {
     expect(screen.queryByText(/Inventory confidence/)).toBeNull()
     expect(screen.queryByRole('heading', { name: 'Quick actions' })).toBeNull()
     for (const [name, href] of Object.entries({
-      'Weigh spool': '/spools?action=weigh', 'Build plate': '/plates',
-      Calibrate: '/calibration', 'Add filament': '/filaments/new',
+      'Weigh spool': '/spools?action=weigh', 'Add filament': '/filaments/new',
       'Add spool': '/spools?create=1', 'Load spool': '/spools?action=load',
     })) expect(screen.getByRole('link', { name }).getAttribute('href')).toBe(href)
+    expect(screen.queryByRole('link', { name: 'Build plate' })).toBeNull()
+    expect(screen.queryByRole('link', { name: 'Calibrate' })).toBeNull()
     for (const label of ['Colors', 'PLA', 'PLA+', 'PETG', 'TPU']) expect(screen.getByText(label)).toBeTruthy()
 
     const printerCard = screen.getByRole('heading', { name: 'IPLT-Max' }).closest('article')

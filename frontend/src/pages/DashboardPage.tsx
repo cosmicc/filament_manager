@@ -1,9 +1,10 @@
-import { useMutation, useQuery } from '@tanstack/react-query'
+import { useQuery } from '@tanstack/react-query'
 import { useState } from 'react'
-import { AlertTriangle, Boxes, ChevronLeft, ChevronRight, FlaskConical, Gauge, Layers3, PackageOpen, Palette, Plus, Printer, RefreshCw, Scale, Thermometer, WifiOff } from 'lucide-react'
+import { AlertTriangle, Boxes, ChevronLeft, ChevronRight, Gauge, Layers3, PackageOpen, Palette, Plus, Printer, Scale, Thermometer, WifiOff } from 'lucide-react'
 import { apiFetch } from '../api/client'
 import type { DashboardData } from '../api/types'
 import { EmptyState } from '../components/EmptyState'
+import { DashboardCuraSync } from '../components/DashboardCuraSync'
 import { LoadingState } from '../components/LoadingState'
 import { PlateCompatibility } from '../components/PlateCompatibility'
 import { PageHeader } from '../components/PageHeader'
@@ -49,9 +50,6 @@ function MetricCard({ icon: Icon, label, value, detail, tone = '' }: {
 export default function DashboardPage() {
   const { user } = useAuth()
   const [selectedId, setSelectedId] = useState<string | null>(null)
-  const sync = useMutation({
-    mutationFn: (printerId: string) => apiFetch<{ queued: number }>(`/printers/${printerId}/sync-cura`, { method: 'POST' }),
-  })
   const query = useQuery({
     queryKey: ['dashboard'],
     queryFn: () => apiFetch<DashboardData>('/dashboard'),
@@ -66,21 +64,17 @@ export default function DashboardPage() {
   const selectedIndex = selected ? contexts.indexOf(selected) : 0
   const data = selected ? { ...query.data, ...selected, active_spool: selected.active_spools[0] ?? null } : query.data
   const activeSpools = selected?.active_spools ?? (data.active_spool ? [data.active_spool] : [])
-  const selectPrinter = (id: string) => { setSelectedId(id); sync.reset() }
+  const selectPrinter = (id: string) => setSelectedId(id)
   const movePrinter = (offset: number) => selectPrinter(contexts[(selectedIndex + offset + contexts.length) % contexts.length].printer_id)
   return (
     <div className="dashboard-page">
       <PageHeader eyebrow="Workshop overview" title="Dashboard" actions={<>
         <Link to="/spools?action=weigh" className="button button--primary"><Scale size={17} /> Weigh spool</Link>
-        <Link to={selected ? `/plates?printer_id=${selected.printer_id}` : '/plates'} className="button"><Layers3 size={17} /> Build plate</Link>
-        <Link to="/calibration" className="button"><FlaskConical size={17} /> Calibrate</Link>
         <Link to="/filaments/new" className="button"><PackageOpen size={17} /> Add filament</Link>
         <Link to="/spools?create=1" className="button"><Plus size={17} /> Add spool</Link>
         <Link to={`/spools?action=load${selected ? `&printer_id=${selected.printer_id}` : ''}`} className="button"><Boxes size={17} /> Load spool</Link>
-        {user?.role === 'administrator' && <button className="button" disabled={!selected || sync.isPending} onClick={() => selected && sync.mutate(selected.printer_id)}><RefreshCw size={17} />{sync.isPending ? 'Queueing…' : 'Sync to Cura'}</button>}
+        {user?.role === 'administrator' && <DashboardCuraSync />}
       </>} />
-      {sync.isSuccess && <p className="deployment-note" role="status">Settings queued for {sync.data.queued} matching Cura workstation(s). Close Cura and wait for synchronization to succeed before reopening.</p>}
-      {sync.error && <p className="form-error" role="alert">{sync.error.message}</p>}
       <section className="dashboard-grid">
         <article className={`card printer-state-card printer-state-card--${data.printer_state.operational_status}`}>
           <header className={`printer-state-card__header${contexts.length > 1 ? ' printer-state-card__header--carousel' : ''}`}>
@@ -138,7 +132,7 @@ export default function DashboardPage() {
           )) : <EmptyState icon={Boxes} title="No active spool" description="Load a spool through Inventory or the confirmed Fluidd workflow. The current physical spool updates automatically." action={<Link className="button" to="/spools">Open inventory</Link>} />}
         </article>
 
-        <article className={`card plate-card${data.active_plate ? " plate-card--active" : ""}`}>
+        <article className="card plate-card">
           <header className="card__header"><div><p className="eyebrow">Printer surface</p><h2>Active build plate</h2></div><Layers3 size={21} /></header>
           {data.active_plate ? <div className="plate-summary"><div className={`plate-illustration${data.active_plate.image_url ? ' plate-illustration--photo' : ''}`}>{data.active_plate.image_url ? <img src={data.active_plate.image_url} alt={`${data.active_plate.display_name} build plate`} /> : null}<span>{data.active_plate_surface?.surface_code ?? data.active_plate.plate_code}</span></div><strong>{data.active_plate.display_name}</strong><span>{data.active_plate_surface ? `Side ${data.active_plate_surface.side.toUpperCase()} · ${data.active_plate_surface.surface_material ?? 'Surface not specified'}` : 'Side not selected'}</span></div> : <EmptyState icon={Layers3} title="No plate selected" description="Select a synchronized P-number plate side for a configured printer." action={<Link className="button" to="/plates">Open plates</Link>} />}
         </article>

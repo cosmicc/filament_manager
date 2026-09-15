@@ -89,6 +89,8 @@ Run the same installer again to upgrade an existing agent. It stops a running pe
 
 ## Use
 
+From 0.8.6, Dashboard **Sync to Cura** uses the same full-library action as **Push app settings** below, without requiring the Dashboard printer name to match Cura. One enabled managed workstation with a reported Cura installation queues directly; multiple eligible workstations require an explicit choice. The selected Dashboard printer does not limit this synchronization. A queued request is not yet an applied update: keep Cura closed and check **Succeeded** in Cura Workstations before reopening. Existing takeover and agent safety checks still apply.
+
 Before takeover, open **Cura Workstations**, review replacement of the discovered library, and confirm. No Cura settings are imported. Existing user materials are backed up and replaced with app values; unrelated Cura quality settings remain workstation-owned. The app owns managed machine start/end G-code. Template and product GUIDs remain stable. Renderer revision 25 installs app-deployed per-GUID settings with Cura-compatible runtime types, ignoring local material edits and old pending receipts. Upgrade the server first, then the agent. Use **Push app settings**, keep Cura closed, and wait for **Succeeded** before reopening. Offline agents receive work on their next check-in. App saves still queue synchronization automatically.
 
 ### Red settings and slicing errors after 0.7.5 or 0.7.6

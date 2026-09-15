@@ -1,5 +1,7 @@
 # Deployment and Operations Skill
 
+- Testing release 0.8.6 upgrades web/worker together with no database migration, workstation renderer, or Klipper macro change from 0.8.5. Dashboard Sync to Cura uses the existing full-library workstation queue without printer-name matching; it never bypasses takeover, Administrator authorization, or closed-Cura deployment. Existing 0.8.4 agents and macros remain compatible.
+
 - Testing release 0.8.5 upgrades web/worker together with no new migration, workstation renderer, or Klipper macro change from 0.8.4. The UI retires legacy preference controls without deleting their stored metadata; whole-plate ratings and zero-star safety remain authoritative. Existing 0.8.4 agents and macros remain compatible.
 
 - 0.8.4 upgrades web/worker together and applies `fb123c4d5e67`. Review conflicting legacy ratings reset to Unrated before printing, retain a backup, and install app macro 0.8.4 while idle plus FIRMWARE_RESTART. Renderer 27 remains unchanged. Follow `docs/UPGRADE_0.8.4.md`; published images and automated tests do not certify live printer motion.

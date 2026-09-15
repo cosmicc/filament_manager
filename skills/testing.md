@@ -1,5 +1,7 @@
 # Testing and Validation Skill
 
+- 0.8.6 Dashboard checks cover neutral idle, green printing, cyan paused, yellow confirmed powered off, red error/unavailable, neutral spool/plate cards with catalog-only active green, larger swatches, and the reduced action row across desktop/mobile light/dark. Sync to Cura must discover only on click, auto-queue a sole eligible workstation, require choice for multiple, exclude disabled/unmanaged/unreported installations, preserve cancel/error/retry states, and call the existing Administrator-only workstation sync API without name matching or extra printer polling. Retain closed-Cura, takeover, physical-action, and ten-second refresh coverage.
+
 - Dashboard spool-card checks cover pointer/keyboard navigation to exact spool details, preservation of native modified-click links, no View inventory link, independent rating-modal controls, empty and multiple loaded-spool states, and current-printer context changes. Check large compatibility and missing-heatmap warnings for wrapping and readability in desktop/mobile light/dark views without changing zero-star behavior or polling.
 
 - Retired build plate Preferred materials must be absent from List/Cards/Detailed, detail and edit dialogs, and search even when legacy data is populated. Assert update payloads omit the field, surface material/texture remain visible, and whole-plate rating entry points still work.

@@ -1,5 +1,23 @@
 # Changelog
 
+## 0.8.6 - 09.14.2026
+
+Testing release. Upgrade web and worker together. No database migration, workstation-agent upgrade, or Klipper macro replacement is required from 0.8.5.
+
+### Added
+
+- Dashboard Sync to Cura offers an explicit workstation chooser when multiple enabled managed workstations have reported Cura installations.
+
+### Changed
+
+- Dashboard printer status uses green for printing, cyan for paused, yellow for confirmed powered off, and red for errors. Idle is untinted; unavailable telemetry stays distinct from confirmed power off.
+- Dashboard active spool and build plate cards use neutral surfaces; active inventory cards retain their green tint on Spools and Build plates.
+- Enlarged the Dashboard spool icon and removed the header Build plate and Calibrate shortcuts.
+
+### Fixed
+
+- Dashboard Sync to Cura uses the same complete-library queue action as Cura Workstations' Push app settings, without the extra printer-name matching restriction. A sole eligible workstation queues directly; multiple workstations require selection. Fresh eligibility, server authorization, takeover, and closed-Cura safeguards remain enforced. No additional printer polling is introduced.
+
 ## 0.8.5 - 09.14.2026
 
 Testing release. Upgrade web and worker together. No new database migration, workstation-agent upgrade, or Klipper macro replacement is required from 0.8.4.

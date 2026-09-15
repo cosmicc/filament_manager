@@ -1,5 +1,23 @@
 # User Changelog
 
+## 0.8.6 - 09.14.2026
+
+Testing release.
+
+### Added
+
+- Choose which Cura workstation to sync when more than one is available.
+
+### Changed
+
+- Dashboard printer colors now mean green: printing, cyan: paused, yellow: powered off, and red: error. Idle has no tint.
+- Dashboard active spool and build plate cards are untinted; their inventory pages still highlight active items in green.
+- Larger Dashboard spool icon and fewer header buttons: Build plate and Calibrate are removed.
+
+### Fixed
+
+- Sync to Cura on Dashboard no longer requires matching printer names. It queues the same app settings as Push app settings in Cura Workstations. Keep Cura closed and wait for Succeeded before reopening.
+
 ## 0.8.5 - 09.14.2026
 
 Testing release.

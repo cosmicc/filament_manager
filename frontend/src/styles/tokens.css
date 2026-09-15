@@ -27,6 +27,8 @@
   --warning-bg: #fff4cc;
   --danger: #ad3f42;
   --danger-bg: #fde7e7;
+  --paused: #087e91;
+  --paused-bg: color-mix(in srgb, var(--paused) 12%, var(--surface));
   --security: #70479d;
   --security-bg: #eee5f6;
   --sidebar: #16324f;
@@ -50,6 +52,7 @@
 }
 
 :root[data-theme^='dark-'] {
+  --paused: #79d8e8;
   --security: #d6aef3;
   --security-bg: #3c274c;
 }

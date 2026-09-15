@@ -42,7 +42,7 @@ const dashboard = {
   },
 }
 
-test('confirmed power-off is neutral rather than a printer error', async ({ page }) => {
+test('confirmed power-off is yellow rather than a printer error', async ({ page }) => {
   await mockDashboard(page)
   await page.route('**/api/v1/dashboard', route => route.fulfill({ json: {
     ...dashboard, printer_state: { ...dashboard.printer_state, operational_status: 'powered_off',
@@ -54,6 +54,7 @@ test('confirmed power-off is neutral rather than a printer error', async ({ page
   const status = page.locator('.printer-state-card .status-pill')
   await expect(status).toHaveText('Powered Off')
   await expect(status).toHaveClass(/status-pill--neutral/)
+  expect(await status.evaluate(node => getComputedStyle(node).color)).toBe('rgb(128, 97, 13)')
 })
 
 async function mockDashboard(page: Page) {
@@ -150,7 +151,7 @@ test('live printer dashboard card is responsive in light and dark profiles', asy
   await expect(page.getByText('20.5 g')).toBeVisible()
   await expect(page.getByText('$0.62')).toBeVisible()
   await expect(page.getByRole('heading', { name: 'Quick actions' })).toHaveCount(0)
-  await expect(page.locator('.dashboard-page .page-header__actions a')).toHaveCount(6)
+  await expect(page.locator('.dashboard-page .page-header__actions a')).toHaveCount(4)
   await expect(page.locator('.dashboard-metric-grid .metric-card')).toHaveCount(9)
   await page.screenshot({ path: testInfo.outputPath('dashboard-light-v072.png'), fullPage: true })
 
@@ -172,7 +173,7 @@ test('live printer dashboard card is responsive in light and dark profiles', asy
   await page.screenshot({ path: testInfo.outputPath('dashboard-mobile-v072.png'), fullPage: true })
 })
 
-test('printer carousel scopes actions and remains usable on mobile', async ({ page }, testInfo) => {
+test('printer carousel scopes physical actions while workstation sync stays independent', async ({ page }, testInfo) => {
   await mockDashboard(page)
   const contexts = ['First printer', 'Second printer'].map((name, index) => ({
     printer_id: `printer-${index}`, active_spools: [], active_plate: null, active_plate_surface: null,
@@ -180,14 +181,15 @@ test('printer carousel scopes actions and remains usable on mobile', async ({ pa
   }))
   await page.route('**/api/v1/dashboard', route => route.fulfill({ json: { ...dashboard, printer_contexts: contexts } }))
   const queued: string[] = []
-  await page.route('**/api/v1/printers/*/sync-cura', route => { queued.push(new URL(route.request().url()).pathname); return route.fulfill({ json: { queued: 1 } }) })
+  await page.route('**/api/v1/workstation-agents', route => route.fulfill({ json: [{ id: 'workstation-one', display_name: 'Slicing computer', enabled: true, cura_management_enabled: true, cura_installations: [{ machines: [] }] }] }))
+  await page.route('**/api/v1/workstation-agents/*/sync', route => { queued.push(new URL(route.request().url()).pathname); return route.fulfill({ json: [{ id: 'deployment-one', agent_id: 'workstation-one', status: 'pending' }] }) })
   await page.goto('/')
   await expect(page.getByRole('heading', { name: 'First printer', exact: true })).toBeVisible()
   await page.getByRole('button', { name: 'Next printer', exact: true }).click()
   await expect(page.getByRole('heading', { name: 'Second printer', exact: true })).toBeVisible()
   await expect(page.getByRole('link', { name: 'Load spool', exact: true })).toHaveAttribute('href', '/spools?action=load&printer_id=printer-1')
   await page.getByRole('button', { name: 'Sync to Cura', exact: true }).click()
-  await expect.poll(() => queued).toEqual(['/api/v1/printers/printer-1/sync-cura'])
+  await expect.poll(() => queued).toEqual(['/api/v1/workstation-agents/workstation-one/sync'])
   await page.getByRole('button', { name: 'Next printer', exact: true }).click()
   await expect(page.getByRole('heading', { name: 'First printer', exact: true })).toBeVisible()
   await page.getByRole('button', { name: 'Second printer', exact: true }).click()
