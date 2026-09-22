@@ -2,6 +2,39 @@ import { expect, test, type Page } from '@playwright/test'
 
 const browserErrors = new WeakMap<Page, string[]>()
 
+test('0.9.0 support controls remain blank and save precise template values', async ({ page }) => {
+  const labels = [
+    ['support_top_distance', 'Support Top Distance', 'mm'], ['support_xy_distance', 'Support X/Y Distance', 'mm'],
+    ['support_roof_density', 'Support Roof Density', '%'], ['support_tree_top_rate', 'Branch Density', '%'],
+    ['support_tree_tip_diameter', 'Tip Diameter', 'mm'], ['support_roof_height', 'Support Roof Thickness', 'mm'],
+  ]
+  let saved: Record<string, unknown> | null = null
+  await page.route('**/api/v1/profiles/templates', route => route.fulfill({ json: [template] }))
+  await page.route('**/api/v1/profiles/cura-settings/catalog', route => route.fulfill({ json: labels.map(([key, label, unit]) => ({ key, label, unit, editable: true, template_only: false, value_type: 'number' })) }))
+  await page.route('**/api/v1/profiles', route => route.fulfill({ json: [] }))
+  await page.route('**/api/v1/filaments', route => route.fulfill({ json: [] }))
+  await page.route('**/api/v1/profiles/templates/template-id/settings', route => {
+    saved = route.request().postDataJSON()
+    return route.fulfill({ json: template })
+  })
+  await page.goto('/templates')
+  await expect(page).toHaveTitle(/Filament Manager/)
+  await page.locator('.catalog-card--template').click()
+  for (const [, label] of labels) await expect(page.getByRole('spinbutton', { name: new RegExp(label) })).toHaveValue('')
+  await page.getByRole('spinbutton', { name: /Support Top Distance/ }).fill('0.15')
+  await page.getByRole('spinbutton', { name: /Branch Density/ }).fill('15.25')
+  await page.getByRole('heading', { name: 'Support', exact: true }).scrollIntoViewIfNeeded()
+  await page.evaluate(() => { document.documentElement.dataset.theme = 'dark-navy' })
+  await captureEvidence(page, 'support-desktop-dark-v090')
+  await page.setViewportSize({ width: 390, height: 844 })
+  await page.evaluate(() => { document.documentElement.dataset.theme = 'light-navy' })
+  await page.getByRole('heading', { name: 'Support', exact: true }).scrollIntoViewIfNeeded()
+  await captureEvidence(page, 'support-mobile-light-v090')
+  await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(390)
+  await page.getByRole('button', { name: 'Save template', exact: true }).click()
+  await expect.poll(() => (saved?.settings as { cura_extensions?: Record<string, unknown> })?.cura_extensions?.support_top_distance).toBe('0.15')
+})
+
 async function captureEvidence(page: Page, name: string): Promise<void> {
   const directory = process.env.FILAMENT_MANAGER_E2E_EVIDENCE_DIR
   if (directory) await page.screenshot({ path: `${directory}/${name}.png`, fullPage: false })
@@ -34,7 +67,7 @@ const settings = {
   travel_speed_mm_s: '200', support_speed_mm_s: '80', retraction_distance_mm: '0.8',
   retraction_speed_mm_s: '40', retraction_prime_speed_mm_s: '36', cooling_enabled: true, cooling_min_percent: '30',
   cooling_max_percent: '100', support_overhang_angle_deg: '55',
-  tree_max_branch_angle_deg: '40', pressure_advance: '0.035',
+  pressure_advance: '0.035',
   ironing_flow_percent: null, ironing_speed_mm_s: null, ironing_line_spacing_mm: null,
   filament_density_g_cm3: '1.24', preferred_build_plate_surface_id: null,
   cura_extensions: { retraction_enable: true, klipper_smooth_time_enable: true },

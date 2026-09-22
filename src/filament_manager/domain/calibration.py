@@ -43,7 +43,7 @@ CALIBRATION_STEPS: tuple[StepDefinition, ...] = (
         "overhang",
         "Overhang Test",
         True,
-        ("support_overhang_angle_deg", "tree_max_branch_angle_deg"),
+        ("support_overhang_angle_deg",),
     ),
     StepDefinition(
         7,

@@ -42,7 +42,6 @@ const coreComparisonFields: Array<{
   { key: 'cooling_min_percent', label: 'Regular fan speed', unit: '%', valueType: 'number', precision: 0 },
   { key: 'cooling_max_percent', label: 'Maximum fan speed', unit: '%', valueType: 'number', precision: 0 },
   { key: 'support_overhang_angle_deg', label: 'Support overhang angle', unit: '°', valueType: 'number', precision: 0 },
-  { key: 'tree_max_branch_angle_deg', label: 'Tree maximum branch angle', unit: '°', valueType: 'number', precision: 0 },
   { key: 'pressure_advance', label: 'Klipper pressure advance', unit: 's', valueType: 'number', precision: 2 },
   { key: 'filament_density_g_cm3', label: 'Filament density', unit: 'g/cm³', valueType: 'number', precision: 2 },
   { key: 'preferred_build_plate_surface_id', label: 'Preferred plate side', valueType: 'plate' },

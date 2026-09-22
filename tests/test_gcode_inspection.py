@@ -12,6 +12,22 @@ def cura_tail(settings: str) -> str:
     return f";SETTING_3 {payload}"
 
 
+def test_actual_cura_writer_escaping_retains_quality_name_and_values() -> None:
+    """Cura 5.13 doubles JSON backslashes before splitting 80-character lines."""
+    raw = json.dumps({"global_quality": '[general]\nname = Fine "Silk"\n[values]\nlayer_height = 0.16\n'})
+    escaped = raw.replace("\\", "\\\\")
+    tail = "\n".join(";SETTING_3 " + escaped[index : index + 69] for index in range(0, len(escaped), 69))
+    extracted = extract_gcode_metadata({}, "", tail)
+    assert extracted["cura_quality_profile"] == 'Fine "Silk"'
+    assert extracted["layer_height_mm"] == "0.16"
+
+
+def test_sliced_profile_comment_takes_priority_over_export_time_quality() -> None:
+    """Stock/custom profile evidence remains tied to slicing, including Unicode names."""
+    header = ";FM_CURA_PROFILE_JSON:" + json.dumps('Fine \u2013 "PLA"') + "\n"
+    assert extract_gcode_metadata({}, header, cura_tail(""))["cura_quality_profile"] == 'Fine \u2013 "PLA"'
+
+
 def test_cura_metadata_is_extracted_without_evaluating_content() -> None:
     """Supported metadata is normalized while malicious-looking values remain inert text."""
 

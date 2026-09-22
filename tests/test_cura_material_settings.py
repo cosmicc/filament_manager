@@ -17,8 +17,66 @@ from filament_manager.domain.cura_material_settings import (
     CURA_RETIRED_SETTING_KEYS,
     CURA_TEMPLATE_ONLY_SETTING_KEYS,
     CURA_TYPED_SETTING_KEYS,
+    CURA_UNMANAGED_SETTING_KEYS,
     cura_settings_for_profile,
 )
+
+SUPPORT_VALUES = {
+    "support_top_distance": "0.2",
+    "support_xy_distance": "0.7",
+    "support_roof_density": "80",
+    "support_tree_top_rate": "15.25",
+    "support_tree_tip_diameter": "0.4",
+    "support_roof_height": "0.8",
+}
+
+
+def test_support_settings_are_optional_and_outbound() -> None:
+    """New controls remain unset until selected and emit exact Cura keys."""
+    base = {
+        "extruder_temp_c": 210,
+        "bed_temp_c": 60,
+        "flow_percent": 100,
+        "cooling_min_percent": 0,
+        "cooling_max_percent": 100,
+        "filament_density_g_cm3": "1.24",
+    }
+    blank = MaterialSettingsInput(**base)
+    assert not set(SUPPORT_VALUES).intersection(cura_settings_for_profile(blank))
+    populated = MaterialSettingsInput(**base, cura_extensions=SUPPORT_VALUES)
+    assert all(cura_settings_for_profile(populated)[key] == value for key, value in SUPPORT_VALUES.items())
+    for retired in ("support_tree_angle", "retract_at_layer_change"):
+        assert retired not in CURA_MANAGED_SETTING_KEYS
+        assert retired in CURA_RETIRED_SETTING_KEYS | CURA_UNMANAGED_SETTING_KEYS
+        assert retired not in MaterialSettingsInput(**base, cura_extensions={retired: 1}).cura_extensions
+    assert "retract_at_layer_change" not in CURA_RETIRED_SETTING_KEYS
+
+
+@pytest.mark.parametrize(
+    "key,value",
+    [
+        ("support_top_distance", "-0.1"),
+        ("support_xy_distance", "-1"),
+        ("support_roof_height", "-1"),
+        ("support_roof_density", "101"),
+        ("support_tree_top_rate", "0"),
+        ("support_tree_tip_diameter", "0"),
+        ("support_roof_density", True),
+        ("support_top_distance", "float('nan')"),
+    ],
+)
+def test_support_values_reject_invalid_inputs(key: str, value: object) -> None:
+    """Portable bounds reject unsafe scalars without evaluating expressions."""
+    with pytest.raises(ValidationError):
+        MaterialSettingsInput(
+            extruder_temp_c=210,
+            bed_temp_c=60,
+            flow_percent=100,
+            cooling_min_percent=0,
+            cooling_max_percent=100,
+            filament_density_g_cm3="1.24",
+            cura_extensions={key: value},
+        )
 
 
 @pytest.mark.parametrize("distance", [None, "0", "0.65", "6.5"])
@@ -49,11 +107,11 @@ def test_operator_material_settings_catalog_is_exact_and_unique() -> None:
 
     keys = [setting.key for setting in CURA_MATERIAL_SETTINGS]
 
-    assert len(keys) == 58
-    assert len(set(keys)) == 58
-    assert len(CURA_EDITABLE_SETTING_KEYS) == 50
+    assert len(keys) == 63
+    assert len(set(keys)) == 63
+    assert len(CURA_EDITABLE_SETTING_KEYS) == 55
     assert len(CURA_TYPED_SETTING_KEYS) == 26
-    assert len(CURA_EXTENSION_SETTING_KEYS) == 26
+    assert len(CURA_EXTENSION_SETTING_KEYS) == 31
     assert {setting.key for setting in CURA_MATERIAL_SETTINGS if not setting.editable} == {
         "acceleration_enabled",
         "acceleration_travel_enabled",

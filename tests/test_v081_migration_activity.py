@@ -1,5 +1,7 @@
 """Populated 0.8.0 upgrade and real PostgreSQL activity attribution."""
 
+import hashlib
+import json
 from datetime import UTC, datetime, timedelta
 from decimal import Decimal
 
@@ -26,7 +28,6 @@ from filament_manager.models.inventory import (
     Spool,
 )
 from filament_manager.models.printing import PrintJob, PrintMaterialSegment
-from filament_manager.services.material_settings import profile_snapshot_checksum
 from filament_manager.services.print_activity import print_activity_dates
 
 
@@ -165,7 +166,26 @@ async def test_density_upgrade_preserves_history_and_activity(monkeypatch: pytes
             assert current is not None and current.id != old_id
             assert current.filament_density_g_cm3 == Decimal("1.23456")
             assert current.setting_overrides == {}
-            assert current.checksum == profile_snapshot_checksum(current)
+            # The 0.8.1 migration has a frozen checksum contract. Removing a
+            # current setting must not rewrite that historical document/hash.
+            historical_settings = MaterialSettingsInput.model_validate(current).model_dump(mode="json")
+            historical_settings["tree_max_branch_angle_deg"] = None
+            historical_payload = {
+                "profile_id": str(current.id),
+                "version": current.version,
+                "filament_product_id": str(current.filament_product_id),
+                "printer_id": str(current.printer_id),
+                "nozzle_diameter_mm": format(current.nozzle_diameter_mm, "f"),
+                "base_template_revision_id": str(current.base_template_revision_id),
+                "setting_overrides": current.setting_overrides,
+                "settings": historical_settings,
+            }
+            assert (
+                current.checksum
+                == hashlib.sha256(
+                    json.dumps(historical_payload, sort_keys=True, separators=(",", ":")).encode()
+                ).hexdigest()
+            )
             assert session.get(MaterialProfile, old_id).filament_density_g_cm3 == Decimal("1.3")
             assert session.get(PrintJob, done_id).profile_snapshot == {"filament_density_g_cm3": "1.3"}
             assert session.get(Spool, spool_id).spool_type == "Unknown"

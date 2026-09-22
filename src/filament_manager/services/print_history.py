@@ -52,7 +52,7 @@ from filament_manager.models.inventory import (
     Vendor,
 )
 from filament_manager.models.operations import ApplicationSetting
-from filament_manager.models.printing import PrintJob, PrintMaterialSegment
+from filament_manager.models.printing import PrintGcodeArchive, PrintJob, PrintMaterialSegment
 from filament_manager.services.events import add_audit_event, add_outbox_job
 from filament_manager.services.moonraker_sync import synchronize_loaded_hotends
 from filament_manager.services.print_thumbnails import sanitize_print_thumbnail
@@ -668,6 +668,7 @@ async def _inspection_result(
     profile: MaterialProfile | None,
     material_guid: str,
     printer: Printer,
+    job: PrintJob,
 ) -> tuple[InspectionResult | None, str | None, dict[str, Any], MaterialProfile | None, str]:
     metadata = await client.gcode_metadata(filename)
     try:
@@ -675,6 +676,15 @@ async def _inspection_result(
     except MoonrakerError:
         return None, None, metadata, profile, material_guid
     metadata = {**metadata, "stream_observations": gcode.observations}
+    if gcode.compressed_data is not None:
+        session.add(
+            PrintGcodeArchive(
+                print_job_id=job.id,
+                sha256=gcode.sha256,
+                size_bytes=gcode.size,
+                compressed_data=gcode.compressed_data,
+            )
+        )
     profile_snapshot = _json_safe(settings_snapshot_from_profile(profile)) if profile else None
     result = inspect_gcode(
         metadata,
@@ -782,6 +792,13 @@ async def synchronize_live_print(
     )
     if job is not None and job.status == observed_status and observed_status in terminal_statuses:
         return job
+    if job is not None and job.started_at is not None and observed_status == PrintJobStatus.IN_PROGRESS:
+        observed_start = now - timedelta(seconds=float(print_state.total_duration))
+        if (observed_start - job.started_at).total_seconds() > 30:
+            # A reset print clock identifies a later run of the same filename.
+            # Retain the old row for idle history reconciliation rather than
+            # assigning this run's physical state and usage to the stale job.
+            job = None
     if printer.extruder_count > 1 and preflight_state is not None:
         if (
             preflight_state.loaded_spools is None
@@ -872,6 +889,7 @@ async def synchronize_live_print(
                 profile=profile,
                 material_guid=material_guid,
                 printer=printer,
+                job=job,
             )
         except MoonrakerError:
             result, sha256, metadata, inspected_profile, inspected_guid = (
@@ -1205,18 +1223,27 @@ async def _upsert_history_job(
     normalized_history_status = raw_history_status.casefold() if raw_history_status else None
     start_time = _timestamp(remote.get("start_time"))
     end_time = _timestamp(remote.get("end_time"))
-    if job is None:
-        job = await session.scalar(
-            select(PrintJob)
-            .where(
-                PrintJob.printer_id == printer.id,
-                PrintJob.filename == filename,
-                PrintJob.moonraker_job_id.is_(None),
-                PrintJob.source == "live",
-            )
-            .order_by(PrintJob.started_at.desc())
-            .limit(1)
+    if job is None and start_time is not None:
+        # A filename may be printed repeatedly. Never attach another run's
+        # outcome or material use to the newest same-name record alone.
+        candidates = list(
+            (
+                await session.scalars(
+                    select(PrintJob)
+                    .where(
+                        PrintJob.printer_id == printer.id,
+                        PrintJob.filename == filename,
+                        PrintJob.moonraker_job_id.is_(None),
+                        PrintJob.source == "live",
+                        PrintJob.started_at.between(
+                            start_time - timedelta(seconds=30), start_time + timedelta(seconds=30)
+                        ),
+                    )
+                    .limit(2)
+                )
+            ).all()
         )
+        job = candidates[0] if len(candidates) == 1 else None
     created = job is None
     raw_metadata = remote.get("metadata")
     metadata: dict[str, Any] = raw_metadata if isinstance(raw_metadata, dict) else {}
@@ -1264,6 +1291,11 @@ async def _upsert_history_job(
         _apply_extracted(job, extracted_result.extracted)
         session.add(job)
     else:
+        if (
+            job.state_snapshot.get("stale_closed_at")
+            and _history_status(remote.get("status")) == PrintJobStatus.IN_PROGRESS
+        ):
+            return job
         job.moonraker_job_id = remote_id
         job.status = _history_status(remote.get("status"))
         if normalized_history_status:
@@ -1328,6 +1360,16 @@ async def synchronize_print_history(
     since = None
     if not initial and printer.last_print_history_end_at is not None:
         since = (printer.last_print_history_end_at - timedelta(seconds=1)).timestamp()
+        # A newer completed job must not advance the checkpoint past an older
+        # unfinished record. Revisit the oldest unresolved start on idle passes.
+        oldest_pending = await session.scalar(
+            select(func.min(PrintJob.started_at)).where(
+                PrintJob.printer_id == printer.id,
+                PrintJob.status == PrintJobStatus.IN_PROGRESS,
+            )
+        )
+        if oldest_pending is not None:
+            since = min(since, (oldest_pending - timedelta(seconds=30)).timestamp())
     start = 0
     imported = 0
     skipped = 0

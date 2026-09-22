@@ -383,7 +383,6 @@ async def commit_approved_run(
                     "cooling_min_percent": "0",
                     "cooling_max_percent": "100",
                     "support_overhang_angle_deg": None,
-                    "tree_max_branch_angle_deg": None,
                     "pressure_advance": (
                         str(values["Pressure Advance"]) if values["Pressure Advance"] is not None else None
                     ),

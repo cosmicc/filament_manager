@@ -41,7 +41,6 @@ const resultFields: Record<string, { key: string; label: string; unit?: string; 
   ],
   overhang: [
     { key: 'support_overhang_angle_deg', label: 'Support overhang angle', unit: '°', precision: 0 },
-    { key: 'tree_max_branch_angle_deg', label: 'Maximum tree branch angle', unit: '°', precision: 0 },
   ],
   ironing: [
     { key: 'ironing_flow_percent', label: 'Ironing flow', unit: '%', precision: 0 },

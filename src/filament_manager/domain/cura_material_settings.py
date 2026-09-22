@@ -61,6 +61,12 @@ CURA_MATERIAL_SETTINGS: tuple[CuraMaterialSetting, ...] = (
     _number("hole_xy_offset_max_diameter", "Hole Horizontal Expansion Max Diameter", "mm"),
     _number("cool_fan_speed_min", "Regular Fan Speed", "%"),
     _number("support_angle", "Support Overhang Angle", "°"),
+    _number("support_top_distance", "Support Top Distance", "mm"),
+    _number("support_xy_distance", "Support X/Y Distance", "mm"),
+    _number("support_roof_density", "Support Roof Density", "%"),
+    _number("support_tree_top_rate", "Branch Density", "%"),
+    _number("support_tree_tip_diameter", "Tip Diameter", "mm"),
+    _number("support_roof_height", "Support Roof Thickness", "mm"),
     _number("material_flow", "Flow", "%"),
     _number("speed_roofing", "Top Surface Skin Speed", "mm/s", template_only=True),
     _boolean("cool_fan_enabled", "Enable Print Cooling"),
@@ -110,7 +116,6 @@ CURA_MATERIAL_SETTINGS: tuple[CuraMaterialSetting, ...] = (
         "mm/s",
         editable=False,
     ),
-    _boolean("retract_at_layer_change", "Retract at Layer Change"),
     _number("cool_min_speed", "Minimum Speed", "mm/s"),
     _number("speed_wall", "Wall Speed", "mm/s", template_only=True),
     _number("cool_fan_speed_0", "Initial Fan Speed", "%"),
@@ -216,6 +221,7 @@ CURA_EXTENSION_SETTING_KEYS = CURA_EDITABLE_SETTING_KEYS - CURA_TYPED_SETTING_KE
 # returned, imported, rendered, or enforced as current settings.
 CURA_RETIRED_SETTING_KEYS = frozenset(
     {
+        "support_tree_angle",
         "infill_material_flow",
         "ironing_speed",
         "default_material_bed_temperature",
@@ -232,6 +238,11 @@ CURA_RETIRED_SETTING_KEYS = frozenset(
         "support_material_flow",
     }
 )
+
+# Explicitly returned to Cura ownership. Ignore legacy app snapshot values but
+# do not put these in recurring quality-profile cleanup: later Cura edits must
+# remain operator-owned and survive material synchronization.
+CURA_UNMANAGED_SETTING_KEYS = frozenset({"retract_at_layer_change"})
 
 
 class MaterialProfileValues(Protocol):

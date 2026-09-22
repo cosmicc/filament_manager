@@ -2,7 +2,7 @@
 
 import { fireEvent, render, screen, within } from '@testing-library/react'
 import { describe, expect, it } from 'vitest'
-import type { MaterialSettings } from '../api/types'
+import type { CuraSettingCatalogItem, MaterialSettings } from '../api/types'
 import { MaterialSettingsEditor, settingsFromForm } from './MaterialSettingsEditor'
 
 const settings: MaterialSettings = {
@@ -26,7 +26,6 @@ const settings: MaterialSettings = {
   cooling_min_percent: '30',
   cooling_max_percent: '100',
   support_overhang_angle_deg: null,
-  tree_max_branch_angle_deg: null,
   pressure_advance: null,
   ironing_flow_percent: null,
   ironing_speed_mm_s: null,
@@ -35,6 +34,33 @@ const settings: MaterialSettings = {
   preferred_build_plate_surface_id: null,
   cura_extensions: {},
 }
+
+it.each(['template', 'profile'] as const)('keeps new support controls blank and saves precise %s values', (scope) => {
+  const entries = [
+    ['support_top_distance', 'Support Top Distance', 'mm'],
+    ['support_xy_distance', 'Support X/Y Distance', 'mm'],
+    ['support_roof_density', 'Support Roof Density', '%'],
+    ['support_tree_top_rate', 'Branch Density', '%'],
+    ['support_tree_tip_diameter', 'Tip Diameter', 'mm'],
+    ['support_roof_height', 'Support Roof Thickness', 'mm'],
+  ]
+  const catalog: CuraSettingCatalogItem[] = entries.map(([key, label, unit]) => ({ key, label, unit, value_type: 'number', editable: true, template_only: false }))
+  const view = render(<form><MaterialSettingsEditor settings={settings} baseSettings={scope === 'profile' ? settings : undefined} catalog={catalog} scope={scope} /></form>)
+  for (const [, label] of entries) {
+    const input = within(view.container).getByRole('spinbutton', { name: new RegExp(label.replace('/', '\\/')) }) as HTMLInputElement
+    expect(input.value).toBe('')
+    expect(input.step).toBe('0.01')
+  }
+  const input = within(view.container).getByRole('spinbutton', { name: /Support Top Distance/ })
+  fireEvent.change(input, { target: { value: '0' } })
+  fireEvent.change(within(view.container).getByRole('spinbutton', { name: /Branch Density/ }), { target: { value: '15.25' } })
+  const saved = settingsFromForm(view.container.querySelector('form')!, catalog, scope)
+  expect(saved.cura_extensions.support_top_distance).toBe('0')
+  expect(saved.cura_extensions.support_tree_top_rate).toBe('15.25')
+  expect(saved.cura_extensions.support_xy_distance).toBeUndefined()
+  expect(within(view.container).queryByText(/maximum branch angle/i)).toBeNull()
+  view.unmount()
+})
 
 it('shows read-only retraction safeguards and updates the derived window live', () => {
   const view = render(<form><MaterialSettingsEditor settings={{ ...settings, retraction_distance_mm: '0.65' }} catalog={[]} scope="template" /></form>)

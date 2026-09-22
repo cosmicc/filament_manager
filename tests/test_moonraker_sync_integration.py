@@ -484,13 +484,21 @@ async def test_active_spool_selection_and_clear_follow_moonraker(
                     del limit, since
                     if start:
                         return ()
+                    captured = await session.scalar(
+                        select(PrintJob).where(PrintJob.filename == "repeatable.gcode")
+                    )
+                    assert (
+                        captured is not None
+                        and captured.started_at is not None
+                        and captured.ended_at is not None
+                    )
                     return (
                         {
                             "job_id": "repeatable-history-id",
                             "filename": "repeatable.gcode",
                             "status": "completed",
-                            "start_time": 1_777_000_000,
-                            "end_time": 1_777_000_060,
+                            "start_time": captured.started_at.timestamp(),
+                            "end_time": captured.ended_at.timestamp(),
                             "filament_used": 200,
                             "print_duration": 50,
                             "total_duration": 60,
@@ -499,10 +507,14 @@ async def test_active_spool_selection_and_clear_follow_moonraker(
                     )
 
                 async def timelapse_files(self) -> tuple[dict[str, object], ...]:
+                    captured = await session.scalar(
+                        select(PrintJob).where(PrintJob.filename == "repeatable.gcode")
+                    )
+                    assert captured is not None and captured.ended_at is not None
                     return (
                         {
                             "path": "repeatable_2026-04-24.mp4",
-                            "modified": 1_777_000_061,
+                            "modified": captured.ended_at.timestamp() + 1,
                             "size": 1_048_576,
                         },
                     )

@@ -8,6 +8,33 @@ from filament_manager.domain.profile_inheritance import (
 )
 
 
+def test_support_inheritance_reversion_and_retired_overrides() -> None:
+    """Support values inherit normally; retired keys cannot survive as customizations."""
+    keys = (
+        "support_top_distance",
+        "support_xy_distance",
+        "support_roof_density",
+        "support_tree_top_rate",
+        "support_tree_tip_diameter",
+        "support_roof_height",
+    )
+    base = {**_settings(), "cura_extensions": dict.fromkeys(keys, "1")}
+    desired = {**base, "cura_extensions": {**base["cura_extensions"], "support_top_distance": "0.2"}}
+    overrides = sparse_profile_overrides(base, desired)
+    assert overrides == {"cura_extensions": {"support_top_distance": "0.2"}}
+    newer = {**base, "cura_extensions": dict.fromkeys(keys, "2")}
+    resolved = resolve_profile_settings(newer, overrides)
+    assert resolved["cura_extensions"]["support_top_distance"] == "0.2"
+    assert all(resolved["cura_extensions"][key] == "2" for key in keys[1:])
+    assert sparse_profile_overrides(newer, newer) == {}
+    legacy = {
+        "tree_max_branch_angle_deg": "40",
+        "cura_extensions": {"support_tree_angle": "40", "retract_at_layer_change": True},
+    }
+    assert override_setting_keys(legacy) == set()
+    assert "tree_max_branch_angle_deg" not in resolve_profile_settings(base, legacy)
+
+
 def test_density_is_silently_template_owned() -> None:
     """Legacy overrides cannot suppress density inheritance on future saves."""
     base = _settings()

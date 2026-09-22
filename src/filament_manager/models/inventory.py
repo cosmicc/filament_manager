@@ -510,6 +510,7 @@ class MaterialProfile(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     cooling_min_percent: Mapped[Decimal] = mapped_column(MEASUREMENT, nullable=False)
     cooling_max_percent: Mapped[Decimal] = mapped_column(MEASUREMENT, nullable=False)
     support_overhang_angle_deg: Mapped[Decimal | None] = mapped_column(MEASUREMENT)
+    # Retired from live settings; retained only for immutable legacy snapshots.
     tree_max_branch_angle_deg: Mapped[Decimal | None] = mapped_column(MEASUREMENT)
     pressure_advance: Mapped[Decimal | None] = mapped_column(MEASUREMENT)
     filament_density_g_cm3: Mapped[Decimal] = mapped_column(MEASUREMENT, nullable=False)

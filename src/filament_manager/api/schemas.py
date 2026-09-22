@@ -12,6 +12,7 @@ from filament_manager.domain.cura_material_settings import (
     CURA_EXTENSION_SETTING_KEYS,
     CURA_MATERIAL_SETTINGS,
     CURA_RETIRED_SETTING_KEYS,
+    CURA_UNMANAGED_SETTING_KEYS,
     cura_settings_for_profile,
 )
 from filament_manager.domain.filament_care import DryingTimeHours, MoistureSensitivity
@@ -561,7 +562,6 @@ class MaterialSettingsInput(ApiModel):
     cooling_min_percent: Decimal = Field(ge=0, le=100)
     cooling_max_percent: Decimal = Field(ge=0, le=100)
     support_overhang_angle_deg: Decimal | None = Field(default=None, ge=0, le=90)
-    tree_max_branch_angle_deg: Decimal | None = Field(default=None, ge=0, le=90)
     pressure_advance: Decimal | None = Field(default=None, ge=0, le=2)
     ironing_flow_percent: Decimal | None = Field(default=None, ge=0, le=100)
     ironing_speed_mm_s: Decimal | None = Field(default=None, gt=0)
@@ -586,7 +586,11 @@ class MaterialSettingsInput(ApiModel):
         import math
         import re
 
-        value = {key: item for key, item in value.items() if key not in CURA_RETIRED_SETTING_KEYS}
+        value = {
+            key: item
+            for key, item in value.items()
+            if key not in CURA_RETIRED_SETTING_KEYS | CURA_UNMANAGED_SETTING_KEYS
+        }
         # Existing snapshots relied on a hidden zero before Initial Fan Speed
         # became editable. Keep that safe starting value without overriding a
         # value subsequently selected by the operator.
@@ -620,6 +624,18 @@ class MaterialSettingsInput(ApiModel):
                 if isinstance(extension_value, str) and not re.fullmatch(r"-?\d+(?:\.\d+)?", extension_value):
                     raise ValueError(f"Cura extension {key} must be numeric")
                 numeric_value = Decimal(str(extension_value))
+                if (
+                    key in {"support_top_distance", "support_xy_distance", "support_roof_height"}
+                    and numeric_value < 0
+                ):
+                    raise ValueError(f"Cura extension {key} must be at least 0")
+                if key == "support_roof_density" and not (0 <= numeric_value <= 100):
+                    raise ValueError(f"Cura extension {key} must be between 0 and 100")
+                if key == "support_tree_top_rate" and numeric_value < Decimal("0.1"):
+                    raise ValueError(f"Cura extension {key} must be at least 0.1")
+                # Machine-dependent tip limits remain Cura's native responsibility.
+                if key == "support_tree_tip_diameter" and numeric_value <= 0:
+                    raise ValueError(f"Cura extension {key} must be greater than 0")
                 if key.startswith("acceleration_") and not (
                     Decimal("0") < numeric_value <= Decimal("1000000")
                 ):
@@ -1717,6 +1733,13 @@ class PrintJobResponse(PrintJobSummaryResponse):
 
     print_settings_snapshot: dict[str, Any]
     current_template_comparison: PrintTemplateComparison | None = None
+    gcode_saved: bool = False
+
+
+class CloseStalePrintRequest(ApiModel):
+    """Confirm a reviewed history record without issuing a printer command."""
+
+    expected_version: int = Field(ge=1)
 
 
 class PrintJobPageResponse(ApiModel):

@@ -1,5 +1,28 @@
 # User Changelog
 
+## 0.9.0 - 09.22.2026
+
+Testing release. Upgrade your workstation agent with Cura closed, synchronize app settings, then re-slice to capture the Cura profile name reliably.
+
+### Added
+
+- Six support settings in templates and filaments, initially blank and inherited normally.
+- View and download a verified original G-code file from print details (up to 100 MB per file).
+- Close stale print-history entries after verifying the printer is idle; unknown outcomes remain clearly marked.
+- M240 camera snapshots in the QQ-S macro file using your existing Moonraker Timelapse setup.
+
+### Changed
+
+- Removed Tree Maximum Branch Angle and Retract at Layer Change from app settings. Cura now controls layer-change retraction.
+- Print details show start-to-finish duration, and printer totals show days/hours as well as total hours.
+- Camera selection and snapshot parking continue to follow your timelapse settings.
+
+### Fixed
+
+- Cura profile names are captured from real Cura exports, with additional slice-time metadata for newly sliced files after upgrading the workstation agent.
+- Older unfinished entries are revisited during automatic history reconciliation.
+- Added the missing handler for Cura's per-layer M240 camera commands. Apply the updated macro while idle and restart Klipper; an app update alone does not install it.
+
 ## 0.8.7 - 09.14.2026
 
 Testing release.

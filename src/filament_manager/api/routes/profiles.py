@@ -17,6 +17,7 @@ from filament_manager.domain.cura_material_settings import (
 )
 from filament_manager.domain.profile_inheritance import (
     override_setting_keys,
+    profile_overrides_without_template_only,
     resolve_profile_settings,
     settings_snapshot_from_profile,
     sparse_profile_overrides,
@@ -1401,20 +1402,17 @@ def _profile_payload(profile: MaterialProfile) -> dict[str, object]:
         "support_overhang_angle_deg": str(profile.support_overhang_angle_deg)
         if profile.support_overhang_angle_deg is not None
         else None,
-        "tree_max_branch_angle_deg": str(profile.tree_max_branch_angle_deg)
-        if profile.tree_max_branch_angle_deg is not None
-        else None,
         "pressure_advance": str(profile.pressure_advance) if profile.pressure_advance is not None else None,
         "filament_density_g_cm3": str(profile.filament_density_g_cm3),
         "preferred_build_plate_surface_id": str(profile.preferred_build_plate_surface_id)
         if profile.preferred_build_plate_surface_id
         else None,
         "cura_extensions_schema_version": profile.cura_extensions_schema_version,
-        "cura_extensions": profile.cura_extensions,
+        "cura_extensions": settings_snapshot_from_profile(profile)["cura_extensions"],
         "base_template_revision_id": (
             str(profile.base_template_revision_id) if profile.base_template_revision_id else None
         ),
-        "setting_overrides": profile.setting_overrides,
+        "setting_overrides": profile_overrides_without_template_only(profile.setting_overrides or {}),
     }
 
 

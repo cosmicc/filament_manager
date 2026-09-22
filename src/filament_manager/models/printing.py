@@ -26,6 +26,18 @@ PRINT_MEASUREMENT = Numeric(14, 5)
 PRINT_DURATION = Numeric(14, 3)
 
 
+class PrintGcodeArchive(Base):
+    """Exact compressed print input, isolated from repeating history queries."""
+
+    __tablename__ = "print_gcode_archives"
+    print_job_id: Mapped[UUID] = mapped_column(
+        ForeignKey("print_jobs.id", ondelete="CASCADE"), primary_key=True
+    )
+    sha256: Mapped[str] = mapped_column(String(64), nullable=False)
+    size_bytes: Mapped[int] = mapped_column(Integer, nullable=False)
+    compressed_data: Mapped[bytes] = mapped_column(LargeBinary, nullable=False)
+
+
 class PrintJob(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     """One Moonraker print with the exact canonical state captured at its start."""
 

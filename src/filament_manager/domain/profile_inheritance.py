@@ -41,7 +41,6 @@ PROFILE_SETTING_KEYS = (
     "cooling_min_percent",
     "cooling_max_percent",
     "support_overhang_angle_deg",
-    "tree_max_branch_angle_deg",
     "pressure_advance",
     "ironing_flow_percent",
     "ironing_speed_mm_s",
@@ -132,14 +131,14 @@ def profile_overrides_without_template_only(
     filtered = {
         key: deepcopy(value)
         for key, value in overrides.items()
-        if key not in TEMPLATE_ONLY_PROFILE_SETTING_KEYS and key != "cura_extensions"
+        if key in PROFILE_SETTING_KEYS and key not in TEMPLATE_ONLY_PROFILE_SETTING_KEYS
     }
     extensions = overrides.get("cura_extensions")
     if isinstance(extensions, dict):
         filtered_extensions = {
             str(key): deepcopy(value)
             for key, value in extensions.items()
-            if str(key) not in TEMPLATE_ONLY_CURA_EXTENSION_KEYS
+            if str(key) in CURA_EXTENSION_SETTING_KEYS and str(key) not in TEMPLATE_ONLY_CURA_EXTENSION_KEYS
         }
         if filtered_extensions:
             filtered["cura_extensions"] = filtered_extensions

@@ -39,7 +39,6 @@ DEFAULT_ASA_SETTINGS: dict[str, object] = {
     "cooling_min_percent": "0",
     "cooling_max_percent": "0",
     "support_overhang_angle_deg": None,
-    "tree_max_branch_angle_deg": None,
     "pressure_advance": None,
     "filament_density_g_cm3": "1.07",
     "preferred_build_plate_surface_id": None,

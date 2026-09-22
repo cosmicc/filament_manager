@@ -1,5 +1,7 @@
 # Database and Migration Skill
 
+- 0.9.0 migration `fc234d5e6f78` adds `print_gcode_archives`, keyed by print UUID with cascade deletion, bounded original size, SHA-256 and compressed bytes. Never include it in repeating print queries or Google publication. Downgrade refuses nonempty archives. Retain original template/profile/history evidence when retiring settings; only current projections and sparse override resolution drop retired keys. Stale closure uses optimistic concurrency and a row lock, stores an audit/unknown outcome without fabricated end time or usage, and cannot be reopened by an old in-progress Moonraker result.
+
 - Printer metadata concurrency tokens hash only editable fields and physical-nozzle identity, never telemetry. New material-family templates copy existing exact PLA/PETG scopes once without reassigning products or rewriting historical settings.
 
 - 0.8.4 migration `fb123c4d5e67` converts template side ratings into whole-plate maps; matching or single values carry over, conflicts become unrated, originals/reset IDs remain audited. A nonempty filament override map prevents downgrade. Versioned `filament_plate_ratings.<filament UUID>` maps contain only explicit whole-plate overrides and survive template changes. Serialize first creation on the owner row, validate UUIDs and strict integer stars, audit/queue Google atomically, and compute inherited defaults live from current exact-scope templates. Never change historical print evidence.

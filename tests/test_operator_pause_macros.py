@@ -70,6 +70,16 @@ def test_capture_precedes_retract_and_lift_precedes_xy() -> None:
     assert "RESTORE_GCODE_STATE NAME=FM_PRINT_PAUSE MOVE=0" in result
 
 
+def test_m240_delegates_once_to_existing_timelapse_without_extra_commands() -> None:
+    """Cura's camera trigger must not add motion, waits, or a second capture path."""
+    result = render("M240", snapshot())
+    commands = [
+        line.strip() for line in result.splitlines() if line.strip() and not line.lstrip().startswith("#")
+    ]
+    assert commands == ["TIMELAPSE_TAKE_FRAME"]
+    assert not CONFIG.has_option("gcode_macro M240", "rename_existing")
+
+
 def test_duplicate_pause_never_overwrites_saved_position() -> None:
     printer = snapshot()
     printer["pause_resume"]["is_paused"] = True

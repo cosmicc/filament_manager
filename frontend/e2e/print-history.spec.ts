@@ -1,6 +1,47 @@
 import { expect, test, type Page } from '@playwright/test'
 import { thumbnailFixture, type ThumbnailFixture } from './helpers/thumbnail-fixtures'
 
+test('0.9.0 saved G-code pages and stale closure confirmation work without relative ages', async ({ page }) => {
+  const errors: string[] = []
+  page.on('pageerror', error => errors.push(error.message))
+  let closed = false
+  await page.route(`**/api/v1/prints/${printJob.id}`, route => route.fulfill({ json: { ...printJob, gcode_saved: true, status: closed ? 'legacy_unknown' : 'in_progress', state_snapshot: closed ? { ...printJob.state_snapshot, stale_closed_at: '2026-09-22T12:00:00Z' } : printJob.state_snapshot } }))
+  await page.route(`**/api/v1/prints/${printJob.id}/gcode?**`, route => {
+    const current = Number(new URL(route.request().url()).searchParams.get('page'))
+    return route.fulfill({ json: { text: current === 1 ? ';original <script> is inert\nG1 X1' : 'G1 X2', page: current, total_pages: 2, size_bytes: 40000, sha256: 'a'.repeat(64) } })
+  })
+  await page.route(`**/api/v1/prints/${printJob.id}/close-stale`, route => {
+    closed = true
+    return route.fulfill({ json: { status: 'interrupted_outcome_unknown' } })
+  })
+  await page.goto('/prints')
+  await expect(page).toHaveTitle(/Filament Manager/)
+  await page.locator('.desktop-data-table tbody tr').first().click()
+  await expect(page.getByText('Start-to-finish duration', { exact: true })).toBeVisible()
+  await expect(page.getByRole('dialog').getByText(/ ago$/)).toHaveCount(0)
+  await page.getByRole('button', { name: 'View G-code', exact: true }).click()
+  const viewer = page.getByRole('dialog', { name: 'Saved G-code', exact: true })
+  await expect(viewer.locator('pre')).toContainText('<script> is inert')
+  await page.evaluate(() => { document.documentElement.dataset.theme = 'dark-navy' })
+  await captureEvidence(page, 'gcode-desktop-dark-v090')
+  await viewer.getByRole('button', { name: 'Next', exact: true }).click()
+  await expect(viewer.locator('pre')).toHaveText('G1 X2')
+  await page.setViewportSize({ width: 390, height: 844 })
+  await page.evaluate(() => { document.documentElement.dataset.theme = 'light-navy' })
+  const bounds = await viewer.boundingBox()
+  expect(bounds!.x).toBeGreaterThanOrEqual(0)
+  expect(bounds!.width).toBeLessThanOrEqual(390)
+  const evidence = process.env.FILAMENT_MANAGER_E2E_EVIDENCE_DIR
+  if (evidence) await page.screenshot({ path: `${evidence}/gcode-mobile-light-v090.png`, fullPage: false })
+  await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(390)
+  await viewer.getByRole('button', { name: /Close/ }).click()
+  await page.getByRole('button', { name: 'Close stale entry', exact: true }).click()
+  await page.getByRole('button', { name: 'Verify idle and close entry', exact: true }).click()
+  await expect.poll(() => closed).toBe(true)
+  await expect(page.getByRole('button', { name: 'Close stale entry', exact: true })).toHaveCount(0)
+  expect(errors).toEqual([])
+})
+
 async function captureEvidence(page: Page, name: string): Promise<void> {
   const directory = process.env.FILAMENT_MANAGER_E2E_EVIDENCE_DIR
   if (directory) await page.screenshot({ path: `${directory}/${name}.png`, fullPage: true })

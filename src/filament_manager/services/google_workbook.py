@@ -61,7 +61,7 @@ EXPORTS = (
         "top_bottom_speed_mm_s initial_layer_speed_mm_s travel_speed_mm_s support_speed_mm_s "
         "bridge_speed_mm_s retraction_distance_mm retraction_speed_mm_s "
         "retraction_prime_speed_mm_s cooling_enabled cooling_min_percent cooling_max_percent "
-        "support_overhang_angle_deg tree_max_branch_angle_deg pressure_advance "
+        "support_overhang_angle_deg pressure_advance "
         "filament_density_g_cm3 preferred_build_plate_surface_id source_template_revision_id "
         "setting_overrides ironing_flow_percent ironing_speed_mm_s ironing_line_spacing_mm "
         "cura_extensions checksum published_at record_version created_at updated_at",

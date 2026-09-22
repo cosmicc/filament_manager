@@ -564,7 +564,7 @@ def test_apply_is_idempotent_and_rollback_restores_original(tmp_path: Path, monk
     manifest = json.loads((version / ".filament-manager" / "manifest.json").read_text())
     assert manifest["library_checksum"] == "a" * 64
     assert manifest["schema_version"] == 4
-    assert manifest["renderer_revision"] == 27
+    assert manifest["renderer_revision"] == 28
     assert set(manifest["machine_files"]) == {"machine_instances/flsun-v400.global.cfg"}
     managed_machine = machine_path.read_text(encoding="utf-8")
     assert "FILAMENT_MANAGER_START_PRINT" in managed_machine
@@ -614,7 +614,7 @@ def test_apply_is_idempotent_and_rollback_restores_original(tmp_path: Path, monk
 
     # An upgraded renderer must replace older managed plugin output even when
     # canonical material settings—and therefore the server checksum—did not change.
-    manifest["renderer_revision"] = 25
+    manifest["renderer_revision"] = 27
     (version / ".filament-manager" / "manifest.json").write_text(
         json.dumps(manifest),
         encoding="utf-8",
@@ -628,7 +628,7 @@ def test_apply_is_idempotent_and_rollback_restores_original(tmp_path: Path, monk
     )
     assert upgraded["status"] == "installed"
     upgraded_manifest = json.loads((version / ".filament-manager" / "manifest.json").read_text())
-    assert upgraded_manifest["renderer_revision"] == 27
+    assert upgraded_manifest["renderer_revision"] == 28
 
     assert rollback(deployment_id) == ["Cura 5.10"]
     assert machine_path.read_bytes() == original_machine
@@ -744,6 +744,7 @@ setting_version = 27
 speed_print = 95
 material_flow_layer_0 = 97
 layer_height = 0.16
+retract_at_layer_change = True
 """,
         encoding="utf-8",
     )
@@ -782,6 +783,7 @@ wall_line_count = 3
     assert "speed_print" not in valid_text
     assert "material_flow_layer_0" not in valid_text
     assert "layer_height = 0.16" in valid_text
+    assert "retract_at_layer_change = True" in valid_text
     assert "material_flow" not in duplicate_text
     assert "wall_line_count = 3" in duplicate_text
     assert duplicate_text.count("[values]") == 1

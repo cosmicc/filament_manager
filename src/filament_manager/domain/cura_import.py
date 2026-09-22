@@ -149,7 +149,6 @@ def material_settings_from_cura(
         "cooling_min_percent": cooling_min,
         "cooling_max_percent": cooling_max,
         "support_overhang_angle_deg": _decimal(settings, "support_angle"),
-        "tree_max_branch_angle_deg": None,
         "pressure_advance": _decimal(settings, "klipper_pressure_advance_factor"),
         "ironing_flow_percent": _decimal(settings, "ironing_flow"),
         "ironing_speed_mm_s": _decimal(settings, "speed_ironing", "ironing_speed"),

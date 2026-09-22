@@ -1,5 +1,30 @@
 # Changelog
 
+## 0.9.0 - 09.22.2026
+
+Testing release. Back up the database and upgrade web and worker together. Upgrade workstation agents to 0.9.0 with Cura closed, then synchronize and re-slice. See docs/UPGRADE_0.9.0.md.
+
+### Added
+
+- Six optional Support controls: top distance, X/Y distance, roof density, branch density, tip diameter, and roof thickness. Existing templates start blank; filaments inherit and may override each value.
+- Compressed, checksum-verified G-code copies retained with new print history (100 MB original-file limit), authenticated 32 KB text pages and exact downloads. Older files may be retrieved while idle only if they match the recorded checksum.
+- Confirmed Close stale entry action verifies live idle state and records interrupted/unknown without cancelling a print, inventing an end time, or debiting filament.
+- Added M240 to the QQ-S operator macro file, delegating Cura's camera trigger to the existing Moonraker Timelapse capture command. Added render coverage and camera/parking installation guidance.
+
+### Changed
+
+- Removed Tree Maximum Branch Angle and Retract at Layer Change from current settings, inheritance, and Cura management. Retired-key cleanup removes old branch-angle overrides; Cura owns layer-change retraction and its local choices survive sync. Immutable historical evidence remains unchanged.
+- Print history shows start-to-finish elapsed duration instead of relative start/end ages. Printer totals include readable days/hours beneath hours.
+- Migration fc234d5e6f78 adds an isolated G-code archive table included in canonical backups but excluded from Sheets and repeating history queries. Downgrade refuses to discard saved originals.
+- Workstation agent 0.9.0 / renderer 28 adds a bounded profile-name comment to newly sliced G-code, capturing the selected quality at slice time without changing toolpaths or thumbnails. Upgrade the agent with Cura closed, then re-slice.
+
+### Fixed
+
+- Decode Cura GCodeWriter's extra SETTING_3 escaping so real embedded quality names and settings are recovered. Profile comments cover built-in profiles where Cura omits SETTING_3 entirely.
+- History reconciliation revisits older in-progress entries even after newer jobs advance the checkpoint, and matches same-name jobs only with compatible start times. Manually closed unknown entries cannot be reopened by stale in-progress history.
+- Zero-valued support overrides are no longer confused with blank inherited settings in the editor.
+- Cura's per-layer M240 commands now have a handler in the supplied QQ-S configuration instead of being unknown commands.
+
 ## 0.8.7 - 09.14.2026
 
 Testing release. Upgrade web and worker together. No migration, agent upgrade, or Klipper macro replacement is required from 0.8.6.

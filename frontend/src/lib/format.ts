@@ -69,6 +69,20 @@ export function dateTime(value: string | null | undefined): string {
   return new Intl.DateTimeFormat(undefined, { dateStyle: 'medium', timeStyle: 'short' }).format(new Date(value))
 }
 
+/** Format a measured duration using its two largest nonzero units. */
+export function durationText(value: string | number | null | undefined): string {
+  if (value == null || !Number.isFinite(Number(value)) || Number(value) < 0) return 'Unavailable'
+  let remaining = Math.floor(Number(value))
+  const parts: string[] = []
+  for (const [label, size] of [['day', 86400], ['hour', 3600], ['minute', 60], ['second', 1]] as const) {
+    const count = Math.floor(remaining / size)
+    if (count) parts.push(`${count} ${label}${count === 1 ? '' : 's'}`)
+    remaining %= size
+    if (parts.length === 2) break
+  }
+  return parts.join(', ') || '0 seconds'
+}
+
 /** Express elapsed time using at most two nonzero units without rounding up. */
 export function elapsedTime(value: string, now = Date.now()): string {
   const timestamp = Date.parse(value)

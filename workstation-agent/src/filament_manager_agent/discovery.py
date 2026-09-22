@@ -50,7 +50,6 @@ MATERIAL_SETTING_KEYS = frozenset(
         "material_bed_temperature",
         "material_flow",
         "material_print_temperature",
-        "retract_at_layer_change",
         "retraction_amount",
         "retraction_enable",
         "retraction_min_travel",

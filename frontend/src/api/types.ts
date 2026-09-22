@@ -245,7 +245,6 @@ export interface MaterialSettings {
   cooling_min_percent: string
   cooling_max_percent: string
   support_overhang_angle_deg: string | null
-  tree_max_branch_angle_deg: string | null
   pressure_advance: string | null
   ironing_flow_percent: string | null
   ironing_speed_mm_s: string | null
@@ -702,6 +701,7 @@ export interface PrintMaterialSegment {
 }
 
 export interface PrintJob {
+  gcode_saved?: boolean
   setting_sources?: Record<string, 'recorded_print' | 'captured_profile'>
   id: string
   printer_id: string

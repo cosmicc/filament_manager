@@ -26,3 +26,11 @@ Do not manually move a parked print into the model, alter offsets/mesh, disable 
 The existing idle timeout remains 10 minutes. It then starts a 30-minute automatic shutoff countdown; manual reset starts 60 minutes. `_POWER_OFF_TIMER_STATE` exposes its active flag and deadline to the app without added polling. Starting a print cancels the old countdown. Active/paused jobs retain their motors and are not treated as idle shutdown candidates.
 
 The completed-print OK button calls `FILAMENT_MANAGER_PRINT_ACKNOWLEDGE`, making the app display Idle for that completed job without changing print history. See [printer setup](PRINTER_CONNECTIONS.md) for multi-printer, power-device and multi-hotend requirements.
+
+## M240 camera snapshots
+
+The QQ-S file maps Cura's `M240` to `TIMELAPSE_TAKE_FRAME`, the same command already used by `END_PRINT`. It uses the camera configured in [Moonraker Timelapse](https://github.com/mainsail-crew/moonraker-timelapse/blob/main/docs/configuration.md), including an RPi HQ camera served by your existing camera service. A working camera preview alone is not enough: Moonraker Timelapse must be installed, its `timelapse.cfg` included, and capture enabled in layer-triggered mode with a working snapshot URL.
+
+Keep Cura's **Time Lapse Camera** post-processing script emitting `M240` once per layer. The alias adds no movement, waits, shell commands, or camera configuration; the existing timelapse settings determine whether capture parks the toolhead. Disable timelapse parking if you want snapshots without extra toolhead travel, and check Cura's post-processing options for separately added parking or delays as well.
+
+Install while idle using the steps above, ensuring there is only one `[gcode_macro M240]` across your included configuration. Alternatively, copy only the M240 block into your already installed QQ-S file. Run `FIRMWARE_RESTART`, then `GET_TIMELAPSE_SETUP` to check that capture is enabled and parking matches your intent. With parking disabled, test `M240` and verify a frame is captured. If Klipper reports unknown `TIMELAPSE_TAKE_FRAME`, install/include Moonraker Timelapse before printing files that contain M240. No live camera capture is verified by the repository's macro tests.

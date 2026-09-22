@@ -56,7 +56,6 @@ const coreFields: Array<{
   { key: 'cooling_min_percent', label: 'Regular fan speed', unit: '%', required: true, defaultValue: '0', precision: 0 },
   { key: 'cooling_max_percent', label: 'Maximum fan speed', unit: '%', required: true, defaultValue: '100', precision: 0 },
   { key: 'support_overhang_angle_deg', label: 'Support overhang angle', unit: '°', precision: 0 },
-  { key: 'tree_max_branch_angle_deg', label: 'Tree maximum branch angle', unit: '°', precision: 0 },
   { key: 'pressure_advance', label: 'Klipper pressure advance', unit: 's', precision: 2 },
   { key: 'ironing_flow_percent', label: 'Ironing flow', unit: '%', precision: 0 },
   { key: 'ironing_speed_mm_s', label: 'Ironing speed', unit: 'mm/s', precision: 0 },
@@ -115,6 +114,7 @@ function curaSettingGroup(key: string): MaterialSettingGroup {
 }
 
 function extensionPrecision(item: CuraSettingCatalogItem): number {
+  if (item.key.startsWith('support_')) return 2
   if (item.key === 'cool_fan_full_layer') return 0
   if (item.unit === '%' || item.unit === '°C' || item.unit === 'mm/s' || item.unit === 'mm/s²' || item.unit === '°') return 0
   if (item.key.startsWith('xy_offset') || item.key.startsWith('hole_xy_offset')) return 2
@@ -131,18 +131,22 @@ function minimumForCoreField(key: keyof MaterialSettings, precision: number): st
   if (key === 'drying_temp_c') return '0'
   if (['cooling_min_percent', 'cooling_max_percent'].includes(key)) return '0'
   if (['retraction_distance_mm', 'retraction_speed_mm_s', 'retraction_prime_speed_mm_s', 'pressure_advance', 'ironing_flow_percent'].includes(key)) return '0'
-  if (['support_overhang_angle_deg', 'tree_max_branch_angle_deg'].includes(key)) return '0'
+  if (key === 'support_overhang_angle_deg') return '0'
   if (key === 'chamber_temp_c') return undefined
   return precision === 0 ? '1' : precision === 1 ? '0.1' : '0.01'
 }
 
 function minimumForExtensionField(key: string): string | undefined {
+  if (['support_top_distance', 'support_xy_distance', 'support_roof_height', 'support_roof_density'].includes(key)) return '0'
+  if (key === 'support_tree_top_rate') return '0.1'
+  if (key === 'support_tree_tip_diameter') return '0.01'
   if (key === 'cool_fan_full_layer') return '1'
   if (['cool_fan_speed_0', 'cool_fan_speed_min', 'cool_fan_speed_max'].includes(key)) return '0'
   return undefined
 }
 
 function maximumForExtensionField(key: string): string | undefined {
+  if (key === 'support_roof_density') return '100'
   if (['cool_fan_speed_0', 'cool_fan_speed_min', 'cool_fan_speed_max'].includes(key)) return '100'
   return undefined
 }
@@ -150,7 +154,7 @@ function maximumForExtensionField(key: string): string | undefined {
 function maximumForCoreField(key: keyof MaterialSettings): string | undefined {
   if (key === 'drying_temp_c') return '300'
   if (['cooling_min_percent', 'cooling_max_percent', 'ironing_flow_percent'].includes(key)) return '100'
-  if (['support_overhang_angle_deg', 'tree_max_branch_angle_deg'].includes(key)) return '90'
+  if (key === 'support_overhang_angle_deg') return '90'
   if (key === 'pressure_advance') return '2'
   return undefined
 }
@@ -216,7 +220,6 @@ export function settingsFromForm(
     cooling_min_percent: String(preservedNumericValue(form, 'cooling_min_percent', data.get('cooling_min_percent'))),
     cooling_max_percent: String(preservedNumericValue(form, 'cooling_max_percent', data.get('cooling_max_percent'))),
     support_overhang_angle_deg: nullable(preservedNumericValue(form, 'support_overhang_angle_deg', data.get('support_overhang_angle_deg'))),
-    tree_max_branch_angle_deg: nullable(preservedNumericValue(form, 'tree_max_branch_angle_deg', data.get('tree_max_branch_angle_deg'))),
     pressure_advance: nullable(preservedNumericValue(form, 'pressure_advance', data.get('pressure_advance'))),
     ironing_flow_percent: nullable(preservedNumericValue(form, 'ironing_flow_percent', data.get('ironing_flow_percent'))),
     ironing_speed_mm_s: nullable(preservedNumericValue(form, 'ironing_speed_mm_s', data.get('ironing_speed_mm_s'))),
@@ -269,6 +272,7 @@ export function MaterialSettingsEditor({
   ) : null
   const equivalent = (value: string | number | boolean | null | undefined, baseValue: string | number | boolean | null | undefined) => {
     if ((value == null || value === '') && (baseValue == null || baseValue === '')) return true
+    if (value == null || value === '' || baseValue == null || baseValue === '') return false
     if (typeof value === 'boolean' || typeof baseValue === 'boolean') return Boolean(value) === Boolean(baseValue)
     const numeric = Number(value)
     const baseNumeric = Number(baseValue)
@@ -427,7 +431,7 @@ coreFields.filter((field) => (
     {
       id: 'retraction',
       title: 'Retraction',
-      description: 'Retraction distance, speeds, travel limits, and layer-change behavior.',
+      description: 'Retraction distance, speeds, and travel limits.',
       keys: ['retraction_distance_mm', 'retraction_speed_mm_s', 'retraction_prime_speed_mm_s'],
     },
     {
@@ -440,7 +444,7 @@ coreFields.filter((field) => (
       id: 'support',
       title: 'Support',
       description: 'Support overhang and tree-support behavior.',
-      keys: ['support_overhang_angle_deg', 'tree_max_branch_angle_deg'],
+      keys: ['support_overhang_angle_deg'],
     },
     {
       id: 'dimensional',

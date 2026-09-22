@@ -13,7 +13,7 @@ import { PageHeader } from '../components/PageHeader'
 import { PrinterConnectionModal } from '../components/PrinterConnectionModal'
 import { useAuth } from '../context/AuthContext'
 import { Link } from '../context/RouterContext'
-import { compactNumber, inputNumber } from '../lib/format'
+import { compactNumber, durationText, inputNumber } from '../lib/format'
 
 function optional(data: FormData, key: string) {
   return String(data.get(key) ?? '').trim() || null
@@ -198,7 +198,7 @@ export default function PrintersPage() {
                   <EditorSection title="Hardware and workspace">
                     <PrintActivityDates kind="printer" id={printer.id} />
                     <dl className="definition-list">
-                      <div><dt>Total print time</dt><dd>{printer.total_print_time_seconds == null ? 'Unavailable' : `${compactNumber(Number(printer.total_print_time_seconds) / 3600, 2)} hours`}</dd></div>
+                      <div><dt>Total print time</dt><dd>{printer.total_print_time_seconds == null ? 'Unavailable' : <>{compactNumber(Number(printer.total_print_time_seconds) / 3600, 2)} hours<small className="table-subtext">{durationText(printer.total_print_time_seconds)}</small></>}</dd></div>
                       <div><dt>Longest print</dt><dd>{printer.longest_print_time_seconds == null ? 'Unavailable' : `${compactNumber(Number(printer.longest_print_time_seconds) / 3600, 2)} hours`}</dd></div>
                       <div><dt>Moonraker totals checked</dt><dd>{printer.history_totals_checked_at ? <DateWithAge value={printer.history_totals_checked_at} /> : 'Not yet available'}<small className="table-subtext">Print time excludes pauses. Moonraker totals may be reset independently.</small></dd></div>
                       <div><dt>Printer type</dt><dd>{printer.kinematics ? `${printer.kinematics} kinematics` : 'Not reported'}{printer.extruder_type ? ` · ${printer.extruder_type}` : ''}</dd></div>

@@ -10,6 +10,7 @@ from pathlib import Path
 from typing import Any, cast
 
 from .cura_autotowers import AUTOTOWERS_COMPATIBILITY_CODE
+from .cura_profile_metadata import PROFILE_METADATA_CODE
 from .machine_settings import apply_managed_machine_gcode, serialize_cura_config
 from .models import CuraInstallation, CuraMachine
 
@@ -541,6 +542,8 @@ def _configure_material_costs(application):
     if managed_guids != previous_raw:
         preferences.setValue("filament_manager/material_cost_guids", managed_guids)
 
+__PROFILE_METADATA__
+
 class FilamentManagerVisibility(Extension):
     def __init__(self, application):
         super().__init__()
@@ -560,6 +563,7 @@ class FilamentManagerVisibility(Extension):
         if self._initialized:
             return
         _install_autotowers_compatibility()
+        self._profile_recorder = _install_profile_recorder(self._application)
         try:
             _configure_material_settings_plugin(self._application)
             _configure_material_costs(self._application)
@@ -728,6 +732,7 @@ def _visibility_plugin_files(
         )
         .replace("__CANONICAL_MATERIAL_SETTINGS__", repr(canonical_material_settings))
         .replace("__AUTOTOWERS_COMPATIBILITY__", AUTOTOWERS_COMPATIBILITY_CODE)
+        .replace("__PROFILE_METADATA__", PROFILE_METADATA_CODE)
         .encode("utf-8")
     )
     return {

@@ -12,14 +12,16 @@ from fastapi.responses import StreamingResponse
 from sqlalchemy import Select, func, select
 from sqlalchemy.orm import defer, selectinload
 
-from filament_manager.clients.moonraker import MoonrakerClient
+from filament_manager.clients.moonraker import MoonrakerClient, MoonrakerError
 from filament_manager.config import get_settings
+from filament_manager.domain.gcode_inspection import extract_gcode_metadata
 from filament_manager.models.enums import PrintJobStatus
 from filament_manager.models.inventory import Printer
-from filament_manager.models.printing import PrintAssessment, PrintJob
+from filament_manager.models.printing import PrintAssessment, PrintGcodeArchive, PrintJob
 from filament_manager.services.events import add_audit_event
 from filament_manager.services.print_activity import ActivityKind, print_activity_dates
 from filament_manager.services.print_costs import print_cost_summary, segment_cost
+from filament_manager.services.print_gcode import GCODE_PAGE_BYTES, archive_bytes
 from filament_manager.services.print_history import profile_success_statistics
 from filament_manager.services.print_setting_evidence import retained_setting_summary
 from filament_manager.services.print_template_comparison import current_print_template_comparison
@@ -28,6 +30,7 @@ from filament_manager.services.printer_connections import configured_printers
 from ..dependencies import DatabaseSession, Operator, Viewer
 from ..errors import ApiError
 from ..schemas import (
+    CloseStalePrintRequest,
     PrintAssessmentCreate,
     PrintAssessmentResponse,
     PrintJobPageResponse,
@@ -214,6 +217,11 @@ async def get_print(print_id: UUID, _: Viewer, session: DatabaseSession) -> Prin
     if job is None:
         raise ApiError(status.HTTP_404_NOT_FOUND, "unknown_print", "Print not found")
     response = _print_response(job, PrintJobResponse)
+    response.gcode_saved = (
+        await session.scalar(
+            select(PrintGcodeArchive.print_job_id).where(PrintGcodeArchive.print_job_id == job.id)
+        )
+    ) is not None
     if not response.cura_quality_profile:
         cura = job.print_settings_snapshot.get("cura")
         global_scope = cura.get("global") if isinstance(cura, dict) else None
@@ -224,6 +232,154 @@ async def get_print(print_id: UUID, _: Viewer, session: DatabaseSession) -> Prin
         session, job.print_settings_snapshot
     )
     return response
+
+
+async def _idle_history_client(session: DatabaseSession, job: PrintJob) -> MoonrakerClient:
+    """Fail closed on unavailable/active printers; never send a motion command."""
+    printer = await session.get(Printer, job.printer_id)
+    configured = next(
+        (
+            item
+            for item in await configured_printers(session, get_settings())
+            if printer is not None and item.id == printer.printer_code
+        ),
+        None,
+    )
+    if configured is None:
+        raise ApiError(409, "printer_unavailable", "Connect this printer to verify its idle state first")
+    client = MoonrakerClient(configured)
+    try:
+        live = await client.print_state()
+    except MoonrakerError as error:
+        raise ApiError(409, "printer_unavailable", "Printer state could not be verified") from error
+    if live.state not in {"standby", "complete", "cancelled", "error"}:
+        raise ApiError(409, "printer_busy", "This action requires a verified idle printer")
+    return client
+
+
+@router.post("/{print_id}/close-stale")
+async def close_stale_print(
+    print_id: UUID,
+    payload: CloseStalePrintRequest,
+    actor: Operator,
+    session: DatabaseSession,
+    request: Request,
+) -> dict[str, str]:
+    """Close only local unresolved history; leave outcome, end time and usage unknown."""
+    job = await session.scalar(select(PrintJob).where(PrintJob.id == print_id).with_for_update())
+    if job is None:
+        raise ApiError(404, "unknown_print", "Print not found")
+    if job.record_version != payload.expected_version or job.status != PrintJobStatus.IN_PROGRESS:
+        raise ApiError(409, "print_changed", "Print changed; reload its details")
+    await _idle_history_client(session, job)
+    before: dict[str, object] = {"status": job.status.value}
+    job.status = PrintJobStatus.LEGACY_UNKNOWN
+    job.state_snapshot = {
+        **job.state_snapshot,
+        "moonraker_history_status": "interrupted",
+        "stale_closed_at": datetime.now(UTC).isoformat(),
+    }
+    job.record_version += 1
+    add_audit_event(
+        session,
+        actor_id=actor.id,
+        source="web",
+        action="print.history.close_stale",
+        object_type="print_job",
+        object_id=job.id,
+        before=before,
+        after={"status": "interrupted_outcome_unknown"},
+        correlation_id=request.state.correlation_id,
+    )
+    await session.commit()
+    return {"status": "interrupted_outcome_unknown"}
+
+
+@router.post("/{print_id}/gcode/capture")
+async def capture_verified_print_gcode(
+    print_id: UUID,
+    _: Operator,
+    session: DatabaseSession,
+) -> dict[str, bool]:
+    """Backfill only an original matching its immutable inspection digest, while idle."""
+    job = await session.scalar(select(PrintJob).where(PrintJob.id == print_id).with_for_update())
+    if job is None:
+        raise ApiError(404, "unknown_print", "Print not found")
+    if await session.get(PrintGcodeArchive, print_id) is not None:
+        return {"saved": True}
+    if not job.gcode_sha256:
+        raise ApiError(
+            409,
+            "gcode_unverifiable",
+            "This older print has no original checksum; its file cannot be verified",
+        )
+    client = await _idle_history_client(session, job)
+    try:
+        original = await client.gcode_file(job.filename, max_bytes=100_000_000)
+    except (MoonrakerError, ValueError) as error:
+        raise ApiError(
+            409, "gcode_unavailable", "The original file is unavailable or exceeds 100 MB"
+        ) from error
+    if original.sha256 != job.gcode_sha256 or original.compressed_data is None:
+        raise ApiError(
+            409, "gcode_changed", "The printer file no longer matches this print's original checksum"
+        )
+    session.add(
+        PrintGcodeArchive(
+            print_job_id=job.id,
+            sha256=original.sha256,
+            size_bytes=original.size,
+            compressed_data=original.compressed_data,
+        )
+    )
+    if not job.cura_quality_profile:
+        name = extract_gcode_metadata({}, original.header, original.tail).get("cura_quality_profile")
+        if isinstance(name, str):
+            job.cura_quality_profile = name
+            job.record_version += 1
+    await session.commit()
+    return {"saved": True}
+
+
+@router.get("/{print_id}/gcode")
+async def get_print_gcode(
+    print_id: UUID,
+    _: Viewer,
+    session: DatabaseSession,
+    page: Annotated[int, Query(ge=1, le=4000)] = 1,
+    download: bool = False,
+) -> Response:
+    """Serve only authenticated stored originals, with bounded inert text pages."""
+    archive = await session.get(PrintGcodeArchive, print_id)
+    if archive is None:
+        raise ApiError(404, "gcode_unavailable", "No verified G-code copy was saved for this print")
+    try:
+        data = archive_bytes(archive)
+    except ValueError as error:
+        raise ApiError(409, "gcode_invalid", "The saved G-code failed integrity validation") from error
+    headers = {"X-Content-Type-Options": "nosniff", "Cache-Control": "no-store"}
+    if download:
+        filename = await session.scalar(select(PrintJob.filename).where(PrintJob.id == print_id))
+        leaf = (filename or f"print-{print_id}.gcode").replace("\\", "/").rsplit("/", 1)[-1]
+        headers["Content-Disposition"] = (
+            f"attachment; filename=\"print-{print_id}.gcode\"; filename*=UTF-8''{quote(leaf, safe='')}"
+        )
+        return Response(data, media_type="application/octet-stream", headers=headers)
+    from fastapi.responses import JSONResponse
+
+    total_pages = max(1, (len(data) + GCODE_PAGE_BYTES - 1) // GCODE_PAGE_BYTES)
+    effective_page = min(page, total_pages)
+    offset = (effective_page - 1) * GCODE_PAGE_BYTES
+    return JSONResponse(
+        {
+            "text": data[offset : offset + GCODE_PAGE_BYTES].decode("utf-8", errors="replace"),
+            "page": effective_page,
+            "total_pages": total_pages,
+            "size_bytes": archive.size_bytes,
+            "sha256": archive.sha256,
+        },
+        headers=headers,
+    )
 
 
 @router.get("/{print_id}/thumbnail")

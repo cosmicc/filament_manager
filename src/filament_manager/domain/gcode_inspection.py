@@ -134,9 +134,33 @@ def _parse_cura_setting_payload(tail: str) -> tuple[dict[str, str], dict[str, ob
     try:
         document = json.loads(serialized)
     except json.JSONDecodeError:
-        return {}, _unavailable_cura_settings("invalid_payload")
+        # Quotes and Unicode escapes in names can make the double-escaped
+        # writer envelope invalid JSON until its transport escaping is removed.
+        unescaped = re.sub(
+            r"\\([\\nr])", lambda match: {"\\": "\\", "n": "\n", "r": "\r"}[match[1]], serialized
+        )
+        try:
+            document = json.loads(unescaped)
+        except json.JSONDecodeError:
+            return {}, _unavailable_cura_settings("invalid_payload")
     if not isinstance(document, dict):
         return {}, _unavailable_cura_settings("invalid_payload")
+
+    # GCodeWriter escapes JSON backslashes a second time when wrapping SETTING_3
+    # comments. Older exporters/test fixtures use plain JSON; distinguish them
+    # by the embedded INI's escaped versus actual line boundaries.
+    global_payload = document.get("global_quality")
+    if isinstance(global_payload, str) and "\\n" in global_payload and "\n" not in global_payload:
+        unescaped = re.sub(
+            r"\\([\\nr])", lambda match: {"\\": "\\", "n": "\n", "r": "\r"}[match[1]], serialized
+        )
+        try:
+            decoded = json.loads(unescaped)
+        except json.JSONDecodeError:
+            return {}, _unavailable_cura_settings("invalid_payload")
+        if not isinstance(decoded, dict):
+            return {}, _unavailable_cura_settings("invalid_payload")
+        document = decoded
 
     merged_settings: dict[str, str] = {}
     global_scope: dict[str, object] | None = None
@@ -206,6 +230,17 @@ def _extract_gcode_metadata(
         "machine_name": settings.get("machine_name") or settings.get("quality_definition"),
         "cura_quality_profile": settings.get("quality_name"),
     }
+    profile_comment = _first_match(header, r"^;FM_CURA_PROFILE_JSON:([^\r\n]{1,1600})$")
+    if profile_comment is not None:
+        try:
+            decoded_name = json.loads(profile_comment)
+        except json.JSONDecodeError:
+            decoded_name = None
+        text_fields["cura_quality_profile"] = (
+            decoded_name
+            if isinstance(decoded_name, str) and decoded_name.strip() and len(decoded_name) <= 255
+            else settings.get("quality_name")
+        )
     generated_version = _first_match(header, r"^;Generated with Cura_SteamEngine\s+([^\r\n]+)$")
     if generated_version:
         text_fields["slicer"] = "Cura"

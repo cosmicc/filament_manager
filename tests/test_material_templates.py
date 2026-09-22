@@ -166,6 +166,12 @@ async def test_direct_template_save_updates_linked_product_profile(
                         "filament_density_g_cm3": "1.20",
                         "cura_extensions": {
                             "retraction_enable": True,
+                            "support_top_distance": "0.15",
+                            "support_xy_distance": "0.7",
+                            "support_roof_density": "80",
+                            "support_tree_top_rate": "15.25",
+                            "support_tree_tip_diameter": "0.4",
+                            "support_roof_height": "0.8",
                             "cool_fan_speed_0": "0",
                             "acceleration_print": "4500",
                             "acceleration_infill": "5000",
@@ -248,6 +254,20 @@ async def test_direct_template_save_updates_linked_product_profile(
             assert original_profile["base_template_name"] == "Template PCTPE"
             assert original_profile["override_keys"] == []
             assert original_profile["status"] == "published"
+            for key in (
+                "support_top_distance",
+                "support_xy_distance",
+                "support_roof_density",
+                "support_tree_top_rate",
+                "support_tree_tip_diameter",
+                "support_roof_height",
+            ):
+                assert (
+                    original_profile["cura_extensions"][key]
+                    == template["revisions"][0]["settings"]["cura_extensions"][key]
+                )
+                assert original_profile["cura_settings"][key] == original_profile["cura_extensions"][key]
+            assert "tree_max_branch_angle_deg" not in original_profile
 
             templates = await client.get("/api/v1/profiles/templates?include_inactive=true")
             current_template = next(item for item in templates.json() if item["id"] == template["id"])
@@ -617,6 +637,9 @@ async def test_direct_template_save_updates_linked_product_profile(
             assert "material_flow_layer_0" in library["retired_material_setting_keys"]
             assert "limit_support_retractions" not in library["managed_material_setting_keys"]
             assert "limit_support_retractions" in library["retired_material_setting_keys"]
+            assert "support_tree_angle" in library["retired_material_setting_keys"]
+            assert "retract_at_layer_change" not in library["managed_material_setting_keys"]
+            assert "retract_at_layer_change" not in library["retired_material_setting_keys"]
             template_material = next(
                 item
                 for item in materials

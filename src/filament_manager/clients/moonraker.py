@@ -4,6 +4,7 @@ import hashlib
 import math
 import posixpath
 import re
+import zlib
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from decimal import Decimal, InvalidOperation
@@ -20,6 +21,8 @@ from filament_manager.domain.spool_preflight import (
     SpoolPreflightCatalog,
     validate_catalog_revision,
 )
+
+MAX_GCODE_ARCHIVE_BYTES = 100_000_000
 
 
 class MoonrakerError(RuntimeError):
@@ -115,6 +118,7 @@ class MoonrakerGcodeFile:
     tail: str
     size: int
     observations: dict[str, object] = field(default_factory=dict)
+    compressed_data: bytes | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -918,6 +922,10 @@ class MoonrakerClient:
         header = bytearray()
         tail = bytearray()
         size = 0
+        # Reuse inspection's one stream. Oversize files remain inspectable but
+        # are not archived; never retain a partial file as an original.
+        compressor = zlib.compressobj(level=1)
+        compressed: bytearray | None = bytearray()
         try:
             async with httpx.AsyncClient(timeout=max(self.timeout, 60), headers=self._headers()) as client:
                 async with client.stream("GET", f"{self.base_url}/server/files/gcodes/{encoded}") as response:
@@ -927,6 +935,11 @@ class MoonrakerClient:
                         if size > max_bytes:
                             raise MoonrakerError("G-code file exceeds the inspection size limit")
                         digest.update(chunk)
+                        if compressed is not None:
+                            if size <= MAX_GCODE_ARCHIVE_BYTES:
+                                compressed.extend(compressor.compress(chunk))
+                            else:
+                                compressed = None
                         observations.feed(chunk)
                         if len(header) < sample_bytes:
                             header.extend(chunk[: sample_bytes - len(header)])
@@ -943,6 +956,7 @@ class MoonrakerClient:
             tail=tail.decode("utf-8", errors="replace"),
             size=size,
             observations=observations.finish(),
+            compressed_data=(bytes(compressed) + compressor.flush()) if compressed is not None else None,
         )
 
     async def submit_gcode_inspection(self, *, passed: bool) -> dict[str, Any]:

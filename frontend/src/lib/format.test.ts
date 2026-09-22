@@ -1,7 +1,14 @@
 import { describe, expect, it } from 'vitest'
-import { elapsedTime, compactNumber, inputNumber, costPerGram, currencyAmount, dateTime, grams, percent, preserveUnchangedNumber, titleCase } from './format'
+import { durationText, elapsedTime, compactNumber, inputNumber, costPerGram, currencyAmount, dateTime, grams, percent, preserveUnchangedNumber, titleCase } from './format'
 
 describe('presentation formatting', () => {
+  it('renders measured durations in two units without relative age', () => {
+    expect(durationText(129600)).toBe('1 day, 12 hours')
+    expect(durationText(30000)).toBe('8 hours, 20 minutes')
+    expect(durationText(0)).toBe('0 seconds')
+    expect(durationText(-1)).toBe('Unavailable')
+    expect(durationText(null)).toBe('Unavailable')
+  })
   it('uses two elapsed units and never rounds a date into the future', () => {
     const now = Date.parse('2026-09-14T12:00:00Z')
     expect(elapsedTime('2026-09-11T08:00:00Z', now)).toBe('3 Days, 4 Hours ago')

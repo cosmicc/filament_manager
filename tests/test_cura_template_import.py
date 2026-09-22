@@ -249,7 +249,6 @@ async def test_atomic_cura_source_mapping_completes_takeover_and_preserves_overr
                     "cooling_min_percent",
                     "cooling_max_percent",
                     "support_overhang_angle_deg",
-                    "tree_max_branch_angle_deg",
                     "pressure_advance",
                     "filament_density_g_cm3",
                     "preferred_build_plate_surface_id",
