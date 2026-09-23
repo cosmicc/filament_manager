@@ -11,6 +11,8 @@ export function MaterialTypeFilter({ templates, value, onChange }: {
     const label = template.material_type.trim()
     if (label) types.set(label.toLowerCase(), label)
   }
+  // A dashboard type may outlive its template; retain the exact active filter.
+  if (value && !types.has(value)) types.set(value, value.toUpperCase())
   return <label className="select-field">
     <span>Material</span>
     <select aria-label="Filter by filament type" value={value} onChange={(event) => onChange(event.target.value)}>

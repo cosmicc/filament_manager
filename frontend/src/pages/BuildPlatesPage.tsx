@@ -248,6 +248,7 @@ export default function BuildPlatesPage() {
   const [editingPlate, setEditingPlate] = useState<BuildPlate | null>(null)
   const [editingSurface, setEditingSurface] = useState<{ plate: BuildPlate; surface: BuildPlateSurface } | null>(null)
   const [detailsPlate, setDetailsPlate] = useState<BuildPlate | null>(null)
+  const [requestedPlateId, setRequestedPlateId] = useState(() => new URLSearchParams(window.location.search).get('plate_id'))
   const [search, setSearch] = useState('')
   const [view, setView] = useCollectionView('build-plates', 'detailed')
   const [message, setMessage] = useState('')
@@ -256,6 +257,13 @@ export default function BuildPlatesPage() {
   const printers = useQuery({ queryKey: ['printers'], queryFn: () => apiFetch<Printer[]>('/printers'), refetchInterval: 15_000 })
   const selectedPrinterId = printerId || printers.data?.[0]?.id || ''
   const selectedPrinter = printers.data?.find((printer) => printer.id === selectedPrinterId)
+  useEffect(() => {
+    if (!requestedPlateId || !plates.data) return
+    const plate = plates.data.find((item) => item.id === requestedPlateId)
+    if (plate) setDetailsPlate(plate)
+    else setMessage('The requested build plate is no longer available.')
+    setRequestedPlateId(null)
+  }, [requestedPlateId, plates.data])
   const refreshCanonicalState = async () => {
     await Promise.all([
       client.invalidateQueries({ queryKey: ['plates'] }),

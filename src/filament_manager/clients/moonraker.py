@@ -289,6 +289,17 @@ class MoonrakerClient:
         value = result.get(self.power_device) if isinstance(result, dict) else None
         return value if value in ("on", "off", "init", "error") else None
 
+    async def power_on(self) -> None:
+        """Request only On for the configured device; never toggle or send G-code."""
+        if not self.power_device:
+            raise MoonrakerError("Printer power control is not configured")
+        payload = await self._post(
+            "/machine/device_power/device", {"device": self.power_device, "action": "on"}
+        )
+        result = payload.get("result")
+        if not isinstance(result, dict) or result.get(self.power_device) != "on":
+            raise MoonrakerError("Moonraker did not confirm printer power on")
+
     async def operational_state(self) -> MoonrakerOperationalState:
         """Read live Klipper, print-progress, and heater state from documented objects."""
 

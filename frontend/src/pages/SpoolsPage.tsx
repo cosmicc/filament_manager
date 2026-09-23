@@ -681,9 +681,16 @@ export default function SpoolsPage() {
   const [loadExtruder, setLoadExtruder] = useState("extruder");
   const canEdit = user?.role !== "viewer";
   const [search, setSearch] = useState("");
-  const [status, setStatus] = useState("");
-  const [material, setMaterial] = useState("");
+  const [status, setStatus] = useState(() => {
+    const value = creationRequest.get("status") ?? "";
+    return ["needs_weighing", "in_stock", "low", "empty", "low_or_empty"].includes(value) ? value : "";
+  });
+  const [material, setMaterial] = useState(() => (creationRequest.get("material") ?? "").normalize('NFKC').trim().toLowerCase());
+  const [color, setColor] = useState(() => creationRequest.get("color") ?? "");
   const [view, setView] = useCollectionView("spools", "list");
+  useEffect(() => {
+    if (new URLSearchParams(window.location.search).get("view") === "list") setView("list");
+  }, [setView]);
   const [selected, setSelected] = useState<Spool | null>(null);
   const [requestedSpoolId, setRequestedSpoolId] = useState(creationRequest.get("spool_id"));
   const requestedSpool = useQuery({
@@ -708,10 +715,10 @@ export default function SpoolsPage() {
     else setSelected(spool);
   };
   const query = useQuery({
-    queryKey: ["spools", search, status, material],
+    queryKey: ["spools", search, status, material, color],
     queryFn: () =>
       apiFetch<Page<Spool>>(
-        `/spools?limit=200${search ? `&search=${encodeURIComponent(search)}` : ""}${status ? `&status=${encodeURIComponent(status)}` : ""}${material ? `&material=${encodeURIComponent(material)}` : ""}`,
+        `/spools?limit=200${search ? `&search=${encodeURIComponent(search)}` : ""}${status ? `&status=${encodeURIComponent(status)}` : ""}${material ? `&material=${encodeURIComponent(material)}` : ""}${color ? `&color=${encodeURIComponent(color)}` : ""}`,
       ),
     refetchInterval: 15_000,
   });
@@ -845,6 +852,7 @@ export default function SpoolsPage() {
           />
         </label>
         <MaterialTypeFilter templates={templates.data ?? []} value={material} onChange={setMaterial} />
+        {color ? <button className="button" onClick={() => setColor("")} aria-label={`Clear color filter ${color}`}>Color: {color} ×</button> : null}
         <label className="select-field">
           <Filter size={17} />
           <select
@@ -855,6 +863,7 @@ export default function SpoolsPage() {
             <option value="">All statuses</option>
             <option value="needs_weighing">Needs weighing</option>
             <option value="in_stock">In stock</option>
+            <option value="low_or_empty">Low or empty</option>
             <option value="low">Low</option>
             <option value="empty">Empty</option>
           </select>

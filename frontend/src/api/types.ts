@@ -128,6 +128,7 @@ export interface BuildPlateSyncResult {
 }
 
 export interface DashboardData {
+  color_spool_counts?: Record<string, number>
   printer_contexts?: DashboardPrinterContext[]
   total_spools: number
   material_spool_counts: Record<string, number>
@@ -894,8 +895,9 @@ export interface DatabaseBackupArchive {
   storage_kind: 'automatic' | 'manual' | 'imported' | string
   filename: string
   size_bytes: number
-  archive_sha256: string
+  archive_sha256: string | null
   dump_sha256: string
+  integrity_verified?: boolean
 }
 
 export interface DatabaseBackupOverview {

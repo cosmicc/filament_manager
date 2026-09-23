@@ -74,7 +74,7 @@ class BackupPolicy:
 
 @dataclass(frozen=True)
 class BackupArchive:
-    """Validated archive metadata safe to return through Diagnostics."""
+    """Bounded archive metadata; integrity is established only by full validation."""
 
     id: UUID
     created_at: datetime
@@ -84,8 +84,9 @@ class BackupArchive:
     storage_kind: str
     filename: str
     size_bytes: int
-    archive_sha256: str
+    archive_sha256: str | None
     dump_sha256: str
+    integrity_verified: bool = True
 
 
 def backup_root() -> Path:
@@ -380,6 +381,18 @@ def validate_backup_archive(
 ) -> BackupArchive:
     """Fully validate one local or uploaded backup archive without extracting paths."""
 
+    return _read_backup_archive(path, storage_kind=storage_kind, use_cache=use_cache, verify_contents=True)
+
+
+def _read_backup_archive(
+    path: Path, *, storage_kind: str, use_cache: bool, verify_contents: bool
+) -> BackupArchive:
+    """Read bounded listing metadata, optionally verifying every original byte.
+
+    Metadata-only reads never populate the integrity cache. Downloads, imports,
+    restores and retention retain the full validation boundary.
+    """
+
     if path.is_symlink() or not path.is_file():
         raise DatabaseBackupError("The database backup archive is unavailable.")
     file_stat = path.stat()
@@ -415,18 +428,21 @@ def validate_backup_archive(
                 raise DatabaseBackupError("The file is not a supported Filament Manager backup.")
             if manifest.get("dump_size_bytes") != dump_info.file_size:
                 raise DatabaseBackupError("The database dump size does not match its manifest.")
-            dump_digest = hashlib.sha256()
-            dump_prefix = b""
-            with archive.open(dump_info, mode="r") as source:
-                while chunk := source.read(READ_CHUNK_BYTES):
-                    if len(dump_prefix) < 5:
-                        dump_prefix = (dump_prefix + chunk)[:5]
-                    dump_digest.update(chunk)
-            if dump_prefix != b"PGDMP":
-                raise DatabaseBackupError("The archive does not contain a PostgreSQL custom dump.")
-            dump_sha256 = dump_digest.hexdigest()
-            if manifest.get("dump_sha256") != dump_sha256:
-                raise DatabaseBackupError("The database dump checksum does not match its manifest.")
+            dump_sha256 = str(manifest.get("dump_sha256") or "")
+            if re.fullmatch(r"[0-9a-f]{64}", dump_sha256) is None:
+                raise DatabaseBackupError("The backup manifest contains an invalid checksum.")
+            if verify_contents:
+                dump_digest = hashlib.sha256()
+                dump_prefix = b""
+                with archive.open(dump_info, mode="r") as source:
+                    while chunk := source.read(READ_CHUNK_BYTES):
+                        if len(dump_prefix) < 5:
+                            dump_prefix = (dump_prefix + chunk)[:5]
+                        dump_digest.update(chunk)
+                if dump_prefix != b"PGDMP":
+                    raise DatabaseBackupError("The archive does not contain a PostgreSQL custom dump.")
+                if dump_sha256 != dump_digest.hexdigest():
+                    raise DatabaseBackupError("The database dump checksum does not match its manifest.")
             archive_id = UUID(str(manifest.get("backup_id")))
             created_at = datetime.fromisoformat(str(manifest.get("created_at")))
             if created_at.tzinfo is None:
@@ -453,10 +469,12 @@ def validate_backup_archive(
         storage_kind=storage_kind,
         filename=path.name,
         size_bytes=size_bytes,
-        archive_sha256=_sha256_file(path),
+        archive_sha256=_sha256_file(path) if verify_contents else None,
         dump_sha256=dump_sha256,
+        integrity_verified=verify_contents,
     )
-    _VALIDATED_ARCHIVE_CACHE[cache_key] = validated
+    if verify_contents:
+        _VALIDATED_ARCHIVE_CACHE[cache_key] = validated
     return validated
 
 
@@ -469,8 +487,8 @@ def _archive_directories() -> tuple[tuple[str, Path], ...]:
     )
 
 
-def list_backup_archives() -> list[BackupArchive]:
-    """List only fully validated local archives and silently isolate malformed files."""
+def list_backup_archives(*, verify_contents: bool = True) -> list[BackupArchive]:
+    """List bounded metadata for Diagnostics or fully validated archives for operations."""
 
     archives: list[BackupArchive] = []
     try:
@@ -481,7 +499,11 @@ def list_backup_archives() -> list[BackupArchive]:
                 if path.is_symlink() or not path.is_file() or not ARCHIVE_NAME_PATTERN.fullmatch(path.name):
                     continue
                 try:
-                    archives.append(validate_backup_archive(path, storage_kind=storage_kind, use_cache=True))
+                    archives.append(
+                        _read_backup_archive(
+                            path, storage_kind=storage_kind, use_cache=True, verify_contents=verify_contents
+                        )
+                    )
                 except DatabaseBackupError:
                     continue
     except OSError as error:
@@ -495,7 +517,7 @@ def archive_path(archive_id: UUID) -> tuple[BackupArchive, Path]:
     """Resolve one validated archive by manifest identity without accepting a path."""
 
     matches: list[tuple[BackupArchive, Path]] = []
-    for archive in list_backup_archives():
+    for archive in list_backup_archives(verify_contents=False):
         if archive.id != archive_id:
             continue
         directory = dict(_archive_directories())[archive.storage_kind]

@@ -1,5 +1,7 @@
 # Testing and Validation Skill
 
+- 0.9.1: verify cold-cache listings do not open database.dump, while selected downloads still do. Test power-on against mocked exact devices for off/on/init/error/unavailable states; never power a live printer during automated tests. Check dashboard exact material, combined low/empty and color filters plus plate deep links on desktop/mobile.
+
 - 0.9.0: test blank Support defaults, all six outbound keys, decimal/zero input, inherited/custom/revert behavior and retired-key cleanup. Use Cura's actual extra-escaped SETTING_3 envelope, including quoted/Unicode names. Exercise slice-time profile capture, cancellation, unsupported backends, built-in/custom profiles and unchanged G-code blocks; renderer 28 must invalidate 27. Validate archive checksum/size/decompression, PostgreSQL migration/readback, auth, paginated text and exact downloads, hash-mismatch backfill refusal, stale-version/printing/paused/offline closure refusal, historical snapshot/usage preservation and unfinished-job checkpoint coverage. Browser checks cover Support forms and history actions/durations on desktop/mobile.
 
 - QQ-S M240 coverage renders exactly one `TIMELAPSE_TAKE_FRAME` with no added movement, waits, remote methods, or passthrough parameters; compile the complete QQ-S file. Camera capture and timelapse configuration require a separate operator check after idle installation.

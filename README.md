@@ -1,5 +1,7 @@
 # Filament Manager
 
+Testing release **0.9.1** adds dashboard inventory shortcuts, active build plate details, and Power on for confirmed-off printers. Configure the correct Moonraker power device in 3D Printers; Moonraker must remain reachable while printer power is off. Backup listings avoid hashing every dump; downloads and restores still require full integrity verification. Upgrade web and worker together. No agent or macro upgrade is needed from 0.9.0.
+
 Testing release **0.9.0** adds inherited support controls, saved G-code viewing/downloads, clearer print durations, and stale-history recovery. See [0.9.0 upgrade notes](docs/UPGRADE_0.9.0.md) for archive limits and the required Cura-agent upgrade.
 
 Filament Manager is a self-hosted inventory and calibration application for physical filament spools, manual weight measurements, material profiles, build plates, and Klipper-based printers.

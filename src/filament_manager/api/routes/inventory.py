@@ -1379,7 +1379,8 @@ async def list_spools(
     _: Viewer,
     session: DatabaseSession,
     search: str | None = None,
-    material: str | None = None,
+    material: str | None = Query(default=None, max_length=160),
+    color: str | None = Query(default=None, max_length=160),
     spool_status: Annotated[str | None, Query(alias="status")] = None,
     manufacturer: str | None = None,
     location: str | None = None,
@@ -1407,11 +1408,29 @@ async def list_spools(
                 Spool.location.ilike(term),
             )
         )
-    if material:
-        filters.append(func.lower(FilamentProduct.material_type) == material.casefold())
+    # Match the Dashboard's normalized grouping exactly, including legacy
+    # Unicode/case/whitespace variants, without substring or wildcard matches.
+    for column, requested, uppercase in (
+        (FilamentProduct.material_type, material, True),
+        (FilamentProduct.color_name, color, False),
+    ):
+        if requested:
+            normalized = normalize("NFKC", requested).strip()
+            normalized = normalized.upper() if uppercase else normalized.casefold()
+            labels = await session.scalars(select(column).distinct())
+            matches = []
+            for label in labels:
+                key = normalize("NFKC", label).strip()
+                if (key.upper() if uppercase else key.casefold()) == normalized:
+                    matches.append(label)
+            filters.append(column.in_(matches))
     if spool_status:
         try:
-            filters.append(Spool.status == SpoolStatus(spool_status))
+            filters.append(
+                Spool.status.in_((SpoolStatus.LOW, SpoolStatus.EMPTY))
+                if spool_status == "low_or_empty"
+                else Spool.status == SpoolStatus(spool_status)
+            )
         except ValueError as exc:
             raise ApiError(status.HTTP_422_UNPROCESSABLE_ENTITY, "invalid_status", "Unknown status") from exc
     if manufacturer:

@@ -1,5 +1,24 @@
 # Changelog
 
+## 0.9.1 - 09.22.2026
+
+Testing release. Back up the database and upgrade web and worker together. No database migration, agent upgrade, or macro replacement is required from 0.9.0.
+
+### Added
+
+- Dashboard inventory counts open matching spool lists; Colors opens a read-only color picker. Active build plate cards open that plate's details for the selected printer.
+- Administrator-only Power on for a confirmed-off printer, using its configured Moonraker power device with a fresh state check and audit event. No power-off or motion command is added.
+
+### Changed
+
+- Backup listings read bounded archive metadata without decompressing and hashing every database dump. Cards distinguish metadata-only listings from verified archives; import, download, and restore still fully validate the selected file.
+
+### Fixed
+
+- Cold-cache backup lists no longer perform full inventory integrity scans before displaying results.
+- Diagnostics warning pills use the selected theme's yellow warning color.
+- Exact material/color filters share dashboard normalization; combined low-or-empty filtering matches its count.
+
 ## 0.9.0 - 09.22.2026
 
 Testing release. Back up the database and upgrade web and worker together. Upgrade workstation agents to 0.9.0 with Cura closed, then synchronize and re-slice. See docs/UPGRADE_0.9.0.md.

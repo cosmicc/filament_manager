@@ -1,4 +1,5 @@
 // @vitest-environment jsdom
+import '@testing-library/jest-dom/vitest'
 
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { act, cleanup, fireEvent, render, screen } from '@testing-library/react'
@@ -51,6 +52,15 @@ const dashboard = {
 }
 
 describe('DashboardPage', () => {
+  it('links inventory counts and offers exact color filters', async () => {
+    apiFetchMock.mockResolvedValue({ ...dashboard, color_spool_counts: { blue: 2 } })
+    render(<QueryClientProvider client={new QueryClient()}><RouterProvider><DashboardPage /></RouterProvider></QueryClientProvider>)
+    expect(await screen.findByRole('link', { name: /Total spools/ })).toHaveAttribute('href', '/spools?view=list')
+    expect(screen.getByRole('link', { name: /Low or empty/ })).toHaveAttribute('href', '/spools?view=list&status=low_or_empty')
+    expect(screen.getByRole('link', { name: /^PLA\+/ })).toHaveAttribute('href', '/spools?view=list&material=pla%2B')
+    fireEvent.click(screen.getByRole('button', { name: /Colors/ }))
+    expect(screen.getByRole('link', { name: /Blue/ })).toHaveAttribute('href', '/spools?view=list&color=blue')
+  })
   afterEach(() => {
     cleanup()
     apiFetchMock.mockReset()

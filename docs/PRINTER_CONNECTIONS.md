@@ -38,7 +38,9 @@ This is an estimate, not a guarantee against runout. It checks the selected spoo
 
 ## Powered off versus printer error
 
-Set **Moonraker power device** to the exact switch name from `moonraker.conf`; the default `printer` matches the supplied power-off macro. Blank disables detection. When Klipper is not ready, the app reads that device through Moonraker's supported [power-state endpoint](https://moonraker.readthedocs.io/en/latest/external_api/devices/#get-device-state). Confirmed `off` displays **Powered off**; on/unknown/controller-error states retain the Klipper or connection status. No extra power request runs during healthy printing, and the app does not turn power on or off.
+Set **Moonraker power device** to the exact switch name from `moonraker.conf`; the default `printer` matches the supplied power-off macro. Blank disables detection. When Klipper is not ready, the app reads that device through Moonraker's supported [power-state endpoint](https://moonraker.readthedocs.io/en/latest/external_api/devices/#get-device-state). Confirmed `off` displays **Powered off**; on/unknown/controller-error states retain the Klipper or connection status. No extra power request runs during healthy printing.
+
+An Administrator can click **Power on** on the dashboard's selected confirmed-off printer. The app rechecks the exact configured switch, sends only On, and waits for normal telemetry to report readiness. It never powers off, toggles, homes, or restarts firmware. Moonraker and its power controller must remain reachable while printer power is off. No macro replacement is required.
 
 ## Completed-print acknowledgement and idle timers
 

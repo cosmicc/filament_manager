@@ -1,5 +1,7 @@
 # Deployment and Operations Skill
 
+- Testing release 0.9.1 upgrades web and worker together without a migration, agent, renderer, or macro change from 0.9.0. The Administrator's explicit Dashboard Power on action requires a reachable Moonraker host and a fresh Off receipt from the exact configured power device; it never powers off or performs motion. Backup listings show bounded metadata, while selected downloads and restores retain full validation. Automated power tests use mocks, not live hardware.
+
 - Testing release 0.9.0 requires web/worker migration `fc234d5e6f78` and agent 0.9.0 / renderer 28 installed with Cura closed. Re-slice for guaranteed profile-name comments. Canonical backups now include private G-code originals; account for storage growth and retained 100 MB per-file originals. No printer configuration is applied automatically. Follow `docs/UPGRADE_0.9.0.md`.
 
 - The 0.9.0 QQ-S M240 alias requires the existing Moonraker Timelapse component, included `timelapse.cfg`, enabled layer capture, and a working camera snapshot URL. Install only the M240 block or the reviewed full QQ-S file while idle, prevent duplicate M240 definitions, then run FIRMWARE_RESTART. Check parking before testing; no camera setup or live configuration is changed by an application upgrade. See `docs/PAUSE_PARK_SETUP.md#m240-camera-snapshots`.

@@ -332,13 +332,13 @@ async def dashboard(_: Viewer, session: DatabaseSession) -> DashboardResponse:
         .group_by(FilamentProduct.material_type, FilamentProduct.color_name)
     )
     material_counts: dict[str, int] = {}
-    colors: set[str] = set()
+    colors: dict[str, int] = {}
     for material_type, color_name, count in inventory:
         material = unicodedata.normalize("NFKC", material_type).strip().upper()
         material_counts[material] = material_counts.get(material, 0) + count
         color = unicodedata.normalize("NFKC", color_name).strip().casefold()
         if color:
-            colors.add(color)
+            colors[color] = colors.get(color, 0) + count
     total = sum(material_counts.values())
     needs = (
         await session.scalar(
@@ -421,6 +421,7 @@ async def dashboard(_: Viewer, session: DatabaseSession) -> DashboardResponse:
         total_spools=total,
         material_spool_counts=dict(sorted(material_counts.items())),
         distinct_colors=len(colors),
+        color_spool_counts=dict(sorted(colors.items())),
         needs_weighing=needs,
         low_spools=low,
         empty_spools=empty,
@@ -464,6 +465,49 @@ async def list_printers(_: Viewer, session: DatabaseSession) -> list[PrinterResp
         )
         for printer in printers
     ]
+
+
+@router.post("/printers/{printer_id}/power-on")
+async def power_on_printer(
+    printer_id: UUID, request: Request, administrator: Administrator, session: DatabaseSession
+) -> dict[str, str]:
+    """Power on one configured printer after a fresh, explicit Off receipt.
+
+    Serialize with connection edits and repeated button presses. A missing
+    connection or uncertain switch state never authorizes a physical command.
+    """
+    printer = await session.scalar(select(Printer).where(Printer.id == printer_id).with_for_update())
+    if printer is None:
+        raise ApiError(404, "unknown_printer", "Printer not found")
+    configured = next(
+        (item for item in await configured_printers(session) if item.id == printer.printer_code), None
+    )
+    if configured is None or not configured.power_device:
+        raise ApiError(409, "printer_power_not_configured", "Printer power control is not configured")
+    moonraker = MoonrakerClient(configured, timeout=3)
+    if await moonraker.printer_power_state() != "off":
+        raise ApiError(
+            409, "printer_not_powered_off", "Printer power is not confirmed off; refresh its status"
+        )
+    try:
+        await moonraker.power_on()
+    except MoonrakerError as error:
+        raise ApiError(
+            502, "printer_power_on_failed", "Moonraker could not confirm power on; refresh before retrying"
+        ) from error
+    add_audit_event(
+        session,
+        actor_id=administrator.id,
+        source="web",
+        action="printer.power_on",
+        object_type="printer",
+        object_id=printer.id,
+        before={"power_state": "off"},
+        after={"power_state": "on"},
+        correlation_id=request.state.correlation_id,
+    )
+    await session.commit()
+    return {"status": "on"}
 
 
 @router.patch("/printers/{printer_id}", response_model=PrinterResponse)

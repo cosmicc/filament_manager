@@ -1111,6 +1111,7 @@ class DashboardResponse(ApiModel):
     total_spools: int
     material_spool_counts: dict[str, int] = Field(default_factory=dict)
     distinct_colors: int = 0
+    color_spool_counts: dict[str, int] = Field(default_factory=dict)
     needs_weighing: int
     low_spools: int
     empty_spools: int
@@ -1838,7 +1839,7 @@ class DatabaseBackupPolicyUpdate(ApiModel):
 
 
 class DatabaseBackupArchiveResponse(ApiModel):
-    """Validated metadata for one private ZIP backup archive."""
+    """Bounded metadata with an explicit content-verification distinction."""
 
     id: UUID
     created_at: datetime
@@ -1848,12 +1849,13 @@ class DatabaseBackupArchiveResponse(ApiModel):
     storage_kind: str
     filename: str
     size_bytes: int
-    archive_sha256: str
+    archive_sha256: str | None
     dump_sha256: str
+    integrity_verified: bool = False
 
 
 class DatabaseBackupOverviewResponse(ApiModel):
-    """Backup policy, health, restore state, and validated archives."""
+    """Backup policy, health, restore state, and bounded archive metadata."""
 
     policy: DatabaseBackupPolicyResponse
     status: dict[str, Any]

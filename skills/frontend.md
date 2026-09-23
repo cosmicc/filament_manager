@@ -1,5 +1,7 @@
 # Frontend Design and Accessibility Skill
 
+- Dashboard count cards are semantic links to exact spool filters; Colors opens a read-only choice dialog, not an inventory creation form. Preserve spool/plate stretched-link keyboard and modifier-click behavior. Show Power on only for the selected exact confirmed-off printer; acceptance means waiting for telemetry, never optimistic readiness.
+
 - 0.9.0 Support extensions use up to two decimal places, retain blank unset fields and exact unchanged values, and distinguish zero from a blank template for ownership. Print history dates remain absolute without age subtext; start-to-finish duration is separate from Moonraker counters. G-code viewing is lazy, authenticated, paginated inert text with wrapping actions. Stale closure requires an explicit explanatory confirmation and displays server refusal without changing local outcome optimistically.
 
 - Calibration review uses Horizontal Expansion / Hole Horizontal Expansion with millimeter units and two-decimal display via `calibrationSuggestions`, retaining exact stored Cura keys/values. Never show the retired preferred plate ID. Update linked template is primary with exact-name confirmation; Save to filament only stays separate. Disable both writes while either is pending, show errors inside the modal and a destination-specific success message, invalidate all affected inventory/profile/template/Cura caches, and never report cache-refresh failure as a failed committed save.

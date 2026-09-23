@@ -16,7 +16,7 @@ export function StatusPill({ status, label }: { status: string; label?: string }
     'finished',
   ].includes(normalized)
     ? 'success'
-    : ['low', 'needs_weighing', 'needs_review', 'pending', 'claimed', 'in_progress', 'ready_to_apply', 'restore_pending', 'restoring', 'not_ready', 'capture_blocked', 'paused', 'starting', 'cancelled'].includes(normalized)
+    : ['warning', 'warn', 'degraded', 'low', 'needs_weighing', 'needs_review', 'pending', 'claimed', 'in_progress', 'ready_to_apply', 'restore_pending', 'restoring', 'not_ready', 'capture_blocked', 'paused', 'starting', 'cancelled'].includes(normalized)
       ? 'warning'
       : ['unavailable', 'offline', 'failed', 'dead', 'empty', 'error', 'invalid', 'restore_failed'].includes(normalized)
         ? 'danger'

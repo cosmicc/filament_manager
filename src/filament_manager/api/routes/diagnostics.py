@@ -112,11 +112,11 @@ async def database_backup_overview(
     _: Viewer,
     session: DatabaseSession,
 ) -> DatabaseBackupOverviewResponse:
-    """Return policy and validated canonical-database archives without file contents."""
+    """List bounded backup metadata without decompressing every database dump."""
 
     policy = await get_backup_policy(session)
     try:
-        archives = await asyncio.to_thread(list_backup_archives)
+        archives = await asyncio.to_thread(list_backup_archives, verify_contents=False)
     except DatabaseBackupError as error:
         raise _backup_api_error(error) from error
     return DatabaseBackupOverviewResponse.model_validate(

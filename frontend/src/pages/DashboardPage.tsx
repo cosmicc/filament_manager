@@ -6,6 +6,8 @@ import type { DashboardData } from '../api/types'
 import { EmptyState } from '../components/EmptyState'
 import { DashboardCuraSync } from '../components/DashboardCuraSync'
 import { LoadingState } from '../components/LoadingState'
+import { Modal } from '../components/Modal'
+import { PrinterPowerButton } from '../components/PrinterPowerButton'
 import { PlateCompatibility } from '../components/PlateCompatibility'
 import { PageHeader } from '../components/PageHeader'
 import { PrintThumbnail } from '../components/PrintThumbnail'
@@ -32,24 +34,27 @@ function duration(value: string | null) {
   return hours ? `${hours} hr ${minutes} min` : `${minutes} min`
 }
 
-function MetricCard({ icon: Icon, label, value, detail, tone = '' }: {
+function MetricCard({ icon: Icon, label, value, detail, tone = '', to, onClick }: {
   icon: typeof Boxes
   label: string
   value: number
   detail: string
   tone?: string
+  to?: string
+  onClick?: () => void
 }) {
-  return (
-    <article className={`metric-card ${tone}`} title={`${label}: ${value} · ${detail}`}>
+  const content = <>
       <span className="metric-card__icon"><Icon size={20} /></span>
       <div><p>{label}</p><strong>{value}</strong><small>{detail}</small></div>
-    </article>
-  )
+    </>
+  const props = { className: `metric-card metric-card--interactive ${tone}`, title: `${label}: ${value} · ${detail}` }
+  return to ? <Link to={to} {...props}>{content}</Link> : <button type="button" onClick={onClick} {...props}>{content}</button>
 }
 
 export default function DashboardPage() {
   const { user } = useAuth()
   const [selectedId, setSelectedId] = useState<string | null>(null)
+  const [choosingColor, setChoosingColor] = useState(false)
   const query = useQuery({
     queryKey: ['dashboard'],
     queryFn: () => apiFetch<DashboardData>('/dashboard'),
@@ -92,6 +97,7 @@ export default function DashboardPage() {
             <StatusPill status={data.printer_state.operational_status} label={titleCase(data.printer_state.operational_status)} />
             {contexts.length > 1 && <button className="button button--icon" aria-label="Next printer" onClick={() => movePrinter(1)}><ChevronRight size={22} /></button>}
           </header>
+          {user?.role === 'administrator' && selected && data.printer_state.operational_status === 'powered_off' && <PrinterPowerButton key={selected.printer_id} printerId={selected.printer_id} />}
           {data.printer_state.connection_status === 'connected' ? <div className={`printer-state-card__body${data.printer_state.operational_status === 'printing' ? ' printer-state-card__body--printing' : ''}`}>
             <section className={`printer-current-print${data.printer_state.thumbnail_url ? '' : ' printer-current-print--without-thumbnail'}`} aria-label="Current print state">
               {data.printer_state.thumbnail_url ? <PrintThumbnail className="printer-current-print__thumbnail" src={data.printer_state.thumbnail_url} alt={`Preview of ${data.printer_state.filename ?? 'current print'}`} /> : null}
@@ -132,9 +138,9 @@ export default function DashboardPage() {
           )) : <EmptyState icon={Boxes} title="No active spool" description="Load a spool through Inventory or the confirmed Fluidd workflow. The current physical spool updates automatically." action={<Link className="button" to="/spools">Open inventory</Link>} />}
         </article>
 
-        <article className="card plate-card">
+        <article className="card plate-card dashboard-active-plate">
           <header className="card__header"><div><p className="eyebrow">Printer surface</p><h2>Active build plate</h2></div><Layers3 size={21} /></header>
-          {data.active_plate ? <div className="plate-summary"><div className={`plate-illustration${data.active_plate.image_url ? ' plate-illustration--photo' : ''}`}>{data.active_plate.image_url ? <img src={data.active_plate.image_url} alt={`${data.active_plate.display_name} build plate`} /> : null}<span>{data.active_plate_surface?.surface_code ?? data.active_plate.plate_code}</span></div><strong>{data.active_plate.display_name}</strong><span>{data.active_plate_surface ? `Side ${data.active_plate_surface.side.toUpperCase()} · ${data.active_plate_surface.surface_material ?? 'Surface not specified'}` : 'Side not selected'}</span></div> : <EmptyState icon={Layers3} title="No plate selected" description="Select a synchronized P-number plate side for a configured printer." action={<Link className="button" to="/plates">Open plates</Link>} />}
+          {data.active_plate ? <div className="plate-summary"><div className={`plate-illustration${data.active_plate.image_url ? ' plate-illustration--photo' : ''}`}>{data.active_plate.image_url ? <img src={data.active_plate.image_url} alt={`${data.active_plate.display_name} build plate`} /> : null}<span>{data.active_plate_surface?.surface_code ?? data.active_plate.plate_code}</span></div><strong><Link className="active-spool__details-link" to={`/plates?plate_id=${data.active_plate.id}${selected ? `&printer_id=${selected.printer_id}` : ''}`} aria-label={`Open build plate ${data.active_plate.display_name} details`}>{data.active_plate.display_name}</Link></strong><span>{data.active_plate_surface ? `Side ${data.active_plate_surface.side.toUpperCase()} · ${data.active_plate_surface.surface_material ?? 'Surface not specified'}` : 'Side not selected'}</span></div> : <EmptyState icon={Layers3} title="No plate selected" description="Select a synchronized P-number plate side for a configured printer." action={<Link className="button" to="/plates">Open plates</Link>} />}
         </article>
 
         {contexts.length > 1 && <section className="card printer-overview" aria-label="All printers">
@@ -149,15 +155,16 @@ export default function DashboardPage() {
           </tbody></table></div>
         </section>}
         <section className="metric-grid dashboard-metric-grid" aria-label="Inventory summary">
-          <MetricCard icon={Boxes} label="Total spools" value={data.total_spools} detail="Active inventory" />
-          <MetricCard icon={Scale} label="Needs weighing" value={data.needs_weighing} detail="Manual check" tone={data.needs_weighing ? 'metric-card--warning' : ''} />
-          <MetricCard icon={AlertTriangle} label="Low or empty" value={data.low_spools + data.empty_spools} detail={`${data.empty_spools} empty`} tone={data.low_spools + data.empty_spools ? 'metric-card--warning' : ''} />
-          <MetricCard icon={Palette} label="Colors" value={data.distinct_colors} detail="Named colors" tone="metric-card--accent" />
-          {Object.entries(data.material_spool_counts).map(([material, count]) => <MetricCard key={material} icon={PackageOpen} label={material} value={count} detail={count === 1 ? 'spool' : 'spools'} tone="metric-card--material" />)}
+          <MetricCard to="/spools?view=list" icon={Boxes} label="Total spools" value={data.total_spools} detail="Active inventory" />
+          <MetricCard to="/spools?view=list&status=needs_weighing" icon={Scale} label="Needs weighing" value={data.needs_weighing} detail="Manual check" tone={data.needs_weighing ? 'metric-card--warning' : ''} />
+          <MetricCard to="/spools?view=list&status=low_or_empty" icon={AlertTriangle} label="Low or empty" value={data.low_spools + data.empty_spools} detail={`${data.empty_spools} empty`} tone={data.low_spools + data.empty_spools ? 'metric-card--warning' : ''} />
+          <MetricCard onClick={() => setChoosingColor(true)} icon={Palette} label="Colors" value={data.distinct_colors} detail="Choose a color" tone="metric-card--accent" />
+          {Object.entries(data.material_spool_counts).map(([material, count]) => <MetricCard to={`/spools?view=list&material=${encodeURIComponent(material.toLowerCase())}`} key={material} icon={PackageOpen} label={material} value={count} detail={count === 1 ? 'spool' : 'spools'} tone="metric-card--material" />)}
         </section>
 
 
       </section>
+      {choosingColor && <Modal title="Choose a spool color" onClose={() => setChoosingColor(false)}><div className="dashboard-color-choices">{Object.entries(data.color_spool_counts ?? {}).map(([color, count]) => <Link className="button" key={color} to={`/spools?view=list&color=${encodeURIComponent(color)}`}>{titleCase(color)} · {count} {count === 1 ? 'spool' : 'spools'}</Link>)}{!Object.keys(data.color_spool_counts ?? {}).length && <p>No named colors in active inventory.</p>}</div></Modal>}
     </div>
   )
 }

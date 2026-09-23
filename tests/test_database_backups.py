@@ -72,6 +72,40 @@ def _store_archive(root: Path, data: bytes, category: str = "automatic") -> Path
     return path
 
 
+def test_metadata_listing_does_not_read_dump(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    """Cold listings read only manifests; downloading still validates the selected dump."""
+    root = _configure_root(monkeypatch, tmp_path)
+    backup_id = uuid4()
+    _store_archive(root, _archive_bytes(backup_id=backup_id))
+    database_backups._VALIDATED_ARCHIVE_CACHE.clear()
+    original_open = zipfile.ZipFile.open
+    reads: list[str] = []
+
+    def tracked_open(self, name, *args, **kwargs):
+        reads.append(name.filename if isinstance(name, zipfile.ZipInfo) else name)
+        return original_open(self, name, *args, **kwargs)
+
+    monkeypatch.setattr(zipfile.ZipFile, "open", tracked_open)
+    archives = database_backups.list_backup_archives(verify_contents=False)
+    assert len(archives) == 1
+    assert not archives[0].integrity_verified
+    assert archives[0].archive_sha256 is None
+    assert "database.dump" not in reads
+    database_backups.archive_path(backup_id)
+    assert "database.dump" in reads
+
+
+def test_metadata_listing_never_authorizes_corrupt_download(monkeypatch, tmp_path):
+    """A plausible manifest alone cannot authorize download or restore staging."""
+    root = _configure_root(monkeypatch, tmp_path)
+    backup_id = uuid4()
+    _store_archive(root, _archive_bytes(backup_id=backup_id, dump=b"not-a-postgresql-dump"))
+    listed = database_backups.list_backup_archives(verify_contents=False)
+    assert len(listed) == 1 and not listed[0].integrity_verified
+    with pytest.raises(DatabaseBackupError):
+        database_backups.archive_path(backup_id)
+
+
 def test_validates_and_lists_strict_filament_manager_zip(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,

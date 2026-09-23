@@ -2,6 +2,8 @@
 
 ## Mission
 
+Testing release 0.9.1: Dashboard count links use exact nonarchived inventory filters (Colors is a read-only picker). Active plate deep links retain printer identity. The explicit Administrator power-on endpoint is the sole exception to read-only power observation: lock the exact printer, resolve its configured connection, require a fresh device Off receipt, send only On, and audit acceptance without claiming Klipper readiness. All motion interlocks remain unchanged. Diagnostics lists bounded backup metadata; never populate the integrity cache from metadata-only reads or bypass full selected-file validation for import/download/restore.
+
 Build and maintain Filament Manager, a security-focused, self-hosted application for filament inventory, measurements, material profiles, calibration, build plates, and supported Klipper ecosystem integration.
 
 The product name is **Filament Manager**. Do not introduce the former project name in code, documentation, configuration, deployment objects, or user-facing copy.

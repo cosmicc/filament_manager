@@ -1,5 +1,22 @@
 # User Changelog
 
+## 0.9.1 - 09.22.2026
+
+Testing release. Upgrade web and worker together; no Cura-agent or macro update is needed from 0.9.0.
+
+### Added
+
+- Click dashboard counts to browse matching spools, choose a color to filter, or click the active build plate for its details.
+- Power on a confirmed-off printer from the dashboard when Moonraker power control is configured.
+
+### Changed
+
+- Backup cards explain whether integrity has been verified; full verification still happens before download or restore.
+
+### Fixed
+
+- Faster backup listings after restarts and consistently yellow Diagnostics warnings.
+
 ## 0.9.0 - 09.22.2026
 
 Testing release. Upgrade your workstation agent with Cura closed, synchronize app settings, then re-slice to capture the Cura profile name reliably.

@@ -165,6 +165,17 @@ async def test_inventory_summary_and_post_use_color_correction(monkeypatch: pyte
             assert summary.json()["total_spools"] == 4
             assert summary.json()["material_spool_counts"] == {"PLA": 2, "PLA+": 1, "TPU": 1}
             assert summary.json()["distinct_colors"] == 2
+            assert summary.json()["color_spool_counts"] == {"red": 2, "blue": 2}
+            for filters, count in [
+                ("color=RED", 2),
+                ("material=pla", 2),
+                ("material=pla%2B", 1),
+                ("status=low_or_empty", 4),
+                ("color=Green", 0),
+            ]:
+                filtered = await client.get(f"/api/v1/spools?{filters}")
+                assert filtered.status_code == 200, filtered.text
+                assert filtered.json()["total"] == count
             assert summary.json()["low_spools"] == 4
             assert (await client.get(f"/api/v1/filaments/{products[0].id}")).json()["color_editable"] is True
             # Correct a shared swatch even when both products have retained print evidence.
