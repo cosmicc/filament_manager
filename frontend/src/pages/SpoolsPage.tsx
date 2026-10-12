@@ -1,3 +1,5 @@
+import { hardnessByFilament } from '../lib/shoreHardness'
+import { ShoreHardnessDetails } from '../components/ShoreHardnessDetails'
 import { DateWithAge } from '../components/DateWithAge'
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { PlateCompatibility } from "../components/PlateCompatibility";
@@ -23,7 +25,7 @@ import {
   useState,
 } from "react";
 import { ApiClientError, apiFetch, idempotencyKey } from "../api/client";
-import type { Filament, MaterialTemplate, Page, Printer, Spool } from "../api/types";
+import type { Filament, MaterialProfile, MaterialTemplate, Page, Printer, Spool } from "../api/types";
 import { CollectionViewSelector } from "../components/CollectionViewSelector";
 import { EditorSection } from "../components/EditorSection";
 import { EmptyState } from "../components/EmptyState";
@@ -726,6 +728,8 @@ export default function SpoolsPage() {
     queryKey: ["filaments"],
     queryFn: () => apiFetch<Filament[]>("/filaments"),
   });
+  const profiles = useQuery({ queryKey: ['profiles'], queryFn: () => apiFetch<MaterialProfile[]>('/profiles'), enabled: view === 'detailed' || Boolean(selected) });
+  const hardnessLabels = useMemo(() => hardnessByFilament(profiles.data ?? []), [profiles.data]);
   const templates = useQuery({
     queryKey: ["material-templates"],
     queryFn: () => apiFetch<MaterialTemplate[]>("/profiles/templates"),
@@ -965,7 +969,7 @@ export default function SpoolsPage() {
               <span className="status-stack">{spool.active_printer_id ? <StatusPill status="active" /> : null}<StatusPill status={spool.status} /></span>
             </header>
             <div className="collection-card__body"><h2>{materialIdentitySummary(spool)}</h2><div className="table-progress"><span><strong>{grams(spool.remaining_mass_effective_g)}</strong><small>{percent(spool.remaining_percent)}</small></span><div className="progress progress--small"><span style={{ width: `${Math.min(100, Number(spool.remaining_percent))}%` }} /></div></div></div>
-            <dl className="catalog-meta"><div><dt>Cost / gram</dt><dd>{costPerGram(spool.cost_per_gram, spool.currency)}</dd></div><div><dt>Location</dt><dd>{spool.location ?? "Not set"}</dd></div>{view === "detailed" ? <><div><dt>Completed prints</dt><dd>{spool.completed_print_count.toLocaleString()}</dd></div><div><dt>Last weighed</dt><dd><DateWithAge value={spool.last_measurement_at} /></dd></div><div><dt>Confidence</dt><dd>{spool.weight_confidence}</dd></div><div><dt>Printer</dt><dd>{spool.active_printer_id ? printerNames.get(spool.active_printer_id) ?? "Assigned printer" : "Not active"}</dd></div></> : null}</dl>
+            <dl className="catalog-meta"><div><dt>Cost / gram</dt><dd>{costPerGram(spool.cost_per_gram, spool.currency)}</dd></div><div><dt>Location</dt><dd>{spool.location ?? "Not set"}</dd></div>{view === "detailed" ? <><div><dt>Completed prints</dt><dd>{spool.completed_print_count.toLocaleString()}</dd></div><div><dt>Last weighed</dt><dd><DateWithAge value={spool.last_measurement_at} /></dd></div><div><dt>Confidence</dt><dd>{spool.weight_confidence}</dd></div><div><dt>Shore hardness</dt><dd>{profiles.isError ? "Unable to load" : profiles.isPending ? "Loading…" : hardnessLabels.get(spool.filament_product_id)?.label ?? "Not set"}</dd></div></> : null}</dl>
 
           </button>)}
         </section>
@@ -992,9 +996,15 @@ export default function SpoolsPage() {
                 </header>
                 <div>
                   <PrintActivityDates kind="spool" id={selected.id} /><PlateCompatibility filamentId={selected.filament_product_id} printerId={selected.active_printer_id ?? undefined} />
+                  <section aria-label="Filament care and hardness">
+                    <h3>Filament care and hardness</h3>
+                    <dl className="definition-list">
+                      <DryingTemperatureDetails filamentId={selected.filament_product_id} />
+                      <ShoreHardnessDetails filamentId={selected.filament_product_id} />
+                    </dl>
+                  </section>
                   <dl className="definition-list">
                     <div><dt>Spool type</dt><dd>{selected.spool_type ?? 'Unknown'}</dd></div>
-                    <DryingTemperatureDetails filamentId={selected.filament_product_id} />
                     <div>
                       <dt>Filament</dt>
                       <dd>

@@ -105,8 +105,8 @@ async def test_density_upgrade_preserves_history_and_activity(monkeypatch: pytes
                 base_template_revision_id=revision.id,
                 setting_overrides={"filament_density_g_cm3": "1.3"},
             )
-            session.add(old)
-            session.flush()
+            # Seed only columns present in 0.8.0, before the hardness cache exists.
+            insert_legacy_record(session, old)
             spool = Spool(
                 spool_code="P1",
                 filament_product_id=product.id,
@@ -169,6 +169,7 @@ async def test_density_upgrade_preserves_history_and_activity(monkeypatch: pytes
             # The 0.8.1 migration has a frozen checksum contract. Removing a
             # current setting must not rewrite that historical document/hash.
             historical_settings = MaterialSettingsInput.model_validate(current).model_dump(mode="json")
+            historical_settings.pop("shore_hardness", None)
             historical_settings["tree_max_branch_angle_deg"] = None
             historical_payload = {
                 "profile_id": str(current.id),

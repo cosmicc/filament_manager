@@ -223,6 +223,7 @@ export interface CuraSettingCatalogItem {
 }
 
 export interface MaterialSettings {
+  shore_hardness?: { scale: 'A' | 'D'; value: string } | null
   drying_temp_c?: string | null
   drying_time_hours?: '4-6' | '6' | '6-8' | '4-8' | '8-12' | '10-12' | '12' | '12+' | null
   moisture_sensitivity?: 'low' | 'low-moderate' | 'moderate' | 'high-moderate' | 'high' | 'very high' | 'extremely high' | null

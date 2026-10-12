@@ -4,6 +4,7 @@ import { useId, useState, type ReactNode } from 'react'
 import type { CuraSettingCatalogItem, MaterialSettings } from '../api/types'
 import { compactNumber, inputNumber } from '../lib/format'
 import { EditorSection } from './EditorSection'
+import { ShoreHardnessEditor } from './ShoreHardnessEditor'
 
 export interface MaterialSettingCopySource {
   id: string
@@ -64,6 +65,9 @@ const coreFields: Array<{
 ]
 
 const identityLabels: Record<string, string> = {
+  shore_hardness: 'Shore hardness',
+  'shore_hardness.value': 'Shore hardness value',
+  'shore_hardness.scale': 'Shore hardness scale',
   material_type: 'Material type',
   printer_id: 'Printer',
   nozzle_id: 'Physical nozzle',
@@ -81,7 +85,7 @@ export function materialSettingLabel(field: string, catalog: CuraSettingCatalogI
     ?? normalized.replaceAll('_', ' ')
 }
 
-export const canonicalMaterialFieldCount = coreFields.length + 2
+export const canonicalMaterialFieldCount = coreFields.length + 3
 
 type MaterialSettingGroup =
   | 'temperature'
@@ -197,6 +201,10 @@ export function settingsFromForm(
     }
   }
   return {
+    shore_hardness: nullable(data.get('shore_hardness_value')) === null ? null : {
+      scale: String(data.get('shore_hardness_scale')) as 'A' | 'D',
+      value: String(data.get('shore_hardness_value')),
+    },
     chamber_temp_c: nullable(preservedNumericValue(form, 'chamber_temp_c', data.get('chamber_temp_c'))),
     drying_temp_c: nullable(preservedNumericValue(form, 'drying_temp_c', data.get('drying_temp_c'))),
     drying_time_hours: nullable(data.get('drying_time_hours')) as MaterialSettings['drying_time_hours'],
@@ -488,6 +496,9 @@ coreFields.filter((field) => (
           />
         ))}
       </> : null}
+      <EditorSection title="Shore hardness" description="One A or D measurement. Filament customizations override the linked template; spools inherit the effective value.">
+        <ShoreHardnessEditor value={settings && 'shore_hardness' in settings ? settings.shore_hardness : baseSettings?.shore_hardness} base={baseSettings?.shore_hardness} profile={scope === 'profile'} sources={copySources.flatMap((source) => source.settings.shore_hardness ? [{ id: source.id, label: source.label, hardness: source.settings.shore_hardness }] : [])} errors={validationErrors} />
+      </EditorSection>
       {visibleGroups.map((group) => (
         <EditorSection key={group.title} title={group.title} description={group.description}>
           <div className="form-grid">

@@ -486,6 +486,7 @@ class MaterialProfile(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     drying_temp_c: Mapped[Decimal | None] = mapped_column(MEASUREMENT)
     drying_time_hours: Mapped[str | None] = mapped_column(String(8))
     moisture_sensitivity: Mapped[str | None] = mapped_column(String(24))
+    shore_hardness: Mapped[dict[str, object] | None] = mapped_column(JSONB(none_as_null=True))
     extruder_temp_c: Mapped[Decimal] = mapped_column(MEASUREMENT, nullable=False)
     bed_temp_c: Mapped[Decimal] = mapped_column(MEASUREMENT, nullable=False)
     initial_bed_temp_c: Mapped[Decimal] = mapped_column(

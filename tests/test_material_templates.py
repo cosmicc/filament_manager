@@ -156,6 +156,7 @@ async def test_direct_template_save_updates_linked_product_profile(
                     "nozzle_diameter_mm": "0.4",
                     "filament_diameter_mm": "1.75",
                     "settings": {
+                        "shore_hardness": {"scale": "A", "value": "90"},
                         "extruder_temp_c": "245",
                         "bed_temp_c": "55",
                         "flow_percent": "100",
@@ -252,6 +253,7 @@ async def test_direct_template_save_updates_linked_product_profile(
                 item for item in product_profiles.json() if item["filament_product_id"] == product_id
             )
             assert original_profile["base_template_name"] == "Template PCTPE"
+            assert original_profile["shore_hardness"] == {"scale": "A", "value": "90"}
             assert original_profile["override_keys"] == []
             assert original_profile["status"] == "published"
             for key in (
@@ -360,6 +362,7 @@ async def test_direct_template_save_updates_linked_product_profile(
                     "expected_template_version": current_template["record_version"],
                     "settings": {
                         "chamber_temp_c": "40",
+                        "shore_hardness": {"scale": "D", "value": "75"},
                         "drying_temp_c": "80",
                         "drying_time_hours": "8-12",
                         "moisture_sensitivity": "very high",
@@ -432,6 +435,7 @@ async def test_direct_template_save_updates_linked_product_profile(
             assert Decimal(inherited_profile["bed_temp_c"]) == Decimal("45")
             assert Decimal(inherited_profile["drying_temp_c"]) == Decimal("80")
             assert "drying_temp_c" not in inherited_profile["override_keys"]
+            assert inherited_profile["shore_hardness"] == {"scale": "D", "value": "75"}
             assert inherited_profile["drying_time_hours"] == "8-12"
             assert inherited_profile["moisture_sensitivity"] == "very high"
             from filament_manager.services.print_template_comparison import current_print_template_comparison
@@ -577,6 +581,47 @@ async def test_direct_template_save_updates_linked_product_profile(
                 item for item in moved_profiles.json() if item["filament_product_id"] == product_id
             )
             assert moved_product_profile["nozzle_diameter_mm"] == "0.60000"
+            # Save an atomic filament override, then change the parent's scale/value.
+            custom = await client.put(
+                f"/api/v1/profiles/{moved_product_profile['id']}/settings",
+                json={
+                    "expected_profile_version": moved_product_profile["record_version"],
+                    "settings": {**moved_product_profile, "shore_hardness": {"scale": "A", "value": "95"}},
+                },
+            )
+            assert custom.status_code == 200, custom.text
+            assert custom.json()["override_keys"] == ["shore_hardness"]
+            parent = moved.json()
+            cascade = await client.put(
+                f"/api/v1/profiles/templates/{parent['id']}/settings",
+                json={
+                    "expected_template_version": parent["record_version"],
+                    "settings": {
+                        **parent["revisions"][0]["settings"],
+                        "shore_hardness": {"scale": "D", "value": "80"},
+                    },
+                },
+            )
+            assert cascade.status_code == 200, cascade.text
+            current = next(
+                item
+                for item in (await client.get("/api/v1/profiles")).json()
+                if item["filament_product_id"] == product_id
+            )
+            assert current["shore_hardness"] == {"scale": "A", "value": "95"}
+            assert current["base_template_settings"]["shore_hardness"] == {"scale": "D", "value": "80"}
+            reverted = await client.put(
+                f"/api/v1/profiles/{current['id']}/settings",
+                json={
+                    "expected_profile_version": current["record_version"],
+                    "settings": {**current, "shore_hardness": {"scale": "D", "value": "80.00"}},
+                },
+            )
+            assert reverted.status_code == 200, reverted.text
+            assert reverted.json()["override_keys"] == []
+            async with factory() as history_session:
+                original = await history_session.get(MaterialProfile, original_profile["id"])
+                assert original.shore_hardness == {"scale": "A", "value": "90"}
 
         async with factory() as session:
             template_row = await session.scalar(
@@ -596,7 +641,7 @@ async def test_direct_template_save_updates_linked_product_profile(
             assert product is not None and product.source_template_revision_id is not None
             assert profile is not None
             assert profile.status == ProfileStatus.PUBLISHED
-            assert profile.version == 1
+            assert profile.version == 4
             assert profile.nozzle_diameter_mm == Decimal("0.60000")
             assert profile.base_template_revision_id == product.source_template_revision_id
             assert profile.extruder_temp_c == Decimal("250.00000")

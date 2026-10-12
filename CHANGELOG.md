@@ -1,5 +1,44 @@
 # Changelog
 
+## 0.9.2 - 10.11.2026
+
+Testing release. Back up the database and upgrade web and worker together. Startup applies nullable hardness-cache migration `fd345e6f7890`; existing values remain unset and historical snapshots are preserved. No agent, renderer, or macro change is required from 0.9.1.
+
+### Added
+
+- Optional atomic Shore hardness (one A or D scale and 0–100 value) on templates and inheriting filament profiles, with sparse custom overrides, clearing, copying, and Revert to Template.
+- Hardness on template, filament, and spool details, with bounded approximate opposite-scale estimates and an accessible A/D reference table.
+- Softest/hardest filament sorting across scales using an approximate reference ordering; unset values remain last.
+
+### Changed
+
+- Filament cards show hardness in place of density; detailed cards show density in place of Color changes. Filament lists show hardness in place of diameter.
+- Detailed spool cards show hardness in place of printer assignment. The details dialog groups drying temperature, time, moisture sensitivity, and hardness prominently.
+- Release changes and upgrade/rollback guidance are consolidated here; removed the separate version-specific upgrade documents. AGENTS.md directs agents to this changelog and keeps Mission focused on the application purpose.
+- Allowlisted Google publication includes resolved hardness metadata. Hardness stays outside Cura settings, printer commands, and print-setting comparisons.
+
+#### Upgrade guidance
+
+Back up the canonical database, then upgrade web and worker together. Startup adds the optional resolved Shore hardness cache through migration `fd345e6f7890`. Existing templates and profiles remain unset; old print and settings snapshots are preserved. No agent, renderer, macro, or environment-variable change is required from 0.9.1.
+
+Set **Shore hardness** in a template editor using one A or D scale and a value from 0 to 100 (up to two decimal places). In a filament's details, open **Edit settings** on its exact printer/nozzle settings card to customize the inherited hardness. **Revert to Template** removes the customization when saved. Clearing a populated inherited value saves an explicit unknown override. Physical spools inherit the filament's effective settings and have no separate hardness override.
+
+Filament and spool details show each current settings scope when more than one exists. The spool's **Filament care and hardness** section also shows drying temperature, drying time, and moisture sensitivity. Unknown and unavailable guidance is stated explicitly.
+
+Catalogs show hardness in place of density on filament cards, diameter in filament lists, and printer assignment on detailed spool cards. Detailed filament cards retain density in place of Color changes. Full details retain diameter, density, and spool printer assignment.
+
+**Sort filaments** offers softest/hardest ordering across A and D using an approximate reference coordinate. Unset values remain last in both directions. If a filament has multiple scopes, sorting uses its softest known scope; the card still displays every distinct value. Equal ranks retain catalog order. Values outside the reference overlap extend the ordering coordinate only, without displaying an opposite-scale estimate.
+
+The **Shore hardness reference** dialog explains both scales and the conservative overlap used by the app. The entered value remains authoritative. Estimates interpolate only within the published comparison table (30–100A / 6–58D) from [MacLellan Rubber](https://maclellanrubber.com/blog/article/rubber-shore-hardness-scales). For example, 95A displays as `95A (≈46D)` and 98A as `98A (≈53D)`; 75D displays alone. Outside that published range, only the entered value appears. Conversion is approximate and formulation-dependent; use the manufacturer's specification. Hardness measures indentation resistance, not printed-part flexibility or strength.
+
+Hardness is reference metadata. It does not change Cura settings, issue printer/heater commands, or affect print-setting mismatch checks. Google publication includes the allowlisted resolved hardness metadata.
+
+Downgrade refuses to discard entered profile or template hardness. Restore a pre-upgrade backup when returning to an older release after entering values.
+
+### Fixed
+
+- Spool care guidance remains visible together, with explicit loading, unavailable, unknown, and multiple-scope states.
+
 ## 0.9.1 - 09.22.2026
 
 Testing release. Back up the database and upgrade web and worker together. No database migration, agent upgrade, or macro replacement is required from 0.9.0.
@@ -21,7 +60,7 @@ Testing release. Back up the database and upgrade web and worker together. No da
 
 ## 0.9.0 - 09.22.2026
 
-Testing release. Back up the database and upgrade web and worker together. Upgrade workstation agents to 0.9.0 with Cura closed, then synchronize and re-slice. See docs/UPGRADE_0.9.0.md.
+Testing release. Back up the database and upgrade web and worker together. Upgrade workstation agents to 0.9.0 with Cura closed, then synchronize and re-slice.
 
 ### Added
 
@@ -36,6 +75,34 @@ Testing release. Back up the database and upgrade web and worker together. Upgra
 - Print history shows start-to-finish elapsed duration instead of relative start/end ages. Printer totals include readable days/hours beneath hours.
 - Migration fc234d5e6f78 adds an isolated G-code archive table included in canonical backups but excluded from Sheets and repeating history queries. Downgrade refuses to discard saved originals.
 - Workstation agent 0.9.0 / renderer 28 adds a bounded profile-name comment to newly sliced G-code, capturing the selected quality at slice time without changing toolpaths or thumbnails. Upgrade the agent with Cura closed, then re-slice.
+
+#### Upgrade guidance
+
+Back up the canonical database and upgrade web/worker together. Migration `fc234d5e6f78` adds G-code archives; it does not rewrite historical settings. No live printer changes are installed automatically.
+
+##### Material settings and Cura
+
+The six new Support values start blank: Support Top Distance, Support X/Y Distance, Support Roof Density, Branch Density, Tip Diameter, and Support Roof Thickness. Set a template default to propagate it to inheriting filaments; explicit filament overrides survive. Cura still owns support/roof enablement and machine-dependent validity limits.
+
+Tree Maximum Branch Angle and Retract at Layer Change are no longer app-managed. The agent cleans up the retired branch-angle override after backup. Cura owns Retract at Layer Change: its existing and future local quality-profile choices are preserved, and this release does **not** force it off. Legacy immutable snapshots retain their original evidence.
+
+Upgrade each workstation agent to **0.9.0 (renderer 28)** with Cura closed. Push app settings, wait for success, reopen Cura, and re-slice. The plugin captures the selected Cura quality name when slicing starts and adds an inert comment to the resulting G-code. Imported/pre-existing G-code is not relabelled. The app also decodes Cura's existing embedded settings correctly; older files without reliable profile evidence remain unknown.
+
+##### Saved print files
+
+New prints retain a compressed exact copy using the existing inspection download, without another printer-file request. Originals larger than **100 MB** are inspected under existing limits but not archived. Files remain until their history record is deleted and increase canonical database/backup size; there is no automatic expiry.
+
+Print details offer a read-only, paginated text viewer and an exact-byte download. Access requires an authenticated app session. Files may contain slicer comments and other operator data; treat backups/downloads as private. G-code is never executed, rewritten, sent back to the printer, or exported to Sheets.
+
+For older records, **Retrieve verified original** requires a reachable idle printer and an exact match with the original inspection checksum. A reused filename is not sufficient. If there is no recorded checksum, the file is missing/changed, or the limit is exceeded, retrieval is refused.
+
+##### Unfinished history
+
+The idle history pass revisits older unfinished jobs even after newer jobs complete. Actual Moonraker outcomes remain authoritative. If a record cannot be recovered, open it and use **Close stale entry**, then confirm. The app refuses while printing, paused, or unable to verify idle state. This closes only the local history record as interrupted/unknown; it never cancels a printer job, invents a completion/end time, or subtracts predicted filament use.
+
+Start-to-finish duration uses verified start/end timestamps and remains unavailable when either is unknown. Moonraker's print and total counters remain separately visible. Printer totals show their readable duration beneath numeric hours.
+
+Downgrade refuses to discard any saved G-code. Restore a verified pre-upgrade backup instead. Applying the separate QQ-S M240 macro requires the idle installation and camera checks in [Pause and park setup](PAUSE_PARK_SETUP.md#m240-camera-snapshots).
 
 ### Fixed
 
@@ -104,7 +171,7 @@ Testing release. Upgrade web and worker together. No new database migration, wor
 
 ## 0.8.4 - 09.14.2026
 
-Testing release. See `docs/UPGRADE_0.8.4.md` for rating migration and printer setup.
+Testing release. Upgrade guidance below covers rating migration and printer setup.
 
 ### Added
 
@@ -118,6 +185,61 @@ Testing release. See `docs/UPGRADE_0.8.4.md` for rating migration and printer se
 - Google Plate Ratings includes whole-plate template ratings and filament overrides. Print preflight records the physical plate ID alongside effective rating evidence.
 - App macro version 0.8.4 clearly identifies a zero-star prohibition. Cura renderer 27 is unchanged.
 
+#### Upgrade guidance
+
+Back up the canonical database, then upgrade web and worker together. Startup applies
+`fb123c4d5e67`. This changes compatibility ratings, not physical plate/mesh identities.
+
+##### Set ratings
+
+- Open **Build plate ratings** on Templates or Build plates, select the material
+  template, and click zero through five stars beside each whole physical plate.
+  Both sides share the rating. Each click saves immediately.
+- Open a filament and select **View / edit build plate ratings**. Ratings inherit
+  the current linked template. Clicking a different rating creates an override for
+  that filament; **Revert to Template** removes it. Overrides follow the filament
+  across printers and template changes. Choose the printer scope to inspect its
+  inherited defaults. Selecting the current inherited value also restores inheritance.
+- Dashboard active spools and spool/filament details show the highest-rated active
+  plates. Equal highest ratings are all recommended. A lower-rated active plate
+  shows a warning; zero stars shows **Do NOT use** and blocks managed print start.
+  Unrated is distinct from zero and remains allowed. Unavailable plates are not
+  recommended. Ratings never automatically switch a physical plate.
+
+##### Existing side ratings
+
+Equal side ratings and a single known side rating carry over to the whole plate.
+**Conflicting side ratings reset to Unrated**, as requested, including a conflict
+between zero and a positive rating. Review those combinations before printing;
+Unrated does not block a print. Original maps and the reset plate IDs remain in
+the migration audit. Captured print history is unchanged.
+
+##### Printer setup
+
+Replace the app's included `filament-manager-macros.cfg` while idle and run
+`FIRMWARE_RESTART`; verify macro version **0.8.4**. Keep the existing managed Cura
+start boundary. The app evaluates the effective template/filament rating before
+releasing a managed start, independently of warning-only settings inspection.
+Zero stars offers cancellation, not a filament-weight override. Exact side
+receipts still prevent a late physical plate change after approval.
+
+No extra Moonraker polling or Cura-setting changes are introduced. Renderer 27
+remains current. Fresh workstation installers are included but the ranking feature
+does not require a Cura plugin replacement. Automated tests do not certify live
+printer motion; verify the zero-star dialog in a supervised idle-printer test.
+Unmanaged start G-code or direct printer-console commands can bypass managed
+preflight and must not be used as an alternative safety boundary.
+
+Google Sheets publishes template ratings and sparse filament overrides in
+**Plate Ratings**, with whole-plate IDs and separate template/filament links.
+
+##### Rollback
+
+Retain a pre-upgrade backup. Downgrade refuses to discard nonempty filament
+overrides. After explicitly removing them, downgrade copies each whole-plate
+rating onto both sides. It cannot recreate conflicting values that were reset;
+use the backup or retained migration audit for those original values.
+
 ### Fixed
 
 - Filament overrides and current template ratings now drive the same zero-star print-start guard regardless of which side is active or which optional inspection policy is selected.
@@ -126,7 +248,7 @@ Testing release. See `docs/UPGRADE_0.8.4.md` for rating migration and printer se
 
 ## 0.8.3 - 09.14.2026
 
-Testing release. See `docs/UPGRADE_0.8.3.md` for the required macro and agent upgrade.
+Testing release. Upgrade guidance below covers the required macro and agent update.
 
 ### Added
 
@@ -142,6 +264,57 @@ Testing release. See `docs/UPGRADE_0.8.3.md` for the required macro and agent up
 - Removed Labels from navigation and redundant card footers; updated navigation icons/order and replaced app branding with the supplied color/white/black artwork.
 - Print History removes Machine, links captured spool and filament identities, shows manufacturer for new captures, and distinguishes adaptive/initial-layer evidence.
 - Workstation renderer 27 writes the requested Moonraker metadata block above managed start G-code; setup documents cover Cura Time Lapse Camera M240 on every layer.
+
+#### Upgrade guidance
+
+Back up the canonical database and upgrade web and worker together. This version keeps the existing schema and all historical print/settings snapshots.
+
+##### Printer and Cura installation
+
+1. While the printer is idle, back up and replace the included `filament-manager-macros.cfg` with the [0.8.3 reference](integrations/klipper/filament-manager-macros.cfg). Keep your existing hardware and pause/park routines. Run `FIRMWARE_RESTART` and verify `FILAMENT_MANAGER_SPOOL_STATE` reports `0.8.3`.
+2. Upgrade each workstation agent. Close Cura, use **Push app settings**, and wait for **Succeeded** before reopening. Renderer revision 27 refreshes saved machine start G-code automatically.
+3. Re-slice prints to include the updated metadata and managed start boundary. Existing uploaded G-code is never rewritten.
+
+Every managed start now waits for inspection. Temperatures above the printer's configured bed/extruder limits, or positive chamber heating on a printer without a heated chamber, block even in warn-only mode. Supported heater maxima are observed throughout the already downloaded file, including later tower sections. Missing inspection cannot certify hardware safety and keeps the gate blocked. Ordinary settings differences remain warnings when that policy is selected. Direct unmanaged starts and arbitrary custom heating macros cannot be certified by this gate.
+
+##### Build plate compatibility
+
+Open a saved material template to rate each physical plate side from zero to five stars. Changes save immediately. **Unrated** is allowed but is not a recommendation. Zero means avoid because of possible plate damage and blocks the managed start without a filament-weight override. Five stars is recommended; other positive ratings are suggested in descending order on filament/spool details and the dashboard. Ratings apply to the filament's current exact printer/nozzle template. They are also published to the Google workbook's **Plate Ratings** tab.
+
+The selected plate must be synchronized before starting. Approval is bound to its exact side; changing the side during a deferred start requires cancelling and restarting after synchronization.
+
+The worker creates **Silk PLA**, **PLA Carbon Fiber**, and **PETG Carbon Fiber** templates by copying existing PLA/PETG settings in each matching nozzle scope. Review and calibrate those starting values. Existing filaments, overrides, Silk/Ultra Silk finishes, Carbon Fiber fillers, and print history are preserved. A missing base template is not replaced with guessed settings.
+
+##### Cura metadata and timelapse
+
+The agent places this comment block at the top of the machine's start G-code, before `FILAMENT_MANAGER_START_PRINT`:
+
+```gcode
+;===== MOONRAKER METADATA =====
+;Nozzle diameter = {machine_nozzle_size}
+;Filament type = {material_type}
+;Filament name = {material_name}
+;Filament weight = {filament_weight}
+;M109 S{material_print_temperature}
+;M190 S{material_bed_temperature}
+;M191 S{build_volume_temperature}
+;===== END MOONRAKER METADATA =====
+```
+
+These are metadata comments, not heater commands. Cura resolves `filament_weight` after slicing and may format it as a per-extruder list.
+
+For layer-triggered timelapse, install/enable Cura's Post Processing plugin, open **Extensions → Post Processing → Modify G-Code**, add **Time Lapse Camera**, and configure it to emit **M240** at every layer. Confirm your printer's timelapse integration handles M240. The app does not install camera hardware or rewrite uploaded files.
+
+##### Other changes
+
+- Printer metadata saves tolerate unrelated status updates while retaining real concurrent-edit conflicts.
+- Compact dashboard/inventory cards, full-width printer and workstation summaries with detail dialogs, new app icons, and simplified navigation. Print labels remain on each spool's detail dialog.
+- Activity pages use 20 events by default, with 50/100/200 choices, whole-history search, and first/previous/next/last controls.
+- Print history links captured spool/filament identities, records manufacturer for new prints, separates initial layer height/width, and shows observed variable layer-height ranges. Old missing evidence remains unknown. Dates include at most two elapsed units.
+- Missed automatic backups coalesce into one current backup when printing permits. A new schedule occurrence supersedes the older occurrence's retry delay; successful backups restart the interval. Existing retention remains unchanged.
+- Confirmed printer power-off shows synchronization checks as waiting. Unknown power or a failed power read still reports the underlying problem.
+
+Automated tests do not certify physical printer motion. After updating macros, verify a safe normal start, an over-limit file, an incompatible plate, and a warn-only calibration print while supervising the printer.
 
 ### Fixed
 
@@ -171,7 +344,7 @@ Testing release.
 
 Testing release. Migration `fa012b3c4d56` preserves historical settings, appends template-density corrections to current profiles, and classifies existing physical spools as Unknown. No printer macro replacement is required.
 
-Known limitation: published at the operator's explicit request without upgrading development dependencies flagged by GHSA-82fw-gwwq-j7x9 and GHSA-2883-xcg3-v3hh. Audit checks remain enabled; see `docs/UPGRADE_0.8.1.md`.
+Known limitation: published at the operator's explicit request without upgrading development dependencies flagged by GHSA-82fw-gwwq-j7x9 and GHSA-2883-xcg3-v3hh. Audit checks remain enabled; see the upgrade guidance below.
 
 ### Added
 
@@ -185,6 +358,36 @@ Known limitation: published at the operator's explicit request without upgrading
 - Display at most two decimal places while preserving stored precision and exact historical archives.
 - Print History labels the recorded Cura quality name as Cura profile used, separately from the machine.
 - Google publication includes physical spool types and cached printer duration totals. Shared Spoolman tare defaults require one known unambiguous product spool design and matching manufacturer/capacity evidence.
+
+#### Upgrade guidance
+
+This version is a testing release. No live printer configuration or firmware restart is needed for these changes.
+
+##### Known development dependency findings
+
+This testing release retains the existing dependencies at the operator's explicit request. The frontend audit reports GHSA-82fw-gwwq-j7x9 in Vitest/@vitest/mocker and GHSA-2883-xcg3-v3hh in js-yaml (two moderate findings and one high, including the parent dependency). These development dependencies are not shipped in the static frontend runtime. Do not expose development/test servers to untrusted networks. The audit gate remains enabled and may fail CI; publication is an explicit exception for this version, not a clean security-audit result.
+
+##### Inventory and settings
+
+- Existing spools start with **Unknown** spool type. Select a known design in spool settings; use **New Spool Type** for another design. Choices are remembered immediately.
+- Tare suggestions require the same manufacturer, spool type and purchased filament capacity, including archived evidence. Unknown designs/manufacturers are not pooled. Suggestions are never applied automatically.
+- Spoolman's shared filament tare is cleared when a product's packaging design is unknown or ambiguous. Each physical spool's own tare is unchanged.
+- Density silently follows each print profile's linked template. Migration `fa012b3c4d56` appends corrected current profiles, retaining old profile/print snapshots and all other custom settings. Cura receives the new state through normal closed-Cura synchronization.
+- The product's creation-template density mirror follows that template for physical inventory calculations. Legacy product-density fields remain accepted for compatibility but cannot override a linked template.
+
+##### History
+
+Last completed and last other print dates use recorded print starts (or exact spool-change segment starts), not synchronization times. Other includes cancelled, failed and interrupted jobs; unresolved or in-progress records do not establish terminal-use dates. Missing attribution remains **No recorded print**.
+
+Print settings show saved print evidence first. When a summary value is missing, the print's immutable app profile may supply it with **Captured app settings (not measured)**. This does not claim that a calibration tower maintained one setting throughout its print, change inspection decisions, or use today's template. Unknown Cura profile names remain **Not recorded**.
+
+Printer duration totals come from Moonraker's [history totals API](https://moonraker.readthedocs.io/en/latest/external_api/history/#get-job-totals). Total print time and longest print exclude pauses. Moonraker can reset these counters; the app displays its latest successful receipt rather than inventing lifetime totals. Refresh happens alongside history synchronization, deferred during printing/pauses. A failed refresh retains the previous values and timestamp.
+
+Display rounding does not change stored settings or exported historical archives. Database snapshots and machine-bound values keep their required precision.
+
+##### Deployment
+
+Back up the canonical database before upgrading and update web and worker together. Startup runs the forward migration automatically. Downgrade refuses to discard entered spool types; use the pre-upgrade backup for a full rollback. Historical snapshots appended during upgrade remain retained on a schema downgrade.
 
 ### Fixed
 

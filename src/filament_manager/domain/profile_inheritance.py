@@ -18,6 +18,7 @@ if TYPE_CHECKING:
 
 
 PROFILE_SETTING_KEYS = (
+    "shore_hardness",
     "moisture_sensitivity",
     "drying_time_hours",
     "drying_temp_c",
@@ -58,6 +59,7 @@ DECIMAL_SETTING_KEYS = frozenset(
         "preferred_build_plate_surface_id",
         "moisture_sensitivity",
         "drying_time_hours",
+        "shore_hardness",
     }
 )
 NUMERIC_TEXT = re.compile(r"^-?\d+(?:\.\d+)?$")
@@ -78,8 +80,10 @@ TEMPLATE_ONLY_CURA_EXTENSION_KEYS = CURA_TEMPLATE_ONLY_SETTING_KEYS & CURA_EXTEN
 
 
 def _plain_value(value: object) -> object:
-    """Return a JSON-compatible stable scalar without binary floating point."""
+    """Return detached JSON-compatible values without converting decimals through floats."""
 
+    if isinstance(value, dict):
+        return {key: _plain_value(item) for key, item in value.items()}
     if isinstance(value, Decimal):
         return format(value, "f")
     if isinstance(value, UUID):
@@ -92,6 +96,8 @@ def _equivalent(left: object, right: object) -> bool:
 
     left = _plain_value(left)
     right = _plain_value(right)
+    if isinstance(left, dict) and isinstance(right, dict):
+        return left.keys() == right.keys() and all(_equivalent(left[key], right[key]) for key in left)
     if left == right:
         return True
     if isinstance(left, bool) or isinstance(right, bool):

@@ -18,6 +18,8 @@ import { Link, useRouter } from '../context/RouterContext'
 import { useCollectionView } from '../hooks/useCollectionView'
 import { filamentSwatchStyle } from '../lib/colors'
 import { compactNumber, grams, inputNumber } from '../lib/format'
+import { hardnessByFilament } from '../lib/shoreHardness'
+import { ShoreHardnessReference } from '../components/ShoreHardnessReference'
 import { materialIdentitySummary, materialModifierSummary } from '../lib/materialIdentity'
 
 function FilamentIdentity({ filament, hero = false }: { filament: Filament; hero?: boolean }) {
@@ -29,6 +31,7 @@ function FilamentCard({
   detailed = false,
   printingTemperature,
   dryingTemperature,
+  hardness,
   profileCount,
   missingTemplate,
 }: {
@@ -36,6 +39,7 @@ function FilamentCard({
   detailed?: boolean
   printingTemperature: string
   dryingTemperature: string
+  hardness: string
   profileCount: number
   missingTemplate: boolean
 }) {
@@ -45,9 +49,9 @@ function FilamentCard({
     <dl className="catalog-meta">
       <div><dt>Color</dt><dd>{filament.color_name}</dd></div>
       <div><dt>Drying temperature</dt><dd>{dryingTemperature}</dd></div>
-      <div><dt>Density</dt><dd>{compactNumber(filament.density_g_cm3, 2)} g/cm³</dd></div>
+      <div><dt>Shore hardness</dt><dd>{hardness}</dd></div>
       <div><dt>Printing temperature</dt><dd>{printingTemperature}</dd></div>
-      {detailed ? <><div><dt>Print-settings scopes</dt><dd>{profileCount}</dd></div><div><dt>Color changes</dt><dd>{filament.color_editable ? 'Available' : 'Locked by history'}</dd></div></> : null}
+      {detailed ? <><div><dt>Print-settings scopes</dt><dd>{profileCount}</dd></div><div><dt>Density</dt><dd>{compactNumber(filament.density_g_cm3, 2)} g/cm³</dd></div></> : null}
     </dl>
     {detailed && filament.notes ? <p className="collection-card__notes">{filament.notes}</p> : null}
     {detailed ? <span className="collection-card__link">Open filament <ArrowRight size={16} /></span> : null}
@@ -61,6 +65,7 @@ export default function FilamentsPage() {
   const queryClient = useQueryClient()
   const [search, setSearch] = useState('')
   const [material, setMaterial] = useState('')
+  const [sort, setSort] = useState('catalog')
   const [view, setView] = useCollectionView('filaments', 'cards')
   const [showCreate, setShowCreate] = useState(path === '/filaments/new' || Boolean(duplicateSourceId))
   const [createdFilament, setCreatedFilament] = useState<Filament | null>(null)
@@ -133,6 +138,19 @@ export default function FilamentsPage() {
     }
     return new Map(Array.from(grouped, ([id, values]) => [id, Array.from(values).join(' / ')]))
   }, [profiles.data])
+  const hardnessPresentation = useMemo(() => hardnessByFilament(profiles.data ?? []), [profiles.data])
+  const displayedFilaments = useMemo(() => {
+    const items = [...(query.data ?? [])]
+    if (sort === 'catalog') return items
+    return items.sort((left, right) => {
+      const a = hardnessPresentation.get(left.id)?.rank ?? null
+      const b = hardnessPresentation.get(right.id)?.rank ?? null
+      if (a === null) return b === null ? 0 : 1
+      if (b === null) return -1
+      return sort === 'softest' ? a - b : b - a
+    })
+  }, [query.data, hardnessPresentation, sort])
+  const hardnessLabel = (id: string) => profiles.isError ? 'Unable to load' : profiles.isPending ? 'Loading…' : hardnessPresentation.get(id)?.label ?? 'Not set'
   const create = useMutation({
     mutationFn: (form: HTMLFormElement) => {
       const data = new FormData(form)
@@ -190,7 +208,7 @@ export default function FilamentsPage() {
   }
   return <div><PageHeader eyebrow="Product catalog" title="Filaments" description="Real filament products with physical identity, inventory, and printer/nozzle-specific print settings." actions={<><FilamentSectionNav />{user?.role !== 'viewer' ? <button className="button button--primary" onClick={() => setShowCreate(true)}><Plus size={17} /> Add filament</button> : null}</>} />
     {message && <div className="deployment-note" role="status">{message}</div>}
-    <section className="toolbar"><label className="search-field"><Search size={18} /><input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Search type, color, filler, or finish" aria-label="Search filaments" /></label><MaterialTypeFilter templates={templates.data ?? []} value={material} onChange={setMaterial} /><CollectionViewSelector label="Filaments" value={view} onChange={setView} /><span className="toolbar__summary">{query.data?.length ?? 0} products</span></section>{query.isLoading || profiles.isLoading ? <LoadingState /> : !query.data?.length ? <EmptyState icon={PackageOpen} title="No filament products" description="Add a material template, then add the first filament product here." /> : view === 'list' ? <div className="table-card collection-table"><table><thead><tr><th>Filament</th><th>Modifiers</th><th>Diameter</th><th>Density</th><th>Nominal</th><th>Print settings</th></tr></thead><tbody>{query.data.map((filament) => <tr className={missingTemplate(filament) ? 'inventory-card--warning' : undefined} key={filament.id} tabIndex={0} onClick={() => navigate(`/filaments/${filament.id}`)} onKeyDown={(event) => (event.key === 'Enter' || event.key === ' ') && navigate(`/filaments/${filament.id}`)}><td><FilamentIdentity filament={filament} /></td><td>{materialModifierSummary(filament) ?? 'Standard material'}</td><td>{compactNumber(filament.diameter_mm, 2)} mm</td><td>{compactNumber(filament.density_g_cm3, 2)} g/cm³</td><td>{grams(filament.nominal_net_mass_g)}</td><td>{filament.material_template_revision_id ? 'Available' : 'Unavailable'}</td></tr>)}</tbody></table></div> : <section className={`collection-grid collection-grid--${view}`}>{query.data.map((filament) => { const presentation = profilePresentation.get(filament.id); return <FilamentCard key={filament.id} filament={filament} detailed={view === 'detailed'} printingTemperature={presentation?.temperature ?? 'Not configured'} dryingTemperature={profiles.isError ? 'Unable to load' : dryingTemperatures.get(filament.id) ?? 'Not set'} profileCount={presentation?.count ?? 0} missingTemplate={missingTemplate(filament)} /> })}</section>}
+    <section className="toolbar"><label className="search-field"><Search size={18} /><input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Search type, color, filler, or finish" aria-label="Search filaments" /></label><MaterialTypeFilter templates={templates.data ?? []} value={material} onChange={setMaterial} /><label>Sort filaments<select aria-label="Sort filaments" value={sort} onChange={(event) => setSort(event.target.value)}><option value="catalog">Catalog order</option><option value="softest">Hardness: softest first (approximate)</option><option value="hardest">Hardness: hardest first (approximate)</option></select></label><ShoreHardnessReference /><CollectionViewSelector label="Filaments" value={view} onChange={setView} /><span className="toolbar__summary">{query.data?.length ?? 0} products</span></section>{query.isLoading || profiles.isLoading ? <LoadingState /> : !query.data?.length ? <EmptyState icon={PackageOpen} title="No filament products" description="Add a material template, then add the first filament product here." /> : view === 'list' ? <div className="table-card collection-table"><table><thead><tr><th>Filament</th><th>Modifiers</th><th>Shore hardness</th><th>Density</th><th>Nominal</th><th>Print settings</th></tr></thead><tbody>{displayedFilaments.map((filament) => <tr className={missingTemplate(filament) ? 'inventory-card--warning' : undefined} key={filament.id} tabIndex={0} onClick={() => navigate(`/filaments/${filament.id}`)} onKeyDown={(event) => (event.key === 'Enter' || event.key === ' ') && navigate(`/filaments/${filament.id}`)}><td><FilamentIdentity filament={filament} /></td><td>{materialModifierSummary(filament) ?? 'Standard material'}</td><td>{hardnessLabel(filament.id)}</td><td>{compactNumber(filament.density_g_cm3, 2)} g/cm³</td><td>{grams(filament.nominal_net_mass_g)}</td><td>{filament.material_template_revision_id ? 'Available' : 'Unavailable'}</td></tr>)}</tbody></table></div> : <section className={`collection-grid collection-grid--${view}`}>{displayedFilaments.map((filament) => { const presentation = profilePresentation.get(filament.id); return <FilamentCard key={filament.id} filament={filament} detailed={view === 'detailed'} hardness={hardnessLabel(filament.id)} printingTemperature={presentation?.temperature ?? 'Not configured'} dryingTemperature={profiles.isError ? 'Unable to load' : dryingTemperatures.get(filament.id) ?? 'Not set'} profileCount={presentation?.count ?? 0} missingTemplate={missingTemplate(filament)} /> })}</section>}
     {showCreate ? <Modal title={duplicateSourceId ? 'Duplicate filament' : 'Add a filament'} description={duplicateSourceId ? 'Create a separate product with the source filament’s product details and explicit settings for the selected source scope. Spools and history are not copied.' : 'This creates the filament and its first print-settings scope. Additional printer/nozzle settings can be added from the filament later.'} onClose={closeCreate} size="wide" footer={<><button className="button" type="button" onClick={closeCreate}>Cancel</button><button className="button button--primary" form="create-filament" disabled={create.isPending || !selectableTemplates.length || (Boolean(duplicateSourceId) && duplicateSource.isLoading)}><Plus size={17} />{create.isPending ? 'Creating…' : duplicateSourceId ? 'Create duplicate' : 'Create filament'}</button></>}>
       {duplicateSource.error ? <p className="form-error" role="alert">{duplicateSource.error.message}</p> : selectableTemplates.length && (!duplicateSourceId || duplicateSource.data) ? <form id="create-filament" className="editor-form" onSubmit={submit} key={duplicateSource.data?.id ?? 'new'}>
         <EditorSection title="Product identity" description="Choose the starting print-settings scope and the labels operators see throughout inventory.">

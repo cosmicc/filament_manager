@@ -1367,6 +1367,7 @@ def _profile_payload(profile: MaterialProfile) -> dict[str, object]:
         "printer_id": str(profile.printer_id),
         "nozzle_diameter_mm": str(profile.nozzle_diameter_mm),
         "chamber_temp_c": str(profile.chamber_temp_c) if profile.chamber_temp_c is not None else None,
+        "shore_hardness": profile.shore_hardness,
         "extruder_temp_c": str(profile.extruder_temp_c),
         "bed_temp_c": str(profile.bed_temp_c),
         "initial_bed_temp_c": str(profile.initial_bed_temp_c),

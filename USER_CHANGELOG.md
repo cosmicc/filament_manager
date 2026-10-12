@@ -1,5 +1,25 @@
 # User Changelog
 
+## 0.9.2 - 10.11.2026
+
+Testing release. Back up your database and upgrade web and worker together. No Cura-agent or macro update is needed from 0.9.1.
+
+### Added
+
+- Enter one Shore A or D hardness in a template, customize it in a filament’s settings, or revert to the template. Spools show the inherited result.
+- Browse an A/D reference table and see approximate opposite-scale values within its overlap.
+- Sort filaments from softest or hardest, with unknown hardness last.
+
+### Changed
+
+- Hardness replaces density on filament cards and diameter in the filament list. Density replaces Color changes on detailed filament cards.
+- Version changes and upgrade guidance are consolidated in CHANGELOG.md instead of separate version-specific documents.
+- Hardness replaces printer assignment on detailed spool cards. Printer assignment remains in spool details.
+
+### Fixed
+
+- Drying temperature, drying time, and moisture sensitivity are grouped prominently in spool details.
+
 ## 0.9.1 - 09.22.2026
 
 Testing release. Upgrade web and worker together; no Cura-agent or macro update is needed from 0.9.0.
@@ -135,7 +155,7 @@ Testing release.
 - Missed backups run at the next safe opportunity; powered-off printer synchronization shows Waiting.
 - Missing-template filaments are highlighted and redundant card text is removed.
 
-Update the app's Klipper macros and restart firmware while idle, then upgrade workstation agents with Cura closed. See [upgrade instructions](docs/UPGRADE_0.8.3.md).
+Update the app's Klipper macros and restart firmware while idle, then upgrade workstation agents with Cura closed. See [upgrade instructions](CHANGELOG.md#083---09142026).
 
 
 ## 0.8.2 - 09.09.2026

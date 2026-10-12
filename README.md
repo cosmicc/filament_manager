@@ -1,8 +1,8 @@
 # Filament Manager
 
-Testing release **0.9.1** adds dashboard inventory shortcuts, active build plate details, and Power on for confirmed-off printers. Configure the correct Moonraker power device in 3D Printers; Moonraker must remain reachable while printer power is off. Backup listings avoid hashing every dump; downloads and restores still require full integrity verification. Upgrade web and worker together. No agent or macro upgrade is needed from 0.9.0.
+Testing release **0.9.2** adds Shore hardness to templates, filament settings, and spool details, plus hardness sorting and an A/D reference table. Filaments can override their template hardness. Spool details show drying temperature, time, and moisture sensitivity together. Back up the database and upgrade web and worker together; startup applies the migration. No Cura-agent or macro update is required from 0.9.1. See [hardness and upgrade notes](CHANGELOG.md#092---10112026).
 
-Testing release **0.9.0** adds inherited support controls, saved G-code viewing/downloads, clearer print durations, and stale-history recovery. See [0.9.0 upgrade notes](docs/UPGRADE_0.9.0.md) for archive limits and the required Cura-agent upgrade.
+Testing release **0.9.0** adds inherited support controls, saved G-code viewing/downloads, clearer print durations, and stale-history recovery. See [0.9.0 upgrade notes](CHANGELOG.md#090---09222026) for archive limits and the required Cura-agent upgrade.
 
 Filament Manager is a self-hosted inventory and calibration application for physical filament spools, manual weight measurements, material profiles, build plates, and Klipper-based printers.
 
@@ -18,9 +18,9 @@ PostgreSQL is the canonical data store. A distinct Spoolman service remains the 
 - Testing release **0.8.5** replaces the old plate preference selector with compact star-rating cards at the bottom of template and filament print settings. Ratings save immediately; the reset icon clears a template rating or restores filament inheritance. Upgrade web and worker together; no new migration, agent upgrade, or macro replacement is required from 0.8.4.
 - Build plates no longer show a separate Preferred materials field; star ratings determine filament compatibility and recommendations.
 
-- Testing release **0.8.4** adds whole-build-plate star ratings, live template inheritance, filament overrides, and better-plate warnings. Open **Build plate ratings** on Templates or Build plates. Review reset legacy conflicts and printer setup in the [0.8.4 upgrade notes](docs/UPGRADE_0.8.4.md).
+- Testing release **0.8.4** adds whole-build-plate star ratings, live template inheritance, filament overrides, and better-plate warnings. Open **Build plate ratings** on Templates or Build plates. Review reset legacy conflicts and printer setup in the [0.8.4 upgrade notes](CHANGELOG.md#084---09142026).
 
-- Testing release 0.8.1 adds spool design-aware tare suggestions, separate completed/other print dates, Moonraker printer duration totals, and source-labelled history settings. See [0.8.1 upgrade notes](docs/UPGRADE_0.8.1.md).
+- Testing release 0.8.1 adds spool design-aware tare suggestions, separate completed/other print dates, Moonraker printer duration totals, and source-labelled history settings. See [0.8.1 upgrade notes](CHANGELOG.md#081---09082026).
 - Guided Google setup, encrypted app-managed printer connections, a printer carousel and overview, Dashboard **Sync to Cura**, and independently loaded hotends with verified printer-owned routines. See [printer setup](docs/PRINTER_CONNECTIONS.md).
 - New spools receive permanent automatic codes (P1 for PLA/PLA+, G1 for PETG, T1 for TPU, PP1 for PP, S1 for SPLA, and material abbreviations otherwise). Existing codes are preserved; the first available number is reused only when no active or archived spool holds it. Locations shows remaining-filament bars and percentages.
 - Google sign-in and **Sync now** under Settings, with automatic one-way publication of inventory, settings, calibration and print history to a linked, filterable **Filament Manager** spreadsheet. See [Google setup](docs/GOOGLE_SHEETS.md).
@@ -65,7 +65,7 @@ Version 0.7.8 fixes AutoTowers retraction-speed base commands and retains the Cu
 
 ## Start locally
 
-Version 0.8.3 is a testing release. Upgrade web and worker together, replace the app's Klipper macros while idle, and upgrade the workstation agent with Cura closed. Follow the [0.8.3 upgrade guide](docs/UPGRADE_0.8.3.md) for safety gates, compatibility ratings, Cura metadata, and per-layer M240 timelapse setup. Preserve the private shared data volume's encryption key separately from database backups. See [full QQ-S macro installation](docs/PAUSE_PARK_SETUP.md), [Google setup](docs/GOOGLE_SHEETS.md), and [printer setup](docs/PRINTER_CONNECTIONS.md).
+Version 0.8.3 is a testing release. Upgrade web and worker together, replace the app's Klipper macros while idle, and upgrade the workstation agent with Cura closed. Follow the [0.8.3 upgrade guide](CHANGELOG.md#083---09142026) for safety gates, compatibility ratings, Cura metadata, and per-layer M240 timelapse setup. Preserve the private shared data volume's encryption key separately from database backups. See [full QQ-S macro installation](docs/PAUSE_PARK_SETUP.md), [Google setup](docs/GOOGLE_SHEETS.md), and [printer setup](docs/PRINTER_CONNECTIONS.md).
 
 See [INSTALL.md](INSTALL.md) for prerequisites, deployment variables, automatic database upgrades, first-login credentials, and Docker Compose instructions.
 

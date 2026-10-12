@@ -36,11 +36,16 @@ def insert_legacy_record(session: Session, record: object) -> None:
         if column.name in mapped.c:
             column.default = mapped.c[column.name].default
             column.type = mapped.c[column.name].type
-    values = {
-        column.name: getattr(record, column.name)
-        for column in table.columns
-        if getattr(record, column.name, None) is not None
-    }
+    # Python attributes may retain a new name while the SQL column stays compatible.
+    mapper = inspect(record).mapper
+    values = {}
+    for column in table.columns:
+        if column.name not in mapped.c:
+            continue
+        attribute = mapper.get_property_by_column(mapped.c[column.name]).key
+        value = getattr(record, attribute, None)
+        if value is not None:
+            values[column.name] = value
     record.id = session.scalar(table.insert().values(**values).returning(table.c.id))
 
 
@@ -133,7 +138,7 @@ def test_unknown_manufacturer_upgrade_preserves_archived_filaments_and_snapshots
             with pytest.raises(RuntimeError, match="legacy filament identity rule"):
                 command.downgrade(config, "b6c7d8e9f012")
             with engine.connect() as connection:
-                assert connection.scalar(text("SELECT version_num FROM alembic_version")) == "fc234d5e6f78"
+                assert connection.scalar(text("SELECT version_num FROM alembic_version")) == "fd345e6f7890"
         else:
             command.downgrade(config, "b6c7d8e9f012")
             assert "uq_filament_product_identity" in {
@@ -639,6 +644,42 @@ def test_template_only_settings_migration_appends_corrected_profile_snapshot(
                 == 1
             )
 
+        # The 0.9.2 upgrade adds an unknown cache and preserves populated history.
+        with engine.connect() as connection:
+            historic = list(
+                connection.execute(text("SELECT id, settings FROM material_template_revisions ORDER BY id"))
+            )
+            assert (
+                connection.scalar(
+                    text("SELECT count(*) FROM material_profiles WHERE shore_hardness IS NOT NULL")
+                )
+                == 0
+            )
+        command.downgrade(alembic_config, "fc234d5e6f78")
+        command.upgrade(alembic_config, "head")
+        with engine.connect() as connection:
+            assert (
+                list(
+                    connection.execute(
+                        text("SELECT id, settings FROM material_template_revisions ORDER BY id")
+                    )
+                )
+                == historic
+            )
+        with engine.begin() as connection:
+            connection.execute(
+                text("UPDATE material_profiles SET shore_hardness = :value"),
+                {"value": json.dumps({"scale": "A", "value": "95"})},
+            )
+        with pytest.raises(RuntimeError, match="Shore hardness exists"):
+            command.downgrade(alembic_config, "fc234d5e6f78")
+        with engine.connect() as connection:
+            assert (
+                connection.scalar(
+                    text("SELECT count(*) FROM material_profiles WHERE shore_hardness IS NOT NULL")
+                )
+                == 2
+            )
         engine.dispose()
         get_settings.cache_clear()
 
@@ -773,7 +814,7 @@ def test_previous_schema_automatically_upgrades_to_metadata_head(
 
         upgrade_database(DatabaseConfig(url=database_url))
         with engine.connect() as connection:
-            assert connection.scalar(text("SELECT version_num FROM alembic_version")) == "fc234d5e6f78"
+            assert connection.scalar(text("SELECT version_num FROM alembic_version")) == "fd345e6f7890"
             assert (
                 connection.scalar(
                     text(
@@ -900,6 +941,7 @@ def test_previous_schema_automatically_upgrades_to_metadata_head(
             column["name"] for column in inspector.get_columns("material_templates")
         }
         profile_columns = {column["name"]: column for column in inspector.get_columns("material_profiles")}
+        assert profile_columns["shore_hardness"]["nullable"] is True
         assert "setting_overrides" in profile_columns
         assert "retraction_prime_speed_mm_s" in profile_columns
         assert profile_columns["source_template_revision_id"]["nullable"] is False

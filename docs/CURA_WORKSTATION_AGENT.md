@@ -1,8 +1,8 @@
 # Cura Workstation Agent
 
-Unreleased **0.9.0 / renderer 28** also records the selected Cura quality profile at slice time as a bounded inert G-code comment. Upgrade with Cura closed, push settings, reopen and re-slice; imported files are never relabelled. Six optional support settings are added; Tree Maximum Branch Angle and Retract at Layer Change are retired from app management. See [0.9.0 upgrade notes](UPGRADE_0.9.0.md).
+Unreleased **0.9.0 / renderer 28** also records the selected Cura quality profile at slice time as a bounded inert G-code comment. Upgrade with Cura closed, push settings, reopen and re-slice; imported files are never relabelled. Six optional support settings are added; Tree Maximum Branch Angle and Retract at Layer Change are retired from app management. See [0.9.0 upgrade notes](../CHANGELOG.md#090---09222026).
 
-For 0.8.3, follow the [upgrade and Cura setup notes](UPGRADE_0.8.3.md). Renderer 27 installs the Moonraker metadata comment block before the managed start boundary. Configure **Extensions → Post Processing → Modify G-Code → Time Lapse Camera** to add **M240** on every layer when using timelapse. Re-slice after installing updated settings; uploaded files are not rewritten.
+For 0.8.3, follow the [upgrade and Cura setup notes](../CHANGELOG.md#083---09142026). Renderer 27 installs the Moonraker metadata comment block before the managed start boundary. Configure **Extensions → Post Processing → Modify G-Code → Time Lapse Camera** to add **M240** on every layer when using timelapse. Re-slice after installing updated settings; uploaded files are not rewritten.
 
 ## What it automates
 

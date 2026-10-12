@@ -317,3 +317,18 @@ describe('MaterialSettingsEditor validation', () => {
     expect(within(chooser).getByText('No other active template has a value')).toBeTruthy()
   })
 })
+
+it('saves, clears and reverts hardness as one scale/value pair', () => {
+  const base = { ...settings, shore_hardness: { scale: 'D' as const, value: '75' } }
+  const rendered = render(<form><MaterialSettingsEditor settings={{ ...base, shore_hardness: { scale: 'A', value: '95' } }} baseSettings={base} overrideKeys={['shore_hardness']} catalog={[]} scope="profile" /></form>)
+  const controls = within(rendered.container)
+  const form = rendered.container.querySelector('form')!
+  expect(settingsFromForm(form, [], 'profile').shore_hardness).toEqual({ scale: 'A', value: '95' })
+  fireEvent.click(controls.getByRole('button', { name: 'Revert to Template' }))
+  expect(settingsFromForm(form, [], 'profile').shore_hardness).toEqual({ scale: 'D', value: '75' })
+  fireEvent.change(controls.getByRole('spinbutton', { name: 'Shore hardness value' }), { target: { value: '' } })
+  expect(settingsFromForm(form, [], 'profile').shore_hardness).toBeNull()
+  expect(controls.getByRole('button', { name: 'Revert to Template' })).toBeTruthy()
+  fireEvent.change(controls.getByRole('spinbutton', { name: 'Shore hardness value' }), { target: { value: '0' } })
+  expect(settingsFromForm(form, [], 'profile').shore_hardness).toEqual({ scale: 'D', value: '0' })
+})

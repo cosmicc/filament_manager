@@ -536,6 +536,23 @@ class CalibrationResponse(ApiModel):
     steps: list[CalibrationStepResponse]
 
 
+class ShoreHardness(ApiModel):
+    """One declared durometer measurement; derived scale estimates are never stored."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    scale: Literal["A", "D"]
+    value: Decimal = Field(ge=0, le=100, max_digits=5, decimal_places=2)
+
+    @field_validator("value", mode="before")
+    @classmethod
+    def reject_boolean(cls, value: object) -> object:
+        """Do not interpret Boolean inputs as a physical hardness measurement."""
+        if isinstance(value, bool):
+            raise ValueError("Use a numeric hardness value")
+        return value
+
+
 class MaterialSettingsInput(ApiModel):
     """Complete typed and extension Cura settings reusable by profiles and templates."""
 
@@ -543,6 +560,7 @@ class MaterialSettingsInput(ApiModel):
     drying_temp_c: Decimal | None = Field(default=None, ge=0, le=300)
     moisture_sensitivity: MoistureSensitivity | None = None
     drying_time_hours: DryingTimeHours | None = None
+    shore_hardness: ShoreHardness | None = None
     extruder_temp_c: Decimal
     bed_temp_c: Decimal
     initial_bed_temp_c: Decimal | None = None

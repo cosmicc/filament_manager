@@ -56,7 +56,7 @@ EXPORTS = (
         "material_profiles",
         "filament_product_id printer_id nozzle_diameter_mm min_layer_height_mm "
         "max_layer_height_mm version status chamber_temp_c drying_temp_c drying_time_hours "
-        "moisture_sensitivity extruder_temp_c bed_temp_c initial_bed_temp_c flow_percent "
+        "moisture_sensitivity shore_hardness extruder_temp_c bed_temp_c initial_bed_temp_c flow_percent "
         "print_speed_mm_s outer_wall_speed_mm_s inner_wall_speed_mm_s infill_speed_mm_s "
         "top_bottom_speed_mm_s initial_layer_speed_mm_s travel_speed_mm_s support_speed_mm_s "
         "bridge_speed_mm_s retraction_distance_mm retraction_speed_mm_s "

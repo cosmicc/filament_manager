@@ -1,8 +1,10 @@
 # Deployment and Operations Skill
 
+- Read root `CHANGELOG.md` for each version's migration, installation, and rollback requirements. Keep version-specific upgrade guidance there instead of creating separate upgrade documents; retain reusable operational procedures in this skill and the stable setup guides.
+
 - Testing release 0.9.1 upgrades web and worker together without a migration, agent, renderer, or macro change from 0.9.0. The Administrator's explicit Dashboard Power on action requires a reachable Moonraker host and a fresh Off receipt from the exact configured power device; it never powers off or performs motion. Backup listings show bounded metadata, while selected downloads and restores retain full validation. Automated power tests use mocks, not live hardware.
 
-- Testing release 0.9.0 requires web/worker migration `fc234d5e6f78` and agent 0.9.0 / renderer 28 installed with Cura closed. Re-slice for guaranteed profile-name comments. Canonical backups now include private G-code originals; account for storage growth and retained 100 MB per-file originals. No printer configuration is applied automatically. Follow `docs/UPGRADE_0.9.0.md`.
+- Testing release 0.9.0 requires web/worker migration `fc234d5e6f78` and agent 0.9.0 / renderer 28 installed with Cura closed. Re-slice for guaranteed profile-name comments. Canonical backups now include private G-code originals; account for storage growth and retained 100 MB per-file originals. No printer configuration is applied automatically. Follow `CHANGELOG.md (version 0.9.0)`.
 
 - The 0.9.0 QQ-S M240 alias requires the existing Moonraker Timelapse component, included `timelapse.cfg`, enabled layer capture, and a working camera snapshot URL. Install only the M240 block or the reviewed full QQ-S file while idle, prevent duplicate M240 definitions, then run FIRMWARE_RESTART. Check parking before testing; no camera setup or live configuration is changed by an application upgrade. See `docs/PAUSE_PARK_SETUP.md#m240-camera-snapshots`.
 
@@ -12,11 +14,11 @@
 
 - Testing release 0.8.5 upgrades web/worker together with no new migration, workstation renderer, or Klipper macro change from 0.8.4. The UI retires legacy preference controls without deleting their stored metadata; whole-plate ratings and zero-star safety remain authoritative. Existing 0.8.4 agents and macros remain compatible.
 
-- 0.8.4 upgrades web/worker together and applies `fb123c4d5e67`. Review conflicting legacy ratings reset to Unrated before printing, retain a backup, and install app macro 0.8.4 while idle plus FIRMWARE_RESTART. Renderer 27 remains unchanged. Follow `docs/UPGRADE_0.8.4.md`; published images and automated tests do not certify live printer motion.
+- 0.8.4 upgrades web/worker together and applies `fb123c4d5e67`. Review conflicting legacy ratings reset to Unrated before printing, retain a backup, and install app macro 0.8.4 while idle plus FIRMWARE_RESTART. Renderer 27 remains unchanged. Follow `CHANGELOG.md (version 0.8.4)`; published images and automated tests do not certify live printer motion.
 
-- Testing release 0.8.3 requires the updated app macro and idle firmware restart for mandatory hardware checks, plus workstation renderer 27 for the metadata header. Upgrade web/worker together, close Cura for agent deployment, and re-slice after successful synchronization. No schema migration is added. Follow `docs/UPGRADE_0.8.3.md`; never claim physical printer or live Google validation from automated fixtures.
+- Testing release 0.8.3 requires the updated app macro and idle firmware restart for mandatory hardware checks, plus workstation renderer 27 for the metadata header. Upgrade web/worker together, close Cura for agent deployment, and re-slice after successful synchronization. No schema migration is added. Follow `CHANGELOG.md (version 0.8.3)`; never claim physical printer or live Google validation from automated fixtures.
 
-- Version 0.8.1 is a testing release. Back up the canonical database and upgrade web/worker together; startup applies `fa012b3c4d56`, appending density-inheritance corrections without changing historical snapshots. Existing spool types remain Unknown until explicitly selected. No replacement of the 0.8.0 printer macros or firmware restart is required. Follow `docs/UPGRADE_0.8.1.md` for tare-default clearing, duration-counter semantics, and rollback limits.
+- Version 0.8.1 is a testing release. Back up the canonical database and upgrade web/worker together; startup applies `fa012b3c4d56`, appending density-inheritance corrections without changing historical snapshots. Existing spool types remain Unknown until explicitly selected. No replacement of the 0.8.0 printer macros or firmware restart is required. Follow `CHANGELOG.md (version 0.8.1)` for tare-default clearing, duration-counter semantics, and rollback limits.
 
 - Ship the full QQ-S example and matching app macro with 0.8.0. Follow `docs/PAUSE_PARK_SETUP.md` for exact filenames, one final app include, native pause/resume aliases, and removable-probe hooks. Back up live configuration and install only while idle; require supervised motion/runout verification after restart. Never replace another printer's toolchanger macros with this single-hotend example.
 
