@@ -1,6 +1,6 @@
 # Database and Migration Skill
 
-- Use SQLAlchemy 2.1.4 or newer with native `Mapped`/`mapped_column` typing. Single-entity queries use `Select[Entity]`; restore declared UUID/timestamp types on dynamic subquery aliases with narrowly scoped typing casts, and retain SQL null filters. Do not load the removed legacy mypy plugin or change historical schema fixtures to match current ORM columns.
+- Install `SQLAlchemy[asyncio]` 2.1.4 or newer so greenlet is present in clean web/worker environments, with native `Mapped`/`mapped_column` typing. Single-entity queries use `Select[Entity]`; restore declared UUID/timestamp types on dynamic subquery aliases with narrowly scoped typing casts, and retain SQL null filters. Do not load the removed legacy mypy plugin or change historical schema fixtures to match current ORM columns.
 
 - 0.9.2 migration `fd345e6f7890` adds nullable JSONB `material_profiles.shore_hardness`, an atomic `{scale: A|D, value: decimal text}` resolved cache. Templates retain it in settings JSON; profiles retain one sparse pair or explicit null, never independently inherit scale and value. Validate 0–100 finite values with at most two decimal places and no extra keys/Boolean input. Normalize nested numeric equivalence for reversion. Do not guess existing hardness or rewrite historical JSON/checksums. Align Diagnostics' `EXPECTED_SCHEMA_VERSION` with the new migration head. Downgrade refuses entered profile or template hardness; use a pre-upgrade backup. Hardness is reference metadata, excluded from Cura and current-template print comparisons.
 
