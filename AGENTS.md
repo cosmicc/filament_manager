@@ -163,6 +163,8 @@ On the Dashboard, place the full-width printer status card first, followed by it
 
 ## Documentation and release discipline
 
+Every newly authorized GitHub release must be explicitly marked Latest, including testing releases. Keep testing status in its title and notes; GitHub's prerelease flag must be false for Latest eligibility. Follow `skills/deployment.md` and verify the public latest-release endpoint after publication.
+
 Read [CHANGELOG.md](CHANGELOG.md) for version changes, release information, migrations, and upgrade or rollback guidance before version or release work. Keep that information in the relevant changelog entry, not in Mission or separate per-version upgrade documents. Mission describes the application's enduring purpose. Maintain current behavior and operational instructions in the relevant agent sections and skills.
 
 Filament UUIDs identify independent records even when derived or legacy names match. Manufacturer consolidation must preserve those records and their spool/history links; the legacy composite-name uniqueness rule is replaced by a nonunique lookup index. See `skills/database.md` for safe downgrade constraints.

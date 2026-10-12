@@ -12,6 +12,7 @@ Testing release. Back up the database and upgrade web and worker together. Start
 
 ### Changed
 
+- GitHub release 0.9.2 and future authorized releases are explicitly marked Latest. Testing status remains in release titles and notes; the GitHub prerelease flag is disabled to allow the Latest designation.
 - Filament cards show hardness in place of density; detailed cards show density in place of Color changes. Filament lists show hardness in place of diameter.
 - Detailed spool cards show hardness in place of printer assignment. The details dialog groups drying temperature, time, moisture sensitivity, and hardness prominently.
 - Release changes and upgrade/rollback guidance are consolidated here; removed the separate version-specific upgrade documents. AGENTS.md directs agents to this changelog and keeps Mission focused on the application purpose.

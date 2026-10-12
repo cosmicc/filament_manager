@@ -1,5 +1,7 @@
 # Deployment and Operations Skill
 
+- For every newly authorized GitHub release, explicitly set `--prerelease=false --latest=true` with `gh release create` or `gh release edit`. Keep testing status in the release title and notes because GitHub excludes prereleases from Latest. This supersedes older testing-release instructions requiring the prerelease flag. Verify the published release is non-draft and non-prerelease, and that `gh api repos/cosmicc/filament_manager/releases/latest --jq .tag_name` returns the exact intended tag. Preserve exact-SHA CI, package/checksum, and multi-architecture image verification. Ordinary pushes retain the existing CI/image workflow; release creation still requires authorization.
+
 - Read root `CHANGELOG.md` for each version's migration, installation, and rollback requirements. Keep version-specific upgrade guidance there instead of creating separate upgrade documents; retain reusable operational procedures in this skill and the stable setup guides.
 
 - Testing release 0.9.1 upgrades web and worker together without a migration, agent, renderer, or macro change from 0.9.0. The Administrator's explicit Dashboard Power on action requires a reachable Moonraker host and a fresh Off receipt from the exact configured power device; it never powers off or performs motion. Backup listings show bounded metadata, while selected downloads and restores retain full validation. Automated power tests use mocks, not live hardware.
