@@ -84,7 +84,7 @@ Do not add Redis, Celery, Kafka, or another message broker without an approved a
 - [Testing and validation](skills/testing.md)
 - [Docker, Swarm, and operations](skills/deployment.md)
 
-Read the relevant skill before changing that area. The numbered source specifications are under `docs/specification/`.
+Read the relevant skill before changing that area. SQLAlchemy models use native typed mappings; keep the full mypy gate without the obsolete SQLAlchemy plugin. See `skills/testing.md`. The numbered source specifications are under `docs/specification/`.
 
 ## Visual contract
 

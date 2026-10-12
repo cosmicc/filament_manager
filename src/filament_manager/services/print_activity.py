@@ -1,11 +1,12 @@
 """Read-only usage dates from captured identities, never mutable inventory links."""
 
 from datetime import datetime
-from typing import Literal
+from typing import Literal, cast
 from uuid import UUID
 
 from sqlalchemy import func, select, union_all
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.sql.elements import ColumnElement
 
 from filament_manager.models.enums import PrintJobStatus
 from filament_manager.models.printing import PrintJob, PrintMaterialSegment
@@ -43,12 +44,15 @@ async def print_activity_dates(
                 PrintMaterialSegment.started_at,
             ),
         ).subquery()
-    completed = func.max(participants.c.used_at).filter(PrintJob.status == PrintJobStatus.COMPLETED)
-    other = func.max(participants.c.used_at).filter(
+    # Restore declared model types lost through dynamic union/subquery aliases.
+    identity_column = cast(ColumnElement[UUID | None], participants.c.identity)
+    used_at_column = cast(ColumnElement[datetime | None], participants.c.used_at)
+    completed = func.max(used_at_column).filter(PrintJob.status == PrintJobStatus.COMPLETED)
+    other = func.max(used_at_column).filter(
         PrintJob.status.in_([PrintJobStatus.CANCELLED, PrintJobStatus.FAILED])
     )
     rows = await session.execute(
-        select(participants.c.identity, completed, other)
+        select(identity_column, completed, other)
         .join(PrintJob, PrintJob.id == participants.c.job_id)
         .where(
             participants.c.identity.is_not(None),
@@ -60,4 +64,5 @@ async def print_activity_dates(
     return {
         identity: {"last_completed_print_at": done, "last_other_print_at": interrupted}
         for identity, done, interrupted in rows
+        if identity is not None
     }

@@ -64,7 +64,7 @@ MOONRAKER_HISTORY_STATUSES = frozenset(
 PRINT_PAGE_SIZES: tuple[Literal[10, 25, 50, 100], ...] = (10, 25, 50, 100)
 
 
-def _print_query(*, include_settings: bool = True) -> Select[tuple[PrintJob]]:
+def _print_query(*, include_settings: bool = True) -> Select[PrintJob]:
     """Build a print query, deferring large settings archives for list views."""
 
     query = select(PrintJob).options(

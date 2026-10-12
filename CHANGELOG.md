@@ -37,6 +37,8 @@ Downgrade refuses to discard entered profile or template hardness. Restore a pre
 
 ### Fixed
 
+- CI type checking uses native SQLAlchemy 2.1 typed mappings and query-result annotations instead of the removed deprecated plugin; SQLAlchemy 2.1.4 is the supported minimum. Refreshed compatible frontend transitive dependencies (brace-expansion, source-map-js, and undici) to resolve release audit findings.
+
 - Spool care guidance remains visible together, with explicit loading, unavailable, unknown, and multiple-scope states.
 
 ## 0.9.1 - 09.22.2026

@@ -27,7 +27,7 @@ dependencies = [
   "python-multipart>=0.0.20,<1",
   "PyYAML>=6.0,<7",
   "qrcode[pil]>=8.2,<9",
-  "SQLAlchemy>=2.0.41,<3",
+  "SQLAlchemy>=2.1.4,<3",
   "structlog>=25.4,<26",
   "typer>=0.16,<1",
   "uvicorn[standard]>=0.35,<1",
@@ -72,7 +72,7 @@ ignore = ["S101"]
 [tool.mypy]
 python_version = "3.12"
 strict = true
-plugins = ["pydantic.mypy", "sqlalchemy.ext.mypy.plugin"]
+plugins = ["pydantic.mypy"]
 mypy_path = "src"
 
 [tool.pytest.ini_options]

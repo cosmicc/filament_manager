@@ -1,5 +1,7 @@
 # Testing and Validation Skill
 
+- SQLAlchemy models use native `Mapped` / `mapped_column` typing. Do not enable the removed `sqlalchemy.ext.mypy.plugin`; retain the Pydantic plugin and the full mypy gate. Check fresh dependency installs, not only a cached local environment, before releases.
+
 - 0.9.2 coverage verifies atomic A/D validation, semantic reversion, explicit null and zero, template propagation with preserved overrides/history, nullable populated migration and refusal to lose hardness on downgrade, no Cura emission, scope-aware detail guidance, reference overlap bounds, catalog substitutions, mixed-scale ordering with unknown values last, and desktop/mobile dialog behavior.
 
 - 0.9.1: verify cold-cache listings do not open database.dump, while selected downloads still do. Test power-on against mocked exact devices for off/on/init/error/unavailable states; never power a live printer during automated tests. Check dashboard exact material, combined low/empty and color filters plus plate deep links on desktop/mobile.

@@ -198,7 +198,9 @@ async def spoolman_filament_defaults(
             "price": float(costs[product.id].price_for_weight(product.nominal_net_mass_g))
             if product.id in costs
             else None,
-            "spool_weight": float(tare) if (tare := product_tares.get(product.id)) is not None else None,
+            "spool_weight": float(product_tare)
+            if (product_tare := product_tares.get(product.id)) is not None
+            else None,
             "settings_extruder_temp": None,
             "settings_bed_temp": None,
         }

@@ -2,10 +2,12 @@
 
 from datetime import datetime
 from decimal import Decimal
+from typing import cast
 from uuid import UUID
 
 from sqlalchemy import func, select, union_all
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.sql.elements import ColumnElement
 
 from filament_manager.models.enums import PrintJobStatus
 from filament_manager.models.printing import PrintJob, PrintMaterialSegment
@@ -23,7 +25,13 @@ async def last_build_plate_prints(
             .where(column.is_not(None), PrintJob.started_at.is_not(None))
             .group_by(column)
         )
-        result.append({identity: occurred for identity, occurred in rows if occurred is not None})
+        result.append(
+            {
+                identity: occurred
+                for identity, occurred in rows
+                if identity is not None and occurred is not None
+            }
+        )
     return result[0], result[1]
 
 
@@ -62,8 +70,10 @@ async def completed_spool_print_counts(
             PrintMaterialSegment.spool_id.label("spool_id"),
         ).where(PrintMaterialSegment.spool_id.is_not(None)),
     ).subquery()
+    # Dynamic subquery aliases retain the original nullable UUID schema type.
+    spool_identity = cast(ColumnElement[UUID | None], participants.c.spool_id)
     query = (
-        select(participants.c.spool_id, func.count(func.distinct(participants.c.print_job_id)))
+        select(spool_identity, func.count(func.distinct(participants.c.print_job_id)))
         .join(PrintJob, PrintJob.id == participants.c.print_job_id)
         .where(PrintJob.status == PrintJobStatus.COMPLETED)
         .group_by(participants.c.spool_id)
