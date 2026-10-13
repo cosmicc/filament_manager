@@ -71,6 +71,7 @@ from filament_manager.services.material_settings import (
 from filament_manager.services.print_statistics import completed_spool_print_counts
 from filament_manager.services.spool_codes import allocate_spool_code, next_spool_code
 from filament_manager.services.spool_labels import render_spool_label_png
+from filament_manager.services.spool_lifecycle import archive_empty_spool
 from filament_manager.services.spool_mass import spool_mass_basis
 from filament_manager.services.spool_preflight import spool_change_target
 from filament_manager.services.spool_types import DEFAULT_SPOOL_TYPES, resolve_spool_type, spool_type_key
@@ -1387,13 +1388,16 @@ async def list_spools(
     location_exact: str | None = Query(default=None, max_length=160),
     unassigned: bool = False,
     include_archived: bool = False,
+    archived_only: bool = False,
     limit: int = Query(default=50, ge=1, le=200),
     offset: int = Query(default=0, ge=0),
 ) -> Page:
     """Search and page physical spools for the inventory table."""
 
     filters: list[ColumnElement[bool]] = []
-    if not include_archived:
+    if archived_only:
+        filters.append(Spool.archived.is_(True))
+    elif not include_archived:
         filters.append(Spool.archived.is_(False))
     if search:
         term = f"%{search.strip()}%"
@@ -1558,6 +1562,9 @@ async def create_spool(
     )
     session.add(spool)
     await session.flush()
+    await archive_empty_spool(
+        session, spool, source="web", actor_id=operator.id, correlation_id=request.state.correlation_id
+    )
     if payload.initial_gross_mass_g is not None and measured is not None:
         assert initial_measured_at is not None
         session.add(
@@ -1600,10 +1607,10 @@ async def create_spool(
     add_outbox_job(
         session,
         job_type="spoolman.spool.upsert",
-        idempotency_key=f"spool:{spool.id}:v1",
+        idempotency_key=f"spool:{spool.id}:v{spool.record_version}",
         aggregate_type="spool",
         aggregate_id=spool.id,
-        aggregate_version=1,
+        aggregate_version=spool.record_version,
         payload={"spool_id": str(spool.id)},
     )
     await queue_managed_cura_library(session, requested_by=operator.id)
@@ -1812,6 +1819,9 @@ async def update_spool(
     else:
         spool.status = SpoolStatus.IN_STOCK
     spool.record_version += 1
+    await archive_empty_spool(
+        session, spool, source="web", actor_id=operator.id, correlation_id=request.state.correlation_id
+    )
     after = {
         field: (spool.remaining_mass_effective_g if field == "remaining_mass_g" else getattr(spool, field))
         for field in before
@@ -2071,6 +2081,9 @@ async def record_measurement(
     spool.status = calculation.spool_status
     spool.last_measurement_at = measured_at
     spool.record_version += 1
+    await archive_empty_spool(
+        session, spool, source="web", actor_id=operator.id, correlation_id=request.state.correlation_id
+    )
     add_audit_event(
         session,
         actor_id=operator.id,

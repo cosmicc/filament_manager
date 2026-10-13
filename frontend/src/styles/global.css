@@ -991,3 +991,25 @@ textarea { resize: vertical; }
 .dashboard-active-plate { position: relative; }
 .dashboard-color-choices, .printer-power-control { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2); }
 .printer-power-control { padding: var(--space-3); }
+
+/* Passkey controls reuse theme tokens and keep password fallback available. */
+.login-passkey { display: grid; gap: 8px; }
+.login-passkey__button { min-height: 48px; border-color: var(--blue-600); }
+.login-passkey .field-help { margin: 0; text-align: center; }
+.login-divider { display: flex; align-items: center; gap: 12px; margin: 18px 0; color: var(--text-muted); font-size: 12px; }
+.login-divider::before, .login-divider::after { content: ''; flex: 1; height: 1px; background: var(--border); }
+.passkey-list { display: grid; gap: 12px; margin: 18px 0; }
+.passkey-row { display: flex; align-items: center; gap: 14px; padding: 16px; border: 1px solid var(--border); border-radius: 12px; }
+.passkey-row > div { flex: 1; min-width: 0; }
+.passkey-row strong { overflow-wrap: anywhere; }
+.passkey-row small { display: block; color: var(--text-muted); margin-top: 4px; }
+.passkey-row__icon { display: grid; place-items: center; flex: 0 0 44px; height: 44px; border-radius: 12px; color: var(--accent); background: var(--accent-bg); }
+.passkey-empty { display: flex; gap: 14px; align-items: center; padding: 20px 0; color: var(--text-muted); }
+.passkey-empty strong { color: var(--text); }
+.passkey-empty p { margin-top: 4px; }
+@media (max-width: 600px) {
+  .passkey-settings .card__header { align-items: flex-start; flex-wrap: wrap; gap: 12px; }
+  .passkey-row { flex-wrap: wrap; }
+  .passkey-row > div { flex-basis: calc(100% - 58px); }
+  .passkey-row > .button { margin-left: 58px; }
+}

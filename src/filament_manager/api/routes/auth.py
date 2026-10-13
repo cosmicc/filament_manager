@@ -11,12 +11,12 @@ from sqlalchemy import delete, select
 from filament_manager.config import get_settings
 from filament_manager.models.auth import User, UserSession
 from filament_manager.security import (
-    create_session_tokens,
     hash_password,
     hash_token,
     normalize_username,
     verify_password,
 )
+from filament_manager.services.browser_sessions import issue_browser_session
 from filament_manager.services.events import add_audit_event
 
 from ..dependencies import (
@@ -98,54 +98,7 @@ async def login(
         raise ApiError(status.HTTP_401_UNAUTHORIZED, "invalid_credentials", "Invalid credentials")
 
     assert user is not None
-    user.failed_login_attempts = 0
-    user.locked_until = None
-    user.last_login_at = now
-    tokens = create_session_tokens(settings.security)
-    browser_session = UserSession(
-        user_id=user.id,
-        token_hash=hash_token(tokens.session_token),
-        csrf_hash=hash_token(tokens.csrf_token),
-        created_at=tokens.created_at,
-        last_seen_at=tokens.created_at,
-        expires_at=tokens.expires_at,
-        idle_expires_at=tokens.idle_expires_at,
-        user_agent=request.headers.get("user-agent", "")[:256] or None,
-    )
-    session.add(browser_session)
-    add_audit_event(
-        session,
-        actor_id=user.id,
-        source="web",
-        action="auth.login",
-        object_type="user",
-        object_id=user.id,
-        before=None,
-        after={"username": user.username, "role": user.role.value},
-        correlation_id=request.state.correlation_id,
-    )
-    await session.commit()
-
-    max_age = settings.security.session_lifetime_hours * 3600
-    response.set_cookie(
-        SESSION_COOKIE,
-        tokens.session_token,
-        max_age=max_age,
-        httponly=True,
-        secure=settings.app.secure_cookies,
-        samesite="strict",
-        path="/",
-    )
-    response.set_cookie(
-        CSRF_COOKIE,
-        tokens.csrf_token,
-        max_age=max_age,
-        httponly=False,
-        secure=settings.app.secure_cookies,
-        samesite="strict",
-        path="/",
-    )
-    return LoginResponse(user=UserResponse.model_validate(user))
+    return await issue_browser_session(session, user, request, response, method="password", settings=settings)
 
 
 @router.post("/logout", status_code=status.HTTP_204_NO_CONTENT)

@@ -76,6 +76,7 @@ export async function apiFetch<T>(path: string, init: RequestInit = {}): Promise
       credentials: 'include',
     })
   } catch (error) {
+    if (init.signal?.aborted) throw error
     console.error('[Filament Manager API] Network request failed', {
       method,
       path,

@@ -1005,6 +1005,7 @@ def restore_pending_backup() -> BackupArchive:
     try:
         with engine.begin() as connection:
             connection.execute(text("DELETE FROM user_sessions"))
+            connection.execute(text("DELETE FROM passkey_challenges"))
             connection.execute(
                 text(
                     """

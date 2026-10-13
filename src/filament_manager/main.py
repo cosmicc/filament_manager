@@ -208,7 +208,7 @@ def create_app() -> FastAPI:
         response.headers["X-Request-ID"] = correlation_id
         response.headers["X-Content-Type-Options"] = "nosniff"
         response.headers["Referrer-Policy"] = "same-origin"
-        if request.url.path in {
+        if request.url.path.startswith("/api/v1/auth/") or request.url.path in {
             "/google/callback",
             "/api/v1/settings/google/complete",
             "/api/v1/settings/google/connect",

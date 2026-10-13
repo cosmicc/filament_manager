@@ -56,6 +56,7 @@ from filament_manager.models.printing import PrintGcodeArchive, PrintJob, PrintM
 from filament_manager.services.events import add_audit_event, add_outbox_job
 from filament_manager.services.moonraker_sync import synchronize_loaded_hotends
 from filament_manager.services.print_thumbnails import sanitize_print_thumbnail
+from filament_manager.services.spool_lifecycle import archive_empty_spool
 
 MAX_INITIAL_HISTORY_JOBS = 10_000
 HISTORY_PAGE_SIZE = 100
@@ -592,6 +593,7 @@ async def _apply_terminal_spool_usage(
             spool.status = SpoolStatus.LOW
         else:
             spool.status = SpoolStatus.IN_STOCK
+        await archive_empty_spool(session, spool, source="moonraker", correlation_id=correlation_id)
         add_audit_event(
             session,
             actor_id=None,

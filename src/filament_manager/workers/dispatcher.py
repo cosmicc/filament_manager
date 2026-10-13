@@ -51,6 +51,7 @@ from filament_manager.services.print_history import (
 )
 from filament_manager.services.printer_connections import configured_printers
 from filament_manager.services.seed import seed_configured_system
+from filament_manager.services.spool_lifecycle import archive_empty_spool, archive_existing_empty_spools
 from filament_manager.services.spool_preflight import (
     build_spool_preflight_catalog,
     spool_change_target,
@@ -713,6 +714,9 @@ async def _reconcile_spoolman(session: AsyncSession, client: SpoolmanClient) -> 
                 aggregate_version=spool.record_version,
                 payload={"spool_id": str(spool.id)},
             )
+        await archive_empty_spool(
+            session, spool, source="spoolman", correlation_id=f"spoolman-reconcile-{spool.id}"
+        )
         await _save_projection(
             session,
             system="spoolman",
@@ -1238,6 +1242,7 @@ async def dispatch_job(session: AsyncSession, job: OutboxJob) -> None:
             )
     elif job.job_type == "spoolman.reconcile.full":
         remote_spools = await _reconcile_spoolman(session, spoolman)
+        await archive_existing_empty_spools(session)
         # Persist printer-originated usage and release spool row locks before
         # the potentially longer full metadata convergence pass.
         await session.commit()

@@ -3,11 +3,13 @@
 import { createContext, type ReactNode, useCallback, useContext, useEffect, useMemo, useState } from 'react'
 import { apiFetch } from '../api/client'
 import type { User } from '../api/types'
+import { authenticatePasskey } from '../lib/passkeys'
 
 interface AuthContextValue {
   user: User | null
   loading: boolean
   login: (username: string, password: string) => Promise<void>
+  loginWithPasskey: (signal: AbortSignal, conditional?: boolean) => Promise<void>
   changePassword: (currentPassword: string, newPassword: string) => Promise<void>
   refreshUser: () => Promise<void>
   logout: () => Promise<void>
@@ -34,6 +36,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setUser(response.user)
   }, [])
 
+  const loginWithPasskey = useCallback(async (signal: AbortSignal, conditional = false) => {
+    setUser(await authenticatePasskey(signal, conditional))
+  }, [])
+
   const logout = useCallback(async () => {
     await apiFetch<void>('/auth/logout', { method: 'POST' })
     setUser(null)
@@ -52,8 +58,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, [])
 
   const value = useMemo(
-    () => ({ user, loading, login, changePassword, refreshUser, logout }),
-    [user, loading, login, changePassword, refreshUser, logout],
+    () => ({ user, loading, login, loginWithPasskey, changePassword, refreshUser, logout }),
+    [user, loading, login, loginWithPasskey, changePassword, refreshUser, logout],
   )
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>
 }

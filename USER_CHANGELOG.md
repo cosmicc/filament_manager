@@ -1,5 +1,23 @@
 # User Changelog
 
+## 0.9.3 - 10.12.2026
+
+Testing release. Back up your database and upgrade web and worker together. Use the configured HTTPS address for passkeys. No Cura-agent or macro update is needed from 0.9.2.
+
+### Added
+
+- Optional mobile/desktop passkey sign-in, a login button, browser autofill, and one automatic attempt on a recognized browser. Settings provides password-confirmed passkey setup and removal; password login remains available.
+- Automatically archive spools at zero remaining filament after physical unloading; browse retained spools with the Spools page’s Active / Archived selector.
+
+### Changed
+
+- Removing a passkey signs out other browser sessions. Your password remains available for recovery.
+- Larger spool icons in Cards and Detailed views, matching filament cards.
+
+### Fixed
+
+- None yet.
+
 ## 0.9.2 - 10.11.2026
 
 Testing release. Back up your database and upgrade web and worker together. No Cura-agent or macro update is needed from 0.9.1.

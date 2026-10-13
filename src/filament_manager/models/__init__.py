@@ -36,6 +36,7 @@ from .operations import (
     UserNotificationState,
     WorkerHeartbeat,
 )
+from .passkeys import Passkey, PasskeyChallenge
 from .printing import PrintAssessment, PrintJob, PrintMaterialSegment
 from .workstations import (
     CuraDeployment,
@@ -76,6 +77,8 @@ __all__ = [
     "Nozzle",
     "NozzleLifecycleEvent",
     "OutboxJob",
+    "Passkey",
+    "PasskeyChallenge",
     "PrintAssessment",
     "PrintJob",
     "PrintMaterialSegment",

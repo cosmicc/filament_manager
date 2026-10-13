@@ -1,5 +1,25 @@
 # Changelog
 
+## 0.9.3 - 10.12.2026
+
+Testing release. Existing unloaded empty spools are archived by the first successful Spoolman safety sweep after upgrade. Upgrade web and worker together; startup applies passkey migration `fe456f789012`. No agent or macro update is required. Passkeys use the exact HTTPS origin in `FILAMENT_MANAGER_BASE_URL` (localhost is supported for development). Archive state, audit evidence, and outbound metadata work commit together; print and measurement history remains unchanged.
+
+### Added
+
+- Optional mobile/desktop passkey sign-in, a login button, browser autofill, and one automatic attempt on a recognized browser. Settings provides password-confirmed passkey setup and removal; password login remains available.
+- Automatically archive spools at zero remaining filament after physical unloading; browse retained spools with the Spools page’s Active / Archived selector.
+
+### Changed
+
+- Password and passkey authentication share strict revocable sessions. Passkey registration/removal require fresh password confirmation and session CSRF. Verification requires device user verification and exact origin/RP/challenge binding; challenge state is single-use and expires after five minutes. Removing a passkey revokes other sessions. Passkeys and ceremony state are excluded from Google publication.
+- Spool catalog Cards and Detailed views use the same larger 64-pixel spool icons as filament cards.
+
+### Fixed
+
+- Authentication responses are not cached. Offline database restore clears pending passkey ceremonies alongside browser sessions.
+
+Passkeys preserve existing passwords and account history. Downgrade refuses to discard registered passkeys: remove them in Settings or restore a pre-upgrade backup. Changing the public hostname requires registering new passkeys at the new address. See [passkey setup and recovery](docs/PASSKEYS.md).
+
 ## 0.9.2 - 10.11.2026
 
 Testing release. Back up the database and upgrade web and worker together. Startup applies nullable hardness-cache migration `fd345e6f7890`; existing values remain unset and historical snapshots are preserved. No agent, renderer, or macro change is required from 0.9.1.

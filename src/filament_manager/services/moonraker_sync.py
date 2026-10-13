@@ -12,6 +12,7 @@ from filament_manager.clients.moonraker import MoonrakerPrinterInformation
 from filament_manager.domain.extruders import EXTRUDERS, extruder_name
 from filament_manager.models.inventory import Printer, Spool
 from filament_manager.services.events import add_audit_event
+from filament_manager.services.spool_lifecycle import archive_empty_spool
 
 
 @dataclass(frozen=True, slots=True)
@@ -237,6 +238,9 @@ async def synchronize_active_spool(
             spool.active_printer_id = None
             spool.active_extruder = None
             spool.record_version += 1
+            await archive_empty_spool(
+                session, spool, source="moonraker", actor_id=actor_id, correlation_id=correlation_id
+            )
     await session.flush()
     if target is not None and target.active_printer_id != printer.id:
         target.active_printer_id = printer.id

@@ -1,5 +1,11 @@
 # Frontend Design and Accessibility Skill
 
+- Login places Sign in with passkey above a password fallback; use `autocomplete="username webauthn"`. Settings places Passkeys beneath Account, with friendly names/dates and password-confirmed add/remove dialogs. Reuse theme tokens and supplied login artwork on desktop/mobile. Keep native ceremonies abortable, automatic errors quiet, and manual errors bounded. See `skills/passkeys.md`.
+
+- Spools defaults to Active inventory and offers an Active / Archived selector. Use server-side `archived_only=true` for the archive, include inventory in query keys, clear status filters on switching, and retain search/material filters and all catalog presentations. Keep status filtering in Active only; archive details reuse existing history/actions.
+
+- Spool catalog Cards and Detailed views share the filament cards' 64px `filament-swatch--hero` silhouette. Keep compact table icons and the separate detail-dialog size unchanged.
+
 - 0.9.2 Shore hardness is one optional scale/value pair, editable in templates and exact-scope filament settings with atomic copy/clear/revert and semantic ownership. Show effective scopes explicitly in details and aggregate distinct values on catalogs. Never guess an unset value or pick an arbitrary printer. Use shared `shoreHardness.ts` for formatting, conservative overlap estimates, and approximate cross-scale ordering; unset entries sort last and multiple scopes sort by the softest known scope. The reference dialog uses approved theme tokens and links its public sources, without external scripts/assets. Detailed spool dialogs prominently group all drying guidance with hardness. Preserve density and diameter in full details and printer assignment in spool details.
 
 - Dashboard count cards are semantic links to exact spool filters; Colors opens a read-only choice dialog, not an inventory creation form. Preserve spool/plate stretched-link keyboard and modifier-click behavior. Show Power on only for the selected exact confirmed-off printer; acceptance means waiting for telemetry, never optimistic readiness.

@@ -683,6 +683,7 @@ export default function SpoolsPage() {
   const [loadExtruder, setLoadExtruder] = useState("extruder");
   const canEdit = user?.role !== "viewer";
   const [search, setSearch] = useState("");
+  const [inventory, setInventory] = useState("active");
   const [status, setStatus] = useState(() => {
     const value = creationRequest.get("status") ?? "";
     return ["needs_weighing", "in_stock", "low", "empty", "low_or_empty"].includes(value) ? value : "";
@@ -717,10 +718,10 @@ export default function SpoolsPage() {
     else setSelected(spool);
   };
   const query = useQuery({
-    queryKey: ["spools", search, status, material, color],
+    queryKey: ["spools", search, status, material, color, inventory],
     queryFn: () =>
       apiFetch<Page<Spool>>(
-        `/spools?limit=200${search ? `&search=${encodeURIComponent(search)}` : ""}${status ? `&status=${encodeURIComponent(status)}` : ""}${material ? `&material=${encodeURIComponent(material)}` : ""}${color ? `&color=${encodeURIComponent(color)}` : ""}`,
+        `/spools?limit=200${inventory === "archived" ? "&archived_only=true" : ""}${search ? `&search=${encodeURIComponent(search)}` : ""}${status ? `&status=${encodeURIComponent(status)}` : ""}${material ? `&material=${encodeURIComponent(material)}` : ""}${color ? `&color=${encodeURIComponent(color)}` : ""}`,
       ),
     refetchInterval: 15_000,
   });
@@ -846,6 +847,12 @@ export default function SpoolsPage() {
       />
       {requestedAction === "weigh" || requestedAction === "load" ? <p className="inline-note" role="status">{requestedAction === "weigh" ? "Select a spool to record its full scale weight." : "Select a spool, then choose Load spool. The active spool changes only after the confirmed physical load finishes."}</p> : null}
       <section className="toolbar">
+        <label className="select-field">Inventory
+          <select aria-label="Spool inventory" value={inventory} onChange={(event) => { setInventory(event.target.value); setStatus(""); }}>
+            <option value="active">Active</option>
+            <option value="archived">Archived</option>
+          </select>
+        </label>
         <label className="search-field">
           <Search size={18} />
           <input
@@ -857,7 +864,7 @@ export default function SpoolsPage() {
         </label>
         <MaterialTypeFilter templates={templates.data ?? []} value={material} onChange={setMaterial} />
         {color ? <button className="button" onClick={() => setColor("")} aria-label={`Clear color filter ${color}`}>Color: {color} ×</button> : null}
-        <label className="select-field">
+        {inventory === "active" ? <label className="select-field">
           <Filter size={17} />
           <select
             value={status}
@@ -871,7 +878,7 @@ export default function SpoolsPage() {
             <option value="low">Low</option>
             <option value="empty">Empty</option>
           </select>
-        </label>
+        </label> : null}
         <CollectionViewSelector label="Spools" value={view} onChange={setView} />
         <span className="toolbar__summary">
           {query.data?.total ?? 0} spools · {needsAttention} need attention
@@ -884,8 +891,8 @@ export default function SpoolsPage() {
       ) : items.length === 0 ? (
         <EmptyState
           icon={Boxes}
-          title="No spools found"
-          description="Adjust the filters or import the master workbook to establish inventory."
+          title={inventory === "archived" ? "No archived spools found" : "No spools found"}
+          description={inventory === "archived" ? "Empty spools appear here automatically after unloading. Adjust the filters to find retained inventory." : "Adjust the filters or add a spool to establish inventory."}
         />
       ) : view === "list" ? (
           <div className="table-card collection-table">
@@ -965,7 +972,7 @@ export default function SpoolsPage() {
         <section className={`collection-grid collection-grid--${view}`}>
           {items.map((spool) => <button className={`collection-card collection-card--button${spool.active_printer_id ? " inventory-card--active" : ""}${view === "detailed" ? " collection-card--detailed" : ""}`} key={spool.id} onClick={() => openSpool(spool)}>
             <header className="collection-card__header">
-              <div className="table-identity"><span className={`filament-swatch${view === "detailed" ? " filament-swatch--large" : ""}`} style={filamentSwatchStyle(spool.color_mode, spool.color_hexes, spool.color_hex ?? "2F80A5")} /><span><strong>{spool.spool_code}</strong><small>{spool.vendor_name ?? "No vendor"}</small></span></div>
+              <div className="table-identity"><span className="filament-swatch filament-swatch--hero" style={filamentSwatchStyle(spool.color_mode, spool.color_hexes, spool.color_hex ?? "2F80A5")} /><span><strong>{spool.spool_code}</strong><small>{spool.vendor_name ?? "No vendor"}</small></span></div>
               <span className="status-stack">{spool.active_printer_id ? <StatusPill status="active" /> : null}<StatusPill status={spool.status} /></span>
             </header>
             <div className="collection-card__body"><h2>{materialIdentitySummary(spool)}</h2><div className="table-progress"><span><strong>{grams(spool.remaining_mass_effective_g)}</strong><small>{percent(spool.remaining_percent)}</small></span><div className="progress progress--small"><span style={{ width: `${Math.min(100, Number(spool.remaining_percent))}%` }} /></div></div></div>

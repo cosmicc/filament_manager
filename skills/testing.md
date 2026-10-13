@@ -1,5 +1,9 @@
 # Testing and Validation Skill
 
+- Passkey tests must use independent real cryptographic assertions against production HTTP/CSRF/session dependencies, plus native browser ceremonies with Chromium’s virtual authenticator. Cover configured origin/RP, user verification/handle, signature/counter, challenge expiry/replay/browser/session binding, password-confirmed mutation, account interlocks, migration parity/downgrade, cancellation/fallback, and desktop/mobile screenshots. See `skills/passkeys.md`.
+
+- Empty-spool lifecycle coverage checks exact zero versus positive remnants, loaded deferral and completed unload, sweep catch-up/idempotency, transactional audit/projections, archived-only pagination/filtering, positive correction with explicit restoration, and immutable retained history. Exercise Active / Archived switching in desktop/mobile List, Cards, and Detailed views.
+
 - SQLAlchemy models use native `Mapped` / `mapped_column` typing. Do not enable the removed `sqlalchemy.ext.mypy.plugin`; retain the Pydantic plugin and the full mypy gate. Check fresh dependency installs, not only a cached local environment, before releases.
 
 - 0.9.2 coverage verifies atomic A/D validation, semantic reversion, explicit null and zero, template propagation with preserved overrides/history, nullable populated migration and refusal to lose hardness on downgrade, no Cura emission, scope-aware detail guidance, reference overlap bounds, catalog substitutions, mixed-scale ordering with unknown values last, and desktop/mobile dialog behavior.

@@ -15,6 +15,7 @@ import {
 } from 'lucide-react'
 import { type ChangeEvent, type FormEvent, useMemo, useState } from 'react'
 import { apiFetch } from '../api/client'
+import { PasskeySettingsPanel } from '../components/PasskeySettingsPanel'
 import { GoogleIntegrationPanel } from '../components/GoogleIntegrationPanel'
 import type {
   Device,
@@ -342,6 +343,8 @@ export default function SettingsPage() {
             </div>
           )}
         </article>
+
+        {administrator && <PasskeySettingsPanel />}
 
         <article className="card settings-section settings-section--wide">
           <header className="card__header">
