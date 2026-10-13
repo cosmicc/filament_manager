@@ -1,5 +1,24 @@
 # User Changelog
 
+## 0.9.4 - 10.13.2026
+
+Testing release. Existing nozzles start with Good condition; installation and print history stay intact. No Cura-agent or macro update is required.
+
+### Added
+
+- Pressure Advance preparation guidance for the Prep PA macro, smooth factor 0.020, and a height calculator using PA = 0 + (Height × 0.020). Calculated results retain up to four decimal places and are saved only through the normal calibration result workflow.
+- Nozzle Condition (New, Good, Worn, Damaged, Retired) and Status (Active, Maintenance, Retired), matching build plates. Installation remains separate; remove installed nozzles before marking them Maintenance or Retired.
+
+### Changed
+
+- Template comparison begins by highlighting the first template. Selecting a second opens the exact pair; add more templates or profiles up to four total. The reference and selected scopes are clearly identified.
+- Removed the redundant Close comparison footer button; use the top-right close control.
+
+### Fixed
+
+- Template-to-template comparison is available even when no filament profiles exist.
+- Maintenance nozzles cannot be installed. Existing print attribution and installation history are preserved.
+
 ## 0.9.3 - 10.12.2026
 
 Testing release. Back up your database and upgrade web and worker together. Use the configured HTTPS address for passkeys. No Cura-agent or macro update is needed from 0.9.2.

@@ -1,5 +1,7 @@
 # Database and Migration Skill
 
+- Migration `ff567a890123` reuses `plate_condition`/`plate_status` enums for nozzle condition/usage_status without replacing nozzle lifecycle status. Backfill Good/Active and preserve Retired availability. Downgrade refuses entered condition/maintenance evidence. Keep legacy `retired` requests compatible, reject conflicting status input, and preserve optimistic concurrency, audits, idle guards, installation events, and historical attribution.
+
 - Passkey migration `fe456f789012` preserves accounts/sessions and adds public credentials plus expiring ceremonies. Downgrade refuses retained passkeys; offline restore clears sessions and challenges. See `skills/passkeys.md`.
 
 - `services/spool_lifecycle.py` archives exact zero-remaining unloaded spools during creation, accepted measurement/correction, print/Spoolman usage, and completed physical unload. Keep loaded empty spools active until ownership clears; never issue motion or clear ownership to archive. Lock rows, increment version, append audit, and queue Spoolman/Google plus dependent filament/Cura metadata in the same transaction. Repeated sweeps must be idempotent. Run existing-empty catch-up after usage import, before convergence. Positive corrections alone do not unarchive; explicit unarchive with positive mass is supported. Preserve history and immutable spool codes.

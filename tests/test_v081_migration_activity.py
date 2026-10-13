@@ -54,7 +54,8 @@ async def test_density_upgrade_preserves_history_and_activity(monkeypatch: pytes
             nozzle = Nozzle(
                 printer_id=printer.id, nozzle_code="N1", diameter_mm=Decimal("0.4"), material="Brass"
             )
-            session.add(nozzle)
+            # Keep the historical schema intact when seeding a current ORM model.
+            insert_legacy_record(session, nozzle)
             session.flush()
             template = MaterialTemplate(
                 name="Template PLA",

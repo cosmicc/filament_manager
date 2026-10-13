@@ -350,6 +350,8 @@ export interface Nozzle {
   product_name: string | null
   coating: string | null
   purchase_date: string | null
+  condition: 'new' | 'good' | 'worn' | 'damaged' | 'retired'
+  usage_status: 'active' | 'maintenance' | 'retired'
   status: 'available' | 'installed' | 'retired'
   installed_printer_id: string | null
   installed_at: string | null

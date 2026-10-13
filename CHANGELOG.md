@@ -1,5 +1,24 @@
 # Changelog
 
+## 0.9.4 - 10.13.2026
+
+Testing release. Upgrade web and worker together; migration `ff567a890123` preserves nozzle installations and retirement, initializes existing condition to Good, and adds availability choices. No Cura-agent or macro update is required. Downgrade refuses to discard entered nozzle condition or maintenance data; restore a pre-upgrade backup instead.
+
+### Added
+
+- Pressure Advance preparation guidance for the Prep PA macro, smooth factor 0.020, and a height calculator using PA = 0 + (Height × 0.020). Calculated results retain up to four decimal places and are saved only through the normal calibration result workflow.
+- Nozzle Condition (New, Good, Worn, Damaged, Retired) and Status (Active, Maintenance, Retired), matching build plates. Installation remains separate; remove installed nozzles before marking them Maintenance or Retired.
+
+### Changed
+
+- Template comparison begins by highlighting the first template. Selecting a second opens the exact pair; add more templates or profiles up to four total. The reference and selected scopes are clearly identified.
+- Removed the redundant Close comparison footer button; use the top-right close control.
+
+### Fixed
+
+- Template-to-template comparison is available even when no filament profiles exist.
+- Maintenance nozzles cannot be installed. Existing print attribution and installation history are preserved.
+
 ## 0.9.3 - 10.12.2026
 
 Testing release. Existing unloaded empty spools are archived by the first successful Spoolman safety sweep after upgrade. Upgrade web and worker together; startup applies passkey migration `fe456f789012`. No agent or macro update is required. Passkeys use the exact HTTPS origin in `FILAMENT_MANAGER_BASE_URL` (localhost is supported for development). Archive state, audit evidence, and outbound metadata work commit together; print and measurement history remains unchanged.

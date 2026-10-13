@@ -1,5 +1,9 @@
 # Testing and Validation Skill
 
+- Pressure Advance calibration uses the operator's fixed tower recipe START=0, FACTOR=0.020, with Prep PA run manually first and smooth factor 0.020 guidance for all filaments. The read-only height calculator accepts 0–100 mm with two decimal places, returns exact PA up to four decimals, and never runs a printer command or saves automatically. Preserve four-decimal PA result entry in this step; ordinary catalog formatting stays unchanged.
+
+- 0.9.4 checks cover first-template highlight without a modal, exact two-template initialization without profiles, adding a third, and removal of the footer close button. PostgreSQL tooling tests cover condition persistence, maintenance install rejection, and refusal to mark installed nozzles Maintenance/Retired. Validate migration head `ff567a890123`.
+
 - Passkey tests must use independent real cryptographic assertions against production HTTP/CSRF/session dependencies, plus native browser ceremonies with Chromium’s virtual authenticator. Cover configured origin/RP, user verification/handle, signature/counter, challenge expiry/replay/browser/session binding, password-confirmed mutation, account interlocks, migration parity/downgrade, cancellation/fallback, and desktop/mobile screenshots. See `skills/passkeys.md`.
 
 - Empty-spool lifecycle coverage checks exact zero versus positive remnants, loaded deferral and completed unload, sweep catch-up/idempotency, transactional audit/projections, archived-only pagination/filtering, positive correction with explicit restoration, and immutable retained history. Exercise Active / Archived switching in desktop/mobile List, Cards, and Detailed views.

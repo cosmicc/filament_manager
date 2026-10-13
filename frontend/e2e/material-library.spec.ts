@@ -625,10 +625,12 @@ test('comparison shows only differences and warns across profile scopes', async 
     [differentScopeProfile.id]: { rated_prints: 3, ratings: { successful: 3 }, success_rate_percent: '100.0', low_sample: true },
   } }))
 
-  await page.goto('/templates')
+  await page.goto('/filaments/settings')
   await page.getByRole('button', { name: 'Compare settings' }).click()
   const dialog = page.getByRole('dialog', { name: 'Compare material settings' })
   await expect(dialog).toBeVisible()
+  await dialog.getByRole('checkbox', { name: /Template PLA/ }).check()
+  await dialog.getByRole('checkbox', { name: /0\.6 mm nozzle/ }).uncheck()
   await expect(dialog.getByText('2 setting differences')).toBeVisible()
   await expect(dialog.getByText('Printing temperature', { exact: true })).toBeVisible()
   await expect(dialog.getByText('Enable Retraction', { exact: true })).toBeVisible()
@@ -641,8 +643,8 @@ test('comparison shows only differences and warns across profile scopes', async 
   await page.setViewportSize({ width: 390, height: 844 })
   await dialog.getByText('220 °C', { exact: true }).scrollIntoViewIfNeeded()
   await expect(dialog.getByText('220 °C', { exact: true })).toBeVisible()
-  await expect(dialog.getByRole('button', { name: 'Close comparison' })).toBeVisible()
-  await dialog.getByRole('button', { name: 'Close comparison' }).click()
+  await expect(dialog.getByRole('button', { name: 'Close comparison' })).toHaveCount(0)
+  await dialog.getByRole('button', { name: 'Close dialog' }).click()
 
   await page.goto('/profiles')
   await expect(page).toHaveURL(/\/filaments\/settings$/)
@@ -1170,3 +1172,34 @@ test('takeover replaces reported Cura sources without importing values', async (
   await expect.poll(() => submitted?.reviewed_source_ids).toEqual([material.source_id, printProfile.source_id])
   await expect.poll(() => submitted?.mappings).toEqual([])
 })
+
+for (const width of [1280, 390]) {
+  test(`template comparison selects an exact pair and adds templates at ${width}px`, async ({ page }) => {
+    await page.setViewportSize({ width, height: 844 })
+    const second = { ...template, id: 'petg', name: 'Template PETG', material_type: 'PETG', revisions: [{ ...template.revisions[0], id: 'petg-revision', settings: { ...settings, extruder_temp_c: '240' } }] }
+    const third = { ...template, id: 'asa', name: 'Template ASA', material_type: 'ASA', revisions: [{ ...template.revisions[0], id: 'asa-revision', settings: { ...settings, extruder_temp_c: '250' } }] }
+    await page.route('**/api/v1/profiles/templates', route => route.fulfill({ json: [template, second, third] }))
+    await page.route('**/api/v1/profiles/cura-settings/catalog', route => route.fulfill({ json: [] }))
+    await page.goto('/templates')
+    await expect(page).toHaveTitle(/Filament Manager/)
+    const buttons = page.getByRole('button', { name: 'Compare settings', exact: true })
+    await buttons.nth(0).click()
+    await expect(page.getByRole('dialog')).toHaveCount(0)
+    await expect(page.locator('.template--comparison-selected')).toHaveCount(1)
+    await captureEvidence(page, `template-selected-${width}-v094`)
+    await buttons.nth(1).click()
+    const dialog = page.getByRole('dialog', { name: 'Compare material settings' })
+    await expect(dialog.getByText('Reference', { exact: true })).toBeVisible()
+    await expect(dialog.getByRole('checkbox').nth(0)).toBeChecked()
+    await expect(dialog.getByRole('checkbox').nth(1)).toBeChecked()
+    await dialog.getByRole('checkbox').nth(2).check()
+    await expect(dialog.getByRole('heading', { name: 'Comparing 3 materials' })).toBeVisible()
+    await expect(dialog.getByRole('button', { name: 'Close comparison' })).toHaveCount(0)
+    await captureEvidence(page, `template-comparison-${width}-v094`)
+    await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(width)
+    await dialog.getByRole('button', { name: 'Close dialog' }).click()
+    await expect(page.locator('.template--comparison-selected')).toHaveCount(3)
+    await page.getByRole('button', { name: 'View comparison' }).click()
+    await expect(dialog.getByRole('checkbox').nth(2)).toBeChecked()
+  })
+}

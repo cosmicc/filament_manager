@@ -160,7 +160,7 @@ test('physical nozzle page shows exact historical use', async ({ page }) => {
   await page.route('**/api/v1/nozzles?include_retired=true', (route) => route.fulfill({ json: [{
     id: 'nozzle-id', nozzle_code: 'N3', printer_id: 'printer-id', diameter_mm: '0.6', material: 'Hardened steel',
     manufacturer: 'Workshop', product_name: 'High-flow', coating: null,
-    purchase_date: '2026-07-21', status: 'installed', installed_printer_id: 'printer-id',
+    purchase_date: '2026-07-21', condition: 'worn', usage_status: 'active', status: 'installed', installed_printer_id: 'printer-id',
     installed_at: checkedAt, retired_at: null, notes: null, record_version: 2,
     completed_print_count: 12, completed_filament_weight_g: '4830.5',
   }] }))
@@ -176,6 +176,21 @@ test('physical nozzle page shows exact historical use', async ({ page }) => {
   await expect(page.getByRole('heading', { name: '0.6 mm Hardened steel' })).toBeVisible()
   await expect(page.getByText('12', { exact: true })).toBeVisible()
   await expect(page.getByText('4,830.5 g', { exact: true })).toBeVisible()
+  await page.getByRole('button').filter({ hasText: 'N3' }).click()
+  await page.getByRole('button', { name: 'Edit', exact: true }).click()
+  const editor = page.getByRole('dialog', { name: 'Edit N3' })
+  await expect(editor.getByRole('combobox', { name: /^Condition/ })).toHaveValue('worn')
+  await expect(editor.getByRole('combobox', { name: /^Status/ })).toHaveValue('active')
+  await expect(editor.getByRole('combobox', { name: /^Condition/ }).locator('option')).toHaveText(['New', 'Good', 'Worn', 'Damaged', 'Retired'])
+  await expect(editor.getByRole('combobox', { name: /^Status/ }).locator('option')).toHaveText(['Active', 'Maintenance', 'Retired'])
+  await expect(editor.locator('option[value="maintenance"]')).toHaveAttribute('disabled', '')
+  const evidence = process.env.FILAMENT_MANAGER_E2E_EVIDENCE_DIR
+  if (evidence) await page.screenshot({ path: `${evidence}/nozzle-editor-desktop-v094.png` })
+  await page.setViewportSize({ width: 390, height: 844 })
+  await editor.getByRole('combobox', { name: /^Condition/ }).scrollIntoViewIfNeeded()
+  if (evidence) await page.screenshot({ path: `${evidence}/nozzle-editor-mobile-v094.png` })
+  await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(390)
+  await editor.getByRole('button', { name: 'Cancel' }).click()
   await page.getByRole('button').filter({ hasText: 'N3' }).click()
   await page.getByRole('button', { name: 'History' }).click()
   const lifecycle = page.getByRole('dialog', { name: 'N3 lifecycle' })

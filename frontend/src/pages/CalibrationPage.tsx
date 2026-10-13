@@ -8,6 +8,7 @@ import { EmptyState } from '../components/EmptyState'
 import { LoadingState } from '../components/LoadingState'
 import { Modal } from '../components/Modal'
 import { PageHeader } from '../components/PageHeader'
+import { PressureAdvanceGuide } from '../components/PressureAdvanceGuide'
 import { StatusPill } from '../components/StatusPill'
 import { useAuth } from '../context/AuthContext'
 import { compactNumber, inputNumber } from '../lib/format'
@@ -33,7 +34,7 @@ const resultFields: Record<string, { key: string; label: string; unit?: string; 
     { key: 'chamber_temp_c', label: 'Chamber temperature', unit: '°C', precision: 0 },
   ],
   flow: [{ key: 'flow_percent', label: 'Selected flow', unit: '%', precision: 0 }],
-  pressure_advance: [{ key: 'pressure_advance', label: 'Pressure advance factor', precision: 2 }],
+  pressure_advance: [{ key: 'pressure_advance', label: 'Pressure advance factor', precision: 4 }],
   retraction: [
     { key: 'retraction_distance_mm', label: 'Retraction distance', unit: 'mm', precision: 1 },
     { key: 'retraction_speed_mm_s', label: 'Retraction retract speed', unit: 'mm/s', precision: 0 },
@@ -147,26 +148,29 @@ function StepEditor({ calibration, step }: { calibration: Calibration; step: Cal
     const submitted = Object.fromEntries(Object.entries(values).filter(([, value]) => value !== '').map(([key, value]) => [key, typeof value === 'boolean' ? value : Number(value)]))
     return apiFetch(`/calibrations/${calibration.id}/steps/${step.step_key}/result`, { method: 'POST', body: JSON.stringify({ expected_version: step.record_version, inputs: step.step_key === 'dimensional' ? submitted : {}, result: step.step_key === 'dimensional' ? {} : submitted, notes: notes || null, complete, repeat }) })
   }, onSuccess: invalidate, onError: (caught) => setError(caught instanceof ApiClientError ? caught.message : 'Could not save result') })
-  if (step.status === 'not_started') return <div className="step-prompt"><p>Record the test conditions and selected result. Later steps stay locked until this required step is complete.</p><button className="button button--primary" onClick={() => start.mutate()} disabled={start.isPending}><Play size={16} /> Start this step</button>{error && <p className="form-error">{error}</p>}</div>
+  if (step.status === 'not_started') return <div className="step-prompt">{step.step_key === 'pressure_advance' ? <PressureAdvanceGuide /> : null}<p>Record the test conditions and selected result. Later steps stay locked until this required step is complete.</p><button className="button button--primary" onClick={() => start.mutate()} disabled={start.isPending}><Play size={16} /> Start this step</button>{error && <p className="form-error">{error}</p>}</div>
   const fields = step.step_key === 'dimensional' ? dimensionalInputFields.map((field) => ({ ...field, unit: 'mm' })) : resultFields[step.step_key] ?? []
   return (
-    <form className="step-form editor-form" onSubmit={(event) => { event.preventDefault(); save.mutate({ complete: true, repeat: false }) }}>
-      <EditorSection title="Test result" description={step.step_key === 'dimensional' ? 'Enter the model dimensions and caliper measurements; corrections are calculated by Filament Manager.' : 'Record the selected value from the printed test artifact.'}>
-        <div className="form-grid">
-          {fields.map((field) => 'type' in field && field.type === 'checkbox' ? (
-            <label className="check-row" key={field.key}><input type="checkbox" checked={Boolean(values[field.key])} onChange={(event) => setValues((current) => ({ ...current, [field.key]: event.target.checked }))} /><span><strong>{field.label}</strong></span></label>
-          ) : (
-            <label key={field.key}>{field.label}<div className="input-suffix"><input type="number" min={step.step_key === 'dimensional' ? '0.01' : undefined} step={10 ** -(step.step_key === 'dimensional' ? 2 : 'precision' in field ? field.precision ?? 1 : 1)} value={String(values[field.key] ?? '')} onChange={(event) => setValues((current) => ({ ...current, [field.key]: event.target.value }))} required={step.required} />{field.unit && <span>{field.unit}</span>}</div></label>
-          ))}
-        </div>
-        {step.step_key === 'dimensional' && step.status === 'completed' ? <div className="dimensional-results"><div className={step.result.axis_warning || step.result.shaft_warning ? 'warning-note' : 'success-note'}><span><strong>{step.result.correction_classification === 'printer_geometry_review' ? 'Printer geometry review recommended' : 'Material compensation is consistent'}</strong> · No Klipper configuration was changed.</span></div><dl className="definition-list"><div><dt>Cura Horizontal Expansion</dt><dd>{compactNumber(step.result.xy_offset as string, 2)} mm</dd></div><div><dt>Hole Horizontal Expansion</dt><dd>{compactNumber(step.result.hole_xy_offset as string, 2)} mm</dd></div><div><dt>Shaft expansion reference</dt><dd>{compactNumber(step.result.shaft_horizontal_expansion_mm as string, 2)} mm</dd></div><div><dt>Recommended flow</dt><dd>{compactNumber(step.result.flow_percent as string, 0)}%</dd></div><div><dt>Printer X/Y/Z scale review</dt><dd>{compactNumber(step.result.printer_x_correction_percent as string, 2)}% / {compactNumber(step.result.printer_y_correction_percent as string, 2)}% / {compactNumber(step.result.printer_z_correction_percent as string, 2)}%</dd></div><div><dt>Material X/Y/Z shrinkage</dt><dd>{compactNumber(step.result.material_shrinkage_x_percent as string, 2)}% / {compactNumber(step.result.material_shrinkage_y_percent as string, 2)}% / {compactNumber(step.result.material_shrinkage_z_percent as string, 2)}%</dd></div></dl>{step.result.axis_warning ? <p className="warning-note">X and Y expansions differ by {compactNumber(step.result.axis_difference_mm as string, 2)} mm. Check mechanics before applying printer scale correction.</p> : null}{step.result.shaft_warning ? <p className="warning-note">The shaft result differs from the X/Y expansion by {compactNumber(step.result.shaft_difference_mm as string, 2)} mm. Review extrusion and feature-specific behavior.</p> : null}</div> : null}
-      </EditorSection>
-      <EditorSection title="Observations" description="Keep the visual result and artifact reference with this immutable calibration history.">
-        <label>Observations and artifact reference <span className="label-optional">Recommended</span><textarea rows={4} value={notes} onChange={(event) => setNotes(event.target.value)} placeholder="Visual quality, test range, Cura project, G-code, photo, or print job reference" /></label>
-      </EditorSection>
-      {error ? <p className="form-error">{error}</p> : null}
-      <div className="form-actions">{step.status === 'completed' ? <button type="button" className="button" onClick={() => save.mutate({ complete: false, repeat: true })}><RefreshCw size={16} /> Repeat and review downstream</button> : null}<button className="button button--primary" disabled={save.isPending}><Check size={16} /> {step.status === 'completed' ? 'Update result' : 'Complete step'}</button></div>
-    </form>
+    <div className="editor-form">
+      {step.step_key === 'pressure_advance' ? <PressureAdvanceGuide /> : null}
+      <form className="step-form editor-form" onSubmit={(event) => { event.preventDefault(); save.mutate({ complete: true, repeat: false }) }}>
+        <EditorSection title="Test result" description={step.step_key === 'dimensional' ? 'Enter the model dimensions and caliper measurements; corrections are calculated by Filament Manager.' : 'Record the selected value from the printed test artifact.'}>
+          <div className="form-grid">
+            {fields.map((field) => 'type' in field && field.type === 'checkbox' ? (
+              <label className="check-row" key={field.key}><input type="checkbox" checked={Boolean(values[field.key])} onChange={(event) => setValues((current) => ({ ...current, [field.key]: event.target.checked }))} /><span><strong>{field.label}</strong></span></label>
+            ) : (
+              <label key={field.key}>{field.label}<div className="input-suffix"><input type="number" min={step.step_key === 'dimensional' ? '0.01' : undefined} step={10 ** -(step.step_key === 'dimensional' ? 2 : 'precision' in field ? field.precision ?? 1 : 1)} value={String(values[field.key] ?? '')} onChange={(event) => setValues((current) => ({ ...current, [field.key]: event.target.value }))} required={step.required} />{field.unit && <span>{field.unit}</span>}</div></label>
+            ))}
+          </div>
+          {step.step_key === 'dimensional' && step.status === 'completed' ? <div className="dimensional-results"><div className={step.result.axis_warning || step.result.shaft_warning ? 'warning-note' : 'success-note'}><span><strong>{step.result.correction_classification === 'printer_geometry_review' ? 'Printer geometry review recommended' : 'Material compensation is consistent'}</strong> · No Klipper configuration was changed.</span></div><dl className="definition-list"><div><dt>Cura Horizontal Expansion</dt><dd>{compactNumber(step.result.xy_offset as string, 2)} mm</dd></div><div><dt>Hole Horizontal Expansion</dt><dd>{compactNumber(step.result.hole_xy_offset as string, 2)} mm</dd></div><div><dt>Shaft expansion reference</dt><dd>{compactNumber(step.result.shaft_horizontal_expansion_mm as string, 2)} mm</dd></div><div><dt>Recommended flow</dt><dd>{compactNumber(step.result.flow_percent as string, 0)}%</dd></div><div><dt>Printer X/Y/Z scale review</dt><dd>{compactNumber(step.result.printer_x_correction_percent as string, 2)}% / {compactNumber(step.result.printer_y_correction_percent as string, 2)}% / {compactNumber(step.result.printer_z_correction_percent as string, 2)}%</dd></div><div><dt>Material X/Y/Z shrinkage</dt><dd>{compactNumber(step.result.material_shrinkage_x_percent as string, 2)}% / {compactNumber(step.result.material_shrinkage_y_percent as string, 2)}% / {compactNumber(step.result.material_shrinkage_z_percent as string, 2)}%</dd></div></dl>{step.result.axis_warning ? <p className="warning-note">X and Y expansions differ by {compactNumber(step.result.axis_difference_mm as string, 2)} mm. Check mechanics before applying printer scale correction.</p> : null}{step.result.shaft_warning ? <p className="warning-note">The shaft result differs from the X/Y expansion by {compactNumber(step.result.shaft_difference_mm as string, 2)} mm. Review extrusion and feature-specific behavior.</p> : null}</div> : null}
+        </EditorSection>
+        <EditorSection title="Observations" description="Keep the visual result and artifact reference with this immutable calibration history.">
+          <label>Observations and artifact reference <span className="label-optional">Recommended</span><textarea rows={4} value={notes} onChange={(event) => setNotes(event.target.value)} placeholder="Visual quality, test range, Cura project, G-code, photo, or print job reference" /></label>
+        </EditorSection>
+        {error ? <p className="form-error">{error}</p> : null}
+        <div className="form-actions">{step.status === 'completed' ? <button type="button" className="button" onClick={() => save.mutate({ complete: false, repeat: true })}><RefreshCw size={16} /> Repeat and review downstream</button> : null}<button className="button button--primary" disabled={save.isPending}><Check size={16} /> {step.status === 'completed' ? 'Update result' : 'Complete step'}</button></div>
+      </form>
+    </div>
   )
 }
 

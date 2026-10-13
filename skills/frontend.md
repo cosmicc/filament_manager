@@ -1,5 +1,9 @@
 # Frontend Design and Accessibility Skill
 
+- Pressure Advance calibration uses the operator's fixed tower recipe START=0, FACTOR=0.020, with Prep PA run manually first and smooth factor 0.020 guidance for all filaments. The read-only height calculator accepts 0–100 mm with two decimal places, returns exact PA up to four decimals, and never runs a printer command or saves automatically. Preserve four-decimal PA result entry in this step; ordinary catalog formatting stays unchanged.
+
+- Template comparison starts with a highlighted first template, opens only on selecting a second, and keeps the first as reference. Preserve selections when closing/reopening, offer Clear selection, and allow up to four items with explicit reference/scope labels. Comparison does not depend on filament profiles existing. Keep only the modal top-right close control. Nozzle editors/catalogs show build-plate Condition and Status options; `usage_status` is availability and `status` retains installation lifecycle. Block install for Maintenance, and disable Maintenance/Retired choices while installed.
+
 - Login places Sign in with passkey above a password fallback; use `autocomplete="username webauthn"`. Settings places Passkeys beneath Account, with friendly names/dates and password-confirmed add/remove dialogs. Reuse theme tokens and supplied login artwork on desktop/mobile. Keep native ceremonies abortable, automatic errors quiet, and manual errors bounded. See `skills/passkeys.md`.
 
 - Spools defaults to Active inventory and offers an Active / Archived selector. Use server-side `archived_only=true` for the archive, include inventory in query keys, clear status filters on switching, and retain search/material filters and all catalog presentations. Keep status filtering in Active only; archive details reuse existing history/actions.

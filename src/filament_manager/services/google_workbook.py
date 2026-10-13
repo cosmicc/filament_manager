@@ -93,7 +93,7 @@ EXPORTS = (
         "Nozzles",
         "nozzles",
         "nozzle_code printer_id diameter_mm material manufacturer product_name coating "
-        "purchase_date status installed_at retired_at notes record_version created_at "
+        "purchase_date condition usage_status status installed_at retired_at notes record_version created_at "
         "updated_at",
     ),
     (

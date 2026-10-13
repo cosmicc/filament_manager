@@ -30,7 +30,7 @@ function scopeLabel(target: { printerId: string; nozzleDiameterMm: string }, pri
   return `${printers.find((item) => item.id === target.printerId)?.name ?? 'Unknown printer'} · ${target.nozzleDiameterMm} mm nozzle`
 }
 
-export function MaterialComparisonModal({ profiles, templates, printers, filaments, plates, catalog, initialProfileId, initialTargetKey, onClose }: {
+export function MaterialComparisonModal({ profiles, templates, printers, filaments, plates, catalog, initialProfileId, initialTargetKey, initialTargetKeys, onSelectionChange, onClose }: {
   profiles: MaterialProfile[]
   templates: MaterialTemplate[]
   printers: Printer[]
@@ -38,6 +38,8 @@ export function MaterialComparisonModal({ profiles, templates, printers, filamen
   plates: BuildPlate[]
   catalog: CuraSettingCatalogItem[]
   initialProfileId?: string
+  initialTargetKeys?: string[]
+  onSelectionChange?: (keys: string[]) => void
   initialTargetKey?: string
   onClose: () => void
 }) {
@@ -49,7 +51,7 @@ export function MaterialComparisonModal({ profiles, templates, printers, filamen
   const initialSecond = initialTargetKey && targets.some((item) => item.key === initialTargetKey)
     ? initialTargetKey
     : targets.find((item) => item.key !== initialBaseline)?.key
-  const [selectedKeys, setSelectedKeys] = useState<string[]>([initialBaseline, initialSecond].filter((item): item is string => Boolean(item)))
+  const [selectedKeys, setSelectedKeys] = useState<string[]>(initialTargetKeys ?? [initialBaseline, initialSecond].filter((item): item is string => Boolean(item)))
   const selected = selectedKeys.map((key) => targets.find((target) => target.key === key)).filter((item): item is ComparisonTarget => Boolean(item))
   const baseline = selected[0]
   const compared = selected.slice(1)
@@ -78,15 +80,17 @@ export function MaterialComparisonModal({ profiles, templates, printers, filamen
   })
 
   function toggleTarget(key: string) {
-    setSelectedKeys((current) => current.includes(key) ? current.length > 2 ? current.filter((item) => item !== key) : current : current.length < 4 ? [...current, key] : current)
+    const next = selectedKeys.includes(key) ? selectedKeys.length > 2 ? selectedKeys.filter((item) => item !== key) : selectedKeys : selectedKeys.length < 4 ? [...selectedKeys, key] : selectedKeys
+    setSelectedKeys(next)
+    onSelectionChange?.(next)
   }
 
-  return <Modal title="Compare material settings" description="Select two to four current profiles or templates. The first selection is the baseline and only semantic differences are shown." onClose={onClose} size="wide" footer={<button className="button" onClick={onClose}>Close comparison</button>}>
+  return <Modal title="Compare material settings" description="Compare settings side by side. Only settings that differ from the reference are shown." onClose={onClose} size="wide">
     <div className="comparison-layout">
-      <EditorSection title="Comparison set" description="Choose up to four current material settings. Cross-printer and cross-nozzle comparisons remain available with a clear warning."><div className="comparison-target-grid">{targets.map((target) => <label className="check-row" key={target.key}><input type="checkbox" checked={selectedKeys.includes(target.key)} disabled={!selectedKeys.includes(target.key) && selectedKeys.length >= 4} onChange={() => toggleTarget(target.key)} /><span><strong>{target.label}</strong><small>{target.optionLabel}</small></span></label>)}</div><small className="field-help">{selected.length}/4 selected · first selected is the baseline</small></EditorSection>
+      <EditorSection title={`Comparing ${selected.length} materials`} description="The first selected material is your reference. Add another template or filament profile below (up to four total). Keep at least two selected."><div className="comparison-stat-grid">{selected.map((target, index) => <article key={target.key}><small>{index === 0 ? 'Reference' : 'Compared with reference'}</small><strong>{target.label}</strong><small>{scopeLabel(target, printers)}</small></article>)}</div><h3>Add or remove materials</h3><div className="comparison-target-grid">{targets.map((target) => <label className="check-row" key={target.key}><input type="checkbox" checked={selectedKeys.includes(target.key)} disabled={selectedKeys.includes(target.key) ? selectedKeys.length <= 2 : selectedKeys.length >= 4} onChange={() => toggleTarget(target.key)} /><span><strong>{target.label}</strong><small>{scopeLabel(target, printers)}</small></span></label>)}</div><small className="field-help">{selected.length}/4 selected · first selected is the reference</small></EditorSection>
       {scopeWarnings.length ? <div className="comparison-scope-warning" role="alert"><AlertTriangle size={19} /><span><strong>Scope warning</strong>{scopeWarnings.map((warning) => <small key={warning}>{warning}</small>)}</span></div> : <div className="comparison-scope-match"><CheckCircle2 size={18} /> All selected printer and nozzle scopes match.</div>}
-      <section className="comparison-results"><header><div><p className="eyebrow">Difference-only view</p><h3>{differenceRows.length} setting {differenceRows.length === 1 ? 'difference' : 'differences'}</h3></div></header>{differenceRows.length ? <div className="comparison-table comparison-table--multi" style={{ '--comparison-columns': selected.length } as CSSProperties}><div className="comparison-row comparison-row--multi comparison-row--header"><span>Setting</span>{selected.map((target) => <span key={target.key}>{target.label}</span>)}</div>{differenceRows.map((row) => <div className="comparison-row comparison-row--multi" key={row.key}><div className="comparison-setting"><strong>{row.label}</strong><small>{row.key}</small></div>{selected.map((target) => <div className="comparison-value" key={target.key}><span>{target.label}</span><strong>{row.values.get(target.key) ?? 'Same as baseline'}</strong></div>)}</div>)}</div> : <div className="comparison-empty"><CheckCircle2 size={22} /><div><strong>No setting differences</strong><p>The selected materials store equivalent settings.</p></div></div>}</section>
-      <section className="comparison-results"><header><div><p className="eyebrow">Recorded outcomes</p><h3>Success rate by profile</h3></div></header><div className="comparison-stat-grid">{selected.map((target) => { const stats = target.type === 'profile' ? statistics.data?.[target.sourceId] : undefined; return <article key={target.key}><strong>{target.label}</strong>{target.type === 'template' ? <span>N/A</span> : <span>{stats?.success_rate_percent ? `${compactNumber(stats.success_rate_percent, 1)}%` : 'No ratings'}</span>}<small>{target.type === 'template' ? 'Templates are not printed directly.' : stats?.low_sample ? `Low sample · ${stats.rated_prints} rated` : `${stats?.rated_prints ?? 0} rated prints`}</small></article> })}</div></section>
+      <section className="comparison-results"><header><div><p className="eyebrow">Difference-only view</p><h3>{differenceRows.length} setting {differenceRows.length === 1 ? 'difference' : 'differences'}</h3></div></header>{differenceRows.length ? <div className="comparison-table comparison-table--multi" style={{ '--comparison-columns': selected.length } as CSSProperties}><div className="comparison-row comparison-row--multi comparison-row--header"><span>Setting</span>{selected.map((target) => <span key={target.key}>{target.label}</span>)}</div>{differenceRows.map((row) => <div className="comparison-row comparison-row--multi" key={row.key}><div className="comparison-setting"><strong>{row.label}</strong><small>{row.key}</small></div>{selected.map((target) => <div className="comparison-value" key={target.key}><span>{target.label}</span><strong>{row.values.get(target.key) ?? 'Same as reference'}</strong></div>)}</div>)}</div> : <div className="comparison-empty"><CheckCircle2 size={22} /><div><strong>No setting differences</strong><p>The selected materials store equivalent settings.</p></div></div>}</section>
+      {profileIds.length > 0 ? <section className="comparison-results"><header><div><p className="eyebrow">Recorded outcomes</p><h3>Success rate by profile</h3></div></header><div className="comparison-stat-grid">{selected.map((target) => { const stats = target.type === 'profile' ? statistics.data?.[target.sourceId] : undefined; return <article key={target.key}><strong>{target.label}</strong>{target.type === 'template' ? <span>N/A</span> : <span>{stats?.success_rate_percent ? `${compactNumber(stats.success_rate_percent, 1)}%` : 'No ratings'}</span>}<small>{target.type === 'template' ? 'Templates are not printed directly.' : stats?.low_sample ? `Low sample · ${stats.rated_prints} rated` : `${stats?.rated_prints ?? 0} rated prints`}</small></article> })}</div></section> : null}
     </div>
   </Modal>
 }

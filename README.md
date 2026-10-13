@@ -1,6 +1,6 @@
 # Filament Manager
 
-Testing release **0.9.3** adds passkey sign-in for mobile and desktop browsers, automatic empty-spool archiving with an archive browser, and larger spool card icons. Back up the database and upgrade web and worker together; startup applies the passkey migration. Passkeys require the configured HTTPS address. No Cura-agent or macro update is required from 0.9.2. See [changes and upgrade notes](CHANGELOG.md#093---10122026).
+Testing release **0.9.4** adds nozzle condition and availability choices matching build plates, a clearer template comparison flow, and a Pressure Advance height calculator. Select Compare on two templates, then add more from the comparison window. Back up the database and upgrade web and worker together. No Cura-agent or macro update is required. See [changes and upgrade notes](CHANGELOG.md#094---10132026).
 
 Testing release **0.9.0** adds inherited support controls, saved G-code viewing/downloads, clearer print durations, and stale-history recovery. See [0.9.0 upgrade notes](CHANGELOG.md#090---09222026) for archive limits and the required Cura-agent upgrade.
 

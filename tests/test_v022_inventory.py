@@ -258,6 +258,28 @@ async def test_physical_nozzle_side_b_and_distinct_completed_print_counts(
             )
             assert created_nozzle.status_code == 201, created_nozzle.text
             nozzle_id = created_nozzle.json()["id"]
+            assert created_nozzle.json()["condition"] == "good"
+            assert created_nozzle.json()["usage_status"] == "active"
+            maintained = await client.patch(
+                f"/api/v1/nozzles/{nozzle_id}",
+                json={
+                    "expected_version": created_nozzle.json()["record_version"],
+                    "condition": "worn",
+                    "usage_status": "maintenance",
+                },
+            )
+            assert maintained.status_code == 200, maintained.text
+            assert maintained.json()["condition"] == "worn"
+            refused = await client.post(
+                f"/api/v1/nozzles/{nozzle_id}/install", json={"printer_id": str(printer_id)}
+            )
+            assert refused.status_code == 409
+            assert refused.json()["code"] == "nozzle_maintenance"
+            activated = await client.patch(
+                f"/api/v1/nozzles/{nozzle_id}",
+                json={"expected_version": maintained.json()["record_version"], "usage_status": "active"},
+            )
+            assert activated.status_code == 200, activated.text
             for print_state in ("printing", "paused"):
                 monkeypatch.setattr(
                     MoonrakerClient,
@@ -312,6 +334,15 @@ async def test_physical_nozzle_side_b_and_distinct_completed_print_counts(
                 "bed_mesh_state",
                 AsyncMock(return_value=MoonrakerBedMeshState(("P1",), "P1", print_state="standby")),
             )
+            for unavailable_status in ("maintenance", "retired"):
+                refused = await client.patch(
+                    f"/api/v1/nozzles/{nozzle_id}",
+                    json={
+                        "expected_version": installed.json()["record_version"],
+                        "usage_status": unavailable_status,
+                    },
+                )
+                assert refused.status_code == 409
             renamed_nozzle = await client.patch(
                 f"/api/v1/nozzles/{nozzle_id}",
                 json={

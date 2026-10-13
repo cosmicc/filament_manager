@@ -24,6 +24,8 @@ from filament_manager.models.enums import (
     MeasurementSource,
     NotificationSeverity,
     NozzleStatus,
+    PlateCondition,
+    PlateStatus,
     PlateSurfaceTexture,
     PrintJobStatus,
     PrintQualityRating,
@@ -963,6 +965,8 @@ class NozzleCreate(ApiModel):
     product_name: str | None = Field(default=None, max_length=160)
     coating: str | None = Field(default=None, max_length=96)
     purchase_date: date | None = None
+    condition: PlateCondition = PlateCondition.GOOD
+    usage_status: PlateStatus = PlateStatus.ACTIVE
     notes: str | None = Field(default=None, max_length=4000)
 
 
@@ -983,6 +987,8 @@ class NozzleUpdate(ApiModel):
     coating: str | None = Field(default=None, max_length=96)
     purchase_date: date | None = None
     notes: str | None = Field(default=None, max_length=4000)
+    condition: PlateCondition | None = None
+    usage_status: PlateStatus | None = None
     retired: bool | None = None
 
 
@@ -1001,6 +1007,8 @@ class NozzleResponse(ApiModel):
     product_name: str | None
     coating: str | None
     purchase_date: date | None
+    condition: PlateCondition
+    usage_status: PlateStatus
     status: NozzleStatus
     installed_printer_id: UUID | None = None
     installed_at: datetime | None

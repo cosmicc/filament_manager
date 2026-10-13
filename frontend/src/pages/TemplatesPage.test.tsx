@@ -71,6 +71,25 @@ describe('TemplatesPage', () => {
     window.localStorage.clear()
   })
 
+  it('selects a template before opening a comparison and preserves the exact pair', async () => {
+    const second = { ...template, id: 'second', name: 'Template PETG', material_type: 'PETG', revisions: [{ ...template.revisions[0], id: 'second-revision', settings: { ...materialSettings, extruder_temp_c: '240' } }] }
+    const third = { ...template, id: 'third', name: 'Template ASA', revisions: [{ ...template.revisions[0], id: 'third-revision' }] }
+    apiFetchMock.mockImplementation((path: string) => Promise.resolve(path === '/profiles/templates' ? [template, second, third] : []))
+    render(<QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}><TemplatesPage /></QueryClientProvider>)
+    const buttons = await screen.findAllByRole('button', { name: 'Compare settings' })
+    fireEvent.click(buttons[0])
+    expect(screen.queryByRole('dialog')).toBeNull()
+    expect(buttons[0].getAttribute('aria-pressed')).toBe('true')
+    fireEvent.click(buttons[1])
+    expect(await screen.findByRole('dialog', { name: 'Compare material settings' })).toBeTruthy()
+    expect(screen.getByText('Reference')).toBeTruthy()
+    expect(screen.queryByRole('button', { name: 'Close comparison' })).toBeNull()
+    const checks = screen.getAllByRole('checkbox') as HTMLInputElement[]
+    expect(checks.map((item) => item.checked)).toEqual([true, true, false])
+    fireEvent.click(checks[2])
+    expect(screen.getByText('Comparing 3 materials')).toBeTruthy()
+  })
+
   it('refreshes every profile and filament cache after a direct template save', async () => {
     apiFetchMock.mockImplementation((path: string, options?: RequestInit) => {
       if (path === '/profiles/templates') return Promise.resolve([template])

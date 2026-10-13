@@ -9,7 +9,7 @@ from sqlalchemy import func, select
 
 from filament_manager import config
 from filament_manager.api.printer_safety import require_idle_printer
-from filament_manager.models.enums import NozzleStatus
+from filament_manager.models.enums import NozzleStatus, PlateStatus
 from filament_manager.models.inventory import Nozzle, Printer
 from filament_manager.models.operations import NozzleLifecycleEvent
 from filament_manager.services.cura_nozzles import queue_cura_nozzle_update
@@ -61,6 +61,8 @@ async def _nozzle_responses(session: DatabaseSession, nozzles: list[Nozzle]) -> 
             product_name=nozzle.product_name,
             coating=nozzle.coating,
             purchase_date=nozzle.purchase_date,
+            condition=nozzle.condition,
+            usage_status=nozzle.usage_status,
             status=nozzle.status,
             installed_printer_id=installed.get(nozzle.id),
             installed_at=nozzle.installed_at,
@@ -142,7 +144,12 @@ async def create_nozzle(
         product_name=payload.product_name.strip() if payload.product_name else None,
         coating=payload.coating.strip() if payload.coating else None,
         purchase_date=payload.purchase_date,
-        status=NozzleStatus.AVAILABLE,
+        condition=payload.condition,
+        usage_status=payload.usage_status,
+        status=NozzleStatus.RETIRED
+        if payload.usage_status == PlateStatus.RETIRED
+        else NozzleStatus.AVAILABLE,
+        retired_at=datetime.now(UTC) if payload.usage_status == PlateStatus.RETIRED else None,
         notes=payload.notes.strip() if payload.notes else None,
     )
     session.add(nozzle)
@@ -160,6 +167,8 @@ async def create_nozzle(
             "printer_id": str(nozzle.printer_id),
             "diameter_mm": str(nozzle.diameter_mm),
             "material": nozzle.material,
+            "condition": nozzle.condition.value,
+            "usage_status": nozzle.usage_status.value,
         },
         correlation_id=request.state.correlation_id,
     )
@@ -183,16 +192,28 @@ async def update_nozzle(
     active_printer = await session.scalar(select(Printer).where(Printer.active_nozzle_id == nozzle.id))
     if active_printer is not None:
         await require_idle_printer(active_printer.printer_code, config.get_settings(), session)
-    if payload.retired is True and active_printer is not None:
+    requested_status = payload.usage_status
+    if payload.retired is not None:
+        legacy_status = PlateStatus.RETIRED if payload.retired else PlateStatus.ACTIVE
+        if requested_status is not None and requested_status != legacy_status:
+            raise ApiError(
+                status.HTTP_422_UNPROCESSABLE_ENTITY,
+                "conflicting_nozzle_status",
+                "Conflicting nozzle status choices",
+            )
+        requested_status = legacy_status
+    if active_printer is not None and requested_status in (PlateStatus.MAINTENANCE, PlateStatus.RETIRED):
         raise ApiError(
             status.HTTP_409_CONFLICT,
             "installed_nozzle_cannot_retire",
-            "Remove the nozzle from its printer before retiring it",
+            "Remove the nozzle from its printer before marking it Maintenance or Retired",
         )
     before: dict[str, object] = {
         "nozzle_code": nozzle.nozzle_code,
         "diameter_mm": str(nozzle.diameter_mm),
         "material": nozzle.material,
+        "condition": nozzle.condition.value,
+        "usage_status": nozzle.usage_status.value,
         "status": nozzle.status.value,
         "record_version": nozzle.record_version,
     }
@@ -226,8 +247,18 @@ async def update_nozzle(
                 "Material is required",
             )
         nozzle.material = payload.material.strip()
+    if "condition" in payload.model_fields_set:
+        if payload.condition is None:
+            raise ApiError(
+                status.HTTP_422_UNPROCESSABLE_ENTITY, "nozzle_condition_required", "Condition is required"
+            )
+        nozzle.condition = payload.condition
+    if "usage_status" in payload.model_fields_set and payload.usage_status is None:
+        raise ApiError(status.HTTP_422_UNPROCESSABLE_ENTITY, "nozzle_status_required", "Status is required")
+    if requested_status is not None:
+        nozzle.usage_status = requested_status
     now = datetime.now(UTC)
-    if payload.retired is True and nozzle.status != NozzleStatus.RETIRED:
+    if requested_status == PlateStatus.RETIRED and nozzle.status != NozzleStatus.RETIRED:
         nozzle.status = NozzleStatus.RETIRED
         nozzle.retired_at = now
         session.add(
@@ -240,7 +271,10 @@ async def update_nozzle(
                 occurred_at=now,
             )
         )
-    elif payload.retired is False and nozzle.status == NozzleStatus.RETIRED:
+    elif (
+        requested_status in (PlateStatus.ACTIVE, PlateStatus.MAINTENANCE)
+        and nozzle.status == NozzleStatus.RETIRED
+    ):
         nozzle.status = NozzleStatus.AVAILABLE
         nozzle.retired_at = None
         session.add(
@@ -264,6 +298,8 @@ async def update_nozzle(
         before=before,
         after={
             "nozzle_code": nozzle.nozzle_code,
+            "condition": nozzle.condition.value,
+            "usage_status": nozzle.usage_status.value,
             "status": nozzle.status.value,
             "record_version": nozzle.record_version,
         },
@@ -284,6 +320,10 @@ async def install_nozzle(
     """Install one physical nozzle and close the previous printer assignment."""
 
     nozzle = await _get_nozzle(session, nozzle_id, lock=True)
+    if nozzle.usage_status == PlateStatus.MAINTENANCE:
+        raise ApiError(
+            status.HTTP_409_CONFLICT, "nozzle_maintenance", "Mark the nozzle Active before installing it"
+        )
     if nozzle.status == NozzleStatus.RETIRED:
         raise ApiError(status.HTTP_409_CONFLICT, "nozzle_retired", "Reactivate the nozzle before use")
     printer = await session.scalar(select(Printer).where(Printer.id == payload.printer_id).with_for_update())

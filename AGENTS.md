@@ -1,5 +1,9 @@
 # Filament Manager Agent Guide
 
+- Pressure Advance calibration uses the operator's fixed tower recipe START=0, FACTOR=0.020, with Prep PA run manually first and smooth factor 0.020 guidance for all filaments. The read-only height calculator accepts 0–100 mm with two decimal places, returns exact PA up to four decimals, and never runs a printer command or saves automatically. Preserve four-decimal PA result entry in this step; ordinary catalog formatting stays unchanged.
+
+- 0.9.4 adds build-plate enums to nozzle `condition` and `usage_status`, separate from physical lifecycle `status`. Preserve installation history; installed nozzles must be removed before Maintenance/Retired, and maintenance nozzles cannot be installed. Template Compare first highlights a selection, then opens the exact selected pair on the second click. See frontend/database/testing skills.
+
 ## Mission
 
 Build and maintain Filament Manager, a security-focused, self-hosted application for filament inventory, measurements, material profiles, calibration, build plates, and supported Klipper ecosystem integration.

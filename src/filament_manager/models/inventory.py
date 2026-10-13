@@ -357,6 +357,12 @@ class Nozzle(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     status: Mapped[NozzleStatus] = mapped_column(
         Enum(NozzleStatus, name="nozzle_status"), nullable=False, default=NozzleStatus.AVAILABLE
     )
+    condition: Mapped[PlateCondition] = mapped_column(
+        Enum(PlateCondition, name="plate_condition"), nullable=False, default=PlateCondition.GOOD
+    )
+    usage_status: Mapped[PlateStatus] = mapped_column(
+        Enum(PlateStatus, name="plate_status"), nullable=False, default=PlateStatus.ACTIVE
+    )
     installed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     retired_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     notes: Mapped[str | None] = mapped_column(Text)

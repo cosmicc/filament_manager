@@ -138,7 +138,7 @@ def test_unknown_manufacturer_upgrade_preserves_archived_filaments_and_snapshots
             with pytest.raises(RuntimeError, match="legacy filament identity rule"):
                 command.downgrade(config, "b6c7d8e9f012")
             with engine.connect() as connection:
-                assert connection.scalar(text("SELECT version_num FROM alembic_version")) == "fe456f789012"
+                assert connection.scalar(text("SELECT version_num FROM alembic_version")) == "ff567a890123"
         else:
             command.downgrade(config, "b6c7d8e9f012")
             assert "uq_filament_product_identity" in {
@@ -814,7 +814,7 @@ def test_previous_schema_automatically_upgrades_to_metadata_head(
 
         upgrade_database(DatabaseConfig(url=database_url))
         with engine.connect() as connection:
-            assert connection.scalar(text("SELECT version_num FROM alembic_version")) == "fe456f789012"
+            assert connection.scalar(text("SELECT version_num FROM alembic_version")) == "ff567a890123"
             assert (
                 connection.scalar(
                     text(
@@ -1044,5 +1044,68 @@ def test_previous_schema_automatically_upgrades_to_metadata_head(
         assert "must_change_password" not in {column["name"] for column in downgraded.get_columns("users")}
         command.upgrade(alembic_config, "head")
         command.check(alembic_config)
+        engine.dispose()
+        get_settings.cache_clear()
+
+
+@pytest.mark.integration
+def test_nozzle_condition_upgrade_preserves_lifecycle_and_refuses_loss(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Backfill availability without rewriting physical installation or retirement."""
+    from filament_manager.models.enums import NozzleStatus
+    from filament_manager.models.inventory import Nozzle, Printer
+
+    with PostgresContainer("postgres:17-alpine", driver="psycopg") as postgres:
+        database_url = postgres.get_connection_url().replace(
+            "postgresql+psycopg2://", "postgresql+psycopg://"
+        )
+        monkeypatch.setenv("FILAMENT_MANAGER_DATABASE_URL", database_url)
+        get_settings.cache_clear()
+        config = Config("alembic.ini")
+        config.set_main_option("sqlalchemy.url", database_url)
+        command.upgrade(config, "fe456f789012")
+        engine = create_engine(database_url)
+        with Session(engine) as session:
+            printer = Printer(
+                printer_code="migration-printer",
+                name="Migration printer",
+                moonraker_base_url="http://moonraker.test:7125",
+                nozzle_diameter_mm=Decimal("0.4"),
+            )
+            insert_legacy_record(session, printer)
+            session.flush()
+            printer_id = printer.id
+            for state in (NozzleStatus.AVAILABLE, NozzleStatus.INSTALLED, NozzleStatus.RETIRED):
+                insert_legacy_record(
+                    session,
+                    Nozzle(
+                        nozzle_code=state.value,
+                        printer_id=printer_id,
+                        diameter_mm=Decimal("0.4"),
+                        material="Brass",
+                        status=state,
+                    ),
+                )
+            session.commit()
+        command.upgrade(config, "head")
+        command.check(config)
+        with engine.begin() as connection:
+            rows = connection.execute(
+                text(
+                    "SELECT status::text, condition::text, usage_status::text "
+                    "FROM nozzles ORDER BY nozzle_code"
+                )
+            ).all()
+            assert rows == [
+                ("AVAILABLE", "GOOD", "ACTIVE"),
+                ("INSTALLED", "GOOD", "ACTIVE"),
+                ("RETIRED", "GOOD", "RETIRED"),
+            ]
+            connection.execute(
+                text("UPDATE nozzles SET usage_status = 'MAINTENANCE' WHERE status = 'AVAILABLE'")
+            )
+        with pytest.raises(RuntimeError, match="Nozzle condition or maintenance data exists"):
+            command.downgrade(config, "fe456f789012")
         engine.dispose()
         get_settings.cache_clear()
