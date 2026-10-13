@@ -17,6 +17,11 @@ from filament_manager.models.inventory import (
     Printer,
 )
 from filament_manager.services.material_settings import save_template_settings
+from filament_manager.services.material_types import (
+    lock_material_types,
+    remember_material_type,
+    seeded_material_type_name,
+)
 
 DEFAULT_ASA_SETTINGS: dict[str, object] = {
     "chamber_temp_c": "45",
@@ -49,6 +54,8 @@ DEFAULT_ASA_SETTINGS: dict[str, object] = {
 async def seed_configured_system(session: AsyncSession, settings: Settings) -> dict[str, int]:
     """Create missing configured printers, plates, and the ASA import base without committing."""
 
+    await lock_material_types(session)
+    asa_material = await seeded_material_type_name(session, "ASA")
     seeded_plates = 0
     seeded_printers = 0
     seeded_templates = 0
@@ -137,15 +144,15 @@ async def seed_configured_system(session: AsyncSession, settings: Settings) -> d
             nozzle.installed_at = nozzle.installed_at or datetime.now(UTC)
         existing_asa = await session.scalar(
             select(MaterialTemplate.id).where(
-                func.lower(MaterialTemplate.material_type) == "asa",
+                func.lower(MaterialTemplate.material_type) == asa_material.lower(),
                 MaterialTemplate.nozzle_id == nozzle.id,
             )
         )
         if existing_asa is not None:
             continue
         template = MaterialTemplate(
-            name="Template ASA",
-            material_type="ASA",
+            name=f"Template {asa_material}",
+            material_type=asa_material,
             description="Recommended ASA starting point; calibrate or import Cura settings before printing.",
             printer_id=printer.id,
             nozzle_id=nozzle.id,
@@ -154,6 +161,7 @@ async def seed_configured_system(session: AsyncSession, settings: Settings) -> d
             active=True,
         )
         session.add(template)
+        await remember_material_type(session, template.material_type)
         await session.flush()
         await save_template_settings(
             session,
@@ -175,12 +183,9 @@ async def seed_configured_system(session: AsyncSession, settings: Settings) -> d
         )
     )
     for base in bases:
-        targets = (
-            ("Silk PLA", "PLA Carbon Fiber")
-            if base.material_type.casefold() == "pla"
-            else ("PETG Carbon Fiber",)
-        )
+        targets = ("Silk PLA", "PLA-CF") if base.material_type.casefold() == "pla" else ("PETG-CF",)
         for material in targets:
+            material = await seeded_material_type_name(session, material)
             exists = await session.scalar(
                 select(MaterialTemplate.id)
                 .where(
@@ -210,6 +215,7 @@ async def seed_configured_system(session: AsyncSession, settings: Settings) -> d
                 active=True,
             )
             session.add(template)
+            await remember_material_type(session, template.material_type)
             await session.flush()
             await save_template_settings(
                 session, template=template, settings=dict(revision.settings), increment_template_record=False

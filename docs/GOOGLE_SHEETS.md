@@ -33,7 +33,7 @@ For an External consent screen in **Testing**, add your Google account as a test
 
 ## Workbook contents
 
-The workbook contains Dashboard, Spools, Filaments, Templates, Template History, Print Profiles, Build Plates, Plate Sides, 3D Printers, Nozzles, Nozzle Events, Mesh Calibration, Manufacturers, Locations, Colors, Fillers and Finishes, Measurements, Usage, Calibration, Calibration Steps, Print History, Print Segments, Print Assessments, and Settings and Evidence.
+The workbook contains Dashboard, Spools, Filaments, Templates, Template History, Print Profiles, Build Plates, Plate Sides, 3D Printers, Nozzles, Nozzle Events, Mesh Calibration, Manufacturers, Locations, Spool Types, Material Types, Colors, Fillers and Finishes, Measurements, Usage, Calibration, Calibration Steps, Print History, Print Segments, Print Assessments, and Settings and Evidence.
 
 - Current and archived records are included. Profile/template history and original print settings stay intact.
 - **Settings and Evidence** expands every included nested value into source, record, field, setting and value columns. It retains sparse overrides, resolved settings, captured templates, Cura settings, calibration results and print evidence as literal text or numbers. Filter by record and field to compare them. No spreadsheet formula is executed from app data.

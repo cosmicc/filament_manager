@@ -138,7 +138,7 @@ def test_unknown_manufacturer_upgrade_preserves_archived_filaments_and_snapshots
             with pytest.raises(RuntimeError, match="legacy filament identity rule"):
                 command.downgrade(config, "b6c7d8e9f012")
             with engine.connect() as connection:
-                assert connection.scalar(text("SELECT version_num FROM alembic_version")) == "ff567a890123"
+                assert connection.scalar(text("SELECT version_num FROM alembic_version")) == "a0678b901234"
         else:
             command.downgrade(config, "b6c7d8e9f012")
             assert "uq_filament_product_identity" in {
@@ -814,7 +814,7 @@ def test_previous_schema_automatically_upgrades_to_metadata_head(
 
         upgrade_database(DatabaseConfig(url=database_url))
         with engine.connect() as connection:
-            assert connection.scalar(text("SELECT version_num FROM alembic_version")) == "ff567a890123"
+            assert connection.scalar(text("SELECT version_num FROM alembic_version")) == "a0678b901234"
             assert (
                 connection.scalar(
                     text(
@@ -1107,5 +1107,129 @@ def test_nozzle_condition_upgrade_preserves_lifecycle_and_refuses_loss(
             )
         with pytest.raises(RuntimeError, match="Nozzle condition or maintenance data exists"):
             command.downgrade(config, "fe456f789012")
+        engine.dispose()
+        get_settings.cache_clear()
+
+
+@pytest.mark.integration
+@pytest.mark.parametrize("collision", [False, True])
+def test_material_type_upgrade_preserves_settings_and_history(
+    monkeypatch: pytest.MonkeyPatch,
+    collision: bool,
+) -> None:
+    """Correct live labels without changing snapshots, or refuse collisions atomically."""
+    from filament_manager.models.inventory import MaterialTemplate, Nozzle, Printer
+    from filament_manager.models.printing import PrintJob
+
+    with PostgresContainer("postgres:17-alpine", driver="psycopg") as postgres:
+        url = postgres.get_connection_url()
+        monkeypatch.setenv("FILAMENT_MANAGER_DATABASE_URL", url)
+        get_settings.cache_clear()
+        config = Config("alembic.ini")
+        command.upgrade(config, "ff567a890123")
+        engine = create_engine(url)
+        with Session(engine) as session:
+            printer = Printer(
+                printer_code="types",
+                name="Types",
+                moonraker_base_url="http://moonraker.test:7125",
+                nozzle_diameter_mm=Decimal("0.4"),
+            )
+            session.add(printer)
+            session.flush()
+            nozzle = Nozzle(
+                nozzle_code="N1", printer_id=printer.id, diameter_mm=Decimal("0.4"), material="Brass"
+            )
+            session.add(nozzle)
+            session.flush()
+            template = MaterialTemplate(
+                name="Template PLA Carbon Fiber",
+                material_type="PLA Carbon Fiber",
+                printer_id=printer.id,
+                nozzle_id=nozzle.id,
+                nozzle_diameter_mm=Decimal("0.4"),
+                filament_diameter_mm=Decimal("1.75"),
+            )
+            session.add(template)
+            session.flush()
+            evidence = {"bed_temp_c": "60", "filament_density_g_cm3": "1.24"}
+            revision = MaterialTemplateRevision(
+                material_template_id=template.id,
+                version=1,
+                status=ProfileStatus.PUBLISHED,
+                settings=evidence,
+                checksum="unchanged",
+            )
+            session.add(revision)
+            product = FilamentProduct(
+                material_type="petg carbon fiber",
+                color_name="Black",
+                diameter_mm=Decimal("1.75"),
+                density_g_cm3=Decimal("1.24"),
+                nominal_net_mass_g=Decimal("1000"),
+                archived=True,
+            )
+            session.add(product)
+            session.flush()
+            history = PrintJob(
+                printer_id=printer.id,
+                filament_product_id=product.id,
+                filename="old.gcode",
+                status=PrintJobStatus.COMPLETED,
+                print_settings_snapshot={"material_type": "petg carbon fiber"},
+            )
+            session.add(history)
+            if collision:
+                session.add(
+                    MaterialTemplate(
+                        name="Template PLA-CF",
+                        material_type="PLA-CF",
+                        printer_id=printer.id,
+                        nozzle_id=nozzle.id,
+                        nozzle_diameter_mm=Decimal("0.4"),
+                        filament_diameter_mm=Decimal("1.75"),
+                    )
+                )
+            session.commit()
+            template_id, product_id, history_id, revision_id = (
+                template.id,
+                product.id,
+                history.id,
+                revision.id,
+            )
+        if collision:
+            with pytest.raises(RuntimeError, match="conflicts with an active nozzle template"):
+                command.upgrade(config, "head")
+            assert "material_types" not in inspect(engine).get_table_names()
+            with engine.connect() as connection:
+                assert connection.scalar(text("SELECT version_num FROM alembic_version")) == "ff567a890123"
+        else:
+            command.upgrade(config, "head")
+            command.check(config)
+            with Session(engine) as session:
+                assert session.get(MaterialTemplate, template_id).name == "Template PLA-CF"
+                assert session.get(FilamentProduct, product_id).material_type == "PETG-CF"
+                assert session.get(FilamentProduct, product_id).archived
+                assert session.get(MaterialTemplateRevision, revision_id).settings == evidence
+                assert session.get(MaterialTemplateRevision, revision_id).checksum == "unchanged"
+                assert session.get(PrintJob, history_id).print_settings_snapshot == {
+                    "material_type": "petg carbon fiber"
+                }
+                names = set(session.scalars(text("SELECT name FROM material_types")))
+                assert {"ASA-CF", "ASA-GF", "PLA-CF", "PETG-CF"} <= names
+                assert "PLA Carbon Fiber" not in names
+                session.execute(
+                    text(
+                        "INSERT INTO audit_events "
+                        "(id, source, action, object_type, metadata, occurred_at, correlation_id) "
+                        "VALUES (:id, 'web', 'material_type.create', 'material_type', "
+                        "'{}', CURRENT_TIMESTAMP, 'test')"
+                    ),
+                    {"id": uuid4()},
+                )
+                session.commit()
+            with pytest.raises(RuntimeError, match="Operator-managed material types"):
+                command.downgrade(config, "ff567a890123")
+            assert "material_types" in inspect(engine).get_table_names()
         engine.dispose()
         get_settings.cache_clear()

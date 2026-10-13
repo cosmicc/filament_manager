@@ -18,7 +18,13 @@ from filament_manager.api.routes import operations
 from filament_manager.models import Base
 from filament_manager.models.auth import User
 from filament_manager.models.enums import UserRole
-from filament_manager.models.inventory import BuildPlateSurface, FilamentProduct, MaterialTemplate, Printer
+from filament_manager.models.inventory import (
+    BuildPlateSurface,
+    FilamentProduct,
+    MaterialTemplate,
+    MaterialType,
+    Printer,
+)
 from filament_manager.models.operations import ApplicationSetting
 from filament_manager.services import events
 from filament_manager.services.google_workbook import snapshot
@@ -26,6 +32,7 @@ from filament_manager.services.material_settings import (
     create_published_profile_snapshot,
     save_template_settings,
 )
+from filament_manager.services.material_types import rename_material_type
 from filament_manager.services.plate_ratings import filament_plate_rating
 from filament_manager.services.seed import DEFAULT_ASA_SETTINGS, seed_configured_system
 
@@ -105,9 +112,26 @@ async def test_v083_metadata_ratings_and_pagination(monkeypatch: pytest.MonkeyPa
             )
             await seed_configured_system(session, settings)
             families = set(await session.scalars(select(MaterialTemplate.material_type)))
-            assert {"PLA", "Silk PLA", "PLA Carbon Fiber"} <= families
+            assert {"PLA", "Silk PLA", "PLA-CF"} <= families
             assert product.material_type == "PLA"
             assert (await seed_configured_system(session, settings))["templates"] == 0
+            for old_name, new_name in (("PLA-CF", "Carbon PLA"), ("ASA", "Weatherproof ASA")):
+                material_type = await session.scalar(
+                    select(MaterialType).where(MaterialType.name == old_name)
+                )
+                assert material_type is not None
+                await rename_material_type(
+                    session,
+                    item=material_type,
+                    name=new_name,
+                    actor_id=user.id,
+                    correlation_id="seed-rename-test",
+                )
+            assert (await seed_configured_system(session, settings))["templates"] == 0
+            families = set(await session.scalars(select(MaterialTemplate.material_type)))
+            assert {"Carbon PLA", "Weatherproof ASA"} <= families
+            assert not {"PLA-CF", "ASA", "PLA Carbon Fiber"} & families
+
             session.add(ApplicationSetting(key="private.connection", value={"secret": "never-export-this"}))
             await session.commit()
             printer_id, template_id, plate_id, product_id = (

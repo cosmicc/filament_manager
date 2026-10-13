@@ -1,5 +1,10 @@
 # Testing and Validation Skill
 
+- Recurring ASA/Silk PLA/PLA-CF/PETG-CF seeding follows the original catalog UUID through audited global renames and never recreates the old label. Acquire the material-type lock before seed row locks; remember each new seeded family. Verify repeated seeding after ASA and PLA-CF renames creates no extra templates.
+
+- 0.9.5 tests cover durable material-type choices without fabricated templates, bounded printable input, case-equivalent duplicates, version/name-confirmed global renames across nozzle scopes and archived products, exact settings/history/spool-code preservation, audit/outbox work, authentication/authorization, concurrent identity writers, populated upgrade/collision rollback, metadata parity and protected downgrade. Exercise child creation/cancellation/draft preservation and confirmed rename/error flows on desktop/mobile. Current Alembic head is `a0678b901234`.
+
+
 - Pressure Advance calibration uses the operator's fixed tower recipe START=0, FACTOR=0.020, with Prep PA run manually first and smooth factor 0.020 guidance for all filaments. The read-only height calculator accepts 0–100 mm with two decimal places, returns exact PA up to four decimals, and never runs a printer command or saves automatically. Preserve four-decimal PA result entry in this step; ordinary catalog formatting stays unchanged.
 
 - 0.9.4 checks cover first-template highlight without a modal, exact two-template initialization without profiles, adding a third, and removal of the footer close button. PostgreSQL tooling tests cover condition persistence, maintenance install rejection, and refusal to mark installed nozzles Maintenance/Retired. Validate migration head `ff567a890123`.

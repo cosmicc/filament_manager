@@ -1,6 +1,6 @@
 # Filament Manager
 
-Testing release **0.9.4** adds nozzle condition and availability choices matching build plates, a clearer template comparison flow, and a Pressure Advance height calculator. Select Compare on two templates, then add more from the comparison window. Back up the database and upgrade web and worker together. No Cura-agent or macro update is required. See [changes and upgrade notes](CHANGELOG.md#094---10132026).
+Testing release **0.9.5** adds material-type creation and global renaming under **Templates → Manage material types**. ASA-CF and ASA-GF are selectable; PLA Carbon Fiber and PETG Carbon Fiber become PLA-CF and PETG-CF. Template settings, spool codes, and print history are preserved. Back up the database and upgrade web and worker together. No Cura-agent or macro update is required. See [changes and upgrade notes](CHANGELOG.md#095---10132026).
 
 Testing release **0.9.0** adds inherited support controls, saved G-code viewing/downloads, clearer print durations, and stale-history recovery. See [0.9.0 upgrade notes](CHANGELOG.md#090---09222026) for archive limits and the required Cura-agent upgrade.
 

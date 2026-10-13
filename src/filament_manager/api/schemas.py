@@ -98,6 +98,36 @@ class VendorCreate(ApiModel):
 ColorHex = Annotated[str, Field(pattern=r"^#?[0-9A-Fa-f]{6}$")]
 
 
+class MaterialTypeCreate(ApiModel):
+    """Create one bounded material family without inventing print settings."""
+
+    model_config = ConfigDict(str_strip_whitespace=True, extra="forbid")
+    name: str = Field(min_length=1, max_length=48)
+
+    @field_validator("name")
+    @classmethod
+    def printable_name(cls, value: str) -> str:
+        """Reject control characters rather than passing them to integrations."""
+        if any(not character.isprintable() for character in value):
+            raise ValueError("Use a printable material type name")
+        return value
+
+
+class MaterialTypeRename(MaterialTypeCreate):
+    """Rename a global family only after reviewing its current identity."""
+
+    expected_version: int = Field(ge=1)
+    confirmation_name: str = Field(min_length=1, max_length=48)
+
+
+class MaterialTypeResponse(ApiModel):
+    """Current durable catalog identity and optimistic concurrency token."""
+
+    id: UUID
+    name: str
+    record_version: int
+
+
 class SpoolLocationChoiceCreate(ApiModel):
     """A remembered location label, not a separate spool assignment."""
 

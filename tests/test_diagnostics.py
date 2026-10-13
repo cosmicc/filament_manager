@@ -42,7 +42,7 @@ async def test_only_confirmed_power_off_marks_connection_waiting(monkeypatch, po
 def test_expected_schema_matches_current_migration_head() -> None:
     """Diagnostics must advance whenever the single Alembic head advances."""
 
-    assert EXPECTED_SCHEMA_VERSION == "ff567a890123"
+    assert EXPECTED_SCHEMA_VERSION == "a0678b901234"
 
 
 def test_error_details_remove_database_and_external_response_content() -> None:

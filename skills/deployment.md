@@ -1,5 +1,8 @@
 # Deployment and Operations Skill
 
+- 0.9.5 upgrades web and worker together with migration `a0678b901234`. Back up first; resolve active same-nozzle carbon-fiber rename collisions before upgrading. ASA-CF/ASA-GF choices do not create templates or copy settings. Corrected live labels propagate to Spoolman/Google through queued work and to managed Cura on the next heartbeat with Cura closed. No agent, renderer, macro, or configuration change is required. Downgrade refuses operator-managed catalog edits; restore the pre-upgrade backup when necessary.
+
+
 - For every newly authorized GitHub release, explicitly set `--prerelease=false --latest=true` with `gh release create` or `gh release edit`. Keep testing status in the release title and notes because GitHub excludes prereleases from Latest. This supersedes older testing-release instructions requiring the prerelease flag. Verify the published release is non-draft and non-prerelease, and that `gh api repos/cosmicc/filament_manager/releases/latest --jq .tag_name` returns the exact intended tag. Preserve exact-SHA CI, package/checksum, and multi-architecture image verification. Ordinary pushes retain the existing CI/image workflow; release creation still requires authorization.
 
 - Read root `CHANGELOG.md` for each version's migration, installation, and rollback requirements. Keep version-specific upgrade guidance there instead of creating separate upgrade documents; retain reusable operational procedures in this skill and the stable setup guides.
