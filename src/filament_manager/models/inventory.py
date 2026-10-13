@@ -54,6 +54,15 @@ class Vendor(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     record_version: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
 
 
+class MaterialType(UUIDPrimaryKeyMixin, TimestampMixin, Base):
+    """Durable material family labels shared across all template scopes."""
+
+    __tablename__ = "material_types"
+    name: Mapped[str] = mapped_column(String(48), nullable=False)
+    name_key: Mapped[str] = mapped_column(String(144), nullable=False, unique=True)
+    record_version: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
+
+
 class SpoolLocationChoice(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     """Remember selectable labels; Spool.location still owns all assignments."""
 

@@ -1,5 +1,8 @@
 # Database and Migration Skill
 
+- Material types live in `material_types` with casefold-unique names and record versions. Migration `a0678b901234` seeds defaults and existing labels (including archived records), corrects PLA Carbon Fiber/PETG Carbon Fiber, and refuses active nozzle-scope collisions. Global renames update only live template/product identities and record versions, preserve settings snapshots/overrides/print evidence and immutable spool codes, append audits, and queue Spoolman/Google/Cura metadata. Acquire `lock_material_types` before template/product row or inventory-choice locks for identity writes; remember compatible API-created labels. Downgrade refuses operator-managed catalog edits and retains corrected labels. Agent heartbeat requeues the changed desired library after migration. Recurring seed families follow their catalog UUID through audited global renames and never recreate the former label; seed writers share the catalog lock.
+
+
 - Migration `ff567a890123` reuses `plate_condition`/`plate_status` enums for nozzle condition/usage_status without replacing nozzle lifecycle status. Backfill Good/Active and preserve Retired availability. Downgrade refuses entered condition/maintenance evidence. Keep legacy `retired` requests compatible, reject conflicting status input, and preserve optimistic concurrency, audits, idle guards, installation events, and historical attribution.
 
 - Passkey migration `fe456f789012` preserves accounts/sessions and adds public credentials plus expiring ceremonies. Downgrade refuses retained passkeys; offline restore clears sessions and challenges. See `skills/passkeys.md`.

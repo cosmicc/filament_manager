@@ -1,5 +1,20 @@
 # User Changelog
 
+## 0.9.5 - 10.13.2026
+
+### Added
+
+- Add new material types from Templates using Manage material types or New Material Type. ASA-CF and ASA-GF are available to select; configure their template settings separately.
+
+### Changed
+
+- Rename a material type everywhere after confirming its current name. All templates and filaments use the new label while settings, spool codes, and print history are preserved.
+- PLA Carbon Fiber is now PLA-CF; PETG Carbon Fiber is now PETG-CF.
+
+### Fixed
+
+- Material-type choices are remembered, even before you create a template. Creating a type keeps your template draft intact.
+
 ## 0.9.4 - 10.13.2026
 
 Testing release. Existing nozzles start with Good condition; installation and print history stay intact. No Cura-agent or macro update is required.

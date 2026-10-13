@@ -1,5 +1,25 @@
 # Changelog
 
+## 0.9.5 - 10.13.2026
+
+Testing release. Back up the canonical database and upgrade web and worker together. Startup applies migration `a0678b901234`, adds a durable material-type catalog, and renames existing PLA Carbon Fiber / PETG Carbon Fiber labels to PLA-CF / PETG-CF case-insensitively, including archived inventory. Resolve any active same-nozzle template collision before upgrading; the migration refuses ambiguous scopes atomically. No Cura-agent, renderer, macro, or environment-variable update is required. Existing managed workstations receive renamed material metadata on their next heartbeat and deploy it with Cura closed. Downgrade retains corrected labels but refuses to discard operator-created or renamed catalog entries; restore a pre-upgrade backup instead.
+
+### Added
+
+- Create durable material types from Templates → Manage material types or the final New Material Type option in template/import selectors. New types remain selectable before a template exists.
+- ASA-CF and ASA-GF material choices, without invented or copied printing settings.
+- Confirmed global material-type renaming with duplicate-name rejection, bounded printable names, optimistic concurrency, transactional audit evidence, and queued synchronization.
+
+### Changed
+
+- Rename PLA Carbon Fiber to PLA-CF and PETG Carbon Fiber to PETG-CF across current templates and filaments, including archived records. Spool codes, settings, overrides, immutable settings snapshots, and historical print records are preserved.
+- Template creation and import use the shared material-type catalog instead of hard-coded suggestions. Compatible API-created material labels are remembered automatically.
+
+### Fixed
+
+- Recurring template seeding honors renamed material identities and does not recreate former carbon-fiber or ASA labels.
+- Newly created material types remain available across browser sessions and printer/nozzle scopes. Failed or cancelled child creation preserves the originating template draft; rename errors remain in the management dialog.
+
 ## 0.9.4 - 10.13.2026
 
 Testing release. Upgrade web and worker together; migration `ff567a890123` preserves nozzle installations and retirement, initializes existing condition to Good, and adds availability choices. No Cura-agent or macro update is required. Downgrade refuses to discard entered nozzle condition or maintenance data; restore a pre-upgrade backup instead.

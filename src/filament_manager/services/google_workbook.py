@@ -109,6 +109,7 @@ EXPORTS = (
     ("Manufacturers", "vendors", "name preferred aliases notes record_version created_at updated_at"),
     ("Locations", "spool_location_choices", "name created_at updated_at"),
     ("Spool Types", "spool_type_choices", "name created_at updated_at"),
+    ("Material Types", "material_types", "name record_version created_at updated_at"),
     (
         "Colors",
         "filament_colors",

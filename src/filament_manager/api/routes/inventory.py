@@ -68,6 +68,7 @@ from filament_manager.services.material_settings import (
     create_published_profile_snapshot,
     queue_managed_cura_library,
 )
+from filament_manager.services.material_types import lock_material_types, remember_material_type
 from filament_manager.services.print_statistics import completed_spool_print_counts
 from filament_manager.services.spool_codes import allocate_spool_code, next_spool_code
 from filament_manager.services.spool_labels import render_spool_label_png
@@ -817,6 +818,7 @@ async def create_filament(
 ) -> FilamentResponse:
     """Create a canonical filament product definition."""
 
+    await lock_material_types(session)
     await lock_inventory_choices(session)
     template_revision: MaterialTemplateRevision | None = None
     template: MaterialTemplate | None = None
@@ -984,6 +986,7 @@ async def create_filament(
     await session.refresh(product, attribute_names=["vendor"])
     response = filament_response(product)
     await prune_inventory_choices(session)
+    await remember_material_type(session, product.material_type)
     await session.commit()
     return response
 
@@ -998,6 +1001,7 @@ async def update_filament(
 ) -> FilamentResponse:
     """Update product metadata and apply its color sample to matching products."""
 
+    await lock_material_types(session)
     await lock_inventory_choices(session)
     product = await session.scalar(
         select(FilamentProduct).where(FilamentProduct.id == filament_id).with_for_update()
@@ -1210,6 +1214,7 @@ async def update_filament(
     await session.refresh(product, attribute_names=["vendor"])
     response = filament_response(product)
     await prune_inventory_choices(session)
+    await remember_material_type(session, product.material_type)
     await session.commit()
     return response
 

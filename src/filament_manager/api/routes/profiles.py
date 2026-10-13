@@ -29,6 +29,7 @@ from filament_manager.models.inventory import (
     MaterialProfile,
     MaterialTemplate,
     MaterialTemplateRevision,
+    MaterialType,
     Nozzle,
     Printer,
 )
@@ -39,6 +40,11 @@ from filament_manager.services.material_settings import (
     create_published_profile_snapshot,
     queue_managed_cura_library,
     save_template_settings,
+)
+from filament_manager.services.material_types import (
+    lock_material_types,
+    remember_material_type,
+    rename_material_type,
 )
 
 from ..dependencies import DatabaseSession, Operator, Viewer
@@ -56,6 +62,9 @@ from ..schemas import (
     MaterialTemplateRevisionCreate,
     MaterialTemplateRevisionResponse,
     MaterialTemplateUpdate,
+    MaterialTypeCreate,
+    MaterialTypeRename,
+    MaterialTypeResponse,
     ProfileCreate,
     ProfileDirectUpdate,
     ProfileFromTemplateRequest,
@@ -66,6 +75,73 @@ from ..schemas import (
 )
 
 router = APIRouter(prefix="/profiles", tags=["material profiles"])
+
+
+@router.get("/material-types", response_model=list[MaterialTypeResponse])
+async def list_material_types(viewer: Viewer, session: DatabaseSession) -> list[MaterialTypeResponse]:
+    """List durable families, including choices not yet used by a template."""
+    items = await session.scalars(select(MaterialType).order_by(func.lower(MaterialType.name)))
+    return [MaterialTypeResponse.model_validate(item) for item in items]
+
+
+@router.post("/material-types", response_model=MaterialTypeResponse, status_code=201)
+async def create_material_type(
+    payload: MaterialTypeCreate,
+    request: Request,
+    operator: Operator,
+    session: DatabaseSession,
+) -> MaterialTypeResponse:
+    """Create an audited family choice without creating templates or settings."""
+    await lock_material_types(session)
+    if await session.scalar(select(MaterialType.id).where(MaterialType.name_key == payload.name.casefold())):
+        raise ApiError(409, "material_type_exists", "That material type already exists")
+    item = await remember_material_type(session, payload.name)
+    add_audit_event(
+        session,
+        actor_id=operator.id,
+        source="web",
+        action="material_type.create",
+        object_type="material_type",
+        object_id=item.id,
+        before=None,
+        after={"name": item.name},
+        correlation_id=request.state.correlation_id,
+    )
+    response = MaterialTypeResponse.model_validate(item)
+    await session.commit()
+    return response
+
+
+@router.put("/material-types/{material_type_id}", response_model=MaterialTypeResponse)
+async def update_material_type(
+    material_type_id: UUID,
+    payload: MaterialTypeRename,
+    request: Request,
+    operator: Operator,
+    session: DatabaseSession,
+) -> MaterialTypeResponse:
+    """Rename every live scope after exact-name confirmation and version checking."""
+    await lock_material_types(session)
+    item = await session.scalar(
+        select(MaterialType).where(MaterialType.id == material_type_id).with_for_update()
+    )
+    if item is None:
+        raise ApiError(404, "unknown_material_type", "Material type not found")
+    if item.record_version != payload.expected_version:
+        raise ApiError(409, "version_conflict", "This material type changed; reopen the material type list")
+    if payload.confirmation_name != item.name:
+        raise ApiError(422, "confirmation_mismatch", "Enter the current material type name to confirm")
+    await rename_material_type(
+        session,
+        item=item,
+        name=payload.name,
+        actor_id=operator.id,
+        correlation_id=request.state.correlation_id,
+    )
+    await session.flush()
+    response = MaterialTypeResponse.model_validate(item)
+    await session.commit()
+    return response
 
 
 @router.post("/{profile_id}/change-template", response_model=ProfileResponse, status_code=201)
@@ -82,6 +158,8 @@ async def change_profile_template(
     Missing or ambiguous matching templates fail before any snapshot is appended.
     Historical profiles and print evidence are never edited.
     """
+
+    await lock_material_types(session)
 
     source = await session.get(MaterialProfile, profile_id)
     target = await session.get(MaterialTemplateRevision, payload.target_template_revision_id)
@@ -553,6 +631,8 @@ async def import_material_template(
 ) -> MaterialTemplateResponse:
     """Create or explicitly overwrite a template from a portable JSON export."""
 
+    await lock_material_types(session)
+
     imported = payload.document.template
     imported_settings = imported.settings.model_dump(mode="json")
     if imported.preferred_build_plate_surface_code:
@@ -715,6 +795,7 @@ async def import_material_template(
             correlation_id=request.state.correlation_id,
         )
     await queue_managed_cura_library(session, requested_by=operator.id)
+    await remember_material_type(session, template.material_type)
     await session.commit()
     await session.refresh(template)
     return await _template_response(session, template)
@@ -732,6 +813,8 @@ async def create_material_template(
     session: DatabaseSession,
 ) -> MaterialTemplateResponse:
     """Create a scoped material template that is active immediately."""
+
+    await lock_material_types(session)
 
     if await session.get(Printer, payload.printer_id) is None:
         raise ApiError(status.HTTP_422_UNPROCESSABLE_ENTITY, "unknown_printer", "Printer not found")
@@ -797,6 +880,7 @@ async def create_material_template(
         correlation_id=request.state.correlation_id,
     )
     await queue_managed_cura_library(session, requested_by=operator.id)
+    await remember_material_type(session, template.material_type)
     await session.commit()
     await session.refresh(template)
     return await _template_response(session, template)
@@ -811,6 +895,8 @@ async def save_material_template_settings(
     session: DatabaseSession,
 ) -> MaterialTemplateResponse:
     """Directly save template settings and update every linked filament profile."""
+
+    await lock_material_types(session)
 
     template = await session.scalar(
         select(MaterialTemplate).where(MaterialTemplate.id == template_id).with_for_update()
@@ -986,6 +1072,7 @@ async def save_material_template_settings(
         correlation_id=request.state.correlation_id,
     )
     await queue_managed_cura_library(session, requested_by=operator.id)
+    await remember_material_type(session, template.material_type)
     await session.commit()
     await session.refresh(template)
     return await _template_response(session, template)
@@ -1050,6 +1137,8 @@ async def import_cura_material_template(
     session: DatabaseSession,
 ) -> MaterialTemplateResponse:
     """Compatibility import that directly creates one active template."""
+
+    await lock_material_types(session)
 
     agent, candidate, settings = await _reported_cura_material(
         session,
@@ -1165,6 +1254,7 @@ async def import_cura_material_template(
         correlation_id=request.state.correlation_id,
     )
     await queue_managed_cura_library(session, requested_by=operator.id)
+    await remember_material_type(session, template.material_type)
     await session.commit()
     return await _template_response(session, template)
 
@@ -1178,6 +1268,8 @@ async def update_material_template(
     session: DatabaseSession,
 ) -> MaterialTemplateResponse:
     """Update template identity metadata without changing any revision."""
+
+    await lock_material_types(session)
 
     template = await session.scalar(
         select(MaterialTemplate).where(MaterialTemplate.id == template_id).with_for_update()
@@ -1235,6 +1327,7 @@ async def update_material_template(
         },
         correlation_id=request.state.correlation_id,
     )
+    await remember_material_type(session, template.material_type)
     await session.commit()
     await session.refresh(template)
     return await _template_response(session, template)

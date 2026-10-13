@@ -807,7 +807,9 @@ async def test_workbook_upload_dry_run_and_commit_populates_inventory(
             assert await session.scalar(select(func.count(Printer.id))) == 1
             assert await session.scalar(select(func.count(BuildPlate.id))) == 5
             assert (
-                await session.scalar(select(func.count(OutboxJob.id)))
+                await session.scalar(
+                    select(func.count(OutboxJob.id)).where(OutboxJob.aggregate_type != "material_type")
+                )
                 == 36 + 2 * committed.json()["profiles"]
             )
             assert (

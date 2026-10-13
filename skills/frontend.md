@@ -1,5 +1,8 @@
 # Frontend Design and Accessibility Skill
 
+- Template creation/import share `MaterialTypeSelect` and its durable catalog. Use the final New Material Type option and a child creation dialog; preserve the originating draft on cancellation/failure and select the new name on success. Templates → Manage material types offers global rename with current-name confirmation and clearly describes current/archived scope and preserved history. Refresh affected live catalogs after success; cache-refresh failures must not become failed writes. Reuse the approved palette and portal modal stack.
+
+
 - Pressure Advance calibration uses the operator's fixed tower recipe START=0, FACTOR=0.020, with Prep PA run manually first and smooth factor 0.020 guidance for all filaments. The read-only height calculator accepts 0–100 mm with two decimal places, returns exact PA up to four decimals, and never runs a printer command or saves automatically. Preserve four-decimal PA result entry in this step; ordinary catalog formatting stays unchanged.
 
 - Template comparison starts with a highlighted first template, opens only on selecting a second, and keeps the first as reference. Preserve selections when closing/reopening, offer Clear selection, and allow up to four items with explicit reference/scope labels. Comparison does not depend on filament profiles existing. Keep only the modal top-right close control. Nozzle editors/catalogs show build-plate Condition and Status options; `usage_status` is availability and `status` retains installation lifecycle. Block install for Maintenance, and disable Maintenance/Retired choices while installed.

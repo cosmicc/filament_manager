@@ -30,6 +30,7 @@ from filament_manager.models.operations import ImportRun
 
 from .events import add_audit_event, add_outbox_job
 from .material_settings import create_published_profile_snapshot, queue_managed_cura_library
+from .material_types import lock_material_types, remember_material_type
 
 HEADERS = [
     "Spool ID",
@@ -220,6 +221,7 @@ async def commit_approved_run(
 
     from filament_manager.services.inventory_choices import lock_inventory_choices, normalize_modifier
 
+    await lock_material_types(session)
     await lock_inventory_choices(session)
     run = await session.scalar(select(ImportRun).where(ImportRun.id == run_id).with_for_update())
     if run is None or not run.dry_run:
@@ -422,6 +424,7 @@ async def commit_approved_run(
                         active=True,
                     )
                     session.add(template)
+                    await remember_material_type(session, template.material_type)
                     await session.flush()
                     checksum_payload = {
                         "material_template_id": str(template.id),
