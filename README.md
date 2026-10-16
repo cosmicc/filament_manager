@@ -1,6 +1,6 @@
 # Filament Manager
 
-Testing release **0.9.7** adds **Fill unset values** to template creation and editing. Copy blank settings from an existing template in one action while preserving entered values. Upgrade web and worker together after backup; no schema, Cura-agent, or macro update is required. See [changes and upgrade notes](CHANGELOG.md#097---10152026).
+Testing release **0.9.8** adds **Build plates → Unload build plate** for manual Z-offset calibration with no selected plate or loaded mesh. Normal prints still require a plate. Upgrade web and worker together and install macro **0.9.8**, followed by an idle `FIRMWARE_RESTART`. See [upgrade notes](CHANGELOG.md#098---10162026).
 
 Under **Templates → Manage material types**, select a type to rename it or choose **Delete material type**. Deletion requires its current name and is refused while an active template uses it. Existing filament records and history are preserved.
 

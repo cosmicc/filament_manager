@@ -152,10 +152,8 @@ async def synchronize_build_plates(
             printer.active_plate_surface_id = observed_surface.id
             printer.active_plate_id = observed_surface.build_plate_id
             printer.plate_selection_initialized = True
-        elif manual_change and observed_code is None:
-            printer.active_plate_id = None
-            printer.active_plate_surface_id = None
-            printer.plate_selection_initialized = True
+        # Only a successfully delivered app unload may establish no active plate.
+        # Manual clears and restarts retain the canonical side for restoration.
     if mesh_state.integration_available and not pending_selection:
         printer.plate_selection_sequence = max(
             printer.plate_selection_sequence, mesh_state.selection_sequence

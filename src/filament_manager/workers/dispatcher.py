@@ -1355,10 +1355,22 @@ async def dispatch_job(session: AsyncSession, job: OutboxJob) -> None:
         if clear_config is None:
             raise LookupError("Build-plate clear references an unconfigured printer")
         await MoonrakerClient(clear_config).clear_build_plate()
+        previous_surface_id = printer.active_plate_surface_id
         printer.active_plate_id = None
         printer.active_plate_surface_id = None
         printer.plate_selection_initialized = True
         printer.record_version += 1
+        add_audit_event(
+            session,
+            actor_id=None,
+            source="worker",
+            action="build_plate.unload.confirmed",
+            object_type="printer",
+            object_id=printer.id,
+            before={"active_plate_surface_id": str(previous_surface_id)},
+            after={"active_plate_id": None, "active_plate_surface_id": None, "klipper_confirmed": True},
+            correlation_id=str(job.id),
+        )
     elif job.job_type == "moonraker.spool_unload.request":
         printer = await session.get(Printer, UUID(str(job.payload["printer_id"])))
         if printer is None:

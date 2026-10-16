@@ -202,7 +202,7 @@ async def clear_active_build_plate(
     session: DatabaseSession,
     printer_id: UUID | None = None,
 ) -> dict[str, str]:
-    """Queue mesh clearing; reconciliation clears canonical context after confirmation."""
+    """Queue app-owned unload; the worker clears context after Klipper confirmation."""
 
     printer = await selected_printer(session, printer_id, get_settings())
     if printer.active_plate_surface_id is None:

@@ -51,3 +51,9 @@ Install the updated app macro reference only while idle, then run `FIRMWARE_REST
 The Dashboard reads standard Klipper idle-controller state and timeout, plus optional `_POWER_OFF_TIMER_STATE.active` and `.deadline` fields. The deadline uses `toolhead.estimated_print_time` from the same status query. A countdown is shown only while idle and valid, never as proof of electrical power state. Missing macros or an unavailable connection remain explicitly unknown.
 
 For the supplied custom macro file, the separately prepared operator copy uses a 30-minute automatic countdown after the existing 10-minute idle timeout and a 60-minute manual reset. A new print cancels the old countdown. It retains the original motion routines and requires operator review/installation; no live configuration is changed automatically. Reconcile any duplicate `BED_MESH_CALIBRATE` wrappers while preserving probe safety checks before installing a combined configuration.
+
+## Unload a build plate for manual calibration
+
+On **Build plates**, select the printer and choose **Unload build plate** while it is idle. The app queues a mesh clear and saved-selection reset, then shows no active plate only after Klipper confirms both. This leaves no selected plate through Klipper restarts until a plate is selected again. It does not move or physically remove a plate, change Z-offset, delete saved meshes, or rewrite print history. Normal managed prints remain blocked without a plate.
+
+Install app macro version **0.9.8** and restart firmware while idle. Ordinary manual calls to the unload helper are rejected, and manual mesh clears cannot clear the app's canonical plate selection. Unrestricted Klipper-console administrators can still issue raw G-code; macro parameters are not authentication.

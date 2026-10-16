@@ -1,5 +1,7 @@
 # Deployment and Operations Skill
 
+- 0.9.8 upgrades web and worker together after backup. Replace the exact installed app macro file with version 0.9.8 and run FIRMWARE_RESTART while idle; verify FILAMENT_MANAGER_SPOOL_STATE reports 0.9.8. No schema, environment, workstation-agent, or renderer change is required. Unload is logical selection/mesh clearing only; do not deploy live printer changes automatically.
+
 - 0.9.7 adds local draft bulk template copying. Upgrade web/worker together after backup; no schema, environment, workstation-agent, renderer, or macro change is required from 0.9.6. Fresh workstation packages remain compatible.
 
 - 0.9.6 upgrades web and worker together with no schema, environment, agent, renderer, or macro changes from 0.9.5. Back up first. Material-type deletion removes the unused catalog choice, preserves historical and inventory records, and retains audited suppression of implicit recreation. Explicit creation or an active template write may register the name again.

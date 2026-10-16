@@ -1,5 +1,7 @@
 # Security and Authentication Skill
 
+- Build-plate unload is an authenticated CSRF-protected app action with explicit printer identity, queued stale-target guards, live idle/probe checks and verified empty readback. Klipper SOURCE=app guards enforce the supported workflow, not authentication: unrestricted console/API administrators can issue arbitrary raw G-code. Do not embed secrets or claim macro parameters provide an access-control boundary.
+
 - Passkeys are optional discoverable WebAuthn credentials with mandatory user verification and exact configured RP/origin checks. Fresh password + session CSRF authorize enrollment/removal; public login uses same-origin POSTs and browser-bound single-use challenges. Never expose key material/handles in lists, logs, exports, or audit. Both methods use `services/browser_sessions.py`; preserve forced password change, disabled/locked account refusal, strict cookies, and the session lifetime/revocation policy. Read `skills/passkeys.md` for implementation, locking, and test contracts.
 
 - Dashboard power-on is an explicit Administrator/CSRF-protected action, never an automatic repair. Resolve only the locked printer's configured Moonraker device, require a fresh explicit Off state, issue only On, and audit sanitized acceptance. No off/toggle/reset or motion command is allowed. Backup metadata listings are not integrity evidence; import, download, and restore still fully validate the selected archive.

@@ -289,3 +289,30 @@ describe('BuildPlatesPage', () => {
     })
   })
 })
+
+it('unloads the selected printer and keeps the active state until worker confirmation', async () => {
+  const other = { ...printer, id: 'other-printer', name: 'Other Printer', active_plate_id: plate.id, active_plate_surface_id: 'surface-id' }
+  let confirmed = false
+  apiFetchMock.mockImplementation((path: string) => {
+    if (path === '/build-plates') return Promise.resolve([plate])
+    if (path === '/printers') return Promise.resolve([printer, confirmed ? { ...other, active_plate_id: null, active_plate_surface_id: null } : other])
+    if (path === '/build-plates/active/clear?printer_id=other-printer') return Promise.resolve({ printer_name: other.name })
+    return Promise.resolve([])
+  })
+  const client = new QueryClient({ defaultOptions: { queries: { retry: false }, mutations: { retry: false } } })
+  const view = render(<QueryClientProvider client={client}><BuildPlatesPage /></QueryClientProvider>)
+  await screen.findByText(/No build plate selected for Workshop Printer/)
+  fireEvent.change(screen.getByLabelText('Printer'), { target: { value: other.id } })
+  fireEvent.click(screen.getByRole('button', { name: 'Unload build plate' }))
+  await screen.findByText(/Build plate unload requested for Other Printer/)
+  expect(apiFetchMock).toHaveBeenCalledWith('/build-plates/active/clear?printer_id=other-printer', { method: 'POST' })
+  expect(screen.getByRole('button', { name: 'Unload build plate' })).toBeTruthy()
+  expect(screen.queryByText(/No build plate selected for Other Printer/)).toBeNull()
+  confirmed = true
+  await client.invalidateQueries({ queryKey: ['printers'] })
+  await screen.findByText(/No build plate selected for Other Printer/)
+  expect(screen.queryByRole('button', { name: 'Unload build plate' })).toBeNull()
+  expect(screen.queryByText('active', { exact: true })).toBeNull()
+  expect(screen.getAllByText('available', { exact: true }).length).toBeGreaterThan(0)
+  view.unmount()
+})

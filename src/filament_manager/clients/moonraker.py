@@ -997,11 +997,26 @@ class MoonrakerClient:
             raise MoonrakerError("Ordinary spool changes require an idle printer; use M600 during a print")
 
     async def clear_build_plate(self) -> dict[str, Any]:
-        """Clear the loaded mesh so state reconciliation can clear active plate context."""
+        """Unload only while idle and verify Klipper before clearing canonical context."""
 
-        return await self._post(
+        before = await self.bed_mesh_state()
+        if (
+            not before.integration_available
+            or before.calibrating
+            or before.print_state not in {"standby", "complete", "cancelled", "error"}
+        ):
+            raise MoonrakerError("Build plate unload requires an idle printer and installed plate macros")
+        response = await self._post(
             "/printer/gcode/script", {"script": "FILAMENT_MANAGER_CLEAR_BUILD_PLATE SOURCE=app"}
         )
+        after = await self.bed_mesh_state()
+        if (
+            not after.integration_available
+            or after.active_profile is not None
+            or after.selected_profile is not None
+        ):
+            raise MoonrakerError("Klipper has not confirmed that the build plate and mesh are unloaded")
+        return response
 
     async def synchronize_spool_preflight_catalog(
         self, catalog: SpoolPreflightCatalog, *, inspection_policy: str = "warn"
@@ -1202,7 +1217,7 @@ class MoonrakerClient:
             raise ValueError("Invalid build plate side")
         await self._post(
             "/printer/gcode/script",
-            {"script": f"FILAMENT_MANAGER_APPLY_BUILD_PLATE PLATE={plate_code or 'UNSET'}"},
+            {"script": f"FILAMENT_MANAGER_APPLY_BUILD_PLATE PLATE={plate_code or 'UNSET'} SOURCE=app"},
         )
 
     async def select_build_plate(self, plate_code: str) -> dict[str, Any]:
