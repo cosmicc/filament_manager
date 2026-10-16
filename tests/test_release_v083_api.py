@@ -32,7 +32,7 @@ from filament_manager.services.material_settings import (
     create_published_profile_snapshot,
     save_template_settings,
 )
-from filament_manager.services.material_types import rename_material_type
+from filament_manager.services.material_types import delete_material_type, rename_material_type
 from filament_manager.services.plate_ratings import filament_plate_rating
 from filament_manager.services.seed import DEFAULT_ASA_SETTINGS, seed_configured_system
 
@@ -131,6 +131,25 @@ async def test_v083_metadata_ratings_and_pagination(monkeypatch: pytest.MonkeyPa
             families = set(await session.scalars(select(MaterialTemplate.material_type)))
             assert {"Carbon PLA", "Weatherproof ASA"} <= families
             assert not {"PLA-CF", "ASA", "PLA Carbon Fiber"} & families
+            # Removing a renamed unused seed must not recreate its old/new label.
+            for removed_name in ("Carbon PLA", "Weatherproof ASA"):
+                retired_template = await session.scalar(
+                    select(MaterialTemplate).where(MaterialTemplate.material_type == removed_name)
+                )
+                assert retired_template is not None
+                retired_template.active = False
+                removed_type = await session.scalar(
+                    select(MaterialType).where(MaterialType.name == removed_name)
+                )
+                assert removed_type is not None
+                await delete_material_type(
+                    session, item=removed_type, actor_id=user.id, correlation_id="seed-delete-test"
+                )
+            await session.flush()
+            assert (await seed_configured_system(session, settings))["templates"] == 0
+            assert not {"Carbon PLA", "Weatherproof ASA", "PLA-CF", "ASA"} & set(
+                await session.scalars(select(MaterialType.name))
+            )
 
             session.add(ApplicationSetting(key="private.connection", value={"secret": "never-export-this"}))
             await session.commit()

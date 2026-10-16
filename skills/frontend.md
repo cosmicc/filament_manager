@@ -1,5 +1,8 @@
 # Frontend Design and Accessibility Skill
 
+- Manage material types offers Delete material type with a separate exact-name confirmation and Cancel deletion. Keep in-use/stale errors in that confirmation view, preserve the selection on cancellation, and remove a successfully deleted choice from shared cache immediately before refresh. Creation also updates the shared catalog cache, so form-local added choices cannot reappear after deletion. Preserve existing themes and responsive spacing.
+
+
 - Template creation/import share `MaterialTypeSelect` and its durable catalog. Use the final New Material Type option and a child creation dialog; preserve the originating draft on cancellation/failure and select the new name on success. Templates → Manage material types offers global rename with current-name confirmation and clearly describes current/archived scope and preserved history. Refresh affected live catalogs after success; cache-refresh failures must not become failed writes. Reuse the approved palette and portal modal stack.
 
 

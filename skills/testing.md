@@ -1,5 +1,8 @@
 # Testing and Validation Skill
 
+- Material-type deletion coverage must reject active-template use across nozzle scopes/case variants, stale versions, incorrect confirmation, unauthenticated/viewer writes, and a new template committed while deletion waits for the catalog lock. Allow inactive-only references and product-only use without rewriting snapshots/history. Verify audit/outbox evidence, no implicit recreation or seed resurrection, explicit recreation, UI cancel/error/success, and desktop/mobile confirmation flows.
+
+
 - Recurring ASA/Silk PLA/PLA-CF/PETG-CF seeding follows the original catalog UUID through audited global renames and never recreates the old label. Acquire the material-type lock before seed row locks; remember each new seeded family. Verify repeated seeding after ASA and PLA-CF renames creates no extra templates.
 
 - 0.9.5 tests cover durable material-type choices without fabricated templates, bounded printable input, case-equivalent duplicates, version/name-confirmed global renames across nozzle scopes and archived products, exact settings/history/spool-code preservation, audit/outbox work, authentication/authorization, concurrent identity writers, populated upgrade/collision rollback, metadata parity and protected downgrade. Exercise child creation/cancellation/draft preservation and confirmed rename/error flows on desktop/mobile. Current Alembic head is `a0678b901234`.

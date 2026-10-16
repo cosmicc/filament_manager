@@ -42,6 +42,7 @@ from filament_manager.services.material_settings import (
     save_template_settings,
 )
 from filament_manager.services.material_types import (
+    delete_material_type,
     lock_material_types,
     remember_material_type,
     rename_material_type,
@@ -63,6 +64,7 @@ from ..schemas import (
     MaterialTemplateRevisionResponse,
     MaterialTemplateUpdate,
     MaterialTypeCreate,
+    MaterialTypeDelete,
     MaterialTypeRename,
     MaterialTypeResponse,
     ProfileCreate,
@@ -95,7 +97,8 @@ async def create_material_type(
     await lock_material_types(session)
     if await session.scalar(select(MaterialType.id).where(MaterialType.name_key == payload.name.casefold())):
         raise ApiError(409, "material_type_exists", "That material type already exists")
-    item = await remember_material_type(session, payload.name)
+    item = await remember_material_type(session, payload.name, explicit_creation=True)
+    assert item is not None  # Explicit creation may restore a previously removed name.
     add_audit_event(
         session,
         actor_id=operator.id,
@@ -140,6 +143,35 @@ async def update_material_type(
     )
     await session.flush()
     response = MaterialTypeResponse.model_validate(item)
+    await session.commit()
+    return response
+
+
+@router.delete("/material-types/{material_type_id}", response_model=MaterialTypeResponse)
+async def remove_material_type(
+    material_type_id: UUID,
+    payload: MaterialTypeDelete,
+    request: Request,
+    operator: Operator,
+    session: DatabaseSession,
+) -> MaterialTypeResponse:
+    """Delete a confirmed unused choice under the same lock as template creation."""
+    await lock_material_types(session)
+    item = await session.scalar(
+        select(MaterialType).where(MaterialType.id == material_type_id).with_for_update()
+    )
+    if item is None:
+        raise ApiError(404, "unknown_material_type", "Material type not found")
+    if item.record_version != payload.expected_version:
+        raise ApiError(409, "version_conflict", "This material type changed; reopen the material type list")
+    if payload.confirmation_name != item.name:
+        raise ApiError(
+            422, "confirmation_mismatch", "Enter the current material type name to confirm deletion"
+        )
+    response = MaterialTypeResponse.model_validate(item)
+    await delete_material_type(
+        session, item=item, actor_id=operator.id, correlation_id=request.state.correlation_id
+    )
     await session.commit()
     return response
 
@@ -795,7 +827,7 @@ async def import_material_template(
             correlation_id=request.state.correlation_id,
         )
     await queue_managed_cura_library(session, requested_by=operator.id)
-    await remember_material_type(session, template.material_type)
+    await remember_material_type(session, template.material_type, explicit_creation=template.active)
     await session.commit()
     await session.refresh(template)
     return await _template_response(session, template)
@@ -880,7 +912,7 @@ async def create_material_template(
         correlation_id=request.state.correlation_id,
     )
     await queue_managed_cura_library(session, requested_by=operator.id)
-    await remember_material_type(session, template.material_type)
+    await remember_material_type(session, template.material_type, explicit_creation=template.active)
     await session.commit()
     await session.refresh(template)
     return await _template_response(session, template)
@@ -1072,7 +1104,7 @@ async def save_material_template_settings(
         correlation_id=request.state.correlation_id,
     )
     await queue_managed_cura_library(session, requested_by=operator.id)
-    await remember_material_type(session, template.material_type)
+    await remember_material_type(session, template.material_type, explicit_creation=template.active)
     await session.commit()
     await session.refresh(template)
     return await _template_response(session, template)
@@ -1254,7 +1286,7 @@ async def import_cura_material_template(
         correlation_id=request.state.correlation_id,
     )
     await queue_managed_cura_library(session, requested_by=operator.id)
-    await remember_material_type(session, template.material_type)
+    await remember_material_type(session, template.material_type, explicit_creation=template.active)
     await session.commit()
     return await _template_response(session, template)
 
@@ -1327,7 +1359,7 @@ async def update_material_template(
         },
         correlation_id=request.state.correlation_id,
     )
-    await remember_material_type(session, template.material_type)
+    await remember_material_type(session, template.material_type, explicit_creation=template.active)
     await session.commit()
     await session.refresh(template)
     return await _template_response(session, template)

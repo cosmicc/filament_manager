@@ -1,6 +1,8 @@
 # Filament Manager
 
-Testing release **0.9.5** adds material-type creation and global renaming under **Templates → Manage material types**. ASA-CF and ASA-GF are selectable; PLA Carbon Fiber and PETG Carbon Fiber become PLA-CF and PETG-CF. Template settings, spool codes, and print history are preserved. Back up the database and upgrade web and worker together. No Cura-agent or macro update is required. See [changes and upgrade notes](CHANGELOG.md#095---10132026).
+Testing release **0.9.6** adds confirmed deletion under **Templates → Manage material types**. Active templates prevent deletion; existing filaments and history remain intact. Removed choices stay removed until explicitly registered again. Upgrade web and worker together after backup; no schema, Cura-agent, or macro update is required. See [changes and upgrade notes](CHANGELOG.md#096---10152026).
+
+Under **Templates → Manage material types**, select a type to rename it or choose **Delete material type**. Deletion requires its current name and is refused while an active template uses it. Existing filament records and history are preserved.
 
 Testing release **0.9.0** adds inherited support controls, saved G-code viewing/downloads, clearer print durations, and stale-history recovery. See [0.9.0 upgrade notes](CHANGELOG.md#090---09222026) for archive limits and the required Cura-agent upgrade.
 

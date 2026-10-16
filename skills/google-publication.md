@@ -1,5 +1,8 @@
 # Google publication workflow
 
+- Material-type deletion queues publication in the same transaction. Deleted choices disappear from the allowlisted Material Types tab; immutable business evidence and other live records remain unchanged. The periodic complete digest remains a safety net.
+
+
 - 0.9.5 explicitly allowlists the durable Material Types catalog (name, version, timestamps). Create/rename writes queue publication; template/API registration and upgrade changes are also covered by the complete periodic content digest. Preserve existing tabs and all immutable evidence.
 
 - 0.9.2 allowlists the resolved atomic Shore hardness cache as business metadata in Material profiles, alongside drying guidance. Publish it through the existing bounded structured-data path; never infer a second measured scale or add credentials/printer calls.

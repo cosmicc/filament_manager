@@ -1,5 +1,20 @@
 # User Changelog
 
+## 0.9.6 - 10.15.2026
+
+### Added
+
+- Delete an unused material type from Templates → Manage material types after confirming its name.
+
+### Changed
+
+- Types used by active templates must be changed or removed from those templates first. Existing filament records and history stay intact.
+
+### Fixed
+
+- Deleted choices no longer return automatically. You can explicitly add the same name again later.
+
+
 ## 0.9.5 - 10.13.2026
 
 ### Added
