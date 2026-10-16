@@ -1,5 +1,20 @@
 # User Changelog
 
+## 0.9.8 - 10.16.2026
+
+### Added
+
+- **Unload build plate** on Build plates clears the selected printer's loaded bed mesh and saved plate selection for manual Z-offset calibration. No plate remains selected through Klipper restarts until another is selected.
+
+### Changed
+
+- Unload is app-owned, checks live idle/probe state again at delivery, and updates the app only after Klipper confirms both the mesh and selected plate are empty. Normal prints still require a plate; Z-offset, saved meshes, and print history remain unchanged.
+
+### Fixed
+
+- Unselected usable plates display Available instead of implying an active selection.
+- Unload targets the selected printer explicitly instead of relying on a single-printer fallback. Manual Klipper clear receipts cannot unset the app's active plate; ordinary manual unload-macro calls are rejected.
+
 
 ## 0.9.7 - 10.15.2026
 

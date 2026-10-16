@@ -1,5 +1,7 @@
 # Database and Migration Skill
 
+- App-owned build-plate unload clears both printer plate pointers only after the queued Klipper command and empty-state readback succeed; mark selection initialized and audit confirmation. Manual clear receipts never clear canonical selection. A confirmed empty selection persists through restarts and repairs stale loaded mesh drift without inventing a plate. Preserve historical plate attribution and all calibration values; no schema change is needed.
+
 - Material-type deletion removes only the catalog row when no active casefold-matching template exists. Hold the shared catalog advisory lock through usage validation, exact-name/version confirmation, audit, Google publication enqueue, and commit. Preserve all inactive templates, products, profiles, spools, and history. Retain `material_type.delete` audit tombstones with the name_key; implicit remember/seeding must not recreate removed choices, including renamed seed identities. Explicit creation or active template writes can register a fresh catalog UUID. No schema migration is needed.
 
 

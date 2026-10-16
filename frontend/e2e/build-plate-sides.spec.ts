@@ -224,3 +224,48 @@ test('groups both sides under one physical plate on desktop and mobile', async (
   await page.screenshot({ path: '/tmp/filament-manager-v073-plates-mobile.png', fullPage: true })
   expect(errors).toEqual([])
 })
+
+for (const width of [1440, 390]) {
+  test(`app-owned plate unload targets one printer and persists no selection at ${width}px`, async ({ page }) => {
+    const errors: string[] = []
+    let unloaded = false
+    let clearRequests = 0
+    await page.setViewportSize({ width, height: 1000 })
+    await page.addInitScript(theme => localStorage.setItem('filament-manager-theme', theme), width === 390 ? 'light-navy' : 'dark-navy')
+    page.on('pageerror', error => errors.push(error.message))
+    page.on('console', message => { if (message.type() === 'error') errors.push(message.text()) })
+    await page.route('**/api/v1/printers', route => route.fulfill({ json: [
+      { ...printer, id: 'first-printer', name: 'First Printer', active_plate_id: null, active_plate_surface_id: null },
+      unloaded ? { ...printer, active_plate_id: null, active_plate_surface_id: null } : printer,
+    ] }))
+    await page.route('**/api/v1/build-plates/active/clear?*', route => {
+      expect(route.request().method()).toBe('POST')
+      expect(new URL(route.request().url()).searchParams.get('printer_id')).toBe(printer.id)
+      clearRequests += 1
+      return route.fulfill({ status: 202, json: { status: 'clear_queued', printer_name: printer.name } })
+    })
+    await page.goto('/plates')
+    await expect(page).toHaveTitle('Filament Manager')
+    await expect(page.getByText(/No build plate selected for First Printer/)).toBeVisible()
+    await page.getByRole('combobox', { name: 'Printer', exact: true }).selectOption(printer.id)
+    await page.getByRole('button', { name: 'Unload build plate', exact: true }).click()
+    await expect(page.getByText(/Build plate unload requested for Workshop Printer/)).toBeVisible()
+    // Queue acceptance must not pretend the printer has already completed unloading.
+    await expect(page.getByRole('button', { name: 'Unload build plate', exact: true })).toBeVisible()
+    expect(clearRequests).toBe(1)
+    unloaded = true
+    await page.reload()
+    await page.getByRole('combobox', { name: 'Printer', exact: true }).selectOption(printer.id)
+    await expect(page.getByText(/No build plate selected for Workshop Printer/)).toBeVisible()
+    await expect(page.getByRole('button', { name: 'Unload build plate', exact: true })).toHaveCount(0)
+    await expect(page.getByText(/select a build plate before printing/)).toBeVisible()
+    for (const view of ['list', 'cards', 'detailed']) {
+      await page.getByLabel('Build plates view').selectOption(view)
+      await expect(page.locator('.build-plate-card--active')).toHaveCount(0)
+      await expect(page.getByText('active', { exact: true })).toHaveCount(0)
+    }
+    await page.screenshot({ path: `/tmp/fm-v098-unloaded-${width}.png` })
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true)
+    expect(errors).toEqual([])
+  })
+}

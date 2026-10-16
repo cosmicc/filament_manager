@@ -223,10 +223,26 @@ async def test_plate_restore_commands_are_exact_and_do_not_home() -> None:
     await client.restore_build_plate("P4b")
     assert (
         json.loads(route.calls.last.request.read())["script"]
-        == "FILAMENT_MANAGER_APPLY_BUILD_PLATE PLATE=P4b"
+        == "FILAMENT_MANAGER_APPLY_BUILD_PLATE PLATE=P4b SOURCE=app"
     )
     with pytest.raises(ValueError):
         await client.restore_build_plate("P4b\nG28")
+    live = {
+        "result": {
+            "status": {
+                "bed_mesh": {"profiles": {"P4b": {}}, "profile_name": ""},
+                "gcode_macro FILAMENT_MANAGER_PLATE_STATE": {
+                    "version": 1,
+                    "selected_plate": "UNSET",
+                    "selection_origin": "app",
+                },
+                "print_stats": {"state": "standby"},
+            }
+        }
+    }
+    respx.post("http://moonraker.test:7125/printer/objects/query").mock(
+        return_value=httpx.Response(200, json=live)
+    )
     await client.clear_build_plate()
     assert (
         json.loads(route.calls.last.request.read())["script"]
@@ -719,3 +735,72 @@ async def test_operator_cannot_synchronize_canonical_plates(monkeypatch: pytest.
 
     assert response.status_code == 403
     assert response.json()["code"] == "forbidden"
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("print_state", "calibrating", "integrated"),
+    [
+        ("printing", False, True),
+        ("paused", False, True),
+        ("unknown", False, True),
+        ("standby", True, True),
+        ("standby", False, False),
+    ],
+)
+async def test_unload_rechecks_live_idle_before_sending(
+    monkeypatch: pytest.MonkeyPatch, print_state: str, calibrating: bool, integrated: bool
+) -> None:
+    """A queued unload cannot run after the printer starts printing or probing."""
+    from filament_manager.clients.moonraker import MoonrakerBedMeshState
+
+    async def live(_self):
+        return MoonrakerBedMeshState(
+            profile_names=("P1",),
+            active_profile="P1",
+            integration_available=integrated,
+            calibrating=calibrating,
+            print_state=print_state,
+        )
+
+    monkeypatch.setattr(MoonrakerClient, "bed_mesh_state", live)
+    with pytest.raises(MoonrakerError, match="idle printer"):
+        await MoonrakerClient(printer_config()).clear_build_plate()
+
+
+@respx.mock
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "selected,loaded,integrated", [("P1", None, True), (None, "P1", True), (None, None, False)]
+)
+async def test_unload_requires_confirmed_empty_klipper_state(
+    monkeypatch: pytest.MonkeyPatch, selected: str | None, loaded: str | None, integrated: bool
+) -> None:
+    """An HTTP success alone must not remove the canonical plate selection."""
+    from filament_manager.clients.moonraker import MoonrakerBedMeshState
+
+    reads = iter(
+        [
+            MoonrakerBedMeshState(
+                profile_names=("P1",), active_profile="P1", integration_available=True, print_state="standby"
+            ),
+            MoonrakerBedMeshState(
+                profile_names=("P1",),
+                active_profile=loaded,
+                selected_profile=selected,
+                integration_available=integrated,
+                print_state="standby",
+            ),
+        ]
+    )
+
+    async def live(_self):
+        return next(reads)
+
+    monkeypatch.setattr(MoonrakerClient, "bed_mesh_state", live)
+    command = respx.post("http://moonraker.test:7125/printer/gcode/script").mock(
+        return_value=httpx.Response(200, json={"result": "ok"})
+    )
+    with pytest.raises(MoonrakerError, match="not confirmed"):
+        await MoonrakerClient(printer_config()).clear_build_plate()
+    assert command.call_count == 1

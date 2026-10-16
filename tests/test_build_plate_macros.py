@@ -196,7 +196,7 @@ def test_plate_mutations_are_blocked_during_printing(state: str) -> None:
         "FILAMENT_MANAGER_CLEAR_BUILD_PLATE",
     ):
         with pytest.raises(ValueError):
-            render(name, printer)
+            render(name, printer, SOURCE="app")
 
 
 def test_calibration_receipt_requires_native_success_and_preserves_unknown_time() -> None:
@@ -263,3 +263,59 @@ def test_native_load_receipt_is_after_success_and_only_for_idle_exact_sides() ->
     printer["bed_mesh"]["profile_name"] = "custom"
     assert "SAVE_VARIABLE" not in render("_FILAMENT_MANAGER_LOADED_PLATE", printer)
     assert "_FILAMENT_MANAGER_NATIVE_BED_MESH_PROFILE LOAD=P4b" in render("SELECT_BUILD_PLATE", printer)
+
+
+@pytest.mark.parametrize("source", [None, "manual", "restore", "other"])
+def test_unload_requires_app_source(source: str | None) -> None:
+    """Ordinary console unloads cannot establish an empty plate selection."""
+    with pytest.raises(ValueError, match="Filament Manager app"):
+        render(
+            "FILAMENT_MANAGER_CLEAR_BUILD_PLATE", printer_snapshot(), **({"SOURCE": source} if source else {})
+        )
+
+
+def test_app_unload_persists_empty_selection_without_motion_or_offset_changes() -> None:
+    """Unload clears only the mesh and saved identity, preserving calibration settings."""
+    result = render("FILAMENT_MANAGER_CLEAR_BUILD_PLATE", printer_snapshot(), SOURCE="app")
+    assert "BED_MESH_CLEAR" in result
+    assert "filament_manager_active_plate VALUE=\"'UNSET'\"" in result
+    assert "_FILAMENT_MANAGER_PLATE_SELECTED PLATE=UNSET SOURCE=app" in result
+    assert not any(
+        command in result
+        for command in ("G28", "G0 ", "G1 ", "SET_GCODE_OFFSET", "SAVE_CONFIG", "BED_MESH_PROFILE REMOVE")
+    )
+    for probe in ("calibrating", "manual_probe"):
+        printer = printer_snapshot()
+        if probe == "calibrating":
+            printer["gcode_macro FILAMENT_MANAGER_PLATE_STATE"]["calibrating"] = 1
+        else:
+            printer["manual_probe"]["is_active"] = True
+        with pytest.raises(ValueError, match="calibration"):
+            render("FILAMENT_MANAGER_CLEAR_BUILD_PLATE", printer, SOURCE="app")
+
+
+def test_saved_unloaded_selection_is_restored_after_restart() -> None:
+    """The restart receipt retains UNSET rather than silently loading a plate."""
+    printer = printer_snapshot()
+    printer["save_variables"]["variables"]["filament_manager_active_plate"] = "UNSET"
+    result = ENVIRONMENT.from_string(
+        MACROS.get("delayed_gcode _FILAMENT_MANAGER_RESTORE_PLATE_STATE", "gcode")
+    ).render(printer=printer)
+    assert "VARIABLE=selected_plate VALUE=\"'UNSET'\"" in result
+    assert "BED_MESH_PROFILE LOAD" not in result
+
+
+def test_managed_print_start_still_requires_selected_plate() -> None:
+    """Manual calibration mode never bypasses the ordinary print-start interlock."""
+    printer = printer_snapshot()
+    printer["gcode_macro FILAMENT_MANAGER_SPOOL_STATE"].update(initialized=1, phase="idle")
+    printer["gcode_macro FILAMENT_MANAGER_PLATE_STATE"]["selected_plate"] = "UNSET"
+    with pytest.raises(ValueError, match="Select an available build plate"):
+        render("FILAMENT_MANAGER_START_PRINT", printer, MATERIAL_GUID="valid-material")
+
+
+@pytest.mark.parametrize("plate", ["UNSET", "P4b"])
+def test_background_plate_helper_rejects_manual_calls(plate: str) -> None:
+    """The restore helper cannot become an ordinary manual unload shortcut."""
+    with pytest.raises(ValueError, match="Filament Manager app"):
+        render("FILAMENT_MANAGER_APPLY_BUILD_PLATE", printer_snapshot(), PLATE=plate)

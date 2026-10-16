@@ -17,6 +17,7 @@ from filament_manager.config import Settings
 from filament_manager.models import Base
 from filament_manager.models.auth import User
 from filament_manager.models.enums import (
+    JobStatus,
     PlateCondition,
     PlateStatus,
     PlateSurfaceTexture,
@@ -253,8 +254,10 @@ async def test_sync_creates_preserves_marks_missing_and_tracks_active(
             assert plate_dates[selected_surface.build_plate_id] == calibrated_at
             assert side_dates[selected_surface.id] == calibrated_at
             cleared = await reconcile(selected_profile=None, selection_origin="manual", selection_sequence=2)
-            assert cleared.active_plate_code is None
-            assert printer.active_plate_surface_id is None
+            assert cleared.active_plate_code == "P2"
+            assert printer.active_plate_surface_id == selected_surface.id
+            assert cleared.restore_required is True
+            assert cleared.desired_mesh_profile == "P2"
 
             active_job = await session.scalar(select(PrintJob))
             assert active_job is not None
@@ -357,5 +360,23 @@ async def test_sync_creates_preserves_marks_missing_and_tracks_active(
             await dispatcher.dispatch_job(session, latest_clear)
             assert printer.active_plate_surface_id is None
             assert calls == ["P2", "clear"]
+            # The runner completes successful jobs before the next periodic pass.
+            for completed in (old_clear, latest_select, latest_clear):
+                completed.status = JobStatus.COMPLETED
+            # A completed app unload stays empty after restart and stale mesh drift.
+            await session.commit()
+            restarted = await reconcile(
+                selected_profile=None, selection_origin="restore", selection_sequence=2
+            )
+            assert restarted.active_plate_code is None
+            assert restarted.restore_required is False
+            assert printer.active_plate_id is None
+            assert printer.plate_selection_initialized is True
+            drifted = await reconcile(
+                active_profile="P2", selected_profile="P2", selection_origin="restore", selection_sequence=2
+            )
+            assert drifted.active_plate_code is None
+            assert drifted.restore_required is True
+            assert drifted.desired_mesh_profile is None
 
         await engine.dispose()

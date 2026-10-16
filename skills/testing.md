@@ -1,5 +1,7 @@
 # Testing and Validation Skill
 
+- 0.9.8 unload checks cover selected-printer routing, authenticated/CSRF-protected queued writes, live idle/probe recheck, failure/unconfirmed readback retaining canonical state, stale-request supersession, rejection of manual clear receipts, restart persistence of confirmed no-plate state, unchanged Z-offset/history/saved meshes, normal print-start rejection without a plate, and desktop/mobile pending-to-confirmed UI. Macro version is 0.9.8; tests never perform live motion.
+
 - Bulk template-copy checks cover entered values and zero/false preservation, blank/missing source values, care enums, atomic hardness, exact numeric serialization, additional Cura settings, retraction preview, repeated application, empty sources, profile exclusion, and desktop/mobile save/cancel behavior.
 
 - Material-type deletion coverage must reject active-template use across nozzle scopes/case variants, stale versions, incorrect confirmation, unauthenticated/viewer writes, and a new template committed while deletion waits for the catalog lock. Allow inactive-only references and product-only use without rewriting snapshots/history. Verify audit/outbox evidence, no implicit recreation or seed resurrection, explicit recreation, UI cancel/error/success, and desktop/mobile confirmation flows.
