@@ -210,9 +210,98 @@ async def test_global_material_types(monkeypatch: pytest.MonkeyPatch) -> None:
                 ]
             )
             assert sorted(response.status_code for response in concurrent) == [200, 409]
+            delete_payload = {"confirmation_name": "PLA-CF2", "expected_version": 3}
+            delete_path = f"{endpoint}/{item['id']}"
+            assert (
+                await client.request("DELETE", delete_path, json={**delete_payload, "expected_version": 2})
+            ).status_code == 409
+            assert (
+                await client.request(
+                    "DELETE", delete_path, json={**delete_payload, "confirmation_name": "wrong"}
+                )
+            ).status_code == 422
+            blocked = await client.request("DELETE", delete_path, json=delete_payload)
+            assert blocked.status_code == 409 and blocked.json()["code"] == "material_type_in_use"
+            async with factory() as session:
+                matching = list(await session.scalars(select(MaterialTemplate)))
+                # An active case-equivalent scope still protects the choice.
+                matching[0].active = False
+                matching[1].material_type = "pla-cf2"
+                await session.commit()
+            assert (await client.request("DELETE", delete_path, json=delete_payload)).status_code == 409
+            async with factory() as session:
+                for template in await session.scalars(select(MaterialTemplate)):
+                    template.active = False
+                await session.commit()
+            deleted = await client.request("DELETE", delete_path, json=delete_payload)
+            assert deleted.status_code == 200, deleted.text
+            assert (await client.request("DELETE", delete_path, json=delete_payload)).status_code == 404
+            assert not any(value["id"] == item["id"] for value in (await client.get(endpoint)).json())
+            async with factory() as session:
+                from filament_manager.services.material_types import (
+                    remember_material_type,
+                    seeded_material_type_name,
+                )
+
+                assert await remember_material_type(session, "PLA-CF2") is None
+                assert await seeded_material_type_name(session, "PLA-CF2") is None
+                # The original seed identity was renamed and then removed.
+                assert await seeded_material_type_name(session, "PLA-CF") is None
+                current_product = await session.get(FilamentProduct, product_id)
+                assert (
+                    current_product
+                    and current_product.material_type == "PLA-CF2"
+                    and current_product.archived
+                )
+                assert [
+                    (p.id, p.checksum, dict(p.setting_overrides))
+                    for p in await session.scalars(select(MaterialProfile))
+                ] == retained_profiles
+                assert [
+                    (r.id, r.settings, r.checksum)
+                    for r in await session.scalars(select(MaterialTemplateRevision))
+                ] == revision_evidence
+                audit = await session.scalar(
+                    select(AuditEvent).where(AuditEvent.action == "material_type.delete")
+                )
+                assert audit and audit.before["name"] == "PLA-CF2"
+                assert await session.scalar(
+                    select(OutboxJob.id).where(
+                        OutboxJob.idempotency_key == f"material-type:{item['id']}:delete:v3"
+                    )
+                )
+            recreated = await client.post(endpoint, json={"name": "PLA-CF2"})
+            assert recreated.status_code == 201 and recreated.json()["id"] != item["id"]
+            async with factory() as session:
+                assert await remember_material_type(session, "PLA-CF2") is not None
+                assert await seeded_material_type_name(session, "PLA-CF2") == "PLA-CF2"
+            # Deletion and a new scope creator share the catalog lock.
+            async with factory() as session:
+                from filament_manager.models.inventory import MaterialType
+                from filament_manager.services.material_types import lock_material_types
+
+                await lock_material_types(session)
+                created_item = await session.get(MaterialType, recreated.json()["id"])
+                assert created_item is not None
+                waiting_delete = asyncio.create_task(
+                    client.request(
+                        "DELETE",
+                        f"{endpoint}/{created_item.id}",
+                        json={"confirmation_name": created_item.name, "expected_version": 1},
+                    )
+                )
+                template = await session.get(MaterialTemplate, templates[0].id)
+                assert template is not None
+                template.material_type = "PLA-CF2"
+                template.active = True
+                await session.commit()
+                assert (await waiting_delete).status_code == 409
+
             user.role = UserRole.VIEWER
             assert (await client.post(endpoint, json={"name": "Denied"})).status_code == 403
             assert (await client.put(f"{endpoint}/{item['id']}", json=payload)).status_code == 403
+            assert (await client.request("DELETE", delete_path, json=delete_payload)).status_code == 403
             app.dependency_overrides.pop(dependencies.current_user)
             assert (await client.get(endpoint)).status_code == 401
+            assert (await client.request("DELETE", delete_path, json=delete_payload)).status_code == 401
         await engine.dispose()

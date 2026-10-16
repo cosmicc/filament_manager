@@ -1,5 +1,7 @@
 # Deployment and Operations Skill
 
+- 0.9.6 upgrades web and worker together with no schema, environment, agent, renderer, or macro changes from 0.9.5. Back up first. Material-type deletion removes the unused catalog choice, preserves historical and inventory records, and retains audited suppression of implicit recreation. Explicit creation or an active template write may register the name again.
+
 - 0.9.5 upgrades web and worker together with migration `a0678b901234`. Back up first; resolve active same-nozzle carbon-fiber rename collisions before upgrading. ASA-CF/ASA-GF choices do not create templates or copy settings. Corrected live labels propagate to Spoolman/Google through queued work and to managed Cura on the next heartbeat with Cura closed. No agent, renderer, macro, or configuration change is required. Downgrade refuses operator-managed catalog edits; restore the pre-upgrade backup when necessary.
 
 

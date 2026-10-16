@@ -1,5 +1,22 @@
 # Changelog
 
+## 0.9.6 - 10.15.2026
+
+Testing release. Upgrade web and worker together after backing up the canonical database. No schema migration, environment-variable, Cura-agent, renderer, or macro update is required from 0.9.5. Deleting a type removes only its catalog choice; inactive templates, existing inventory, and immutable history remain intact. Removal audits also prevent background recreation.
+
+### Added
+
+- Confirmed deletion of unused material-type choices from Templates → Manage material types, protected by current-name/version checks and the shared catalog transaction lock.
+
+### Changed
+
+- Only active templates block deletion, including case-equivalent uses in other nozzle scopes. Existing filaments, inactive templates, settings snapshots, spool codes, and print history are retained.
+
+### Fixed
+
+- Deleted choices stay removed during recurring seeding and later filament edits. Explicit creation or an active template write can register the name again. Deletion audits and Google publication are transactional; no schema or configuration change is required.
+
+
 ## 0.9.5 - 10.13.2026
 
 Testing release. Back up the canonical database and upgrade web and worker together. Startup applies migration `a0678b901234`, adds a durable material-type catalog, and renames existing PLA Carbon Fiber / PETG Carbon Fiber labels to PLA-CF / PETG-CF case-insensitively, including archived inventory. Resolve any active same-nozzle template collision before upgrading; the migration refuses ambiguous scopes atomically. No Cura-agent, renderer, macro, or environment-variable update is required. Existing managed workstations receive renamed material metadata on their next heartbeat and deploy it with Cura closed. Downgrade retains corrected labels but refuses to discard operator-created or renamed catalog entries; restore a pre-upgrade backup instead.

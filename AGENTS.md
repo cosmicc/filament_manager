@@ -1,5 +1,8 @@
 # Filament Manager Agent Guide
 
+- 0.9.6: Material types can be deleted from Manage material types only when no active template uses the casefold-equivalent label. Require current name/version confirmation under the catalog lock; retain inactive templates, products, settings, spool codes, and print history. Retain deletion audit tombstones so background seeding and product saves do not resurrect removed choices. Explicit New Material Type or an active template write may register the name again. See database/frontend/testing skills.
+
+
 - 0.9.5 material types are durable global choices. Templates/imports use New Material Type dialogs; Manage material types confirms a global rename across current/archived templates and products. Serialize identity writers with the catalog advisory lock, retain immutable settings/history and spool codes, and queue external metadata transactionally. Migration `a0678b901234` seeds ASA-CF/ASA-GF and corrects PLA-CF/PETG-CF labels without copying settings; reject ambiguous active nozzle scopes. See database/frontend/testing skills.
 
 - Pressure Advance calibration uses the operator's fixed tower recipe START=0, FACTOR=0.020, with Prep PA run manually first and smooth factor 0.020 guidance for all filaments. The read-only height calculator accepts 0–100 mm with two decimal places, returns exact PA up to four decimals, and never runs a printer command or saves automatically. Preserve four-decimal PA result entry in this step; ordinary catalog formatting stays unchanged.

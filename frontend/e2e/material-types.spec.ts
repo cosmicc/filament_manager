@@ -20,6 +20,14 @@ for (const width of [1440, 390]) {
         types = [...types, item]
         return route.fulfill({ status: 201, json: item })
       }
+      if (path.startsWith('/profiles/material-types/') && method === 'DELETE') {
+        const payload = route.request().postDataJSON()
+        const item = types.find(item => path.endsWith(`/${item.id}`))!
+        expect(payload.confirmation_name).toBe(item.name)
+        expect(payload.expected_version).toBe(item.record_version)
+        types = types.filter(value => value.id !== item.id)
+        return route.fulfill({ json: item })
+      }
       if (path.startsWith('/profiles/material-types/') && method === 'PUT') {
         const payload = route.request().postDataJSON()
         const item = types.find(item => path.endsWith(`/${item.id}`))!
@@ -65,6 +73,17 @@ for (const width of [1440, 390]) {
     await manager.getByRole('button', { name: 'Rename material type everywhere' }).click()
     await expect(manager.getByRole('status')).toContainText('renamed to PA6-GF')
     await expect(manager.getByLabel('Managed material type').locator('option[value="PA6-GF"]')).toHaveCount(1)
+    await manager.getByLabel('Managed material type').selectOption('PA6-GF')
+    await manager.getByRole('button', { name: 'Delete material type', exact: true }).click()
+    await expect(manager.getByRole('button', { name: 'Confirm deletion' })).toBeDisabled()
+    await manager.getByRole('button', { name: 'Cancel deletion' }).click()
+    await expect(manager.getByLabel('Managed material type')).toHaveValue('PA6-GF')
+    await manager.getByRole('button', { name: 'Delete material type', exact: true }).click()
+    await manager.getByLabel('Type PA6-GF to delete').fill('PA6-GF')
+    if (evidence) await page.screenshot({ path: `${evidence}/material-type-delete-${width}.png` })
+    await manager.getByRole('button', { name: 'Confirm deletion' }).click()
+    await expect(manager.getByRole('status')).toContainText('deleted from material type choices')
+    await expect(manager.getByLabel('Managed material type').locator('option[value="PA6-GF"]')).toHaveCount(0)
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true)
     expect(await page.locator('vite-error-overlay').count()).toBe(0)
     expect(errors).toEqual([])

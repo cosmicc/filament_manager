@@ -53,4 +53,37 @@ describe('Material type controls', () => {
     expect((await screen.findByRole('alert')).textContent).toContain('already exists')
     expect(screen.queryByText(/Material type renamed to/)).toBeNull()
   })
+  it('confirms deletion, preserves cancellation, and removes the committed choice', async () => {
+    let items = [choice]
+    fetchMock.mockImplementation((_path: string, options?: RequestInit) => {
+      if (options?.method === 'DELETE') { items = []; return Promise.resolve(choice) }
+      return Promise.resolve(items)
+    })
+    render(<QueryClientProvider client={client()}><MaterialTypeManager onClose={() => undefined} /></QueryClientProvider>)
+    fireEvent.change(await screen.findByLabelText('Managed material type'), { target: { value: 'ASA' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Delete material type' }))
+    expect((screen.getByRole('button', { name: 'Confirm deletion' }) as HTMLButtonElement).disabled).toBe(true)
+    fireEvent.click(screen.getByRole('button', { name: 'Cancel deletion' }))
+    expect((screen.getByLabelText('Managed material type') as HTMLSelectElement).value).toBe('ASA')
+    expect(fetchMock.mock.calls.some(([, options]) => options?.method === 'DELETE')).toBe(false)
+    fireEvent.click(screen.getByRole('button', { name: 'Delete material type' }))
+    fireEvent.change(screen.getByLabelText('Type ASA to delete'), { target: { value: 'ASA' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Confirm deletion' }))
+    await screen.findByText(/ASA was deleted from material type choices/)
+    expect(fetchMock).toHaveBeenCalledWith('/profiles/material-types/type-id', { method: 'DELETE', body: JSON.stringify({ expected_version: 3, confirmation_name: 'ASA' }) })
+    expect(screen.queryByRole('option', { name: 'ASA' })).toBeNull()
+  })
+
+  it('keeps an in-use deletion refusal visible and retains the selected type', async () => {
+    fetchMock.mockImplementation((_path: string, options?: RequestInit) => options?.method === 'DELETE' ? Promise.reject(new Error('This material type is used by an active template.')) : Promise.resolve([choice]))
+    render(<QueryClientProvider client={client()}><MaterialTypeManager onClose={() => undefined} /></QueryClientProvider>)
+    fireEvent.change(await screen.findByLabelText('Managed material type'), { target: { value: 'ASA' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Delete material type' }))
+    fireEvent.change(screen.getByLabelText('Type ASA to delete'), { target: { value: 'ASA' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Confirm deletion' }))
+    expect((await screen.findByRole('alert')).textContent).toContain('used by an active template')
+    expect((screen.getByLabelText('Managed material type') as HTMLSelectElement).value).toBe('ASA')
+    expect(screen.queryByText(/was deleted from material type choices/)).toBeNull()
+  })
+
 })

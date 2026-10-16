@@ -424,7 +424,7 @@ async def commit_approved_run(
                         active=True,
                     )
                     session.add(template)
-                    await remember_material_type(session, template.material_type)
+                    await remember_material_type(session, template.material_type, explicit_creation=True)
                     await session.flush()
                     checksum_payload = {
                         "material_template_id": str(template.id),

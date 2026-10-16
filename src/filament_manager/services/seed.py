@@ -142,6 +142,8 @@ async def seed_configured_system(session: AsyncSession, settings: Settings) -> d
             printer.active_nozzle_id = nozzle.id
             nozzle.status = NozzleStatus.INSTALLED
             nozzle.installed_at = nozzle.installed_at or datetime.now(UTC)
+        if asa_material is None:
+            continue
         existing_asa = await session.scalar(
             select(MaterialTemplate.id).where(
                 func.lower(MaterialTemplate.material_type) == asa_material.lower(),
@@ -184,8 +186,10 @@ async def seed_configured_system(session: AsyncSession, settings: Settings) -> d
     )
     for base in bases:
         targets = ("Silk PLA", "PLA-CF") if base.material_type.casefold() == "pla" else ("PETG-CF",)
-        for material in targets:
-            material = await seeded_material_type_name(session, material)
+        for original_material in targets:
+            material = await seeded_material_type_name(session, original_material)
+            if material is None:
+                continue
             exists = await session.scalar(
                 select(MaterialTemplate.id)
                 .where(

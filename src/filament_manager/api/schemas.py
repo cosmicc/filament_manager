@@ -128,6 +128,14 @@ class MaterialTypeResponse(ApiModel):
     record_version: int
 
 
+class MaterialTypeDelete(ApiModel):
+    """Delete a reviewed catalog entry without changing its former consumers."""
+
+    model_config = ConfigDict(extra="forbid")
+    expected_version: int = Field(ge=1)
+    confirmation_name: str = Field(min_length=1, max_length=48)
+
+
 class SpoolLocationChoiceCreate(ApiModel):
     """A remembered location label, not a separate spool assignment."""
 

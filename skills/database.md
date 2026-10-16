@@ -1,5 +1,8 @@
 # Database and Migration Skill
 
+- Material-type deletion removes only the catalog row when no active casefold-matching template exists. Hold the shared catalog advisory lock through usage validation, exact-name/version confirmation, audit, Google publication enqueue, and commit. Preserve all inactive templates, products, profiles, spools, and history. Retain `material_type.delete` audit tombstones with the name_key; implicit remember/seeding must not recreate removed choices, including renamed seed identities. Explicit creation or active template writes can register a fresh catalog UUID. No schema migration is needed.
+
+
 - Material types live in `material_types` with casefold-unique names and record versions. Migration `a0678b901234` seeds defaults and existing labels (including archived records), corrects PLA Carbon Fiber/PETG Carbon Fiber, and refuses active nozzle-scope collisions. Global renames update only live template/product identities and record versions, preserve settings snapshots/overrides/print evidence and immutable spool codes, append audits, and queue Spoolman/Google/Cura metadata. Acquire `lock_material_types` before template/product row or inventory-choice locks for identity writes; remember compatible API-created labels. Downgrade refuses operator-managed catalog edits and retains corrected labels. Agent heartbeat requeues the changed desired library after migration. Recurring seed families follow their catalog UUID through audited global renames and never recreate the former label; seed writers share the catalog lock.
 
 
