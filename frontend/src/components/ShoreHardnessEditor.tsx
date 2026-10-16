@@ -1,11 +1,12 @@
-import { useId, useState } from 'react'
+import { useId, useImperativeHandle, useState, type Ref } from 'react'
 import type { MaterialSettings } from '../api/types'
 import { compactNumber } from '../lib/format'
 import { formatHardness, type Hardness } from '../lib/shoreHardness'
 import { ShoreHardnessReference } from './ShoreHardnessReference'
 
 /** Treat scale and value as one override, copy, clear, or revert operation. */
-export function ShoreHardnessEditor({ value, base, profile, sources, errors }: {
+export function ShoreHardnessEditor({ value, base, profile, sources, errors, fillRef }: {
+  fillRef?: Ref<{ fillUnset: (hardness: Hardness | null | undefined) => boolean }>
   value: MaterialSettings['shore_hardness']
   base: MaterialSettings['shore_hardness']
   profile: boolean
@@ -18,6 +19,14 @@ export function ShoreHardnessEditor({ value, base, profile, sources, errors }: {
   const customized = profile && (number === '' ? base != null : base == null || scale !== base.scale || Number(number) !== Number(base.value))
   const messages = Object.entries(errors).filter(([key]) => key === 'shore_hardness' || key.startsWith('shore_hardness.')).flatMap(([, items]) => items)
   const apply = (hardness: MaterialSettings['shore_hardness']) => { setScale(hardness?.scale ?? 'A'); setNumber(hardness?.value ?? '') }
+  useImperativeHandle(fillRef, () => ({
+    fillUnset(hardness) {
+      if (number !== '' || !hardness) return false
+      setScale(hardness.scale)
+      setNumber(hardness.value)
+      return true
+    },
+  }), [number])
   return <div className={`setting-field${customized ? ' setting-field--customized' : ''}${messages.length ? ' setting-field--invalid' : ''}`}>
     <div className="form-grid">
       <label>Shore hardness scale<select name="shore_hardness_scale" value={scale} onChange={(event) => setScale(event.target.value as 'A' | 'D')} aria-invalid={messages.length ? true : undefined} aria-describedby={messages.length ? `${id}-error` : undefined}><option value="A">Shore A</option><option value="D">Shore D</option></select></label>

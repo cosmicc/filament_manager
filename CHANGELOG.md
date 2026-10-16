@@ -1,5 +1,23 @@
 # Changelog
 
+
+## 0.9.7 - 10.15.2026
+
+Testing release. Back up the canonical database and upgrade web and worker together. No schema, environment-variable, Cura-agent, renderer, or macro change is required from 0.9.6. Bulk copying changes only the local template draft until Save; no live link to the source template is created.
+
+### Added
+
+- Templates offer **Fill unset values** to copy available settings from one existing active template into all blank fields at once, including care guidance and the complete Shore hardness pair.
+
+### Changed
+
+- Existing values stay unchanged; copied settings remain independent of the source and commit only with the normal template save.
+
+### Fixed
+
+- Blank template settings no longer require selecting a source separately for every field.
+
+
 ## 0.9.6 - 10.15.2026
 
 Testing release. Upgrade web and worker together after backing up the canonical database. No schema migration, environment-variable, Cura-agent, renderer, or macro update is required from 0.9.5. Deleting a type removes only its catalog choice; inactive templates, existing inventory, and immutable history remain intact. Removal audits also prevent background recreation.

@@ -332,3 +332,41 @@ it('saves, clears and reverts hardness as one scale/value pair', () => {
   fireEvent.change(controls.getByRole('spinbutton', { name: 'Shore hardness value' }), { target: { value: '0' } })
   expect(settingsFromForm(form, [], 'profile').shore_hardness).toEqual({ scale: 'D', value: '0' })
 })
+
+
+it('bulk fills blank controls, preserves entered values and zero, and serializes exact copies', () => {
+  const catalog: CuraSettingCatalogItem[] = [{ key: 'support_top_distance', label: 'Support Top Distance', unit: 'mm', value_type: 'number', editable: true, template_only: false }]
+  const view = render(<form><MaterialSettingsEditor settings={{ ...settings, pressure_advance: '0', cooling_enabled: false }} catalog={catalog} copySources={[{
+    id: 'source', label: 'Template ASA', settings: { ...settings, extruder_temp_c: '250', chamber_temp_c: '45', retraction_distance_mm: '0.65432', pressure_advance: '0.2', drying_time_hours: '6-8', shore_hardness: { scale: 'D', value: '75' }, cura_extensions: { support_top_distance: '0' } },
+  }]} /></form>)
+  const controls = within(view.container)
+  fireEvent.change(controls.getByLabelText('Source template'), { target: { value: 'source' } })
+  fireEvent.change(controls.getByLabelText('Printing temperature (°C)'), { target: { value: '222' } })
+  fireEvent.click(controls.getByRole('button', { name: 'Fill unset values' }))
+  const saved = settingsFromForm(view.container.querySelector('form')!, catalog, 'template')
+  expect(saved.extruder_temp_c).toBe('222')
+  expect(saved.chamber_temp_c).toBe('45')
+  expect(saved.pressure_advance).toBe('0')
+  expect(saved.cooling_enabled).toBe(false)
+  expect(saved.retraction_distance_mm).toBe('0.65432')
+  expect(saved.drying_time_hours).toBe('6-8')
+  expect(saved.shore_hardness).toEqual({ scale: 'D', value: '75' })
+  expect(saved.cura_extensions.support_top_distance).toBe('0')
+  expect((controls.getByLabelText(/Minimum Extrusion Distance Window/) as HTMLInputElement).value).toBe('0.65432')
+  fireEvent.click(controls.getByRole('button', { name: 'Fill unset values' }))
+  expect(controls.getByRole('status').textContent).toContain('No unset values')
+  // A later source cannot replace an already populated hardness pair.
+  fireEvent.change(controls.getByLabelText('Shore hardness value'), { target: { value: '80' } })
+  fireEvent.click(controls.getByRole('button', { name: 'Fill unset values' }))
+  expect(settingsFromForm(view.container.querySelector('form')!, catalog, 'template').shore_hardness).toEqual({ scale: 'D', value: '80' })
+  view.unmount()
+})
+
+it('disables bulk copy without a source and hides it from filament profiles', () => {
+  const view = render(<MaterialSettingsEditor settings={settings} catalog={[]} />)
+  expect((within(view.container).getByLabelText('Source template') as HTMLSelectElement).disabled).toBe(true)
+  expect((within(view.container).getByRole('button', { name: 'Fill unset values' }) as HTMLButtonElement).disabled).toBe(true)
+  view.rerender(<MaterialSettingsEditor settings={settings} catalog={[]} scope="profile" />)
+  expect(within(view.container).queryByRole('button', { name: 'Fill unset values' })).toBeNull()
+  view.unmount()
+})

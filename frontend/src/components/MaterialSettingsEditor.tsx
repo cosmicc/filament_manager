@@ -1,6 +1,6 @@
 /* This editor intentionally exports its form serializer and canonical typed-key set. */
 /* eslint-disable react-refresh/only-export-components */
-import { useId, useState, type ReactNode } from 'react'
+import { useId, useRef, useState, type ReactNode } from 'react'
 import type { CuraSettingCatalogItem, MaterialSettings } from '../api/types'
 import { compactNumber, inputNumber } from '../lib/format'
 import { EditorSection } from './EditorSection'
@@ -258,6 +258,10 @@ export function MaterialSettingsEditor({
   renderIdentity?: (density: ReactNode) => ReactNode
 }) {
   const editorId = useId().replaceAll(':', '')
+  const editorRef = useRef<HTMLDivElement>(null)
+  const hardnessRef = useRef<{ fillUnset: (hardness: MaterialSettings['shore_hardness']) => boolean }>(null)
+  const [fillSourceId, setFillSourceId] = useState('')
+  const [fillMessage, setFillMessage] = useState('')
   const [resetKeys, setResetKeys] = useState<Set<string>>(() => new Set())
   const [liveOwnership, setLiveOwnership] = useState<Map<string, boolean>>(() => new Map())
   const [liveValuePresence, setLiveValuePresence] = useState<Map<string, boolean>>(() => new Map())
@@ -294,6 +298,39 @@ export function MaterialSettingsEditor({
   }
   const markValuePresence = (key: string, value: unknown) => {
     setLiveValuePresence((current) => new Map(current).set(key, hasSettingValue(value)))
+  }
+  /** Fill only empty rendered setting controls; identity and saved defaults stay intact. */
+  const fillUnsetValues = () => {
+    const source = copySources.find((item) => item.id === fillSourceId)
+    if (!source || !editorRef.current) return
+    const controls = new Map(Array.from(editorRef.current.querySelectorAll<HTMLInputElement | HTMLSelectElement>('input[name], select[name]'))
+      .map((control) => [control.name, control]))
+    let filled = 0
+    const fill = (key: string, value: unknown, extension = false) => {
+      const control = controls.get(extension ? `cura__${key}` : key)
+      // Checkboxes always have an explicit true/false value, including unchecked ones.
+      if (!control || (control instanceof HTMLInputElement && control.type === 'checkbox')
+        || control.value !== '' || !hasSettingValue(value)) return
+      control.value = String(value)
+      if (control.value === '') return
+      if (control instanceof HTMLInputElement) {
+        control.dataset.exactValue = String(value)
+        if (control.type === 'number') {
+          const precision = extension
+            ? extensionPrecision(extensionCatalog.find((item) => item.key === key)!)
+            : coreFields.find((field) => field.key === key)?.precision
+          control.value = inputNumber(value as string | number, precision)
+          delete control.dataset.changed
+        }
+      }
+      markOwnership(key, String(value), undefined)
+      markValuePresence(key, value)
+      filled += 1
+    }
+    coreFields.forEach((field) => fill(field.key, source.settings[field.key]))
+    extensionCatalog.forEach((item) => fill(item.key, source.settings.cura_extensions[item.key], true))
+    if (hardnessRef.current?.fillUnset(source.settings.shore_hardness)) filled += 1
+    setFillMessage(filled ? `Filled ${filled} unset ${filled === 1 ? 'value' : 'values'} from ${source.label}. Save the template to keep these values.` : 'No unset values could be filled from this template.')
   }
   const copyOptions = (key: string, extension = false) => copySources.flatMap((source) => {
     const value = extension ? source.settings.cura_extensions[key] : source.settings[key as keyof MaterialSettings]
@@ -481,7 +518,17 @@ coreFields.filter((field) => (
     || group.id === 'cooling'
   ))
   return (
-    <div className="editor-form">
+    <div className="editor-form" ref={editorRef}>
+      {scope === 'template' ? <EditorSection title="Fill unset values" description="Copy all available values from an existing template into blank settings. Entered values stay unchanged; copied settings are independent of the source template.">
+        <div className="form-grid">
+          <label>Source template<select value={fillSourceId} disabled={!copySources.length} onChange={(event) => { setFillSourceId(event.target.value); setFillMessage('') }}>
+            <option value="">{copySources.length ? 'Choose a template' : 'No other active template available'}</option>
+            {copySources.map((source) => <option key={source.id} value={source.id}>{source.label}</option>)}
+          </select></label>
+          <div><button type="button" className="button" disabled={!copySources.some((source) => source.id === fillSourceId)} onClick={fillUnsetValues}>Fill unset values</button></div>
+        </div>
+        {fillMessage ? <p role="status">{fillMessage}</p> : null}
+      </EditorSection> : null}
       {/* Retain legacy metadata on unrelated saves; ratings alone drive plate choice. */}
       <input type="hidden" name="preferred_build_plate_surface_id" value={String(effectiveValue('preferred_build_plate_surface_id') ?? '')} />
       {scope === 'template' && (renderIdentity ? renderIdentity(renderCoreFields(['filament_density_g_cm3'])) : <div className="form-grid">{renderCoreFields(['filament_density_g_cm3'])}</div>)}
@@ -497,7 +544,7 @@ coreFields.filter((field) => (
         ))}
       </> : null}
       <EditorSection title="Shore hardness" description="One A or D measurement. Filament customizations override the linked template; spools inherit the effective value.">
-        <ShoreHardnessEditor value={settings && 'shore_hardness' in settings ? settings.shore_hardness : baseSettings?.shore_hardness} base={baseSettings?.shore_hardness} profile={scope === 'profile'} sources={copySources.flatMap((source) => source.settings.shore_hardness ? [{ id: source.id, label: source.label, hardness: source.settings.shore_hardness }] : [])} errors={validationErrors} />
+        <ShoreHardnessEditor fillRef={hardnessRef} value={settings && 'shore_hardness' in settings ? settings.shore_hardness : baseSettings?.shore_hardness} base={baseSettings?.shore_hardness} profile={scope === 'profile'} sources={copySources.flatMap((source) => source.settings.shore_hardness ? [{ id: source.id, label: source.label, hardness: source.settings.shore_hardness }] : [])} errors={validationErrors} />
       </EditorSection>
       {visibleGroups.map((group) => (
         <EditorSection key={group.title} title={group.title} description={group.description}>

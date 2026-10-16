@@ -1,5 +1,7 @@
 # Frontend Design and Accessibility Skill
 
+- Template editors offer a Source template selector and **Fill unset values** action. Fill blank rendered core/additional Cura settings and the atomic hardness pair using the existing active-source list. Preserve entered values, zero/false, identity, and normal Save/cancel behavior; copied values are independent. Reuse existing themes and responsive form spacing.
+
 - Manage material types offers Delete material type with a separate exact-name confirmation and Cancel deletion. Keep in-use/stale errors in that confirmation view, preserve the selection on cancellation, and remove a successfully deleted choice from shared cache immediately before refresh. Creation also updates the shared catalog cache, so form-local added choices cannot reappear after deletion. Preserve existing themes and responsive spacing.
 
 

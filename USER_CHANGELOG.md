@@ -1,5 +1,21 @@
 # User Changelog
 
+
+## 0.9.7 - 10.15.2026
+
+### Added
+
+- Templates offer **Fill unset values** to copy available settings from one existing active template into all blank fields at once, including care guidance and the complete Shore hardness pair.
+
+### Changed
+
+- Existing values stay unchanged; copied settings remain independent of the source and commit only with the normal template save.
+
+### Fixed
+
+- Blank template settings no longer require selecting a source separately for every field.
+
+
 ## 0.9.6 - 10.15.2026
 
 ### Added
