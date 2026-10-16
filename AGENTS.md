@@ -1,5 +1,7 @@
 # Filament Manager Agent Guide
 
+- Template editors offer **Fill unset values** from one active source. Preserve entered values, zero/false, exact numeric serialization, and atomic Shore hardness; copy only local blank settings until Save. This is a one-time copy, not live template-to-template inheritance. See frontend/testing skills.
+
 - 0.9.6: Material types can be deleted from Manage material types only when no active template uses the casefold-equivalent label. Require current name/version confirmation under the catalog lock; retain inactive templates, products, settings, spool codes, and print history. Retain deletion audit tombstones so background seeding and product saves do not resurrect removed choices. Explicit New Material Type or an active template write may register the name again. See database/frontend/testing skills.
 
 

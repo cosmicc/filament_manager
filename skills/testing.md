@@ -1,5 +1,7 @@
 # Testing and Validation Skill
 
+- Bulk template-copy checks cover entered values and zero/false preservation, blank/missing source values, care enums, atomic hardness, exact numeric serialization, additional Cura settings, retraction preview, repeated application, empty sources, profile exclusion, and desktop/mobile save/cancel behavior.
+
 - Material-type deletion coverage must reject active-template use across nozzle scopes/case variants, stale versions, incorrect confirmation, unauthenticated/viewer writes, and a new template committed while deletion waits for the catalog lock. Allow inactive-only references and product-only use without rewriting snapshots/history. Verify audit/outbox evidence, no implicit recreation or seed resurrection, explicit recreation, UI cancel/error/success, and desktop/mobile confirmation flows.
 
 

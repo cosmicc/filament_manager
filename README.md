@@ -1,8 +1,10 @@
 # Filament Manager
 
-Testing release **0.9.6** adds confirmed deletion under **Templates → Manage material types**. Active templates prevent deletion; existing filaments and history remain intact. Removed choices stay removed until explicitly registered again. Upgrade web and worker together after backup; no schema, Cura-agent, or macro update is required. See [changes and upgrade notes](CHANGELOG.md#096---10152026).
+Testing release **0.9.7** adds **Fill unset values** to template creation and editing. Copy blank settings from an existing template in one action while preserving entered values. Upgrade web and worker together after backup; no schema, Cura-agent, or macro update is required. See [changes and upgrade notes](CHANGELOG.md#097---10152026).
 
 Under **Templates → Manage material types**, select a type to rename it or choose **Delete material type**. Deletion requires its current name and is refused while an active template uses it. Existing filament records and history are preserved.
+
+When adding or editing a template, choose a **Source template** and click **Fill unset values** to copy all available settings into blank fields. Existing values are preserved; save normally to keep the copied settings.
 
 Testing release **0.9.0** adds inherited support controls, saved G-code viewing/downloads, clearer print durations, and stale-history recovery. See [0.9.0 upgrade notes](CHANGELOG.md#090---09222026) for archive limits and the required Cura-agent upgrade.
 
