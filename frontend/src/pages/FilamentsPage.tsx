@@ -12,6 +12,7 @@ import { FilamentSectionNav } from '../components/FilamentSectionNav'
 import { EmptyState } from '../components/EmptyState'
 import { LoadingState } from '../components/LoadingState'
 import { Modal } from '../components/Modal'
+import { ManufacturerManager } from '../components/ManufacturerManager'
 import { PageHeader } from '../components/PageHeader'
 import { useAuth } from '../context/AuthContext'
 import { Link, useRouter } from '../context/RouterContext'
@@ -63,6 +64,7 @@ export default function FilamentsPage() {
   const duplicateSourceId = path.match(/^\/filaments\/duplicate\/([0-9a-f-]{36})$/i)?.[1] ?? ''
   const { user } = useAuth()
   const queryClient = useQueryClient()
+  const [manageManufacturers, setManageManufacturers] = useState(false)
   const [search, setSearch] = useState('')
   const [material, setMaterial] = useState('')
   const [sort, setSort] = useState('catalog')
@@ -73,6 +75,7 @@ export default function FilamentsPage() {
   const [colorName, setColorName] = useState('')
   const [colorMode, setColorMode] = useState<FilamentColorMode>('solid')
   const [colorHexes, setColorHexes] = useState(['808080'])
+  const [colorNames, setColorNames] = useState<string[]>([])
   const filters = new URLSearchParams()
   if (search) filters.set('search', search)
   if (material) filters.set('material', material)
@@ -96,6 +99,7 @@ export default function FilamentsPage() {
   }, [duplicateSourceId, path])
   useEffect(() => {
     if (!duplicateSource.data) return
+    setColorNames(duplicateSource.data.color_names ?? [])
     setColorName(duplicateSource.data.color_name)
     setColorMode(duplicateSource.data.color_mode)
     setColorHexes(duplicateSource.data.color_hexes.length ? duplicateSource.data.color_hexes : [duplicateSource.data.color_hex ?? '808080'])
@@ -164,6 +168,7 @@ export default function FilamentsPage() {
           filler: String(data.get('filler') ?? '').trim() || null,
           finish: String(data.get('finish') ?? '').trim() || null,
           color_name: colorName.trim(),
+          color_names: colorMode === 'multicolor' ? colorNames : [],
           color_hex: colorHexes[0],
           color_mode: colorMode,
           // Rainbow owns a fixed six-sample display palette on the server.
@@ -183,6 +188,7 @@ export default function FilamentsPage() {
       setColorName('')
       setColorMode('solid')
       setColorHexes(['808080'])
+      setColorNames([])
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: ['filaments'] }),
         queryClient.invalidateQueries({ queryKey: ['filament-colors'] }),
@@ -206,7 +212,7 @@ export default function FilamentsPage() {
     setMessage('')
     create.mutate(event.currentTarget)
   }
-  return <div><PageHeader eyebrow="Product catalog" title="Filaments" description="Real filament products with physical identity, inventory, and printer/nozzle-specific print settings." actions={<><FilamentSectionNav />{user?.role !== 'viewer' ? <button className="button button--primary" onClick={() => setShowCreate(true)}><Plus size={17} /> Add filament</button> : null}</>} />
+  return <div>{manageManufacturers ? <ManufacturerManager onClose={() => setManageManufacturers(false)} /> : null}<PageHeader eyebrow="Product catalog" title="Filaments" description="Real filament products with physical identity, inventory, and printer/nozzle-specific print settings." actions={<><FilamentSectionNav />{user?.role !== 'viewer' ? <button className="button" onClick={() => setManageManufacturers(true)}>Manage manufacturers</button> : null}{user?.role !== 'viewer' ? <button className="button button--primary" onClick={() => setShowCreate(true)}><Plus size={17} /> Add filament</button> : null}</>} />
     {message && <div className="deployment-note" role="status">{message}</div>}
     <section className="toolbar"><label className="search-field"><Search size={18} /><input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Search type, color, filler, or finish" aria-label="Search filaments" /></label><MaterialTypeFilter templates={templates.data ?? []} value={material} onChange={setMaterial} /><label>Sort filaments<select aria-label="Sort filaments" value={sort} onChange={(event) => setSort(event.target.value)}><option value="catalog">Catalog order</option><option value="softest">Hardness: softest first (approximate)</option><option value="hardest">Hardness: hardest first (approximate)</option></select></label><ShoreHardnessReference /><CollectionViewSelector label="Filaments" value={view} onChange={setView} /><span className="toolbar__summary">{query.data?.length ?? 0} products</span></section>{query.isLoading || profiles.isLoading ? <LoadingState /> : !query.data?.length ? <EmptyState icon={PackageOpen} title="No filament products" description="Add a material template, then add the first filament product here." /> : view === 'list' ? <div className="table-card collection-table"><table><thead><tr><th>Filament</th><th>Modifiers</th><th>Shore hardness</th><th>Density</th><th>Nominal</th><th>Print settings</th></tr></thead><tbody>{displayedFilaments.map((filament) => <tr className={missingTemplate(filament) ? 'inventory-card--warning' : undefined} key={filament.id} tabIndex={0} onClick={() => navigate(`/filaments/${filament.id}`)} onKeyDown={(event) => (event.key === 'Enter' || event.key === ' ') && navigate(`/filaments/${filament.id}`)}><td><FilamentIdentity filament={filament} /></td><td>{materialModifierSummary(filament) ?? 'Standard material'}</td><td>{hardnessLabel(filament.id)}</td><td>{compactNumber(filament.density_g_cm3, 2)} g/cm³</td><td>{grams(filament.nominal_net_mass_g)}</td><td>{filament.material_template_revision_id ? 'Available' : 'Unavailable'}</td></tr>)}</tbody></table></div> : <section className={`collection-grid collection-grid--${view}`}>{displayedFilaments.map((filament) => { const presentation = profilePresentation.get(filament.id); return <FilamentCard key={filament.id} filament={filament} detailed={view === 'detailed'} hardness={hardnessLabel(filament.id)} printingTemperature={presentation?.temperature ?? 'Not configured'} dryingTemperature={profiles.isError ? 'Unable to load' : dryingTemperatures.get(filament.id) ?? 'Not set'} profileCount={presentation?.count ?? 0} missingTemplate={missingTemplate(filament)} /> })}</section>}
     {showCreate ? <Modal title={duplicateSourceId ? 'Duplicate filament' : 'Add a filament'} description={duplicateSourceId ? 'Create a separate product with the source filament’s product details and explicit settings for the selected source scope. Spools and history are not copied.' : 'This creates the filament and its first print-settings scope. Additional printer/nozzle settings can be added from the filament later.'} onClose={closeCreate} size="wide" footer={<><button className="button" type="button" onClick={closeCreate}>Cancel</button><button className="button button--primary" form="create-filament" disabled={create.isPending || !selectableTemplates.length || (Boolean(duplicateSourceId) && duplicateSource.isLoading)}><Plus size={17} />{create.isPending ? 'Creating…' : duplicateSourceId ? 'Create duplicate' : 'Create filament'}</button></>}>
@@ -215,7 +221,7 @@ export default function FilamentsPage() {
           <div className="form-grid">
             <label>Starting template<select name="material_template_revision_id" defaultValue={duplicateSource.data?.material_template_revision_id ?? ''} required autoFocus>{selectableTemplates.map(({ template, settingsSnapshot }) => <option key={settingsSnapshot.id} value={settingsSnapshot.id}>{template.name} · {compactNumber(template.nozzle_diameter_mm, 1)} mm</option>)}</select></label>
             <label>Manufacturer<InventoryChoiceSelect kind="manufacturer" name="vendor_id" defaultValue={duplicateSource.data?.vendor_id ?? ''} /></label>
-            <FilamentColorEditor name={colorName} mode={colorMode} colorHexes={colorHexes} rememberedColors={colors.data ?? []} onNameChange={setColorName} onModeChange={setColorMode} onColorsChange={setColorHexes} />
+            <FilamentColorEditor name={colorName} mode={colorMode} colorHexes={colorHexes} colorNames={colorNames} onColorNamesChange={setColorNames} rememberedColors={colors.data ?? []} onNameChange={setColorName} onModeChange={setColorMode} onColorsChange={setColorHexes} />
           </div>
         </EditorSection>
         <EditorSection title="Physical specifications" description="Record the diameter, packaged mass, and material modifiers.">

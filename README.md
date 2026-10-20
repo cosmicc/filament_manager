@@ -1,6 +1,6 @@
 # Filament Manager
 
-Testing release **0.9.8** adds **Build plates → Unload build plate** for manual Z-offset calibration with no selected plate or loaded mesh. Normal prints still require a plate. Upgrade web and worker together and install macro **0.9.8**, followed by an idle `FIRMWARE_RESTART`. See [upgrade notes](CHANGELOG.md#098---10162026).
+Testing release **0.9.9** adds manufacturer renaming with uppercase names and named multicolor filament/spool titles such as **Red/White/Blue**. See [upgrade notes](CHANGELOG.md#099---10192026).
 
 Under **Templates → Manage material types**, select a type to rename it or choose **Delete material type**. Deletion requires its current name and is refused while an active template uses it. Existing filament records and history are preserved.
 

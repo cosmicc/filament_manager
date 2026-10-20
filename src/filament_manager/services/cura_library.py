@@ -254,7 +254,7 @@ async def build_cura_library(session: AsyncSession) -> dict[str, object]:
                     "brand": vendor.name if vendor else "Unknown",
                     "material_type": product.material_type,
                     "product_name": product.display_name,
-                    "color_name": product.color_name,
+                    "color_name": product.display_color_name,
                     "filler": product.filler,
                     "finish": product.finish,
                     "color_hex": f"#{product.color_hex}" if product.color_hex else "#808080",

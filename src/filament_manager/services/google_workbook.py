@@ -35,7 +35,7 @@ EXPORTS = (
     (
         "Filaments",
         "filament_products",
-        "material_type color_name filler finish vendor_id color_hex color_mode color_hexes "
+        "material_type color_name color_names filler finish vendor_id color_hex color_mode color_hexes "
         "diameter_mm tolerance_mm density_g_cm3 nominal_net_mass_g notes "
         "source_template_revision_id archived record_version created_at updated_at",
     ),
@@ -230,6 +230,7 @@ def flatten(value: Any, path: str = "", depth: int = 0) -> list[tuple[str, Any]]
 async def snapshot(session: AsyncSession) -> list[WorkbookTab]:
     """Read complete tables in one repeatable-read snapshot; never contact a printer."""
     tabs: list[WorkbookTab] = []
+    live_color_labels: dict[str, str] = {}
     details = WorkbookTab("Settings and Evidence", ["source_tab", "record_id", "field", "setting", "value"])
     cells = 0
     content_bytes = 0
@@ -240,6 +241,10 @@ async def snapshot(session: AsyncSession) -> list[WorkbookTab]:
         # Selecting columns instead of entities prevents relationship N+1 queries.
         records = await session.stream(select(*(table.c[name] for name in fields)).order_by(table.c.id))
         async for record in records:
+            if title == "Filaments" and record.color_mode == "multicolor":
+                live_color_labels[str(record.id)] = "/".join(
+                    record.color_names or [f"#{value}" for value in record.color_hexes]
+                )
             row: list[Any] = []
             for name, value in zip(fields, record, strict=True):
                 if isinstance(value, (dict, list)):
@@ -310,7 +315,8 @@ async def snapshot(session: AsyncSession) -> list[WorkbookTab]:
     names: dict[str, str] = {}
     for row in filament.rows:
         values = dict(zip(filament.fields, row, strict=True))
-        parts = [str(values["material_type"]), str(values["color_name"])]
+        color_label = live_color_labels.get(str(values["id"]), "")
+        parts = [str(values["material_type"]), color_label or str(values["color_name"])]
         parts.extend(
             str(values[key])
             for key in ("filler", "finish")

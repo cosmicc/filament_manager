@@ -94,7 +94,7 @@ async def test_density_upgrade_preserves_history_and_activity(monkeypatch: pytes
                 nominal_net_mass_g=1000,
                 source_template_revision_id=revision.id,
             )
-            session.add(product)
+            insert_legacy_record(session, product)
             session.flush()
             old = MaterialProfile(
                 **profile_columns_from_settings({**settings, "filament_density_g_cm3": "1.3"}),

@@ -483,13 +483,13 @@ async def test_seed_system_route_creates_configured_resources(monkeypatch: pytes
                 await session.scalars(select(FilamentProduct).order_by(FilamentProduct.material_type))
             )
             red_products = [product for product in products if product.color_name.casefold() == "red"]
-            galaxy_products = {
+            multicolor_products = {
                 product.product_name: product.color_hexes
                 for product in products
-                if product.color_name == "Galaxy"
+                if product.color_mode == "multicolor"
             }
             assert [product.color_hex for product in red_products] == ["A00000"]
-            assert galaxy_products == {
+            assert multicolor_products == {
                 "Blend A": ["FF0000", "0000FF"],
                 "Blend B": ["00FF00", "FFFF00", "800080"],
             }

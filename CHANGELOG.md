@@ -1,5 +1,24 @@
 # Changelog
 
+## 0.9.9 - 10.19.2026
+
+Testing release. Back up the canonical database before upgrading web and worker together. Migration `a1789c012345` uppercases existing manufacturers, combines matching manufacturer entries while retaining every product/spool UUID and historical snapshot, and stores ordered multicolor names. Original manufacturer aliases/notes are retained and merges are audited. Existing samples use matching saved names, or explicit hex labels when no named match exists; edit the filament to select named colors. Downgrade refuses to discard multicolor names; restore a pre-upgrade backup for full reversal. No environment, macro (still 0.9.8), workstation-agent, or renderer change is required. Cura metadata refreshes through the existing closed-Cura synchronization.
+
+### Added
+
+- Filaments → **Manage manufacturers** offers confirmed renaming across current and archived inventory, with version-conflict and duplicate-name protection.
+- Multicolor components select saved named colors, including form-local New Color creation, and produce ordered names such as Red/White/Blue on live filament and spool titles and external metadata.
+
+### Changed
+
+- All new/imported manufacturers are saved in uppercase, including UNKNOWN. The reserved UNKNOWN entry cannot be renamed.
+- Adding a second or third color automatically selects Multicolor and locks the main color-name selector; reducing to one color restores normal named-color selection. Rainbow retains its fixed spectrum.
+
+### Fixed
+
+- Multicolor titles no longer use the generic Multicolor label instead of component names. Component choices remain available while used by current or archived filaments, and catalog search includes their names.
+- Manufacturer normalization retains independent duplicate filament records, immutable spool codes, settings, measurements, and print history.
+
 ## 0.9.8 - 10.16.2026
 
 Testing release. Back up the canonical database and upgrade web and worker together. Replace the installed `filament-manager-macros.cfg` with macro version **0.9.8**, then run `FIRMWARE_RESTART` while idle. No database migration, environment-variable, workstation-agent, or renderer change is required. Automated tests do not perform live calibration or printer motion.

@@ -1,5 +1,7 @@
 # Google publication workflow
 
+- 0.9.9 explicitly allowlists product `color_names` as bounded business metadata, using ordered slash-separated multicolor names for derived live identities. Preserve immutable historical names and the structured evidence path. Manufacturer renames queue publication transactionally.
+
 - Material-type deletion queues publication in the same transaction. Deleted choices disappear from the allowlisted Material Types tab; immutable business evidence and other live records remain unchanged. The periodic complete digest remains a safety net.
 
 

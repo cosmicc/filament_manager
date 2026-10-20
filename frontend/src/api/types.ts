@@ -29,6 +29,7 @@ export interface Spool {
   color_hex: string | null
   color_mode: 'solid' | 'multicolor' | 'rainbow'
   color_hexes: string[]
+  color_names?: string[]
   vendor_name: string | null
   product_name: string | null
   nominal_net_mass_g: string
@@ -191,6 +192,7 @@ export interface Filament {
   color_hex: string | null
   color_mode: 'solid' | 'multicolor' | 'rainbow'
   color_hexes: string[]
+  color_names?: string[]
   product_name: string | null
   diameter_mm: string
   tolerance_mm: string | null
@@ -210,6 +212,7 @@ export interface FilamentColor {
   color_hex: string
   color_mode: 'solid' | 'multicolor' | 'rainbow'
   color_hexes: string[]
+  color_names?: string[]
   record_version?: number | null
 }
 

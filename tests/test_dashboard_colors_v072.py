@@ -248,11 +248,13 @@ async def test_inventory_summary_and_post_use_color_correction(monkeypatch: pyte
                 )
                 assert renamed.status_code == 200, renamed.text
                 assert renamed.json()["color_hexes"] == palette
+                assert renamed.json()["color_name"] == "Multicolor", renamed.json()
                 assert renamed.json()["finish"] == "Standard"
                 assert (await client.get(f"/api/v1/spools/{spools[0].id}")).json()["color_hexes"] == palette
             choices = (await client.get("/api/v1/filament-colors")).json()
             assert "Copper" not in {choice["name"] for choice in choices}
-            blend = next(choice for choice in choices if choice["name"] == "Copper blend")
+            assert "Multicolor" in {choice["name"] for choice in choices}, choices
+            blend = next(choice for choice in choices if choice["name"] == "Multicolor")
             assert blend["color_mode"] == "multicolor" and blend["color_hexes"] == []
             assert (
                 await client.post(
@@ -275,7 +277,7 @@ async def test_inventory_summary_and_post_use_color_correction(monkeypatch: pyte
             assert "Glass" in {
                 item["name"] for item in (await client.get("/api/v1/filament-attributes?kind=filler")).json()
             }
-            assert "Copper blend" in {
+            assert "Multicolor" in {
                 item["name"] for item in (await client.get("/api/v1/filament-colors")).json()
             }
             deleted = await client.delete(f"/api/v1/filaments/{products[5].id}")

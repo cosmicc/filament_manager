@@ -47,6 +47,7 @@ const productFieldLabels: Record<string, string> = {
   color_mode: 'Display type',
   color_hex: 'Screen color sample',
   color_hexes: 'Color samples',
+  color_names: 'Component color names',
   diameter_mm: 'Filament diameter',
   tolerance_mm: 'Diameter tolerance',
   density_g_cm3: 'Density',
@@ -71,6 +72,7 @@ export default function FilamentDetailPage() {
   const [colorName, setColorName] = useState('')
   const [colorMode, setColorMode] = useState<FilamentColorMode>('solid')
   const [colorHexes, setColorHexes] = useState(['808080'])
+  const [colorNames, setColorNames] = useState<string[]>([])
   const [materialType, setMaterialType] = useState('')
   const [editingProduct, setEditingProduct] = useState(false)
   const [editingProfileId, setEditingProfileId] = useState<string | null>(null)
@@ -84,6 +86,7 @@ export default function FilamentDetailPage() {
 
   useEffect(() => {
     if (!filament.data) return
+    setColorNames(filament.data.color_names ?? [])
     setColorName(filament.data.color_name)
     setColorMode(filament.data.color_mode)
     setColorHexes(filament.data.color_hexes.length ? filament.data.color_hexes : [filament.data.color_hex ?? '808080'])
@@ -116,6 +119,7 @@ export default function FilamentDetailPage() {
           vendor_id: optional(data, 'vendor_id'),
           material_type: materialType.trim(),
           color_name: colorName.trim(),
+          color_names: colorMode === 'multicolor' ? colorNames : [],
           color_hex: colorHexes[0],
           color_mode: colorMode,
           // Do not send Rainbow's fixed six-sample response palette through
@@ -217,6 +221,7 @@ export default function FilamentDetailPage() {
     || Number(left.template.nozzle_diameter_mm) - Number(right.template.nozzle_diameter_mm)
     || left.template.name.localeCompare(right.template.name))
   const closeProductEditor = () => {
+    setColorNames(item.color_names ?? [])
     setColorName(item.color_name)
     setColorMode(item.color_mode)
     setColorHexes(item.color_hexes.length ? item.color_hexes : [item.color_hex ?? '808080'])
@@ -261,7 +266,7 @@ export default function FilamentDetailPage() {
           <div className="form-grid">
             <label>Manufacturer<InventoryChoiceSelect kind="manufacturer" name="vendor_id" defaultValue={item.vendor_id ?? ''} autoFocus aria-invalid={productErrorsFor('vendor_id').length ? true : undefined} aria-describedby={productErrorsFor('vendor_id').length ? productErrorId('vendor_id') : undefined} />{productFieldError('vendor_id')}</label>
             <label>Material type<input name="material_type" value={materialType} onChange={(event) => setMaterialType(event.target.value)} maxLength={48} required aria-invalid={productErrorsFor('material_type').length ? true : undefined} aria-describedby={productErrorsFor('material_type').length ? productErrorId('material_type') : undefined} />{productFieldError('material_type')}</label>
-            <FilamentColorEditor name={colorName} mode={colorMode} colorHexes={colorHexes} rememberedColors={colors.data ?? []} onNameChange={setColorName} onModeChange={setColorMode} onColorsChange={setColorHexes} validationErrors={productValidationErrors} errorIdPrefix="filament-product-color" disabled={!item.color_editable} />
+            <FilamentColorEditor name={colorName} mode={colorMode} colorHexes={colorHexes} colorNames={colorNames} onColorNamesChange={setColorNames} rememberedColors={colors.data ?? []} onNameChange={setColorName} onModeChange={setColorMode} onColorsChange={setColorHexes} validationErrors={productValidationErrors} errorIdPrefix="filament-product-color" disabled={!item.color_editable} />
             <p className="field-help form-grid__wide">Color corrections update this filament and all linked spools. Previously saved print history keeps its original colors.</p>
           </div>
         </EditorSection>

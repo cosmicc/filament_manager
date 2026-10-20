@@ -85,7 +85,8 @@ def test_unknown_manufacturer_upgrade_preserves_archived_filaments_and_snapshots
                 )
                 for index, vendor_id in enumerate((old.id, None, known.id))
             ]
-            session.add_all(products)
+            for product in products:
+                insert_legacy_record(session, product)
             printer = Printer(
                 printer_code="test",
                 name="Test",
@@ -138,7 +139,7 @@ def test_unknown_manufacturer_upgrade_preserves_archived_filaments_and_snapshots
             with pytest.raises(RuntimeError, match="legacy filament identity rule"):
                 command.downgrade(config, "b6c7d8e9f012")
             with engine.connect() as connection:
-                assert connection.scalar(text("SELECT version_num FROM alembic_version")) == "a0678b901234"
+                assert connection.scalar(text("SELECT version_num FROM alembic_version")) == "a1789c012345"
         else:
             command.downgrade(config, "b6c7d8e9f012")
             assert "uq_filament_product_identity" in {
@@ -146,7 +147,7 @@ def test_unknown_manufacturer_upgrade_preserves_archived_filaments_and_snapshots
             }
             command.upgrade(config, "head")
         with Session(engine) as session:
-            unknown_id = session.scalar(sa_select(Vendor.id).where(Vendor.name == "Unknown"))
+            unknown_id = session.scalar(sa_select(Vendor.id).where(Vendor.name == "UNKNOWN"))
             assert unknown_id is not None
             assert [session.get(FilamentProduct, identifier).vendor_id for identifier in ids] == [
                 unknown_id,
@@ -262,7 +263,10 @@ def test_plate_cleaning_removal_preserves_mesh_and_selection_evidence(
             assert connection.scalar(text("SELECT count(*) FROM build_plate_maintenance_events")) == 1
             assert connection.scalar(text("SELECT count(*) FROM notifications")) == 1
             assert connection.scalar(text("SELECT title FROM notifications")) == "mesh-due"
-            assert connection.scalar(text("SELECT count(*) FROM audit_events")) == 2
+            assert (
+                connection.scalar(text("SELECT count(*) FROM audit_events WHERE object_type = 'build_plate'"))
+                == 2
+            )
             assert connection.scalar(text("SELECT last_activated_at FROM build_plates")) == at
             assert connection.scalar(text("SELECT last_activated_at FROM build_plate_surfaces")) == at
             assert connection.scalar(text("SELECT last_mesh_calibrated_at FROM build_plate_surfaces")) == at
@@ -298,7 +302,7 @@ def test_choice_cleanup_retains_archived_usage(monkeypatch: pytest.MonkeyPatch) 
                 density_g_cm3=Decimal("1.24"),
                 nominal_net_mass_g=Decimal("1000"),
             )
-            session.add(product)
+            insert_legacy_record(session, product)
             for name in ("Copper", "Orphan"):
                 session.add(
                     FilamentColor(
@@ -354,7 +358,8 @@ def test_choice_cleanup_retains_archived_usage(monkeypatch: pytest.MonkeyPatch) 
                 connection.scalar(
                     text("SELECT record_version FROM filament_products WHERE id=:id"), {"id": product_id}
                 )
-                == 3
+                # Replaying the historical UNKNOWN merge adds one identity correction.
+                == 4
             )
         engine.dispose()
         get_settings.cache_clear()
@@ -382,7 +387,8 @@ def test_modifier_catalog_backfills_only_blanks(monkeypatch: pytest.MonkeyPatch)
                 )
                 for color in ("Blue", "Red")
             ]
-            session.add_all(products)
+            for product in products:
+                insert_legacy_record(session, product)
             session.flush()
             blank_id, populated_id = (product.id for product in products)
             labels = ["Bucket %_12", "Bucket %_12", "bucket %_12", "Archived shelf", None]
@@ -546,7 +552,7 @@ def test_template_only_settings_migration_appends_corrected_profile_snapshot(
                 nominal_net_mass_g=Decimal("1000"),
                 source_template_revision_id=revision.id,
             )
-            session.add(product)
+            insert_legacy_record(session, product)
             session.flush()
             # Seed through the historical schema rather than today's ORM. The
             # current mapping intentionally contains columns that do not exist
@@ -814,7 +820,7 @@ def test_previous_schema_automatically_upgrades_to_metadata_head(
 
         upgrade_database(DatabaseConfig(url=database_url))
         with engine.connect() as connection:
-            assert connection.scalar(text("SELECT version_num FROM alembic_version")) == "a0678b901234"
+            assert connection.scalar(text("SELECT version_num FROM alembic_version")) == "a1789c012345"
             assert (
                 connection.scalar(
                     text(
@@ -1169,7 +1175,7 @@ def test_material_type_upgrade_preserves_settings_and_history(
                 nominal_net_mass_g=Decimal("1000"),
                 archived=True,
             )
-            session.add(product)
+            insert_legacy_record(session, product)
             session.flush()
             history = PrintJob(
                 printer_id=printer.id,

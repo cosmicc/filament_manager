@@ -1,5 +1,7 @@
 # Frontend Design and Accessibility Skill
 
+- 0.9.9 Filaments → Manage manufacturers offers confirmed uppercase renames, with UNKNOWN reserved and errors retained in the dialog. Color editor exposes one/two/three samples directly; adding samples forces Multicolor and disables the main name selector. Each component uses named solid choices with draft-local New Color; one sample restores normal color selection. Keep `color_names` in edit/duplicate/save state and use ordered slash-separated names in live filament/spool identities. Reuse the approved palette.
+
 - Build plates offers **Unload build plate** for the explicitly selected printer. Submit printer_id with the existing clear endpoint; report queued acceptance and retain active indicators until canonical confirmation. Show **No build plate selected** with manual-calibration and normal-print guidance. Label usable unselected plates Available; reserve active selection indicators for the selected plate. Reuse existing palette/layout; no automatic motion or Z-offset edit.
 
 - Template editors offer a Source template selector and **Fill unset values** action. Fill blank rendered core/additional Cura settings and the atomic hardness pair using the existing active-source list. Preserve entered values, zero/false, identity, and normal Save/cancel behavior; copied values are independent. Reuse existing themes and responsive form spacing.
