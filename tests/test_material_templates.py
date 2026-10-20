@@ -693,7 +693,7 @@ async def test_direct_template_save_updates_linked_product_profile(
             assert template_material["material"]["brand"] == "Template"
             assert template_material["material"]["product_name"] == "Template PCTPE"
             product_material = next(item for item in materials if item["source_kind"] == "product")
-            assert product_material["material"]["brand"] == "Unknown"
+            assert product_material["material"]["brand"] == "UNKNOWN"
             assert materials[0]["material"]["material_type"] == "PCTPE"
 
         await engine.dispose()
