@@ -183,6 +183,14 @@ class FilamentModifiers(ApiModel):
         return value
 
 
+class VendorRename(ApiModel):
+    """Rename the exact reviewed manufacturer without overwriting a concurrent edit."""
+
+    name: str = Field(min_length=1, max_length=160)
+    expected_version: int = Field(ge=1)
+    confirm_name: str = Field(min_length=1, max_length=160)
+
+
 class FilamentCreate(FilamentModifiers):
     vendor_id: UUID | None = None
     material_type: str = Field(min_length=1, max_length=48)
@@ -190,6 +198,9 @@ class FilamentCreate(FilamentModifiers):
     color_hex: str | None = Field(default=None, pattern=r"^[0-9A-Fa-f]{6}$")
     color_mode: Literal["solid", "multicolor", "rainbow"] = "solid"
     color_hexes: list[ColorHex] = Field(default_factory=list, max_length=3)
+    color_names: list[Annotated[str, Field(min_length=1, max_length=96)]] = Field(
+        default_factory=list, max_length=3
+    )
     product_name: str | None = Field(default=None, max_length=160)
     diameter_mm: Decimal = Field(gt=0)
     tolerance_mm: Decimal | None = Field(default=None, ge=0)
@@ -203,7 +214,7 @@ class FilamentCreate(FilamentModifiers):
 class FilamentResponse(FilamentCreate):
     # Live names are derived from four bounded identity fields, not the legacy
     # optional input retained for compatibility with older API clients.
-    product_name: str = Field(max_length=345)
+    product_name: str = Field(max_length=539)
     # Rainbow is a fixed six-color application palette. Create/update requests
     # remain capped at three operator-selected samples for multicolor products,
     # while responses must faithfully represent the complete Rainbow palette.
@@ -225,6 +236,9 @@ class FilamentUpdate(FilamentModifiers):
     color_hex: str | None = Field(default=None, pattern=r"^[0-9A-Fa-f]{6}$")
     color_mode: Literal["solid", "multicolor", "rainbow"] | None = None
     color_hexes: list[ColorHex] | None = Field(default=None, max_length=3)
+    color_names: list[Annotated[str, Field(min_length=1, max_length=96)]] | None = Field(
+        default=None, max_length=3
+    )
     product_name: str | None = Field(default=None, max_length=160)
     diameter_mm: Decimal | None = Field(default=None, gt=0)
     tolerance_mm: Decimal | None = Field(default=None, ge=0)
@@ -317,6 +331,7 @@ class SpoolResponse(ApiModel):
     color_hex: str | None
     color_mode: Literal["solid", "multicolor", "rainbow"]
     color_hexes: list[str]
+    color_names: list[str] = Field(default_factory=list)
     vendor_name: str | None
     product_name: str | None
     nominal_net_mass_g: Decimal

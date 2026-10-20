@@ -10,7 +10,7 @@ from uuid import UUID
 
 from fastapi import APIRouter, Header, Query, Request, status
 from fastapi.responses import StreamingResponse
-from sqlalchemy import delete, func, or_, select, text
+from sqlalchemy import String, delete, func, or_, select, text
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.orm import joinedload
 from sqlalchemy.sql.elements import ColumnElement
@@ -63,7 +63,11 @@ from filament_manager.services.inventory_choices import (
     normalize_modifier,
     prune_inventory_choices,
 )
-from filament_manager.services.manufacturers import unknown_manufacturer_id
+from filament_manager.services.manufacturers import (
+    lock_manufacturers,
+    manufacturer_name,
+    unknown_manufacturer_id,
+)
 from filament_manager.services.material_settings import (
     create_published_profile_snapshot,
     queue_managed_cura_library,
@@ -98,6 +102,7 @@ from ..schemas import (
     SpoolTareSuggestionResponse,
     SpoolUpdate,
     VendorCreate,
+    VendorRename,
 )
 
 router = APIRouter(tags=["inventory"])
@@ -111,6 +116,7 @@ class ResolvedFilamentColor:
     color_hex: str
     color_mode: str
     color_hexes: list[str]
+    color_names: tuple[str, ...] = ()
 
 
 def _resolved_color(mapping: FilamentColor) -> ResolvedFilamentColor:
@@ -189,6 +195,7 @@ async def _remember_color(
     actor_id: UUID,
     correlation_id: str,
     exclude_product_id: UUID | None = None,
+    color_names: list[str] | None = None,
 ) -> ResolvedFilamentColor:
     """Resolve a product palette and remember only shared solid/rainbow colors."""
 
@@ -198,6 +205,8 @@ async def _remember_color(
         text("SELECT pg_advisory_xact_lock(hashtextextended(:key, 0))"),
         {"key": f"filament-color:{normalized_name}"},
     )
+    if len(color_hexes or []) > 1 and normalized_name != "rainbow":
+        color_mode = "multicolor"
     if normalized_name == "rainbow":
         color_mode = "rainbow"
         color_hexes = []
@@ -214,8 +223,57 @@ async def _remember_color(
                 "invalid_color_palette",
                 str(exc),
             ) from exc
+        names = []
+        if color_names:
+            if len(color_names) != len(selected_palette):
+                raise ApiError(422, "invalid_color_names", "Choose one saved name for each color sample")
+            for name, sample in zip(color_names, selected_palette, strict=True):
+                mapping = await session.scalar(
+                    select(FilamentColor).where(
+                        FilamentColor.normalized_name == normalize_color_name(name),
+                        FilamentColor.color_mode == "solid",
+                    )
+                )
+                if name == f"#{sample}" and mapping is None:
+                    # Preserve unmatched legacy samples without guessing a human name.
+                    names.append(name)
+                    continue
+                if mapping is None:
+                    # New Color choices remain draft-local until this product save.
+                    mapping_color = await _remember_color(
+                        session,
+                        color_name=name,
+                        color_hex=sample,
+                        color_mode="solid",
+                        color_hexes=[sample],
+                        actor_id=actor_id,
+                        correlation_id=correlation_id,
+                    )
+                    if mapping_color.color_mode != "solid":
+                        raise ApiError(422, "invalid_color_names", "Choose saved solid colors")
+                    names.append(mapping_color.name)
+                    continue
+                if mapping.color_hex != sample:
+                    raise ApiError(
+                        422, "invalid_color_names", "Saved color samples changed; select the colors again"
+                    )
+                names.append(mapping.name)
+        else:
+            for sample in selected_palette:
+                matches = list(
+                    await session.scalars(
+                        select(FilamentColor)
+                        .where(
+                            FilamentColor.color_hex == sample,
+                            FilamentColor.color_mode == "solid",
+                        )
+                        .order_by(FilamentColor.normalized_name)
+                    )
+                )
+                names.append(matches[0].name if matches else f"#{sample}")
         return ResolvedFilamentColor(
-            name=display_name,
+            name="Multicolor",
+            color_names=tuple(names),
             color_hex=selected_palette[0],
             color_mode=selected_mode,
             color_hexes=selected_palette,
@@ -375,6 +433,7 @@ def spool_response(spool: Spool, *, completed_print_count: int = 0) -> SpoolResp
         color_hex=product.color_hex,
         color_mode=product.color_mode,
         color_hexes=product.color_hexes,
+        color_names=product.color_names or [],
         vendor_name=product.vendor.name if product.vendor else None,
         product_name=product.display_name,
         nominal_net_mass_g=spool.nominal_net_mass_g,
@@ -424,6 +483,7 @@ def filament_response(product: FilamentProduct, *, color_editable: bool = True) 
         color_hex=product.color_hex,
         color_mode=product.color_mode,
         color_hexes=product.color_hexes,
+        color_names=product.color_names or [],
         product_name=product.display_name,
         diameter_mm=product.diameter_mm,
         tolerance_mm=product.tolerance_mm,
@@ -546,18 +606,14 @@ async def create_vendor(
 ) -> dict[str, object]:
     """Create a canonical filament manufacturer."""
 
-    # Serialize normalized names, including Unicode case-fold equivalents.
-    normalized = normalize("NFKC", payload.name).strip().casefold()
-    if normalized in {"unspecified", "unspecified manufacturer", "unspecified vendor"}:
-        payload = payload.model_copy(update={"name": "Unknown"})
-        normalized = "unknown"
-    await session.execute(
-        text("SELECT pg_advisory_xact_lock(hashtextextended(:key, 0))"), {"key": f"manufacturer:{normalized}"}
-    )
-    names = await session.scalars(select(Vendor.name))
-    if any(normalize("NFKC", name.strip()).casefold() == normalized for name in names):
-        raise ApiError(status.HTTP_409_CONFLICT, "vendor_exists", "Manufacturer already exists")
-    vendor = Vendor(name=payload.name.strip(), preferred=payload.preferred, notes=payload.notes)
+    await lock_manufacturers(session)
+    try:
+        name = manufacturer_name(payload.name)
+    except ValueError as exc:
+        raise ApiError(422, "invalid_manufacturer", str(exc)) from exc
+    if any(manufacturer_name(existing) == name for existing in await session.scalars(select(Vendor.name))):
+        raise ApiError(409, "vendor_exists", "Manufacturer already exists")
+    vendor = Vendor(name=name, preferred=payload.preferred, notes=payload.notes)
     session.add(vendor)
     await session.flush()
     add_audit_event(
@@ -575,6 +631,75 @@ async def create_vendor(
     return {
         "id": vendor.id,
         "name": vendor.name,
+        "preferred": vendor.preferred,
+        "record_version": vendor.record_version,
+    }
+
+
+@router.patch("/vendors/{vendor_id}")
+async def rename_vendor(
+    vendor_id: UUID,
+    payload: VendorRename,
+    request: Request,
+    operator: Operator,
+    session: DatabaseSession,
+) -> dict[str, object]:
+    """Rename live manufacturer metadata atomically, retaining all captured history."""
+
+    await lock_manufacturers(session)
+    vendor = await session.scalar(select(Vendor).where(Vendor.id == vendor_id).with_for_update())
+    if vendor is None:
+        raise ApiError(404, "vendor_not_found", "Manufacturer not found")
+    if vendor.record_version != payload.expected_version or vendor.name != payload.confirm_name:
+        raise ApiError(409, "version_conflict", "Manufacturer changed; refresh and confirm its current name")
+    if vendor.name == "UNKNOWN":
+        raise ApiError(422, "reserved_manufacturer", "The UNKNOWN manufacturer cannot be renamed")
+    try:
+        name = manufacturer_name(payload.name)
+    except ValueError as exc:
+        raise ApiError(422, "invalid_manufacturer", str(exc)) from exc
+    if any(
+        other.id != vendor.id and manufacturer_name(other.name) == name
+        for other in await session.scalars(select(Vendor))
+    ):
+        raise ApiError(409, "vendor_exists", "Manufacturer already exists")
+    before = {"name": vendor.name, "record_version": vendor.record_version}
+    vendor.name = name
+    vendor.record_version += 1
+    add_audit_event(
+        session,
+        actor_id=operator.id,
+        source="web",
+        action="vendor.rename",
+        object_type="vendor",
+        object_id=vendor.id,
+        before=before,
+        after={"name": name, "record_version": vendor.record_version},
+        correlation_id=request.state.correlation_id,
+    )
+    add_outbox_job(
+        session,
+        job_type="spoolman.reconcile.full",
+        idempotency_key=f"manufacturer:{vendor.id}:v{vendor.record_version}",
+        aggregate_type="vendor",
+        aggregate_id=vendor.id,
+        aggregate_version=vendor.record_version,
+        payload={},
+    )
+    add_outbox_job(
+        session,
+        job_type="google.publish.pending",
+        idempotency_key=f"manufacturer:{vendor.id}:v{vendor.record_version}:google",
+        aggregate_type="vendor",
+        aggregate_id=vendor.id,
+        aggregate_version=vendor.record_version,
+        payload={},
+    )
+    await queue_managed_cura_library(session, requested_by=operator.id)
+    await session.commit()
+    return {
+        "id": vendor.id,
+        "name": name,
         "preferred": vendor.preferred,
         "record_version": vendor.record_version,
     }
@@ -722,6 +847,7 @@ async def list_filaments(
             or_(
                 FilamentProduct.product_name.ilike(term),
                 FilamentProduct.color_name.ilike(term),
+                FilamentProduct.color_names.cast(String).ilike(term),
                 FilamentProduct.material_type.ilike(term),
                 FilamentProduct.filler.ilike(term),
                 FilamentProduct.finish.ilike(term),
@@ -742,12 +868,17 @@ async def list_filament_colors(_: Viewer, session: DatabaseSession) -> list[Fila
                 FilamentProduct.color_mode,
                 FilamentProduct.color_hex,
                 FilamentProduct.color_hexes,
+                FilamentProduct.color_names,
             ).order_by(FilamentProduct.created_at, FilamentProduct.id)
         )
     ).all()
     mappings = {item.normalized_name: item for item in await session.scalars(select(FilamentColor))}
     choices: dict[str, FilamentColorResponse] = {}
     for product in products:
+        for component in product.color_names:
+            component_key = choice_key(component)
+            if component_key in mappings:
+                choices[component_key] = FilamentColorResponse.model_validate(mappings[component_key])
         key = choice_key(product.color_name)
         # Prefer the shared solid/rainbow choice when the same name also has a
         # product-specific multicolor palette. Never copy another product's samples.
@@ -795,7 +926,10 @@ async def create_filament_color(
 
     normalized = normalize_color_name(payload.name)
     names = await session.scalars(select(FilamentProduct.color_name).distinct())
-    if any(choice_key(name) == normalized for name in names):
+    remembered = await session.scalar(
+        select(FilamentColor.id).where(FilamentColor.normalized_name == normalized)
+    )
+    if remembered is not None or any(choice_key(name) == normalized for name in names):
         raise ApiError(409, "color_exists", "Color already exists; select it from the color list")
     mode, palette = normalize_color_palette(
         "rainbow" if normalized == "rainbow" else "solid", payload.color_hex, None
@@ -890,6 +1024,7 @@ async def create_filament(
         color_hex=payload.color_hex,
         color_mode=payload.color_mode,
         color_hexes=payload.color_hexes,
+        color_names=payload.color_names,
         actor_id=operator.id,
         correlation_id=request.state.correlation_id,
     )
@@ -902,6 +1037,7 @@ async def create_filament(
             "color_hex",
             "color_mode",
             "color_hexes",
+            "color_names",
         }
     )
     product_values["vendor_id"] = payload.vendor_id or await unknown_manufacturer_id(session)
@@ -914,6 +1050,7 @@ async def create_filament(
         color_hex=color.color_hex,
         color_mode=color.color_mode,
         color_hexes=color.color_hexes,
+        color_names=list(color.color_names),
         source_template_revision_id=payload.material_template_revision_id,
     )
     session.add(product)
@@ -955,6 +1092,7 @@ async def create_filament(
         after={
             "material_type": product.material_type,
             "color_name": product.color_name,
+            "color_names": product.color_names,
             "source_template_revision_id": (
                 str(template_revision.id) if template_revision is not None else None
             ),
@@ -1056,6 +1194,7 @@ async def update_filament(
         "color_hex": product.color_hex,
         "color_mode": product.color_mode,
         "color_hexes": product.color_hexes,
+        "color_names": product.color_names,
         "record_version": product.record_version,
         "source_template_revision_id": (
             str(product.source_template_revision_id)
@@ -1092,11 +1231,15 @@ async def update_filament(
         actor_id=operator.id,
         correlation_id=request.state.correlation_id,
         exclude_product_id=product.id,
+        color_names=payload.color_names
+        if "color_names" in payload.model_fields_set
+        else (product.color_names if requested_palette == product.color_hexes else None),
     )
     product.color_name = color.name
     product.color_hex = color.color_hex
     product.color_mode = color.color_mode
     product.color_hexes = color.color_hexes
+    product.color_names = list(color.color_names)
     if "vendor_id" in payload.model_fields_set:
         product.vendor_id = payload.vendor_id or await unknown_manufacturer_id(session)
     for field in (
@@ -1185,6 +1328,7 @@ async def update_filament(
             "color_hex": product.color_hex,
             "color_mode": product.color_mode,
             "color_hexes": product.color_hexes,
+            "color_names": product.color_names,
             "record_version": product.record_version,
             "source_template_revision_id": (
                 str(product.source_template_revision_id)
@@ -1411,6 +1555,7 @@ async def list_spools(
                 Spool.spool_code.ilike(term),
                 FilamentProduct.material_type.ilike(term),
                 FilamentProduct.color_name.ilike(term),
+                FilamentProduct.color_names.cast(String).ilike(term),
                 FilamentProduct.product_name.ilike(term),
                 FilamentProduct.filler.ilike(term),
                 FilamentProduct.finish.ilike(term),

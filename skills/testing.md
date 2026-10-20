@@ -1,5 +1,7 @@
 # Testing and Validation Skill
 
+- 0.9.9 checks cover uppercase Unicode/bounds, duplicate consolidation without product/spool/history loss, reserved UNKNOWN, confirmed versioned rename/auth errors, transactional audits/projections, and populated upgrade/schema parity/protected downgrade. Verify named 1/2/3-color create/edit/duplicate flows, automatic Multicolor locking, return to solid, draft-local component creation, archived component membership, response rollback, slash-separated titles/search/external metadata, Rainbow, and desktop/mobile light/dark rendering. Current Alembic head is `a1789c012345`.
+
 - 0.9.8 unload checks cover selected-printer routing, authenticated/CSRF-protected queued writes, live idle/probe recheck, failure/unconfirmed readback retaining canonical state, stale-request supersession, rejection of manual clear receipts, restart persistence of confirmed no-plate state, unchanged Z-offset/history/saved meshes, normal print-start rejection without a plate, and desktop/mobile pending-to-confirmed UI. Macro version is 0.9.8; tests never perform live motion.
 
 - Bulk template-copy checks cover entered values and zero/false preservation, blank/missing source values, care enums, atomic hardness, exact numeric serialization, additional Cura settings, retraction preview, repeated application, empty sources, profile exclusion, and desktop/mobile save/cancel behavior.

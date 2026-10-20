@@ -41,10 +41,15 @@ async def prune_inventory_choices(session: AsyncSession) -> None:
     await session.flush()
     products = (
         await session.execute(
-            select(FilamentProduct.color_name, FilamentProduct.filler, FilamentProduct.finish)
+            select(
+                FilamentProduct.color_name,
+                FilamentProduct.color_names,
+                FilamentProduct.filler,
+                FilamentProduct.finish,
+            )
         )
     ).all()
-    colors = {choice_key(row.color_name) for row in products}
+    colors = {choice_key(name) for row in products for name in [row.color_name, *(row.color_names or [])]}
     attributes = {
         kind: {choice_key(normalize_modifier(kind, getattr(row, kind))) for row in products}
         for kind in ("filler", "finish")

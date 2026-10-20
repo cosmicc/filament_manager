@@ -3,7 +3,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { apiFetch } from '../api/client'
 import { Modal } from './Modal'
 
-type Choice = { value: string; label: string }
+type Choice = { value: string; label: string; disabled?: boolean }
 const newItemValue = '__filament_manager_new_item__'
 
 /** One shared convention for editable catalogs; fixed enums and filters stay selections. */
@@ -19,7 +19,7 @@ export function NewItemSelect({ itemLabel, options, onCreate, ...props }: Omit<S
       onCreate()
     } else props.onChange?.(event)
   }}>
-    {options.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
+    {options.map((option) => <option key={option.value} value={option.value} disabled={option.disabled}>{option.label}</option>)}
     <option value={newItemValue}>New {itemLabel}</option>
   </select>
 }
@@ -55,11 +55,11 @@ export function InventoryChoiceSelect({ kind, defaultValue, onSelectionChange, .
     },
   })
   const options = new Map<string, string>([
-    [fallback, kind === 'manufacturer' ? 'Unknown' : kind === 'location' ? 'Unassigned' : fallback],
+    [fallback, kind === 'manufacturer' ? 'UNKNOWN' : kind === 'location' ? 'Unassigned' : fallback],
     ...(choices.data ?? []).map((item): [string, string] => [kind === 'manufacturer' ? item.id! : item.name, item.name]),
     ...added.map((item): [string, string] => [item.value, item.label]),
   ])
-  const unknownManufacturer = kind === 'manufacturer' ? choices.data?.find((item) => item.name === 'Unknown') : undefined
+  const unknownManufacturer = kind === 'manufacturer' ? choices.data?.find((item) => item.name.toUpperCase() === 'UNKNOWN') : undefined
   if (unknownManufacturer?.id) options.delete(fallback)
   const effectiveSelected = selected || unknownManufacturer?.id || fallback
   if (!options.has(effectiveSelected)) options.set(effectiveSelected, effectiveSelected)

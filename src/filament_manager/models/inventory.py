@@ -136,6 +136,9 @@ class FilamentProduct(UUIDPrimaryKeyMixin, TimestampMixin, Base):
         String(16), nullable=False, default="solid", server_default=text("'solid'")
     )
     color_hexes: Mapped[list[str]] = mapped_column(JSONB, nullable=False, default=list)
+    color_names: Mapped[list[str]] = mapped_column(
+        JSONB, nullable=False, default=list, server_default=text("'[]'::jsonb")
+    )
     product_name: Mapped[str | None] = mapped_column(String(160))
     diameter_mm: Mapped[Decimal] = mapped_column(MEASUREMENT, nullable=False)
     tolerance_mm: Mapped[Decimal | None] = mapped_column(MEASUREMENT)
@@ -153,11 +156,22 @@ class FilamentProduct(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     vendor: Mapped[Vendor | None] = relationship()
 
     @property
+    def display_color_name(self) -> str:
+        """Keep multicolor component names ordered without changing historical evidence."""
+
+        if self.color_mode == "multicolor":
+            return (
+                "/".join(self.color_names or [f"#{value}" for value in (self.color_hexes or [])])
+                or self.color_name
+            )
+        return self.color_name
+
+    @property
     def display_name(self) -> str:
         """Derive the live name without rewriting legacy names or historical records."""
 
         absent_modifiers = {"none", "standard", "no filler", "no finish", "not specified"}
-        parts = [self.material_type.strip(), self.color_name.strip()]
+        parts = [self.material_type.strip(), self.display_color_name.strip()]
         parts.extend(
             value.strip()
             for value in (self.filler, self.finish)

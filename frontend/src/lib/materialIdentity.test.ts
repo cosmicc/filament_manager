@@ -51,3 +51,7 @@ describe('material identity', () => {
     expect(materialModifierSummary(material)).toBe('Carbon Fiber · Silk')
   })
 })
+
+it('uses ordered multicolor component names in live filament and spool identity', () => {
+  expect(materialIdentitySummary({ material_type: 'PLA', color_name: 'Multicolor', color_mode: 'multicolor', color_names: ['Red', 'White', 'Blue'], filler: 'None', finish: 'Silk' })).toBe('PLA · Red/White/Blue · Silk')
+})

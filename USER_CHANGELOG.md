@@ -1,5 +1,22 @@
 # User Changelog
 
+## 0.9.9 - 10.19.2026
+
+### Added
+
+- Rename manufacturers from Filaments → Manage manufacturers.
+- Choose named component colors for multicolor filaments.
+
+### Changed
+
+- Manufacturer names are uppercase; matching existing entries are combined without removing filaments or spools.
+- Adding a second or third color automatically selects Multicolor. Return to one color to choose a single color name again.
+
+### Fixed
+
+- Filament and spool titles show Red/White/Blue-style names instead of Multicolor. Historical print records retain their original names.
+
+
 ## 0.9.8 - 10.16.2026
 
 ### Added

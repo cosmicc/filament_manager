@@ -1,5 +1,7 @@
 # Filament Manager Agent Guide
 
+- 0.9.9: Manufacturer names are uppercase, including UNKNOWN; confirmed versioned renames update live metadata only. Migration merges case-equivalent manufacturers without merging products or rewriting history. Ordered product-specific `color_names` drive multicolor filament/spool identities; 2–3 samples force Multicolor, one sample permits solid selection. Preserve named component membership, Rainbow, immutable spool codes/history, and external metadata convergence. See database/frontend/testing skills.
+
 - 0.9.8: Only a confirmed app unload may establish no active build plate. Retain canonical selection on manual clear/restart; preserve an app-unloaded state across restarts, and require a plate for normal prints. Target the explicit printer, recheck live idle/probe state, verify Klipper empty before canonical clearing, and preserve Z-offset/history. Macro 0.9.8 requires an operator-installed update and idle FIRMWARE_RESTART. See database/frontend/testing/deployment skills.
 
 - Template editors offer **Fill unset values** from one active source. Preserve entered values, zero/false, exact numeric serialization, and atomic Shore hardness; copy only local blank settings until Save. This is a one-time copy, not live template-to-template inheritance. See frontend/testing skills.

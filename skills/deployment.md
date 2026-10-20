@@ -1,5 +1,7 @@
 # Deployment and Operations Skill
 
+- 0.9.9 upgrades web and worker together after backup; startup applies `a1789c012345` to uppercase/consolidate manufacturers and retain ordered multicolor names. Preserve every product/spool UUID and historical snapshot. Review unmatched legacy hex labels in the filament editor. Restore the pre-upgrade backup for full reversal; downgrade refuses entered multicolor names. No environment, macro (still 0.9.8), agent, or renderer change is required.
+
 - 0.9.8 upgrades web and worker together after backup. Replace the exact installed app macro file with version 0.9.8 and run FIRMWARE_RESTART while idle; verify FILAMENT_MANAGER_SPOOL_STATE reports 0.9.8. No schema, environment, workstation-agent, or renderer change is required. Unload is logical selection/mesh clearing only; do not deploy live printer changes automatically.
 
 - 0.9.7 adds local draft bulk template copying. Upgrade web/worker together after backup; no schema, environment, workstation-agent, renderer, or macro change is required from 0.9.6. Fresh workstation packages remain compatible.

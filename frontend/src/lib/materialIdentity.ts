@@ -16,12 +16,14 @@ export function explicitFinish(value: string | null): string | null {
 export function materialIdentitySummary(material: {
   material_type: string
   color_name: string
+  color_mode?: string
+  color_names?: string[]
   filler: string | null
   finish: string | null
 }): string {
   return [
     material.material_type,
-    material.color_name,
+    material.color_mode === 'multicolor' && material.color_names?.length ? material.color_names.join('/') : material.color_name,
     explicitFiller(material.filler),
     explicitFinish(material.finish),
   ].filter(Boolean).join(' · ')

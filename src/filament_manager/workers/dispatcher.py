@@ -373,7 +373,7 @@ async def _project_filament(
             "filament_manager_product_uuid": str(product.id),
             "filler": product.filler or "",
             "finish": product.finish or "",
-            "color_name": product.color_name,
+            "color_name": product.display_color_name,
             "display_palette": {
                 "mode": product.color_mode,
                 "colors": product.color_hexes,
